@@ -139,7 +139,8 @@ export function threadsRepo() {
 
     /**
      * Names a thread from the model's suggestion unless someone already named it: the suggestion, then -2 to -9 when
-     * taken. Null when the thread keeps its provisional name (named meanwhile, an unusable suggestion, or all taken).
+     * taken, and tells the room. Null when the thread keeps its provisional name (named meanwhile, an unusable
+     * suggestion, or all taken).
      */
     async nameIfProvisional(roomId: string, threadId: string, suggestion: string): Promise<ThreadSummary | null> {
       const thread = await byId(roomId, threadId);
@@ -153,7 +154,9 @@ export function threadsRepo() {
       }
       for (const name of uniqueCandidates(base).filter((n) => !isNumberedName(n))) {
         try {
-          return await moveName(thread, name, { unnamedOnly: true });
+          const named = await moveName(thread, name, { unnamedOnly: true });
+          await announce(named);
+          return named;
         } catch (e) {
           if (!conditionFailed(e)) throw e;
           if (!failedAt(e, 1)) return null;

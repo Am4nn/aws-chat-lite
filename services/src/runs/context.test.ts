@@ -1,0 +1,54 @@
+import { describe, expect, it } from "vitest";
+import type { Message } from "../chat/model.js";
+import type { RunEvent, RunEventBody } from "../threads/types.js";
+import { buildContext } from "./context.js";
+
+const message = (seq: number, authorId: string, authorName: string, text: string): Message => ({
+  roomId: "r", chatId: "t", seq, authorId, authorName, text, createdAt: "2026-11-11T00:00:00.000Z",
+  attachments: [], reactions: {}, mentions: [], everyone: false,
+});
+const events = (...bodies: RunEventBody[]): RunEvent[] =>
+  bodies.map((b, i) => ({ ...b, seq: i + 1, at: "2026-11-11T00:00:00.000Z" }) as RunEvent);
+
+const call = (n: number) => ({ id: `call-${n}`, name: "fake.lookup", input: { query: "q" } });
+const started = (n: number): RunEventBody => ({ type: "step.started", step: n, call: call(n), detail: "q" });
+const finished = (n: number, ok = true): RunEventBody => ({ type: "step.finished", step: n, output: `out ${n}`, ms: 5, ok });
+
+describe("buildContext", () => {
+  it("prior messages, then tool calls, their results and the merged answer text", () => {
+    const prior = [message(1, "u1", "aman", "hi"), message(2, "agent", "agent", "earlier answer")];
+    const run = events(
+      { type: "run.started", model: "fake", startedBy: "aman" },
+      started(1), finished(1), { type: "usage", model: "fake", inputTokens: 1, outputTokens: 1, costMicros: 18 },
+      { type: "text", text: "a " }, { type: "text", text: "b" },
+    );
+    expect(buildContext(prior, run)).toEqual([
+      { role: "user", author: "aman", text: "hi" },
+      { role: "assistant", text: "earlier answer" },
+      { role: "assistant", text: "", toolCalls: [call(1)] },
+      { role: "tool", toolCallId: "call-1", output: "out 1", isError: false },
+      { role: "assistant", text: "a b" },
+    ]);
+  });
+
+  it("a steer between steps becomes a user message in that position", () => {
+    const run = events(
+      started(1), finished(1, false),
+      { type: "steer", messageSeq: 2, authorName: "ravi", text: "also check prod" },
+      started(2), finished(2),
+    );
+    expect(buildContext([message(1, "u1", "aman", "go")], run)).toEqual([
+      { role: "user", author: "aman", text: "go" },
+      { role: "assistant", text: "", toolCalls: [call(1)] },
+      { role: "tool", toolCallId: "call-1", output: "out 1", isError: true },
+      { role: "user", author: "ravi", text: "also check prod" },
+      { role: "assistant", text: "", toolCalls: [call(2)] },
+      { role: "tool", toolCallId: "call-2", output: "out 2", isError: false },
+    ]);
+  });
+
+  it("text before a tool call stays in the same assistant message", () => {
+    const run = events({ type: "text", text: "Let me look." }, started(1), finished(1));
+    expect(buildContext([], run).slice(0, 1)).toEqual([{ role: "assistant", text: "Let me look.", toolCalls: [call(1)] }]);
+  });
+});

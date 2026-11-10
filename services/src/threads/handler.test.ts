@@ -11,20 +11,27 @@ const ev = (routeKey: string, o: { body?: unknown; params?: Record<string, strin
 
 function setup() {
   const repos = {
-    threads: { createThread: vi.fn(async () => ({ thread: {}, message: {} })), rename: vi.fn(async () => ({})) },
+    threads: {
+      createThread: vi.fn(async () => ({ thread: { threadId: "t1", status: "idle" }, message: { seq: 1 } })),
+      rename: vi.fn(async () => ({})),
+      threadById: vi.fn(async () => ({ threadId: "t1", status: "running" })),
+    },
     budget: { setCap: vi.fn(async () => ({})) },
+    startRun: vi.fn(async () => ({ runId: "run1", started: true })),
   };
-  return { ...repos, handle: makeHandler(repos.threads as any, repos.budget as any) };
+  return { ...repos, handle: makeHandler(repos.threads as any, repos.budget as any, repos.startRun) };
 }
 
 const me = { userId: "u1", username: "aman" };
 
 describe("threads handler", () => {
-  it("POST /threads creates a thread with its first message: 201", async () => {
-    const { threads, handle } = setup();
+  it("POST /threads creates a thread, starts a run on its first message and returns the running thread: 201", async () => {
+    const { threads, startRun, handle } = setup();
     const res = await handle(ev("POST /rooms/{roomId}/threads", { params: { roomId: "r" }, body: { text: "hi", clientId: "k1" } }));
     expect(res.statusCode).toBe(201);
     expect(threads.createThread).toHaveBeenCalledWith(me, "r", { text: "hi", clientId: "k1" });
+    expect(startRun).toHaveBeenCalledWith(me, "r", "t1", { seq: 1 });
+    expect(JSON.parse(res.body as string)).toEqual({ thread: { threadId: "t1", status: "running" }, message: { seq: 1 } });
   });
 
   it("POST /threads without a valid clientId is a 400", async () => {

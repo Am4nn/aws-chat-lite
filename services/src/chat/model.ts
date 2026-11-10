@@ -1,5 +1,6 @@
 import type { Role } from "../rooms/access.js";
 import { ValidationError } from "../lib/errors.js";
+import type { RunEndStatus } from "../threads/types.js";
 
 export type Reaction = "thumbs" | "heart" | "joy" | "tada" | "eyes" | "check";
 export type Attachment = { key: string; name: string; size: number; type: string; url?: string };
@@ -19,6 +20,11 @@ export type Message = {
   reactions: Partial<Record<Reaction, string[]>>;
   mentions: string[];
   everyone: boolean;
+  /** Set on an agent's answer (`authorId: "agent"`): how the run that wrote it ended. */
+  agent?: {
+    runId: string; status: RunEndStatus; reason?: string; steps: number; costMicros: number; ms: number; model: string;
+    firstSeq: number;
+  };
 };
 /** `textLower` backs search; it never leaves the server. */
 export type StoredMessage = Message & { textLower: string };

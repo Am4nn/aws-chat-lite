@@ -8,6 +8,10 @@ export const FAKE_TOOLS: ToolSpec[] = [
   },
 ];
 
+/** The line a running step shows under its tool's name. */
+export const toolDetail = (call: ToolCall) =>
+  call.name === "fake.lookup" ? `Looking up "${call.input.query}"` : call.name;
+
 export async function runTool(
   call: ToolCall,
   { sleep }: { sleep: (ms: number) => Promise<void> },

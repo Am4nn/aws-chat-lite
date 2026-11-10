@@ -1,9 +1,5 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  "ignoreIssues": {
-    "services/src/runs/model.ts": ["exports"],
-    "services/src/threads/types.ts": ["types"]
-  },
   "workspaces": {
     "infra": {
       "entry": [
@@ -22,6 +18,7 @@
         "src/**/handler.ts",
         "src/health.ts",
         "src/auth/presignup.ts",
+        "src/runs/loop.ts",
         "src/spike/*.ts"
       ],
       "project": [

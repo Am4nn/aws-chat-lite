@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { budgetText } from "../budget/model.js";
-import { endReason } from "./model.js";
+import { endReason, stoppedBy } from "./model.js";
 
 const base = { steps: 0, startedAtMs: 1_000, spentMicros: 0, capMicros: 3_000_000, month: "2026-11" };
 const now = 1_000 + 60_000;
@@ -8,6 +8,7 @@ const now = 1_000 + 60_000;
 describe("endReason", () => {
   it("stops when a member asked", () => {
     expect(endReason({ ...base, stopRequestedBy: "aman" }, now)).toEqual({ status: "stopped", reason: "Stopped by aman." });
+    expect(stoppedBy("aman")).toEqual({ status: "stopped", reason: "Stopped by aman." });
   });
   it("caps at the budget", () => {
     expect(endReason({ ...base, spentMicros: 3_000_000 }, now)).toEqual({ status: "capped", reason: budgetText(3_000_000, "2026-11") });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FAKE_TOOLS, runTool } from "./tools.js";
+import { FAKE_TOOLS, runTool, toolDetail } from "./tools.js";
 
 const recorder = () => {
   const waits: number[] = [];
@@ -32,5 +32,12 @@ describe("runTool", () => {
 
   it("describes its tools", () => {
     expect(FAKE_TOOLS.map((t) => t.name)).toEqual(["fake.lookup"]);
+  });
+});
+
+describe("toolDetail", () => {
+  it("shows what a lookup is looking for", () => {
+    expect(toolDetail({ id: "call-1", name: "fake.lookup", input: { query: "prs", slow: false } })).toBe('Looking up "prs"');
+    expect(toolDetail({ id: "call-2", name: "other", input: {} })).toBe("other");
   });
 });
