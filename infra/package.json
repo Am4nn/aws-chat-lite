@@ -1,0 +1,17 @@
+{
+  "name": "@cl/infra",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "cdk": "cdk"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.275.0",
+    "constructs": "^10"
+  },
+  "devDependencies": {
+    "aws-cdk": "2.1148.0",
+    "esbuild": "0.28.2"
+  }
+}

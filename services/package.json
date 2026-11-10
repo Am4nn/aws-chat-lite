@@ -1,0 +1,17 @@
+{
+  "name": "@cl/services",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aws-sdk/client-apigatewaymanagementapi": "^3.1163.0",
+    "@aws-sdk/client-dynamodb": "^3.1163.0",
+    "@aws-sdk/lib-dynamodb": "^3.1163.0",
+    "@aws/durable-execution-sdk-js": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8"
+  }
+}
