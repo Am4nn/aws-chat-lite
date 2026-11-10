@@ -5,8 +5,8 @@ import { can, type Action, type Role } from "./access.js";
 import { chatName, roomName, Conflict, Forbidden, Gone, NotFound, ValidationError } from "./model.js";
 import { INVITE_TTL_SEC, inviteState, newInviteCode } from "./invites.js";
 
-export interface User { userId: string; username: string }
-export interface RoomView {
+interface User { userId: string; username: string }
+interface RoomView {
   room: { roomId: string; name: string; ownerId: string };
   me: { role: Role };
   chats: { chatId: string; name: string }[];

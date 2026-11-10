@@ -1,0 +1,45 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "workspaces": {
+    "infra": {
+      "entry": [
+        "bin/app.ts"
+      ],
+      "project": [
+        "bin/**/*.ts",
+        "lib/**/*.ts"
+      ],
+      "ignoreDependencies": [
+        "esbuild"
+      ]
+    },
+    "services": {
+      "entry": [
+        "src/**/handler.ts",
+        "src/health.ts",
+        "src/auth/presignup.ts",
+        "src/spike/*.ts"
+      ],
+      "project": [
+        "src/**/*.ts"
+      ]
+    },
+    "scripts": {
+      "entry": [
+        "src/{floci-up,deploy-local,spike-check,spike-aws,grant,smoke}.ts"
+      ],
+      "project": [
+        "src/**/*.ts"
+      ]
+    },
+    "web": {
+      "project": [
+        "**/*.{ts,tsx}"
+      ],
+      "ignoreDependencies": [
+        "tailwindcss",
+        "postcss"
+      ]
+    }
+  }
+}

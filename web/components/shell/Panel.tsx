@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 import { motion } from "motion/react";
 import { spring } from "@/lib/motion";
 
-export type PanelTab = { id: string; label: string; content: ReactNode };
+type PanelTab = { id: string; label: string; content: ReactNode };
 
 /**
  * The right-hand room panel. It slides its width rather than popping in and out, and the active tab is marked by a

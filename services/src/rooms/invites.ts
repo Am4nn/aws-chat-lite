@@ -8,7 +8,7 @@ export function newInviteCode(): string {
   return randomBytes(16).toString("base64url");
 }
 
-export type InviteState = "ok" | "expired" | "revoked" | "missing";
+type InviteState = "ok" | "expired" | "revoked" | "missing";
 
 /** Checked on every accept (TTL deletion is lazy, so an expired item may still exist). */
 export function inviteState(inv: { expiresAt: number; revoked?: boolean } | undefined, nowSec: number): InviteState {

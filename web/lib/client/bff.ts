@@ -2,7 +2,7 @@
  * Calls from the browser to the Next.js server's /bff/* routes. The httpOnly cookies ride along automatically.
  * When the ID token has expired, one silent refresh is attempted before giving up and sending the user to sign in.
  */
-export class BffError extends Error {
+class BffError extends Error {
   constructor(public status: number, message: string) {
     super(message);
   }

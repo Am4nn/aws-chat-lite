@@ -14,7 +14,7 @@ import { addRooms } from "./rooms.js";
 export const servicePath = (file: string) =>
   fileURLToPath(new URL(`../../services/src/${file}`, import.meta.url));
 
-export interface CoreStackProps extends StackProps {
+interface CoreStackProps extends StackProps {
   config: StageConfig;
 }
 

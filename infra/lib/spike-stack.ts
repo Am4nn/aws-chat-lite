@@ -10,7 +10,7 @@ import * as scheduler from "aws-cdk-lib/aws-scheduler";
 import { servicePath } from "./core-stack.js";
 import type { StageConfig } from "./config.js";
 
-export interface SpikeStackProps extends StackProps {
+interface SpikeStackProps extends StackProps {
   config: StageConfig;
 }
 

@@ -1,7 +1,7 @@
 import { LambdaClient, InvokeWithResponseStreamCommand } from "@aws-sdk/client-lambda";
 import { check, withTimeout, assert, flociHost, type Outputs, type Stage } from "./util.js";
 
-export interface SseEvent { id: string; event: string; data: string }
+interface SseEvent { id: string; event: string; data: string }
 
 /** Complete SSE frames (blank-line terminated) in `text`; a trailing partial frame is ignored. */
 export function parseSse(text: string): SseEvent[] {

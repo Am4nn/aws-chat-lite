@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { ID_COOKIE } from "./cookies";
 import { serverEnv } from "./env";
 
-export class ApiError extends Error {
+class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
   }

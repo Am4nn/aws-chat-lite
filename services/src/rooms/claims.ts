@@ -1,5 +1,5 @@
 /** The app-level group that may create rooms (granted with `npm run grant -- <username> creators`). */
-export const CREATORS = "creators";
+const CREATORS = "creators";
 
 /**
  * True when the token's `cognito:groups` holds "creators". API Gateway's JWT authorizer passes array

@@ -20,7 +20,7 @@ function cognito() {
 }
 const clientId = () => serverEnv().userPoolClientId;
 
-export type Tokens = { idToken: string; refreshToken?: string; expiresIn: number };
+type Tokens = { idToken: string; refreshToken?: string; expiresIn: number };
 
 export async function signIn(username: string, password: string): Promise<Tokens> {
   const r = await cognito().send(new InitiateAuthCommand({

@@ -1,6 +1,6 @@
 import { isFresh } from "./jwt";
 
-export type GateResult =
+type GateResult =
   | { type: "next" }
   | { type: "error"; status: 403 | 415; error: string }
   | { type: "redirect"; location: string };
