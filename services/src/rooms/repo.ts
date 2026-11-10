@@ -5,6 +5,11 @@ import {
 import { batchGet, conditionFailed, docClient, failedAt, queryAll, tableName } from "../lib/db.js";
 import { Conflict, Forbidden, Gone, NotFound, ValidationError } from "../lib/errors.js";
 import { isOnline, type Presence } from "../live/presence.js";
+import { budgetOf } from "../budget/repo.js";
+import { monthKey } from "../budget/model.js";
+import { claimableName } from "../threads/model.js";
+import { summary } from "../threads/repo.js";
+import type { Budget, ThreadSummary } from "../threads/types.js";
 import { can, type Action, type Role } from "./access.js";
 import { chatName, roomName } from "./model.js";
 import { INVITE_TTL_SEC, inviteState, newInviteCode } from "./invites.js";
@@ -15,6 +20,8 @@ interface RoomView {
   me: { role: Role };
   chats: { chatId: string; name: string; lastSeq: number; unread: number; mentions: number; muted: boolean }[];
   members: { userId: string; username: string; role: Role; online: boolean; lastSeen?: string }[];
+  threads: ThreadSummary[];
+  budget: Budget;
 }
 
 const nowSec = () => Math.floor(Date.now() / 1000);
@@ -165,19 +172,21 @@ export function roomsRepo() {
     },
 
     /**
-     * The room, its chats, its members and only your own read state, each by sort-key prefix within the room's
-     * partition (which also holds every member's read state and every socket's subscription). The reads are
-     * consistent, so a room you just created or joined is there on the very next page load. Each chat's message count
-     * lives in the chat's own partition and each member's presence in theirs, so those come from two BatchGets.
+     * The room, its chats, threads and members, this month's agent usage and only your own read state, each by
+     * sort-key prefix within the room's partition (which also holds every member's read state, every socket's
+     * subscription and past months' usage). The reads are consistent, so a room you just created or joined is there on
+     * the very next page load. Each chat's message count lives in the chat's own partition and each member's presence
+     * in theirs, so those come from two BatchGets.
      */
     async getRoomView(roomId: string, userId: string): Promise<RoomView> {
       const inRoom = (prefix: string) => queryAll({
         KeyConditionExpression: "pk = :p AND begins_with(sk, :s)", ConsistentRead: true,
         ExpressionAttributeValues: { ":p": roomKey(roomId), ":s": prefix },
       });
-      const [{ Item: meta }, chats, members, myReads] = await Promise.all([
+      const month = monthKey(new Date());
+      const [{ Item: meta }, chats, threads, members, myReads, [usage]] = await Promise.all([
         db.send(new GetCommand({ TableName, Key: { pk: roomKey(roomId), sk: "META" }, ConsistentRead: true })),
-        inRoom("CHAT#"), inRoom("MEMBER#"), inRoom(`READ#${userId}#`),
+        inRoom("CHAT#"), inRoom("THREAD#"), inRoom("MEMBER#"), inRoom(`READ#${userId}#`), inRoom(`USAGE#${month}`),
       ]);
       const me = members.find((m) => m.userId === userId);
       if (!me || !meta) throw new NotFound("Room not found.");
@@ -188,7 +197,8 @@ export function roomsRepo() {
       ]);
       const lastSeqOf = new Map(counters.map((c) => [lastPart(c.pk), Number(c.lastSeq)]));
       const presenceOf = new Map(presences.map((p) => [lastPart(p.pk), p as unknown as Presence]));
-      const now = Math.floor(Date.now() / 1000);
+      const nowMs = Date.now();
+      const now = Math.floor(nowMs / 1000);
       return {
         room: { roomId, name: String(meta.name), ownerId: String(meta.ownerId), archived: !!meta.archived },
         me: { role: me.role as Role },
@@ -208,12 +218,17 @@ export function roomsRepo() {
             online: isOnline(presence, now), ...(presence && { lastSeen: presence.lastSeen }),
           };
         }),
+        threads: threads.map((t) => summary(t, nowMs)),
+        budget: budgetOf(month, meta, usage),
       };
     },
 
-    /** The name guard item makes duplicate names impossible, even for two requests at the same moment. */
+    /**
+     * The name guard item makes duplicate names impossible, even for two requests at the same moment. Threads use the
+     * same guards, so a chat can't take a thread's name either.
+     */
     async createChat(roomId: string, userId: string, rawName: unknown) {
-      const name = chatName(rawName);
+      const name = claimableName(chatName(rawName));
       await requireRole(roomId, userId, "createChat", { writing: true });
       const chatId = randomUUID();
       const at = nowIso();

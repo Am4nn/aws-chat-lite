@@ -11,6 +11,7 @@ import { addAuth, type Auth } from "./auth.js";
 import { addRooms } from "./rooms.js";
 import { addLive } from "./live.js";
 import { addChat } from "./chat.js";
+import { addThreads } from "./threads.js";
 
 /** Path to a handler file in services/src */
 export const servicePath = (file: string) =>
@@ -59,6 +60,7 @@ export class CoreStack extends Stack {
     this.allowBroadcast(this.live.liveFn);
     this.allowBroadcast(addRooms(this));
     addChat(this);
+    this.allowBroadcast(addThreads(this));
 
     new CfnOutput(this, "ApiUrl", { value: this.api.apiEndpoint });
     new CfnOutput(this, "WsUrl", { value: this.wsUrl });

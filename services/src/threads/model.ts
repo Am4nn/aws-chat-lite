@@ -5,6 +5,18 @@ export const ARCHIVE_AFTER_SEC = 604_800;
 
 export const PROVISIONAL = (n: number) => `thread-${n}`;
 
+/**
+ * True for a `thread-<N>` name. Each new thread takes one as its provisional name, so chats and renames may not
+ * claim them first.
+ */
+export const isNumberedName = (name: string) => /^thread-\d+$/.test(name);
+
+/** A name a person picked for a chat or a thread, refused when it is one the numbered threads keep. */
+export function claimableName(name: string): string {
+  if (isNumberedName(name)) throw new ValidationError("Names like thread-12 are kept for numbered threads.");
+  return name;
+}
+
 export const threadSk = (n: number) => `THREAD#${String(n).padStart(10, "0")}`;
 
 const NAME = /^(?=.*[a-z])[a-z0-9-]{1,32}$/;

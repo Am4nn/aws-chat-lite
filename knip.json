@@ -1,7 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "ignoreIssues": {
-    "services/src/budget/model.ts": ["exports"],
     "services/src/runs/model.ts": ["exports"],
     "services/src/threads/types.ts": ["types"]
   },

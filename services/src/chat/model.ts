@@ -58,6 +58,14 @@ export function seqNumber(raw: unknown): number {
   return raw;
 }
 
+const ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+/** An id from a client (room, chat or client id): a short plain token, safe in a key or a path. */
+export function idOf(raw: unknown, name: string): string {
+  if (typeof raw !== "string" || !ID.test(raw)) throw new ValidationError(`${name} is missing or invalid.`);
+  return raw;
+}
+
 export function messageText(raw: unknown): string {
   if (typeof raw !== "string") throw new ValidationError("text must be a string");
   const text = raw.trim();

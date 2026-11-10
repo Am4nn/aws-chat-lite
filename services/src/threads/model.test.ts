@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ARCHIVE_AFTER_SEC, PROVISIONAL, isArchived, leadingTag, summaryLine, threadName, threadSk, uniqueCandidates } from "./model.js";
+import { ARCHIVE_AFTER_SEC, PROVISIONAL, claimableName, isArchived, isNumberedName, leadingTag, summaryLine, threadName, threadSk, uniqueCandidates } from "./model.js";
 
 describe("threadName", () => {
   it("trims and lowercases", () => expect(threadName(" PR-Check ")).toBe("pr-check"));
@@ -9,6 +9,14 @@ describe("threadName", () => {
 it("builds provisional names and sort keys", () => {
   expect(PROVISIONAL(7)).toBe("thread-7");
   expect(threadSk(7)).toBe("THREAD#0000000007");
+});
+
+it("keeps thread-<N> names for the numbered threads", () => {
+  expect(isNumberedName("thread-12")).toBe(true);
+  expect(isNumberedName("thread-12-2")).toBe(false);
+  expect(isNumberedName("thread-x")).toBe(false);
+  expect(() => claimableName("thread-3")).toThrow(/numbered threads/);
+  expect(claimableName("pr-check")).toBe("pr-check");
 });
 
 describe("uniqueCandidates", () => {

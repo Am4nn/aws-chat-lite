@@ -1,6 +1,6 @@
 import { broadcastToRoom, sendToConnection, sendToUser } from "../live/broadcast.js";
 import { UserError, ValidationError } from "../lib/errors.js";
-import { REACTIONS, seqNumber, type Message, type Reaction } from "./model.js";
+import { REACTIONS, idOf, seqNumber, type Message, type Reaction } from "./model.js";
 import { chatRepo, type ChatRepo } from "./repo.js";
 
 interface User { userId: string; username: string }
@@ -9,14 +9,7 @@ type Frame = Record<string, unknown>;
 /** What a successful action answers its sender with, and how everyone else hears about it. */
 interface Outcome { data?: unknown; notify?: () => Promise<unknown> }
 
-const ID = /^[A-Za-z0-9_-]{1,64}$/;
-
-function id(raw: unknown, name: string): string {
-  if (typeof raw !== "string" || !ID.test(raw)) throw new ValidationError(`${name} is missing or invalid.`);
-  return raw;
-}
-
-const chatRef = (f: Frame) => ({ roomId: id(f.roomId, "roomId"), chatId: id(f.chatId, "chatId") });
+const chatRef = (f: Frame) => ({ roomId: idOf(f.roomId, "roomId"), chatId: idOf(f.chatId, "chatId") });
 
 // Built on first use, so importing this module needs no table configured.
 let repo: ChatRepo | undefined;
@@ -29,7 +22,7 @@ async function perform(connId: string, user: User, f: Frame): Promise<Outcome> {
   switch (f.action) {
     case "send": {
       const message = await chat().send(user, {
-        ...chatRef(f), clientId: id(f.clientId, "clientId"), text: f.text, attachments: f.attachments,
+        ...chatRef(f), clientId: idOf(f.clientId, "clientId"), text: f.text, attachments: f.attachments,
         replyToSeq: f.replyToSeq === undefined ? undefined : seqNumber(f.replyToSeq),
       });
       return { data: message, notify: () => broadcastToRoom(message.roomId, { type: "message.new", message }) };
