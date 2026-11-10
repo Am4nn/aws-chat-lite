@@ -1,4 +1,4 @@
-import type { Message, ThreadSummary } from "../types";
+﻿import type { Message, ThreadSummary } from "../types";
 import { formatElapsed } from "./format";
 
 const IDLE_ARCHIVE_MS = 7 * 24 * 3600_000;
@@ -21,7 +21,7 @@ export const liveCount = (list: ThreadSummary[]) => list.filter((t) => t.status 
 export function threadMeta(t: ThreadSummary, nowMs: number, timeZone?: string): { text: string; tone: "live" | "muted" } {
   if (t.status === "running") {
     const elapsed = t.startedAt ? formatElapsed(nowMs - Date.parse(t.startedAt)) : "0:00";
-    return { text: `step ${t.steps} · ${elapsed}`, tone: "live" };
+    return { text: `step ${t.steps} Â· ${elapsed}`, tone: "live" };
   }
   if (t.status === "capped") return { text: "budget", tone: "muted" };
   if (t.status === "stopped" || t.status === "failed") return { text: t.status, tone: "muted" };
@@ -55,6 +55,6 @@ export function groupThread(messages: Message[], thread?: ThreadSummary): Block[
     } else {
       blocks.push({ kind: "message", message: m });
     }
-  }  return blocks;
+  }
+  return blocks;
 }
-

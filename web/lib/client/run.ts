@@ -1,4 +1,4 @@
-import type { Message, RunEndStatus, RunEvent } from "../types";
+﻿import type { Message, RunEndStatus, RunEvent } from "../types";
 
 type RunItem =
   | { kind: "step"; step: number; name: string; detail: string; status: "running" | "done" | "failed"; output?: string; ms?: number; startedAt: string }
@@ -48,4 +48,3 @@ export function queuedSteers(v: RunView, steers: Message[]): Message[] {
   const read = new Set(v.items.flatMap((i) => (i.kind === "steer" ? [i.messageSeq] : [])));
   return steers.filter((m) => !read.has(m.seq));
 }
-

@@ -1,9 +1,9 @@
-import type { Budget } from "../types";
+﻿import type { Budget } from "../types";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
 export function formatElapsed(ms: number): string {
-  const total = Math.floor(ms / 1000);
+  const total = Math.max(0, Math.floor(ms / 1000));
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
   const s = total % 60;
@@ -12,7 +12,7 @@ export function formatElapsed(ms: number): string {
 
 export function formatUsd(micros: number): string {
   if (micros > 0 && micros < 10_000) return "<$0.01";
-  return `$${(micros / 1e6).toFixed(2)}`;
+  return `$${(Math.round(micros / 10_000) / 100).toFixed(2)}`;
 }
 
 export const budgetFill = (b: Pick<Budget, "spentMicros" | "capMicros">) =>

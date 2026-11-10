@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import { createSseParser } from "./sse";
 
 describe("createSseParser", () => {
@@ -10,5 +10,13 @@ describe("createSseParser", () => {
 
   it("parses CRLF the same", () => {
     expect(createSseParser().push('id: 2\r\nevent: run\r\ndata: {}\r\n\r\n')).toEqual([{ id: "2", event: "run", data: "{}" }]);
+  });
+  it("handles a chunk cut inside the blank-line separator", () => {
+    const p = createSseParser();
+    expect(p.push("id: 1\ndata: x\n")).toEqual([]);
+    expect(p.push("\nid: 2\ndata: y\n\n")).toEqual([
+      { id: "1", event: "message", data: "x" },
+      { id: "2", event: "message", data: "y" },
+    ]);
   });
 });

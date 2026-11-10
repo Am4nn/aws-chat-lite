@@ -1,4 +1,4 @@
-type SseFrame = { id: string; event: string; data: string };
+﻿type SseFrame = { id: string; event: string; data: string };
 
 export function createSseParser() {
   let buffer = "";
@@ -29,4 +29,3 @@ export function createSseParser() {
     },
   };
 }
-

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import type { Message, RunEvent } from "../types";
 import { applyRunEvent, emptyRun, queuedSteers } from "./run";
 
@@ -42,6 +42,12 @@ describe("applyRunEvent", () => {
       ev(2, { type: "steer", messageSeq: 7, authorName: "ann", text: "faster" }),
     );
     expect(v.items.map((i) => i.kind)).toEqual(["step", "steer"]);
+  });
+
+  it("ignores an overlapping replay after a resume", () => {
+    const a = ev(1, { type: "text", text: "a" });
+    const b = ev(2, { type: "text", text: "b" });
+    expect([a, b, a, b, ev(3, { type: "text", text: "c" })].reduce(applyRunEvent, emptyRun()).text).toBe("abc");
   });
 
   it("records the end status and reason", () => {
