@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useParams, usePathname, useRouter } from "next/navigation";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { bff } from "@/lib/client/bff";
 import { isPaletteShortcut } from "@/lib/keys";
 import { enterFrom } from "@/lib/motion";
@@ -25,6 +25,7 @@ type Dialog = "chat" | "room" | null;
 export function RoomShell({ view, rooms, me, children }: { view: RoomView; rooms: RoomSummary[]; me: Me; children: ReactNode }) {
   const router = useRouter();
   const toast = useToast();
+  const reducedMotion = useReducedMotion() ?? false;
   const pathname = usePathname();
   const { chatId } = useParams<{ chatId?: string }>();
   const [panelOpen, setPanelOpen] = useState(true);
@@ -90,7 +91,7 @@ export function RoomShell({ view, rooms, me, children }: { view: RoomView; rooms
           <Header roomName={view.room.name} chatName={activeChat?.name} members={view.members} onTogglePanel={() => setPanelOpen((o) => !o)} />
           <div className="relative min-h-0 flex-1 overflow-hidden">
             <AnimatePresence mode="popLayout" initial={false}>
-              <motion.div key={pathname} {...enterFrom(dir)} exit={{ opacity: 0 }} className="absolute inset-0">
+              <motion.div key={pathname} {...enterFrom(dir, reducedMotion)} exit={{ opacity: 0 }} className="absolute inset-0">
                 {children}
               </motion.div>
             </AnimatePresence>

@@ -15,9 +15,12 @@ export const spring = {
   pop: { type: "spring", stiffness: 600, damping: 22 } satisfies Transition,
 };
 
-/** Content entering after a navigation, from the direction the user moved. */
-export const enterFrom = (direction: "up" | "down") => ({
-  initial: { opacity: 0, y: direction === "down" ? 18 : -18 },
+/**
+ * Content entering after a navigation, from the direction the user moved. With reduced motion it only fades: starting
+ * at the final position avoids even one frame of offset before Motion skips the slide.
+ */
+export const enterFrom = (direction: "up" | "down", reduced: boolean) => ({
+  initial: { opacity: 0, y: reduced ? 0 : direction === "down" ? 18 : -18 },
   animate: { opacity: 1, y: 0 },
   transition: { duration: dur.slow, ease: easeOut },
 });

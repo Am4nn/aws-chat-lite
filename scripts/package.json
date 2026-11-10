@@ -8,7 +8,8 @@
     "deploy-local": "tsx src/deploy-local.ts",
     "spike": "tsx src/spike-check.ts",
     "spike-aws": "tsx src/spike-aws.ts",
-    "grant": "tsx src/grant.ts"
+    "grant": "tsx src/grant.ts",
+    "smoke": "tsx src/smoke.ts"
   },
   "dependencies": {
     "@aws-sdk/client-apigatewaymanagementapi": "^3.1163.0",
@@ -24,6 +25,7 @@
     "@aws-sdk/client-cognito-identity-provider": "^3.1163.0"
   },
   "devDependencies": {
-    "@types/ws": "^8"
+    "@types/ws": "^8",
+    "puppeteer-core": "^25.16.0"
   }
 }

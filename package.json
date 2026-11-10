@@ -15,7 +15,8 @@
     "spike": "npm -w scripts run spike",
     "spike:aws": "npm -w scripts run spike-aws",
     "grant": "npm -w scripts run grant --",
-    "dev": "npm -w web run dev"
+    "dev": "npm -w web run dev",
+    "smoke": "npm -w scripts run smoke"
   },
   "devDependencies": {
     "@types/node": "^22",
