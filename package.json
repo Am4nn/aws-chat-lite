@@ -1,0 +1,23 @@
+{
+  "name": "chat-lite",
+  "private": true,
+  "workspaces": [
+    "infra",
+    "services",
+    "scripts"
+  ],
+  "scripts": {
+    "floci:up": "npm -w scripts run floci-up",
+    "floci:down": "docker compose down",
+    "test": "npm run test --workspaces --if-present",
+    "deploy:local": "npm -w scripts run deploy-local",
+    "spike": "npm -w scripts run spike",
+    "spike:aws": "npm -w scripts run spike-aws"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "tsx": "^4",
+    "typescript": "^5",
+    "vitest": "^5"
+  }
+}

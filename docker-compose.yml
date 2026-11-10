@@ -1,0 +1,23 @@
+# Local AWS (Floci) for chat-lite. Its own container + volume, so it never mixes with instagram-lite's.
+# Both use port 4566, so only one project's Floci runs at a time (`npm run floci:up` checks).
+name: chat-lite
+services:
+  floci:
+    image: floci/floci:2.4.0
+    container_name: floci-chat
+    ports:
+      - "4566:4566"
+    environment:
+      # Keep resources across restarts (default is in-memory).
+      FLOCI_STORAGE_MODE: "persistent"
+      # API Gateway JWT authorizers may trust the local Cognito issuer (literal loopback IP only).
+      FLOCI_SECURITY_ALLOW_PRIVATE_JWT_TARGETS: "true"
+      FLOCI_BASE_URL: "http://127.0.0.1:4566"
+      # Group the Lambda containers Floci starts under "chat-lite" in Docker Desktop.
+      FLOCI_DOCKER_EXTRA_LABELS_0__KEY: "com.docker.compose.project"
+      FLOCI_DOCKER_EXTRA_LABELS_0__VALUE: "chat-lite"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock # Lambda runs in sibling containers
+      - chat-floci-data:/app/data
+volumes:
+  chat-floci-data:

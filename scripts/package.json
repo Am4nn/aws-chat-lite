@@ -1,0 +1,27 @@
+{
+  "name": "@cl/scripts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "floci-up": "tsx src/floci-up.ts",
+    "deploy-local": "tsx src/deploy-local.ts",
+    "spike": "tsx src/spike-check.ts",
+    "spike-aws": "tsx src/spike-aws.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-apigatewaymanagementapi": "^3.1163.0",
+    "@aws-sdk/client-bedrock-agentcore": "^3.1163.0",
+    "@aws-sdk/client-cloudformation": "^3.1163.0",
+    "@aws-sdk/client-dynamodb": "^3.1163.0",
+    "@aws-sdk/client-lambda": "^3.1163.0",
+    "@aws-sdk/client-scheduler": "^3.1163.0",
+    "@aws-sdk/client-ssm": "^3.1163.0",
+    "@aws-sdk/client-sts": "^3.1163.0",
+    "@aws-sdk/lib-dynamodb": "^3.1163.0",
+    "ws": "^8"
+  },
+  "devDependencies": {
+    "@types/ws": "^8"
+  }
+}
