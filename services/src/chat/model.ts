@@ -25,9 +25,9 @@ export type StoredMessage = Message & { textLower: string };
 
 export const REACTIONS: readonly Reaction[] = ["thumbs", "heart", "joy", "tada", "eyes", "check"];
 export const EDIT_WINDOW_SEC = 900;
-export const MAX_TEXT = 4000;
+const MAX_TEXT = 4000;
 export const MAX_ATTACHMENTS = 5;
-export const MAX_FILE_BYTES = 10_485_760;
+const MAX_FILE_BYTES = 10_485_760;
 export const RATE_PER_MIN = 30;
 export const PAGE = 50;
 
@@ -35,9 +35,27 @@ const MAX_NAME = 200;
 const MAX_TYPE = 100;
 const EXCERPT_LENGTH = 140;
 
+/** The highest seq the 10-digit sort key can hold. */
+export const LAST_SEQ = 9_999_999_999;
+
+const padded = (seq: number) => String(seq).padStart(10, "0");
+
 /** Zero-padded so DynamoDB's string sort order matches numeric order. */
 export function seqKey(seq: number): string {
-  return `MSG#${String(seq).padStart(10, "0")}`;
+  return `MSG#${padded(seq)}`;
+}
+
+/** An earlier text of message `seq`, replaced at `editedAt`. */
+export function versionKey(seq: number, editedAt: string): string {
+  return `VER#${padded(seq)}#${editedAt}`;
+}
+
+/** A message number from a client: a whole number that fits the sort key. */
+export function seqNumber(raw: unknown): number {
+  if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 0 || raw > LAST_SEQ) {
+    throw new ValidationError("seq must be a whole number.");
+  }
+  return raw;
 }
 
 export function messageText(raw: unknown): string {

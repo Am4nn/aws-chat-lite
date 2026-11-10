@@ -15,4 +15,5 @@ export function addRooms(stack: CoreStack) {
   stack.route("DELETE", "/rooms/{roomId}/invite", fn);
   stack.route("GET", "/invites/{code}", fn, { public: true }); // The invite page shows the room before sign-in.
   stack.route("POST", "/invites/{code}/accept", fn);
+  return fn;
 }

@@ -54,7 +54,18 @@ describe("rooms API", () => {
       .map((f: any) => f.Properties.FunctionName);
   };
 
-  it("only the rooms and live Lambdas get table access (the public health check and sign-up trigger get none)", () => {
-    expect(tableWriters().sort()).toEqual(["cl-local-live", "cl-local-rooms"]);
+  it("only the rooms, chat and live Lambdas get table access (the public health check and sign-up trigger get none)", () => {
+    expect(tableWriters().sort()).toEqual(["cl-local-chat", "cl-local-live", "cl-local-rooms"]);
+  });
+
+  it("the rooms Lambda may post to open sockets", () => {
+    const t = template();
+    const [fn] = Object.values(t.findResources("AWS::Lambda::Function", { Properties: { FunctionName: "cl-local-rooms" } })) as any[];
+    const role = fn.Properties.Role["Fn::GetAtt"][0];
+    const actions = Object.values(t.findResources("AWS::IAM::Policy"))
+      .filter((p: any) => p.Properties.Roles.some((r: any) => r.Ref === role))
+      .flatMap((p: any) => p.Properties.PolicyDocument.Statement.flatMap((s: any) => [s.Action].flat()));
+    expect(actions).toContain("execute-api:ManageConnections");
+    expect(fn.Properties.Environment.Variables.WS_CALLBACK_URL).toBeDefined();
   });
 });

@@ -86,10 +86,43 @@ describe("live socket on Floci", () => {
     expect(isOnline(Item, Math.floor(Date.now() / 1000))).toBe(true);
   });
 
-  it("actions not handled yet answer a failed ack", async () => {
+  it("a message is acked to its sender and reaches room peers within 2 s", async () => {
+    const owner = user("owner");
+    const b = user("b");
+    const { roomId, generalChatId: chatId } = await repo.createRoom(owner, "Messages");
+    await repo.acceptInvite((await repo.rotateInvite(roomId, owner.userId)).code, b);
+    const o = await signIn(owner);
+    const sb = await signIn(b);
+
+    send(o, { action: "send", requestId: "m1", roomId, chatId, clientId: "k1", text: "hello" });
+    const ack = await o.next((f) => f.type === "ack" && f.requestId === "m1");
+    expect(ack).toMatchObject({ ok: true, data: { seq: 1, text: "hello", clientId: "k1" } });
+    const event = await sb.next((f) => f.type === "message.new", 2000);
+    expect(event.message).toMatchObject({ roomId, chatId, seq: 1, text: "hello", authorId: owner.userId });
+  });
+
+  it("a removed member's open socket gets no more messages, and its own sends are refused", async () => {
+    const owner = user("owner");
+    const b = user("b");
+    const { roomId, generalChatId: chatId } = await repo.createRoom(owner, "Removal");
+    await repo.acceptInvite((await repo.rotateInvite(roomId, owner.userId)).code, b);
+    const o = await signIn(owner);
+    const sb = await signIn(b);
+    await repo.removeMember(roomId, owner.userId, b.userId);
+
+    send(o, { action: "send", requestId: "m1", roomId, chatId, clientId: "k1", text: "after" });
+    await o.next((f) => f.type === "message.new");
+    await sleep(500);
+    expect(sb.frames.some((f) => f.type === "message.new")).toBe(false);
+
+    send(sb, { action: "send", requestId: "m2", roomId, chatId, clientId: "k2", text: "still here?" });
+    expect(await sb.next((f) => f.type === "ack")).toMatchObject({ requestId: "m2", ok: false, error: expect.any(String) });
+  });
+
+  it("an unknown action is a failed ack", async () => {
     const s = await signIn(user("a"));
-    send(s, { action: "send", requestId: "r1" });
-    expect(await s.next((f) => f.type === "ack")).toEqual({ type: "ack", requestId: "r1", ok: false, error: "Not implemented" });
+    send(s, { action: "shout", requestId: "r1" });
+    expect(await s.next((f) => f.type === "ack")).toMatchObject({ requestId: "r1", ok: false });
   });
 
   it("room peers see each other come online and go offline", async () => {

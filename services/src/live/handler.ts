@@ -3,8 +3,9 @@ import { consumeTicket } from "./tickets.js";
 import { forgetConnection, getConnection, liveRoomIds, saveConnection } from "./connections.js";
 import { isOnline, markConnected, markDisconnected, markPing, type Presence } from "./presence.js";
 import { broadcastToRoom, sendToConnection } from "./broadcast.js";
+import { handleAction } from "../chat/actions.js";
 
-interface Frame { action?: string; requestId?: string }
+type Frame = Record<string, unknown>;
 
 const ok = { statusCode: 200 };
 
@@ -51,11 +52,11 @@ async function onFrame(connId: string, frame: Frame) {
       await saveConnection(connId, conn, await liveRoomIds(conn.userId), conn.roomIds);
       return reply({ ok: true });
     default:
-      return reply({ ok: false, error: "Not implemented" });
+      return handleAction(connId, conn, frame);
   }
 }
 
-/** Anything that isn't a JSON object reads as an empty frame, which answers "Not implemented" like an unknown action. */
+/** Anything that isn't a JSON object reads as an empty frame, which is acked as an unknown action. */
 function parseFrame(body: string | undefined): Frame {
   try {
     const frame = JSON.parse(body ?? "");

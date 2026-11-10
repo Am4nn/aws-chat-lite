@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { canEdit, deleteMode, excerpt, forReaders, messageText, seqKey, validAttachment, type StoredMessage } from "./model.js";
+import {
+  canEdit, deleteMode, excerpt, forReaders, messageText, seqKey, seqNumber, validAttachment, versionKey, type StoredMessage,
+} from "./model.js";
 import { ValidationError } from "../rooms/model.js";
 
 const T0 = Date.parse("2026-11-11T10:00:00Z");
@@ -40,13 +42,24 @@ describe("messageText", () => {
 
 describe("seqKey", () => {
   it("zero-pads to 10 digits", () => expect(seqKey(42)).toBe("MSG#0000000042"));
+  it("keeps versions apart from messages, ordered by edit time", () =>
+    expect(versionKey(42, "2026-11-11T10:00:00.000Z")).toBe("VER#0000000042#2026-11-11T10:00:00.000Z"));
+});
+
+describe("seqNumber", () => {
+  it("accepts whole numbers that fit the key", () => expect(seqNumber(7)).toBe(7));
+  it("rejects anything else", () => {
+    for (const bad of [-1, 1.5, NaN, 1e10, "3", undefined]) expect(() => seqNumber(bad)).toThrow(ValidationError);
+  });
 });
 
 describe("validAttachment", () => {
   const ok = { key: "rooms/r1/u1/a.png", name: "a.png", size: 10, type: "image/png" };
   it("returns the four fields", () => expect(validAttachment({ ...ok, extra: 1 }, "r1", "u1")).toEqual(ok));
-  it("rejects a foreign key", () =>
-    expect(() => validAttachment({ ...ok, key: "rooms/other/u/x" }, "r1", "u1")).toThrow(ValidationError));
+  it("rejects a key in another room or under another user", () => {
+    expect(() => validAttachment({ ...ok, key: "rooms/other/u1/x" }, "r1", "u1")).toThrow(ValidationError);
+    expect(() => validAttachment({ ...ok, key: "rooms/r1/u2/x" }, "r1", "u1")).toThrow(ValidationError);
+  });
   it("rejects bad sizes", () => {
     for (const size of [10_485_761, 0, 1.5]) expect(() => validAttachment({ ...ok, size }, "r1", "u1")).toThrow(ValidationError);
   });

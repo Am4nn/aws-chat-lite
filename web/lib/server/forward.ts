@@ -15,6 +15,8 @@ const ROUTES: [method: string, pattern: string][] = [
   ["GET", "/rooms/:x/invite"],
   ["DELETE", "/rooms/:x/invite"],
   ["POST", "/invites/:x/accept"],
+  ["POST", "/ws/ticket"],
+  ["GET", "/rooms/:x/chats/:x/messages"],
 ];
 
 const SEGMENT = /^[A-Za-z0-9_-]+$/;

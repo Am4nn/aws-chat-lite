@@ -39,9 +39,9 @@ export async function sendToConnection(connId: string, event: object): Promise<v
   }
 }
 
-export async function sendToUser(userId: string, event: object): Promise<void> {
+export async function sendToUser(userId: string, event: object, opts: { exceptConnId?: string } = {}): Promise<void> {
   const conns = await connIdsUnder(`USER#${userId}`);
-  await Promise.all(conns.map((c) => sendToConnection(c.connId, event)));
+  await Promise.all(conns.filter((c) => c.connId !== opts.exceptConnId).map((c) => sendToConnection(c.connId, event)));
 }
 
 /**

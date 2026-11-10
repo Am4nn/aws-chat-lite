@@ -22,17 +22,28 @@ const memberKey = (roomId: string, userId: string) => ({ pk: roomKey(roomId), sk
 const roomInviteKey = (roomId: string) => ({ pk: roomKey(roomId), sk: "INVITE" });
 const inviteKey = (code: string) => ({ pk: `INVITE#${code}`, sk: "META" });
 
-/** Member item. gsi1 lists a user's rooms in join order; the copied room name saves a read per room in that list. */
+/**
+ * Member item. gsi1 lists a user's rooms in join order; the copied room name saves a read per room in that list.
+ * `mentions` totals the member's unread mentions across the room's chats, so the room list needs no per-chat reads.
+ */
 function memberItem(roomId: string, roomName: string, user: User, role: Role, at: string) {
   return {
     ...memberKey(roomId, user.userId), roomId, roomName, userId: user.userId, username: user.username, role, joinedAt: at,
-    gsi1pk: `USER#${user.userId}`, gsi1sk: `ROOM#${at}#${roomId}`,
+    mentions: 0, gsi1pk: `USER#${user.userId}`, gsi1sk: `ROOM#${at}#${roomId}`,
   };
 }
 
 /** Chats sort by creation time within the room. */
 function chatItem(roomId: string, chatId: string, name: string, createdBy: string, at: string) {
   return { pk: roomKey(roomId), sk: `CHAT#${at}#${chatId}`, chatId, name, createdBy, createdAt: at };
+}
+
+/**
+ * The chat's message counter, in the chat's own partition next to its messages. Each send increments it to get the
+ * next seq, and the stored roomId lets that same increment prove the chat belongs to the room the sender is in.
+ */
+function chatCounterItem(roomId: string, chatId: string) {
+  return { pk: `CHAT#${chatId}`, sk: "META", roomId, lastSeq: 0 };
 }
 
 /** One item per chat name in a room, so a conditional put on it can refuse a duplicate name. */
@@ -123,6 +134,7 @@ export function roomsRepo() {
           { Put: { TableName, Item: memberItem(roomId, name, owner, "owner", at) } },
           { Put: { TableName, Item: chatItem(roomId, chatId, "general", owner.userId, at) } },
           { Put: { TableName, Item: chatNameItem(roomId, "general", chatId) } },
+          { Put: { TableName, Item: chatCounterItem(roomId, chatId) } },
         ],
       }));
       return { roomId, name, generalChatId: chatId };
@@ -164,6 +176,7 @@ export function roomsRepo() {
           TransactItems: [
             { Put: { TableName, Item: chatNameItem(roomId, name, chatId), ConditionExpression: "attribute_not_exists(pk)" } },
             { Put: { TableName, Item: chatItem(roomId, chatId, name, userId, at) } },
+            { Put: { TableName, Item: chatCounterItem(roomId, chatId) } },
           ],
         }));
       } catch (e) {

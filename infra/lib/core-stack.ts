@@ -10,6 +10,7 @@ import type { StageConfig } from "./config.js";
 import { addAuth, type Auth } from "./auth.js";
 import { addRooms } from "./rooms.js";
 import { addLive } from "./live.js";
+import { addChat } from "./chat.js";
 
 /** Path to a handler file in services/src */
 export const servicePath = (file: string) =>
@@ -53,10 +54,11 @@ export class CoreStack extends Stack {
     this.api = new apigwv2.HttpApi(this, "Api", { apiName: `${prefix}-api` });
     this.auth = addAuth(this);
     this.route("GET", "/health", this.addFunction("health", "health.ts"), { public: true });
-    addRooms(this);
     this.live = addLive(this);
-    this.allowBroadcast(this.live.liveFn);
     this.wsUrl = props.config.isLocal ? `ws://${this.flociWsEndpoint()}` : this.live.stage.url;
+    this.allowBroadcast(this.live.liveFn);
+    this.allowBroadcast(addRooms(this));
+    addChat(this);
 
     new CfnOutput(this, "ApiUrl", { value: this.api.apiEndpoint });
     new CfnOutput(this, "WsUrl", { value: this.wsUrl });
