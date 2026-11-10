@@ -9,3 +9,14 @@ export function json(statusCode: number, body: unknown): APIGatewayProxyStructur
     body: JSON.stringify(body),
   };
 }
+
+/** The request's JSON body ({} when there is none), or null when it isn't valid JSON. API Gateway may base64-encode it. */
+export function parseBody(event: { body?: string; isBase64Encoded?: boolean }): unknown | null {
+  if (!event.body) return {};
+  const raw = event.isBase64Encoded ? Buffer.from(event.body, "base64").toString("utf8") : event.body;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}

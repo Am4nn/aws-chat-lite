@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { renderReport } from "./report.js";
+import { renderReport, resultsTable } from "./report.js";
 
 describe("renderReport", () => {
   const md = renderReport(
@@ -20,6 +20,11 @@ describe("renderReport", () => {
     expect(section).toBeDefined();
     expect(section).toContain("SNS");
     expect(section).not.toContain("SQS");
+  });
+
+  it("escapes pipes and flattens newlines so a note can't break the table", () => {
+    const row = resultsTable([{ service: "S3", feature: "a|b", ok: true, notes: "one\ntwo", ms: 1 }])[2];
+    expect(row).toBe("| S3 | a\\|b | ✅ | one two | 1 |");
   });
 
   it("records Floci version and date", () => {

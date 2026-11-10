@@ -1,5 +1,5 @@
 import { LambdaClient, InvokeCommand, GetDurableExecutionCommand, ListDurableExecutionsByFunctionCommand } from "@aws-sdk/client-lambda";
-import { check, withTimeout, assert, sleep, type Outputs, type Stage } from "./util.js";
+import { check, withTimeout, assert, sleep, type Outputs } from "./util.js";
 
 async function waitForResult(lambda: LambdaClient, o: Outputs, name: string, arn: string | undefined): Promise<string> {
   for (;;) {
@@ -8,7 +8,7 @@ async function waitForResult(lambda: LambdaClient, o: Outputs, name: string, arn
       const list = await lambda.send(new ListDurableExecutionsByFunctionCommand({
         FunctionName: o.DurableFnName, Qualifier: o.DurableFnQualifier, DurableExecutionName: name,
       }));
-      exec = (list as any).DurableExecutions?.[0]?.DurableExecutionArn;
+      exec = list.DurableExecutions?.[0]?.DurableExecutionArn;
     }
     if (exec) {
       const r = await lambda.send(new GetDurableExecutionCommand({ DurableExecutionArn: exec }));
@@ -19,7 +19,7 @@ async function waitForResult(lambda: LambdaClient, o: Outputs, name: string, arn
   }
 }
 
-export async function run(o: Outputs, _stage: Stage) {
+export async function run(o: Outputs) {
   const lambda = new LambdaClient({});
   return [
     await check("Lambda durable functions", "steps + a 5 s durable wait complete with checkpointed results", async () => {

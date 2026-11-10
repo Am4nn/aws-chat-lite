@@ -1,0 +1,140 @@
+/**
+ * End-to-end check of the running app (Floci + `npm run dev`): sign-up, the creators group, rooms, invites, roles,
+ * the API's 403s, httpOnly cookies, and the motion rules (no layout shift, no movement under reduced motion).
+ * Each person gets an isolated browser context, which also keeps Chrome's "save password" prompt from taking
+ * keyboard and mouse focus away from the automated page.
+ */
+import puppeteer, { type Browser, type Page } from "puppeteer-core";
+import { CognitoIdentityProviderClient, AdminAddUserToGroupCommand } from "@aws-sdk/client-cognito-identity-provider";
+import { useLocalEnv } from "./env.js";
+import { readOutputs } from "./deploy-local.js";
+import { clsFrom } from "./smoke-helpers.js";
+
+const WEB = process.env.WEB_URL ?? "http://localhost:3000";
+const CHROME = process.env.CHROME_PATH ?? "C:/Program Files/Google/Chrome/Application/chrome.exe";
+const PASSWORD = "password1";
+const results: [boolean, string][] = [];
+
+function check(ok: boolean, label: string) {
+  results.push([ok, label]);
+  console.log(`${ok ? "✅" : "❌"} ${label}`);
+}
+
+async function person(browser: Browser): Promise<Page> {
+  const page = await (await browser.createBrowserContext()).newPage();
+  await page.setViewport({ width: 1440, height: 900 });
+  await page.goto(`${WEB}/login`, { waitUntil: "networkidle0" });
+  return page;
+}
+
+/** Calls the BFF from inside the page, so the request carries that person's httpOnly cookies and Origin. */
+function bff(page: Page, path: string, method = "GET", body?: unknown) {
+  return page.evaluate(async (p, m, b) => {
+    const res = await fetch(p, { method: m, headers: { "content-type": "application/json" }, body: b === undefined ? undefined : JSON.stringify(b) });
+    return { status: res.status, body: await res.json().catch(() => ({})) };
+  }, path, method, body);
+}
+
+/**
+ * Clicks the second chat and records the main content's on-screen transform on every frame for 800 ms. Sampling starts
+ * before the click, inside the page, so no frame of the transition is missed. Motion animates transforms from
+ * JavaScript, so the browser's own animation list can't show them; the rendered style can. The script is sent as text
+ * because the TypeScript runner wraps named functions in a helper that doesn't exist inside the browser.
+ */
+const SWITCH_AND_SAMPLE = `new Promise((resolve) => {
+  const frames = [];
+  const start = performance.now();
+  const sample = () => {
+    const offset = [...document.querySelectorAll("main > div > div")]
+      .some((panel) => !/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/.test(getComputedStyle(panel).transform));
+    frames.push(offset);
+    if (performance.now() - start < 800) requestAnimationFrame(sample); else resolve(frames.filter(Boolean).length);
+  };
+  requestAnimationFrame(sample);
+  document.querySelectorAll("nav[aria-label=Room] ul a")[1].click();
+})`;
+
+/** Loads the room fresh on its first chat, switches to the second, and counts the frames where content was offset. */
+async function offsetFrames(page: Page, roomUrl: string): Promise<number> {
+  await page.goto(roomUrl, { waitUntil: "networkidle0" });
+  return (await page.evaluate(SWITCH_AND_SAMPLE)) as number;
+}
+
+async function signUp(page: Page, username: string) {
+  const r = await bff(page, "/bff/auth/signup", "POST", { username, password: PASSWORD });
+  check(r.status === 200, `${username} signs up (and is signed in by an httpOnly cookie)`);
+}
+
+async function main() {
+  useLocalEnv();
+  const browser = await puppeteer.launch({ executablePath: CHROME, headless: true });
+  const stamp = Date.now() % 1_000_000;
+  const [owner, guest, late] = [`s${stamp}a`, `s${stamp}b`, `s${stamp}c`];
+  try {
+    const ownerPage = await person(browser);
+    const guestPage = await person(browser);
+    await signUp(ownerPage, owner);
+    await signUp(guestPage, guest);
+
+    const { UserPoolId } = readOutputs("cl-local-core");
+    await new CognitoIdentityProviderClient({}).send(new AdminAddUserToGroupCommand({ UserPoolId, Username: owner, GroupName: "creators" }));
+    await bff(ownerPage, "/bff/auth/signin", "POST", { username: owner, password: PASSWORD });
+
+    check((await bff(guestPage, "/bff/api/rooms", "POST", { name: "nope" })).status === 403, "a non-creator can't create a room (403)");
+    const room = await bff(ownerPage, "/bff/api/rooms", "POST", { name: `smoke ${stamp}` });
+    check(room.status === 201, "a creator creates a room");
+    const roomId = room.body.roomId as string;
+
+    check((await bff(guestPage, `/bff/api/rooms/${roomId}`)).status === 404, "a non-member can't see the room (404)");
+    const invite = await bff(ownerPage, `/bff/api/rooms/${roomId}/invite`, "POST", {});
+    check((await bff(guestPage, `/bff/api/invites/${invite.body.code}/accept`, "POST", {})).status === 200, "the guest joins through the invite");
+    check((await bff(guestPage, `/bff/api/rooms/${roomId}/chats`, "POST", { name: "deploys" })).status === 403, "a member can't create chats (403)");
+
+    const view = await bff(ownerPage, `/bff/api/rooms/${roomId}`);
+    const guestId = (view.body.members as { userId: string; username: string }[]).find((m) => m.username === guest)!.userId;
+    await bff(ownerPage, `/bff/api/rooms/${roomId}/members/${guestId}`, "PATCH", { role: "admin" });
+    check((await bff(guestPage, `/bff/api/rooms/${roomId}/chats`, "POST", { name: "deploys" })).status === 201, "after promotion the guest (admin) creates #deploys");
+    check((await bff(guestPage, `/bff/api/rooms/${roomId}/members/${view.body.room.ownerId}`, "DELETE", {})).status === 403, "an admin can't remove the owner (403)");
+
+    await bff(ownerPage, `/bff/api/rooms/${roomId}/invite`, "DELETE", {});
+    const latePage = await person(browser);
+    await signUp(latePage, late);
+    check((await bff(latePage, `/bff/api/invites/${invite.body.code}/accept`, "POST", {})).status === 410, "a revoked invite link is refused (410)");
+
+    check(!(await ownerPage.evaluate(() => document.cookie)).includes("cl_"), "page JavaScript can't read the session cookies");
+
+    const roomUrl = `${WEB}/r/${roomId}`;
+    await ownerPage.goto(roomUrl, { waitUntil: "networkidle0" });
+    await ownerPage.evaluate(() => {
+      (window as unknown as { __shifts: unknown[] }).__shifts = [];
+      new PerformanceObserver((list) => (window as unknown as { __shifts: unknown[] }).__shifts.push(...list.getEntries()))
+        .observe({ type: "layout-shift", buffered: false });
+    });
+    for (const i of [1, 0, 1]) {
+      const links = await ownerPage.$$("nav[aria-label=Room] ul a");
+      await links[i].click();
+      await new Promise((r) => setTimeout(r, 700));
+    }
+    const shifts = await ownerPage.evaluate(() =>
+      (window as unknown as { __shifts: { value: number; hadRecentInput: boolean }[] }).__shifts.map((e) => ({ value: e.value, hadRecentInput: e.hadRecentInput })));
+    const cls = clsFrom(shifts);
+    check(cls < 0.02, `switching chats doesn't shift the layout (CLS ${cls.toFixed(3)})`);
+
+    const moving = await offsetFrames(ownerPage, roomUrl);
+    check(moving >= 5, `switching chats slides the content in (${moving} frames in motion)`);
+    await ownerPage.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "reduce" }]);
+    const still = await offsetFrames(ownerPage, roomUrl);
+    check(still === 0, `with reduced motion the content doesn't slide (${still} frames in motion)`);
+    // Plain CSS transitions (button press, chevron turn) aren't Motion's, so they need their own reduced-motion rule.
+    const longestCssMs = await ownerPage.evaluate(`Math.max(0, ...[...document.querySelectorAll("*")].flatMap((el) =>
+      getComputedStyle(el).transitionDuration.split(",").map((d) => parseFloat(d) * (d.trim().endsWith("ms") ? 1 : 1000))))`) as number;
+    check(longestCssMs <= 1, `with reduced motion CSS transitions are instant (longest ${longestCssMs}ms)`);
+  } finally {
+    await browser.close();
+  }
+  const failed = results.filter(([ok]) => !ok).length;
+  console.log(`\n${results.length - failed}/${results.length} checks passed`);
+  if (failed) process.exit(1);
+}
+
+main().catch((e) => { console.error(String(e.message ?? e)); process.exit(1); });

@@ -1,7 +1,7 @@
 const START = "<!-- aws:start -->";
 const END = "<!-- aws:end -->";
 
-/** Replace (or append) the real-AWS section of floci-compat.md, so re-running spike:aws stays idempotent. */
+/** Replaces (or appends) the real-AWS section of the compatibility report, so re-running spike:aws is idempotent. */
 export function replaceAwsSection(doc: string, section: string): string {
   const block = `${START}\n${section}\n${END}`;
   const i = doc.indexOf(START);
@@ -10,7 +10,7 @@ export function replaceAwsSection(doc: string, section: string): string {
   return `${doc.trimEnd()}\n\n${block}\n`;
 }
 
-/** The local spike rewrites the whole report: carry the committed real-AWS block over instead of erasing it. */
+/** The local spike rewrites the whole report, so the committed real-AWS section is carried over instead of erased. */
 export function keepAwsSection(oldDoc: string, newDoc: string): string {
   const i = oldDoc.indexOf(START);
   const j = oldDoc.indexOf(END);

@@ -1,12 +1,12 @@
 import { SchedulerClient, CreateScheduleCommand, DeleteScheduleCommand } from "@aws-sdk/client-scheduler";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, QueryCommand } from "@aws-sdk/lib-dynamodb";
-import { check, withTimeout, sleep, type Outputs, type Stage } from "./util.js";
+import { check, withTimeout, sleep, type Outputs } from "./util.js";
 
 /** Scheduler's one-time format: at(yyyy-mm-ddThh:mm:ss), UTC, no milliseconds. */
 const atExpression = (d: Date) => `at(${d.toISOString().slice(0, 19)})`;
 
-export async function run(o: Outputs, _stage: Stage) {
+export async function run(o: Outputs) {
   const scheduler = new SchedulerClient({});
   const db = DynamoDBDocumentClient.from(new DynamoDBClient({}));
   const Name = `spike-${Date.now()}`;

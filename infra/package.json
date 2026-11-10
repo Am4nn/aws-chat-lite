@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "cdk": "cdk"
+    "cdk": "cdk",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "aws-cdk-lib": "2.275.0",

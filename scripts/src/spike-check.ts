@@ -14,15 +14,15 @@ import * as scheduler from "./checks/scheduler.js";
 const STACK = "cl-local-spike";
 const ctx = ["-c", "stage=local", "-c", "spike=true"];
 
-/** What each ❌ means for the design: the local substitute from the spec ("Floci first"). */
-export const SUBSTITUTES: Record<string, string> = {
+/** What each ❌ means for the design: the local substitute used when Floci lacks the feature. */
+const SUBSTITUTES: Record<string, string> = {
   "API Gateway WebSocket": "local substitute: a small WebSocket server (scripts/) that calls the same Lambda handlers",
   "Lambda streaming (SSE)": "local substitute: a local HTTP server that calls the stream handler",
   "Lambda durable functions": "local substitute: the self-checkpointing run loop (DynamoDB checkpoints, re-invoke)",
   "EventBridge Scheduler": "local substitute: a local cron poller that invokes the target",
 };
 
-/** Gotchas found while building step 1. Kept here so every report carries them. */
+/** Floci and CDK gotchas, written into every report so a rerun never loses them. */
 const SETUP_NOTES = [
   "chat-lite runs its own Floci container (`floci-chat`, volume `chat-floci-data`) on port 4566; only one project's Floci runs at a time and `npm run floci:up` refuses while another holds the port.",
   "`cdk bootstrap` and `cdk deploy` work unchanged with `AWS_ENDPOINT_URL=http://localhost:4566`.",
@@ -32,6 +32,7 @@ const SETUP_NOTES = [
   "Lambda durable functions run on Floci: checkpointed steps, a durable `wait` (the function is not running), invoke by alias with `DurableExecutionName`, and `GetDurableExecution` for the result.",
   "EventBridge Scheduler one-time `at(...)` schedules fire on Floci (a few seconds late, like AWS) with a role assumed by `scheduler.amazonaws.com`.",
   "Floci returns Function URLs as `<id>.lambda-url.us-east-1.127.0.0.1:4566`, which `new URL()` rejects; call them as `<id>.lambda-url.us-east-1.localhost.floci.io:4566`.",
+  "Cognito groups work on Floci: `AdminAddUserToGroup` (npm run grant) then a fresh sign-in gives an ID token with `cognito:groups: [\"creators\"]`. The JWT issuer is `http://127.0.0.1:4566/<pool>`.",
   "CDK: naming a `WebSocketLambdaIntegration` \"Default\" collides with the `$default` route's logical ID (`SectionAlreadyContains`); use distinct names.",
 ];
 
@@ -41,7 +42,7 @@ function withSubstitute(r: CheckResult): CheckResult {
   return r.ok || !SUBSTITUTES[r.service] ? r : { ...r, notes: `${r.notes} → ${SUBSTITUTES[r.service]}` };
 }
 
-async function teardown() {
+function teardown() {
   try { cdk(["destroy", STACK, ...ctx, "--force"]); } catch (e) { console.error(`teardown: ${(e as Error).message}`); }
 }
 
@@ -50,7 +51,7 @@ async function main() {
   useLocalEnv();
   await cleanStaleStacks();
   cdk(["bootstrap", "aws://000000000000/us-east-1", "-c", "stage=local"]);
-  await teardown(); // a spike stack left from a failed run would make deploy say "no changes"
+  teardown(); // A spike stack left over from a failed run would make deploy report "no changes".
   const results: CheckResult[] = [];
   const t0 = Date.now();
   try {
@@ -81,10 +82,8 @@ async function main() {
       setupNotes: SETUP_NOTES,
     })));
     console.log(`Report: ${reportPath}`);
-    await teardown();
+    teardown();
   }
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  main().catch((e) => { console.error(String(e.message ?? e)); process.exit(1); });
-}
+main().catch((e) => { console.error(String(e.message ?? e)); process.exit(1); });

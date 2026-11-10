@@ -4,7 +4,8 @@
   "workspaces": [
     "infra",
     "services",
-    "scripts"
+    "scripts",
+    "web"
   ],
   "scripts": {
     "floci:up": "npm -w scripts run floci-up",
@@ -12,10 +13,15 @@
     "test": "npm run test --workspaces --if-present",
     "deploy:local": "npm -w scripts run deploy-local",
     "spike": "npm -w scripts run spike",
-    "spike:aws": "npm -w scripts run spike-aws"
+    "spike:aws": "npm -w scripts run spike-aws",
+    "grant": "npm -w scripts run grant --",
+    "dev": "npm -w web run dev",
+    "smoke": "npm -w scripts run smoke",
+    "check": "knip && npm run typecheck --workspaces --if-present"
   },
   "devDependencies": {
     "@types/node": "^22",
+    "knip": "^5.88.1",
     "tsx": "^4",
     "typescript": "^5",
     "vitest": "^5"

@@ -10,13 +10,13 @@ import * as scheduler from "aws-cdk-lib/aws-scheduler";
 import { servicePath } from "./core-stack.js";
 import type { StageConfig } from "./config.js";
 
-export interface SpikeStackProps extends StackProps {
+interface SpikeStackProps extends StackProps {
   config: StageConfig;
 }
 
 /**
- * Throwaway stack: the four things chat-lite's design rests on, to prove (or disprove) them on Floci
- * and real AWS. `npm run spike` / `npm run spike:aws` deploy it, check it, destroy it.
+ * Throwaway stack holding the four AWS features chat-lite's design rests on, so they can be proven on Floci and on
+ * real AWS. `npm run spike` and `npm run spike:aws` deploy it, probe it and destroy it.
  */
 export class SpikeStack extends Stack {
   constructor(scope: Construct, id: string, props: SpikeStackProps) {
@@ -46,7 +46,7 @@ export class SpikeStack extends Stack {
       return f;
     };
 
-    // 1. WebSocket API: fan-out with postToConnection (people chat, presence, typing).
+    // WebSocket API with postToConnection fan-out: people chatting, presence, typing.
     const wsFn = fn("ws", "spike/ws.ts");
     const integration = (name: string) => new WebSocketLambdaIntegration(name, wsFn);
     const ws = new apigwv2.WebSocketApi(this, "Ws", {
@@ -60,13 +60,13 @@ export class SpikeStack extends Stack {
     out("WsUrl", wsStage.url);
     out("WsCallbackUrl", wsStage.callbackUrl);
 
-    // 2. SSE over Lambda response streaming (the agent's resumable output stream).
+    // SSE over Lambda response streaming: the agent's resumable output stream.
     const sseFn = fn("sse", "spike/sse.ts");
     const sseUrl = sseFn.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.NONE, invokeMode: lambda.InvokeMode.RESPONSE_STREAM });
     out("SseFnName", sseFn.functionName);
     out("SseUrl", sseUrl.url);
 
-    // 3. Durable function: checkpointed steps + a wait (agent runs longer than 15 min).
+    // Durable function with checkpointed steps and a wait: agent runs can outlast Lambda's 15-minute limit.
     const durableFn = fn("durable", "spike/durable.ts", {
       durableConfig: { executionTimeout: Duration.minutes(10), retentionPeriod: Duration.days(1) },
     });
@@ -74,7 +74,7 @@ export class SpikeStack extends Stack {
     out("DurableFnName", durableFn.functionName);
     out("DurableFnQualifier", live.aliasName);
 
-    // 4. EventBridge Scheduler → Lambda (scheduled agent jobs).
+    // EventBridge Scheduler invoking a Lambda: scheduled agent jobs.
     const target = fn("scheduled", "spike/scheduled.ts");
     const role = new iam.Role(this, "SchedulerRole", { assumedBy: new iam.ServicePrincipal("scheduler.amazonaws.com") });
     target.grantInvoke(role);

@@ -3,7 +3,7 @@ import {
 } from "@aws-sdk/client-cloudformation";
 import { SSMClient, GetParameterCommand } from "@aws-sdk/client-ssm";
 
-export const BOOTSTRAP_PARAM = "/cdk-bootstrap/hnb659fds/version";
+const BOOTSTRAP_PARAM = "/cdk-bootstrap/hnb659fds/version";
 
 /**
  * `floci reset` wipes resources but keeps CloudFormation stack records, so CDK

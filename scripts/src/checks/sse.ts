@@ -1,7 +1,8 @@
 import { LambdaClient, InvokeWithResponseStreamCommand } from "@aws-sdk/client-lambda";
-import { check, withTimeout, assert, flociHost, type Outputs, type Stage } from "./util.js";
+import { flociHost } from "../env.js";
+import { check, withTimeout, assert, type Outputs, type Stage } from "./util.js";
 
-export interface SseEvent { id: string; event: string; data: string }
+interface SseEvent { id: string; event: string; data: string }
 
 /** Complete SSE frames (blank-line terminated) in `text`; a trailing partial frame is ignored. */
 export function parseSse(text: string): SseEvent[] {
@@ -32,7 +33,7 @@ export function classifyStream(eventArrivalMs: number[]): "streamed" | "buffered
   return eventArrivalMs[eventArrivalMs.length - 1] - eventArrivalMs[0] >= 1000 ? "streamed" : "buffered";
 }
 
-interface Read { text: string; eventMs: number[]; totalMs: number; via: string }
+interface Read { text: string; eventMs: number[]; via: string }
 
 /** Arrival time of every newly completed SSE frame in `text`, appended to `eventMs`. */
 function stamp(text: string, eventMs: number[], t: number) {
@@ -51,8 +52,12 @@ async function readUrl(url: string, lastEventId?: string): Promise<Read> {
     text += dec.decode(chunk, { stream: true });
     stamp(text, eventMs, Date.now() - t0);
   }
-  return { text, eventMs, totalMs: Date.now() - t0, via: "Function URL" };
+  return { text, eventMs, via: "Function URL" };
 }
+
+/** HttpResponseStream sends a JSON prelude (status and headers) and then 8 null bytes before the body. */
+const PRELUDE_END = "\0".repeat(8);
+const streamBody = (raw: string) => (raw.includes(PRELUDE_END) ? raw.slice(raw.indexOf(PRELUDE_END) + PRELUDE_END.length) : raw);
 
 async function readInvoke(fnName: string, lastEventId?: string): Promise<Read> {
   const t0 = Date.now();
@@ -63,31 +68,26 @@ async function readInvoke(fnName: string, lastEventId?: string): Promise<Read> {
   let raw = "";
   const eventMs: number[] = [];
   const dec = new TextDecoder();
-  // HttpResponseStream prefixes a JSON prelude + 8 null bytes before the body.
-  const body = (r: string) => (r.includes("\0\0\0\0\0\0\0\0") ? r.slice(r.indexOf("\0\0\0\0\0\0\0\0") + 8) : r);
   for await (const e of res.EventStream ?? []) {
     if (e.PayloadChunk?.Payload) {
       raw += dec.decode(e.PayloadChunk.Payload, { stream: true });
-      stamp(body(raw), eventMs, Date.now() - t0);
+      stamp(streamBody(raw), eventMs, Date.now() - t0);
     }
     if (e.InvokeComplete?.ErrorCode) throw new Error(`stream error ${e.InvokeComplete.ErrorCode}: ${e.InvokeComplete.ErrorDetails}`);
   }
-  return { text: body(raw), eventMs, totalMs: Date.now() - t0, via: "InvokeWithResponseStream" };
+  return { text: streamBody(raw), eventMs, via: "InvokeWithResponseStream" };
 }
 
 export async function run(o: Outputs, stage: Stage) {
   const url = stage === "local" ? `http://${flociHost(o.SseUrl)}/` : o.SseUrl;
-  let via = "";
-  const read = async (last?: string): Promise<Read> => {
+  const read = async (lastEventId?: string): Promise<Read> => {
     try {
-      const r = await readUrl(url, last);
-      via = r.via;
-      return r;
+      return await readUrl(url, lastEventId);
     } catch (e) {
+      // Floci may not serve streaming Function URLs, so locally fall back to invoking the function directly.
       if (stage === "aws") throw e;
-      const r = await readInvoke(o.SseFnName, last); // Floci may not serve streaming Function URLs
-      via = `${r.via} (Function URL failed: ${(e as Error).message})`;
-      return r;
+      const r = await readInvoke(o.SseFnName, lastEventId);
+      return { ...r, via: `${r.via} (Function URL failed: ${(e as Error).message})` };
     }
   };
   return [
@@ -96,14 +96,14 @@ export async function run(o: Outputs, stage: Stage) {
       const ids = parseSse(r.text).map((e) => e.id);
       assert(ids.join(",") === "1,2,3,4,5", `got event ids [${ids}] from ${JSON.stringify(r.text.slice(0, 120))}`);
       const kind = classifyStream(r.eventMs);
-      assert(kind === "streamed", `buffered, not streamed: events arrived at [${r.eventMs}] ms (via ${via})`);
-      return `streamed via ${via}: events at [${r.eventMs}] ms`;
+      assert(kind === "streamed", `buffered, not streamed: events arrived at [${r.eventMs}] ms (via ${r.via})`);
+      return `streamed via ${r.via}: events at [${r.eventMs}] ms`;
     }),
     await check("Lambda streaming (SSE)", "resume with Last-Event-ID: 3 → only events 4, 5", async () => {
       const r = await withTimeout(read("3"), 30_000, "SSE resume");
       const ids = parseSse(r.text).map((e) => e.id);
       assert(ids.join(",") === "4,5", `got [${ids}]`);
-      return `via ${via}`;
+      return `via ${r.via}`;
     }),
   ];
 }

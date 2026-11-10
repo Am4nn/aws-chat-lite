@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+/* The palette. Accent colours carry meaning: lime is live work and the primary action, amber needs you, sky is done. */
+@theme {
+  --color-ink: #0a0c0d;
+  --color-surface-1: #0c0f10;
+  --color-surface-2: #101315;
+  --color-surface-3: #161b1d;
+  --color-line: #171c1e;
+  --color-line-strong: #22282b;
+  --color-text: #ecf1f0;
+  --color-text-2: #9da9a8;
+  --color-text-3: #7e8a89;
+  --color-lime: #c8f169;
+  --color-lime-ink: #10170a;
+  --color-amber: #ffc46b;
+  --color-amber-ink: #1f1505;
+  --color-sky: #7cc7ff;
+}
+
+/* Fonts come from next/font as CSS variables, so the theme must reference them at use time (inline). */
+@theme inline {
+  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-display: var(--font-space-grotesk), var(--font-geist-sans), sans-serif;
+}
+
+/* List rows that cascade in, one after another (each row sets its own animation-delay). */
+@keyframes row-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    background: var(--color-ink);
+    color: var(--color-text);
+    scrollbar-gutter: stable;
+  }
+  body {
+    @apply font-sans antialiased;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--color-lime) 30%, transparent);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-lime);
+    outline-offset: 2px;
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+}
+
+/* Motion's reducedMotion setting only covers its own animations; plain CSS transitions need this to honour the OS setting. */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

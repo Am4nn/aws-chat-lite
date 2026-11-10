@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { flociEnv, assertFlociUp, FLOCI_ENDPOINT, localEnv, awsEnv, scriptStage } from "./env.js";
+import { flociEnv, assertFlociUp, FLOCI_ENDPOINT, flociHost, localEnv, awsEnv } from "./env.js";
 
 describe("localEnv", () => {
   it("drops real-AWS credential settings so Floci always gets test/test", () => {
@@ -31,12 +31,12 @@ describe("flociEnv", () => {
 describe("assertFlociUp", () => {
   it("throws a helpful message when Floci is unreachable", async () => {
     const down = (async () => { throw new TypeError("fetch failed"); }) as unknown as typeof fetch;
-    await expect(assertFlociUp(FLOCI_ENDPOINT, down)).rejects.toThrow(/run `npm run floci:up`/);
+    await expect(assertFlociUp(down)).rejects.toThrow(/run `npm run floci:up`/);
   });
 
   it("resolves when Floci answers any HTTP response", async () => {
     const up = (async () => new Response("", { status: 404 })) as unknown as typeof fetch;
-    await expect(assertFlociUp(FLOCI_ENDPOINT, up)).resolves.toBeUndefined();
+    await expect(assertFlociUp(up)).resolves.toBeUndefined();
   });
 });
 
@@ -53,11 +53,11 @@ describe("awsEnv (real AWS, stage aws)", () => {
   });
 });
 
-describe("scriptStage", () => {
-  it("is local unless CL_STAGE=aws", () => {
-    expect(scriptStage({})).toBe("local");
-    expect(scriptStage({ CL_STAGE: "aws" })).toBe("aws");
-    expect(() => scriptStage({ CL_STAGE: "prod" })).toThrow(/CL_STAGE/);
-    expect(scriptStage({}, ["--stage=aws"])).toBe("aws");
+describe("flociHost", () => {
+  it("maps execute-api URLs to the floci.io host", () => {
+    expect(flociHost("wss://e6da6455e8.execute-api.us-east-1.amazonaws.com/spike")).toBe("e6da6455e8.execute-api.localhost.floci.io:4566");
+  });
+  it("maps Floci's own Function URL form (…lambda-url.us-east-1.127.0.0.1:4566)", () => {
+    expect(flociHost("http://8768e5a553.lambda-url.us-east-1.127.0.0.1:4566/")).toBe("8768e5a553.lambda-url.us-east-1.localhost.floci.io:4566");
   });
 });
