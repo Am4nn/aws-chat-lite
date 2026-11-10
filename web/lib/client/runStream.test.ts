@@ -1,4 +1,4 @@
-﻿import { describe, expect, it, vi, afterEach } from "vitest";
+import { describe, expect, it, vi, afterEach } from "vitest";
 import { openRunStream } from "./runStream";
 import type { RunEvent } from "../types";
 
@@ -114,5 +114,17 @@ describe("openRunStream", () => {
     await vi.advanceTimersByTimeAsync(60_000);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(onError).toHaveBeenCalledWith(404);
+  });
+
+  it("retries a 429 with backoff", async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response("slow down", { status: 429 }))
+      .mockResolvedValueOnce(body(frame(1, { type: "run.finished", status: "done", ms: 1, steps: 0, costMicros: 0 })));
+    const onError = vi.fn();
+    openRunStream({ getUrl: async () => "u", onEvent: () => {}, onError, fetchImpl: fetchImpl as never, random: () => 0.5 });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(onError).not.toHaveBeenCalled();
   });
 });

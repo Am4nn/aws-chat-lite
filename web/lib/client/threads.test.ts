@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { Message, ThreadSummary } from "../types";
 import { applyThreadUpdate, groupThread, liveCount, sidebarThreads, threadMeta } from "./threads";
 
@@ -38,7 +38,7 @@ describe("threadMeta", () => {
   const now = Date.parse("2026-11-11T15:00:00Z");
   it("shows step and elapsed while running", () => {
     const t = th({ status: "running", steps: 3, startedAt: new Date(now - 64_000).toISOString() });
-    expect(threadMeta(t, now)).toEqual({ text: "step 3 Â· 1:04", tone: "live" });
+    expect(threadMeta(t, now)).toEqual({ text: "step 3 · 1:04", tone: "live" });
   });
   it("shows the finish time on the same day", () => {
     expect(threadMeta(th({ status: "done", endedAt: "2026-11-11T14:05:00Z" }), now, "UTC")).toEqual({ text: "14:05", tone: "muted" });

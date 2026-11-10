@@ -1,11 +1,11 @@
-﻿import type { RunEvent } from "../types";
+import type { RunEvent } from "../types";
 import { backoffMs } from "./live";
 import { createSseParser } from "./sse";
 
 type Options = {
   getUrl: () => Promise<string>;
   onEvent: (e: RunEvent) => void;
-  // Called once with the status of a 4xx response, after which the stream stays closed; retrying would never succeed.
+  // Called once with the status of a 4xx response other than 408 and 429, after which the stream stays closed; retrying would never succeed.
   onError?: (status: number) => void;
   fetchImpl?: typeof fetch;
   random?: () => number;
@@ -27,7 +27,7 @@ export function openRunStream({ getUrl, onEvent, onError, fetchImpl = fetch, ran
       if (closed) return;
       const headers: Record<string, string> = lastSeq ? { "Last-Event-ID": String(lastSeq) } : {};
       const res = await fetchImpl(url, { headers, signal: controller.signal });
-      if (res.status >= 400 && res.status < 500) {
+      if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) {
         finished = true;
         onError?.(res.status);
         return;

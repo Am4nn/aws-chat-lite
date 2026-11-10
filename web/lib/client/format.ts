@@ -1,4 +1,4 @@
-﻿import type { Budget } from "../types";
+import type { Budget } from "../types";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
