@@ -1,4 +1,4 @@
-import { ValidationError } from "../rooms/model.js";
+import { ValidationError } from "../lib/errors.js";
 import type { ThreadStatus } from "./types.js";
 
 export const ARCHIVE_AFTER_SEC = 604_800;

@@ -1,4 +1,4 @@
-import { ValidationError } from "../rooms/model.js";
+import { ValidationError } from "../lib/errors.js";
 
 export const DEFAULT_CAP_MICROS = 3_000_000;
 
