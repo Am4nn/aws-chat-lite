@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { randomUUID } from "node:crypto";
-import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { roomsRepo } from "./repo.js";
 import { docClient, tableName } from "../lib/db.js";
 import { Conflict, Forbidden, Gone, NotFound } from "./model.js";
@@ -75,6 +75,41 @@ describe("rooms repo on Floci", () => {
       UpdateExpression: "SET expiresAt = :p", ExpressionAttributeValues: { ":p": 1 },
     }));
     await expect(repo.acceptInvite(third.code, user("z"))).rejects.toBeInstanceOf(Gone);
+  });
+
+  it("permission checks and the room view read strongly consistently, so a join or removal counts at once", async () => {
+    const owner = user("o");
+    const { roomId } = await repo.createRoom(owner, "Consistent");
+    const send = vi.spyOn(docClient(), "send");
+    try {
+      await repo.createChat(roomId, owner.userId, "reads");
+      await repo.getRoomView(roomId, owner.userId);
+      const sent = send.mock.calls.map(([command]) => command);
+      const roleRead = sent.find((c) => c instanceof GetCommand && String(c.input.Key?.sk).startsWith("MEMBER#"));
+      const viewQuery = sent.find((c) => c instanceof QueryCommand && !c.input.IndexName);
+      expect((roleRead as GetCommand).input.ConsistentRead).toBe(true);
+      expect((viewQuery as QueryCommand).input.ConsistentRead).toBe(true);
+    } finally {
+      send.mockRestore();
+    }
+  });
+
+  it("concurrent rotates and revokes never leave more than one live link, and only the room's current one", async () => {
+    const owner = user("o");
+    const { roomId } = await repo.createRoom(owner, "Rotate race");
+    await repo.rotateInvite(roomId, owner.userId);
+    for (let round = 0; round < 5; round++) {
+      const results = await Promise.allSettled([
+        repo.rotateInvite(roomId, owner.userId), repo.rotateInvite(roomId, owner.userId), repo.revokeInvite(roomId, owner.userId),
+      ]);
+      const issued = results.flatMap((r) => (r.status === "fulfilled" && "code" in r.value ? [r.value.code] : []));
+      const previews = await Promise.allSettled(issued.map((c) => repo.previewInvite(c)));
+      const live = issued.filter((_, i) => previews[i].status === "fulfilled");
+      const current = await repo.getInvite(roomId, owner.userId).then((i) => i.code, () => undefined);
+      expect(live.filter((c) => c !== current), `round ${round}: live links the room can't revoke`).toEqual([]);
+      for (const r of results) if (r.status === "rejected") expect(r.reason).toBeInstanceOf(Conflict);
+      await repo.rotateInvite(roomId, owner.userId);
+    }
   });
 
   it("the owner can't be removed or demoted; admins can't remove admins", async () => {

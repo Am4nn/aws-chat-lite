@@ -125,6 +125,10 @@ async function main() {
     await ownerPage.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "reduce" }]);
     const still = await offsetFrames(ownerPage, roomUrl);
     check(still === 0, `with reduced motion the content doesn't slide (${still} frames in motion)`);
+    // Plain CSS transitions (button press, chevron turn) aren't Motion's, so they need their own reduced-motion rule.
+    const longestCssMs = await ownerPage.evaluate(`Math.max(0, ...[...document.querySelectorAll("*")].flatMap((el) =>
+      getComputedStyle(el).transitionDuration.split(",").map((d) => parseFloat(d) * (d.trim().endsWith("ms") ? 1 : 1000))))`) as number;
+    check(longestCssMs <= 1, `with reduced motion CSS transitions are instant (longest ${longestCssMs}ms)`);
   } finally {
     await browser.close();
   }

@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { GetCommand, PutCommand, QueryCommand, TransactWriteCommand, UpdateCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
+import {
+  DeleteCommand, GetCommand, PutCommand, QueryCommand, TransactWriteCommand, UpdateCommand, type TransactWriteCommandInput,
+} from "@aws-sdk/lib-dynamodb";
 import { docClient, tableName } from "../lib/db.js";
 import { can, type Action, type Role } from "./access.js";
 import { chatName, roomName, Conflict, Forbidden, Gone, NotFound, ValidationError } from "./model.js";
@@ -50,8 +52,12 @@ export function roomsRepo() {
   const db = docClient();
   const TableName = tableName();
 
+  /**
+   * Role reads are strongly consistent (base-table reads allow it, at twice the read cost) so that someone removed a
+   * moment ago is refused at once, and someone who just joined is let in at once.
+   */
   async function memberRole(roomId: string, userId: string): Promise<Role | undefined> {
-    const { Item } = await db.send(new GetCommand({ TableName, Key: memberKey(roomId, userId) }));
+    const { Item } = await db.send(new GetCommand({ TableName, Key: memberKey(roomId, userId), ConsistentRead: true }));
     return Item?.role as Role | undefined;
   }
 
@@ -78,6 +84,24 @@ export function roomsRepo() {
   const revokeCode = (code: string) => ({
     Update: { TableName, Key: inviteKey(code), UpdateExpression: "SET revoked = :t", ExpressionAttributeValues: { ":t": true } },
   });
+
+  /**
+   * Optimistic locking on the room's invite pointer: the write only applies if the pointer still holds the code we
+   * read. Without it, two rotates at once would each revoke the same old code, and the loser's new code would stay
+   * live for a week with nothing pointing at it, so nobody could revoke it.
+   */
+  const unchangedSince = (read: { code: string } | undefined) => read
+    ? { ConditionExpression: "code = :read", ExpressionAttributeValues: { ":read": read.code } }
+    : { ConditionExpression: "attribute_not_exists(pk)" };
+
+  async function inviteWrite(TransactItems: TransactWriteCommandInput["TransactItems"]) {
+    try {
+      await db.send(new TransactWriteCommand({ TransactItems }));
+    } catch (e) {
+      if (conditionFailed(e)) throw new Conflict("The invite link just changed; try again.");
+      throw e;
+    }
+  }
 
   async function liveInvite(code: string) {
     const { Item } = await db.send(new GetCommand({ TableName, Key: inviteKey(code) }));
@@ -113,9 +137,10 @@ export function roomsRepo() {
       return Items.map((i) => ({ roomId: String(i.roomId), name: String(i.roomName), role: i.role as Role }));
     },
 
+    /** Read consistently so a room you just created or joined is there on the very next page load. */
     async getRoomView(roomId: string, userId: string): Promise<RoomView> {
       const { Items = [] } = await db.send(new QueryCommand({
-        TableName, KeyConditionExpression: "pk = :p", ExpressionAttributeValues: { ":p": roomKey(roomId) },
+        TableName, KeyConditionExpression: "pk = :p", ExpressionAttributeValues: { ":p": roomKey(roomId) }, ConsistentRead: true,
       }));
       const me = Items.find((i) => i.sk === `MEMBER#${userId}`);
       const meta = Items.find((i) => i.sk === "META");
@@ -187,13 +212,11 @@ export function roomsRepo() {
       const old = await currentInvite(roomId);
       const code = newInviteCode();
       const expiresAt = nowSec() + INVITE_TTL_SEC;
-      await db.send(new TransactWriteCommand({
-        TransactItems: [
-          { Put: { TableName, Item: { ...roomInviteKey(roomId), code, expiresAt, createdBy: userId } } },
-          { Put: { TableName, Item: { ...inviteKey(code), roomId, roomName: meta.name, expiresAt, ttl: expiresAt + 86400 } } },
-          ...(old ? [revokeCode(old.code)] : []),
-        ],
-      }));
+      await inviteWrite([
+        { Put: { TableName, Item: { ...roomInviteKey(roomId), code, expiresAt, createdBy: userId }, ...unchangedSince(old) } },
+        { Put: { TableName, Item: { ...inviteKey(code), roomId, roomName: meta.name, expiresAt, ttl: expiresAt + 86400 } } },
+        ...(old ? [revokeCode(old.code)] : []),
+      ]);
       return { code, expiresAt };
     },
 
@@ -208,9 +231,7 @@ export function roomsRepo() {
       await requireRole(roomId, userId, "manageInvite");
       const invite = await currentInvite(roomId);
       if (!invite) return {};
-      await db.send(new TransactWriteCommand({
-        TransactItems: [{ Delete: { TableName, Key: roomInviteKey(roomId) } }, revokeCode(invite.code)],
-      }));
+      await inviteWrite([{ Delete: { TableName, Key: roomInviteKey(roomId), ...unchangedSince(invite) } }, revokeCode(invite.code)]);
       return {};
     },
 

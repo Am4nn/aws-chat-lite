@@ -53,3 +53,12 @@
     scrollbar-color: var(--color-line-strong) transparent;
   }
 }
+
+/* Motion's reducedMotion setting only covers its own animations; plain CSS transitions need this to honour the OS setting. */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

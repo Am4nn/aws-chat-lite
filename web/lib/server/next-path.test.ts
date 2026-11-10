@@ -7,7 +7,7 @@ describe("safeNext (where to go after login or a token refresh)", () => {
     expect(safeNext("/invite/xyz?ref=1")).toBe("/invite/xyz?ref=1");
   });
   it("falls back to / for anything that could leave the site", () => {
-    for (const bad of [null, "", "//evil.com", "/\\evil.com", "https://evil.com", "javascript:alert(1)", "rooms"]) {
+    for (const bad of [null, "", "//evil.com", "/\\evil.com", "https://evil.com", "javascript:alert(1)", "rooms", "/\t/evil.com", "/\n/evil.com", "/\r/evil.com"]) {
       expect(safeNext(bad), String(bad)).toBe("/");
     }
   });
