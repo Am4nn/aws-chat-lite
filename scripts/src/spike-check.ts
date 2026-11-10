@@ -32,6 +32,7 @@ const SETUP_NOTES = [
   "Lambda durable functions run on Floci: checkpointed steps, a durable `wait` (the function is not running), invoke by alias with `DurableExecutionName`, and `GetDurableExecution` for the result.",
   "EventBridge Scheduler one-time `at(...)` schedules fire on Floci (a few seconds late, like AWS) with a role assumed by `scheduler.amazonaws.com`.",
   "Floci returns Function URLs as `<id>.lambda-url.us-east-1.127.0.0.1:4566`, which `new URL()` rejects; call them as `<id>.lambda-url.us-east-1.localhost.floci.io:4566`.",
+  "(step 2) Cognito groups work on Floci: `AdminAddUserToGroup` (npm run grant) then a fresh sign-in gives an ID token with `cognito:groups: [\"creators\"]`. The JWT issuer is `http://127.0.0.1:4566/<pool>`.",
   "CDK: naming a `WebSocketLambdaIntegration` \"Default\" collides with the `$default` route's logical ID (`SectionAlreadyContains`); use distinct names.",
 ];
 

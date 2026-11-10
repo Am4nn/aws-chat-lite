@@ -12,7 +12,8 @@
     "test": "npm run test --workspaces --if-present",
     "deploy:local": "npm -w scripts run deploy-local",
     "spike": "npm -w scripts run spike",
-    "spike:aws": "npm -w scripts run spike-aws"
+    "spike:aws": "npm -w scripts run spike-aws",
+    "grant": "npm -w scripts run grant --"
   },
   "devDependencies": {
     "@types/node": "^22",

@@ -7,6 +7,7 @@ import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
 import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import type { StageConfig } from "./config.js";
+import { addAuth, type Auth } from "./auth.js";
 
 /** Path to a handler file in services/src */
 export const servicePath = (file: string) =>
@@ -16,11 +17,12 @@ export interface CoreStackProps extends StackProps {
   config: StageConfig;
 }
 
-/** The app's long-lived stack. Step 1: the table + GET /health; later steps add to it. */
+/** The app's long-lived stack: table, auth, HTTP API; each step adds its feature. */
 export class CoreStack extends Stack {
   readonly table: dynamodb.Table;
   readonly api: apigwv2.HttpApi;
   readonly stageConfig: StageConfig;
+  readonly auth: Auth;
 
   constructor(scope: Construct, id: string, props: CoreStackProps) {
     super(scope, id, props);
@@ -44,18 +46,27 @@ export class CoreStack extends Stack {
     });
 
     this.api = new apigwv2.HttpApi(this, "Api", { apiName: `${prefix}-api` });
-    this.api.addRoutes({
-      path: "/health",
-      methods: [apigwv2.HttpMethod.GET],
-      integration: new HttpLambdaIntegration("Health", this.addFunction("health", "health.ts")),
-    });
+    this.auth = addAuth(this);
+    this.route("GET", "/health", this.addFunction("health", "health.ts"), { public: true });
 
     new CfnOutput(this, "ApiUrl", { value: this.api.apiEndpoint });
     new CfnOutput(this, "TableName", { value: this.table.tableName });
   }
 
-  /** A Lambda from services/src with STAGE + TABLE_NAME env and table read/write. */
-  addFunction(name: string, entry: string, opts: { env?: Record<string, string>; timeout?: number } = {}): NodejsFunction {
+  /** Adds a route; JWT-protected unless `public`. */
+  route(method: string, path: string, fn: lambda.IFunction, opts: { public?: boolean } = {}) {
+    this.api.addRoutes({
+      path,
+      methods: [method as apigwv2.HttpMethod],
+      integration: new HttpLambdaIntegration(`Int-${method}-${path}`, fn),
+      authorizer: opts.public ? undefined : this.auth.authorizer,
+    });
+  }
+
+  /** A Lambda from services/src with STAGE + TABLE_NAME env and (by default) table read/write. */
+  addFunction(
+    name: string, entry: string, opts: { env?: Record<string, string>; timeout?: number; tableAccess?: boolean } = {},
+  ): NodejsFunction {
     const fn = new NodejsFunction(this, `Fn-${name}`, {
       functionName: `${this.stageConfig.prefix}-${name}`,
       entry: servicePath(entry),
@@ -65,7 +76,7 @@ export class CoreStack extends Stack {
       environment: { STAGE: this.stageConfig.stage, TABLE_NAME: this.table.tableName, ...opts.env },
       bundling: { minify: true },
     });
-    this.table.grantReadWriteData(fn);
+    if (opts.tableAccess !== false) this.table.grantReadWriteData(fn);
     return fn;
   }
 }

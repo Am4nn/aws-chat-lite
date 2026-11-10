@@ -7,7 +7,8 @@
     "floci-up": "tsx src/floci-up.ts",
     "deploy-local": "tsx src/deploy-local.ts",
     "spike": "tsx src/spike-check.ts",
-    "spike-aws": "tsx src/spike-aws.ts"
+    "spike-aws": "tsx src/spike-aws.ts",
+    "grant": "tsx src/grant.ts"
   },
   "dependencies": {
     "@aws-sdk/client-apigatewaymanagementapi": "^3.1163.0",
@@ -19,7 +20,8 @@
     "@aws-sdk/client-ssm": "^3.1163.0",
     "@aws-sdk/client-sts": "^3.1163.0",
     "@aws-sdk/lib-dynamodb": "^3.1163.0",
-    "ws": "^8"
+    "ws": "^8",
+    "@aws-sdk/client-cognito-identity-provider": "^3.1163.0"
   },
   "devDependencies": {
     "@types/ws": "^8"
