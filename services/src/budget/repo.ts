@@ -4,20 +4,12 @@ import { Forbidden } from "../lib/errors.js";
 import { requireMember } from "../chat/membership.js";
 import { can } from "../rooms/access.js";
 import type { Budget } from "../threads/types.js";
-import { DEFAULT_CAP_MICROS, monthKey, resetsAt } from "./model.js";
+import { budgetOf, monthKey } from "./model.js";
 
 interface User { userId: string; username: string }
 
 const metaKey = (roomId: string) => ({ pk: `ROOM#${roomId}`, sk: "META" });
 const usageKey = (roomId: string, month: string) => ({ pk: `ROOM#${roomId}`, sk: `USAGE#${month}` });
-
-/** The room's budget for `month`, from its META item (the cap) and its usage item for that month (the spend). */
-export function budgetOf(month: string, meta?: Record<string, unknown>, usage?: Record<string, unknown>): Budget {
-  return {
-    spentMicros: Number(usage?.costMicros ?? 0), capMicros: Number(meta?.budgetCapMicros ?? DEFAULT_CAP_MICROS), month,
-    resetsAt: resetsAt(month),
-  };
-}
 
 /**
  * Each room's monthly agent spend. Usage is one item per room per UTC month, so a new month starts from zero with

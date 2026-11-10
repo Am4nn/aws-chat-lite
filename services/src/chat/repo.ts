@@ -13,6 +13,8 @@ interface User { userId: string; username: string }
 /** Where a message lives: every chat belongs to exactly one room. */
 interface ChatRef { roomId: string; chatId: string }
 interface Cursor { before?: number; after?: number; around?: number }
+/** A send's content once `admit` has accepted it. */
+interface Admitted { text: string; attachments: Attachment[] }
 
 const roomKey = (roomId: string) => `ROOM#${roomId}`;
 const chatKey = (chatId: string) => `CHAT#${chatId}`;
@@ -124,14 +126,28 @@ export function chatRepo() {
     return newestFirst ? Items.reverse() : Items;
   }
 
+  /**
+   * The checks that can refuse any send: valid content, a member of a room that isn't archived, and within the rate
+   * limit. A caller that must write something before the message exists (a new thread) runs this first and hands the
+   * result to `send`, so a refusal never leaves that write behind.
+   */
+  async function admit(user: User, input: { roomId: string; text: unknown; attachments?: unknown }): Promise<Admitted> {
+    const text = messageText(input.text);
+    const attachments = attachmentList(input.attachments, input.roomId, user.userId);
+    if (!text && !attachments.length) throw new ValidationError(NEEDS_CONTENT);
+    await requireMember(input.roomId, user.userId, { writing: true });
+    await countTowardsRate(user.userId);
+    return { text, attachments };
+  }
+
   return {
-    async send(user: User, input: ChatRef & { clientId: string; text: unknown; replyToSeq?: number; attachments?: unknown }): Promise<Message> {
+    admit,
+
+    async send(
+      user: User, input: ChatRef & { clientId: string; text: unknown; replyToSeq?: number; attachments?: unknown }, admitted?: Admitted,
+    ): Promise<Message> {
       const at = { roomId: input.roomId, chatId: input.chatId };
-      const text = messageText(input.text);
-      const attachments = attachmentList(input.attachments, at.roomId, user.userId);
-      if (!text && !attachments.length) throw new ValidationError(NEEDS_CONTENT);
-      await requireMember(at.roomId, user.userId, { writing: true });
-      await countTowardsRate(user.userId);
+      const { text, attachments } = admitted ?? await admit(user, input);
       const quoted = input.replyToSeq === undefined ? undefined : await storedMessage(at, input.replyToSeq);
       const members = text.includes("@") ? await roomMembers(at.roomId) : [];
       const { mentions, everyone } = parseMentions(text, members);

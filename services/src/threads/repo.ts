@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { conditionFailed, docClient, failedAt, tableName } from "../lib/db.js";
-import { Conflict, NotFound, ValidationError } from "../lib/errors.js";
+import { Conflict, NotFound } from "../lib/errors.js";
 import { requireMember } from "../chat/membership.js";
-import { messageText, type Message } from "../chat/model.js";
+import type { Message } from "../chat/model.js";
 import { chatRepo } from "../chat/repo.js";
 import { broadcastToRoom } from "../live/broadcast.js";
-import { PROVISIONAL, isArchived, isNumberedName, threadName, threadSk, uniqueCandidates } from "./model.js";
+import { PROVISIONAL, isNumberedName, summary, threadName, threadSk, uniqueCandidates } from "./model.js";
 import type { ThreadSummary } from "./types.js";
 
 interface User { userId: string; username: string }
@@ -16,12 +16,6 @@ const roomKey = (roomId: string) => `ROOM#${roomId}`;
 const threadKey = (roomId: string, n: number) => ({ pk: roomKey(roomId), sk: threadSk(n) });
 const nameKey = (roomId: string, name: string) => ({ pk: roomKey(roomId), sk: `CHATNAME#${name}` });
 const chatMetaKey = (threadId: string) => ({ pk: `CHAT#${threadId}`, sk: "META" });
-
-/** A stored thread as clients get it: the bookkeeping fields stay on the server, and `archived` is worked out now. */
-export function summary({ pk: _pk, sk: _sk, activeRunId: _run, named: _named, from: _from, ...rest }: Item, nowMs: number): ThreadSummary {
-  const thread = rest as Omit<ThreadSummary, "archived">;
-  return { ...thread, archived: isArchived(thread, nowMs) };
-}
 
 /** Best effort: the write has happened, and a client that misses the event gets the thread on its next room load. */
 async function announce(thread: ThreadSummary) {
@@ -54,10 +48,10 @@ export function threadsRepo() {
 
   /**
    * One transaction: the old name's guard goes (only while it is still this thread's), the new one is claimed (only
-   * if free), and the thread changes only if it still has the name we read, so of two renames at once only one wins.
-   * Item 1 failing means the name is taken.
+   * if free), and the thread changes only if it still has the name we read (and, with `unnamedOnly`, nobody has named
+   * it), so of two renames at once only one wins. Item 1 failing means the name is taken.
    */
-  async function moveName(thread: Item, name: string): Promise<ThreadSummary> {
+  async function moveName(thread: Item, name: string, opts: { unnamedOnly?: boolean } = {}): Promise<ThreadSummary> {
     const roomId = String(thread.roomId);
     const threadId = String(thread.threadId);
     await db.send(new TransactWriteCommand({
@@ -72,9 +66,12 @@ export function threadsRepo() {
         {
           Update: {
             TableName, Key: threadKey(roomId, Number(thread.number)),
-            UpdateExpression: "SET #name = :new, #named = :true ADD #rev :one", ConditionExpression: "#name = :old",
+            UpdateExpression: "SET #name = :new, #named = :true ADD #rev :one",
+            ConditionExpression: opts.unnamedOnly ? "#name = :old AND #named = :false" : "#name = :old",
             ExpressionAttributeNames: { "#name": "name", "#named": "named", "#rev": "rev" },
-            ExpressionAttributeValues: { ":new": name, ":old": thread.name, ":true": true, ":one": 1 },
+            ExpressionAttributeValues: {
+              ":new": name, ":old": thread.name, ":true": true, ":one": 1, ...(opts.unnamedOnly && { ":false": false }),
+            },
           },
         },
       ],
@@ -85,12 +82,14 @@ export function threadsRepo() {
 
   return {
     /**
-     * The room's counter hands out the number, so concurrent starts get #1, #2… with no gaps. The thread, its chat
-     * and its name guard are written together, then the first message is sent into the new chat.
+     * The room's counter hands out the number, so concurrent starts get #1, #2… The first message is admitted before
+     * anything is written, so a refused message leaves no empty thread behind. The thread, its chat and its name guard
+     * are then written together, and the message is sent into the new chat. Numbers have no gaps as long as creates
+     * succeed: one refused after the counter moved (its name held by a chat) skips its number.
      */
     async createThread(user: User, roomId: string, input: { text: unknown; clientId: string; from?: { chatId: string; seq: number } }): Promise<{ thread: ThreadSummary; message: Message }> {
-      if (!messageText(input.text)) throw new ValidationError("A thread starts with a message.");
-      await requireMember(roomId, user.userId, { writing: true });
+      const chat = chatRepo();
+      const admitted = await chat.admit(user, { roomId, text: input.text });
       const { Attributes } = await db.send(new UpdateCommand({
         TableName, Key: { pk: roomKey(roomId), sk: "META" }, UpdateExpression: "ADD threadSeq :one",
         ConditionExpression: "attribute_exists(pk)", ExpressionAttributeValues: { ":one": 1 }, ReturnValues: "UPDATED_NEW",
@@ -102,14 +101,20 @@ export function threadsRepo() {
         ...threadKey(roomId, number), roomId, threadId, number, name, named: false, status: "idle", rev: 1, steps: 0,
         costMicros: 0, createdBy: user.userId, lastActivityAt: new Date().toISOString(), ...(input.from && { from: input.from }),
       };
-      await db.send(new TransactWriteCommand({
-        TransactItems: [
-          { Put: { TableName, Item: item } },
-          { Put: { TableName, Item: { ...chatMetaKey(threadId), roomId, lastSeq: 0, kind: "thread", number } } },
-          { Put: { TableName, Item: { ...nameKey(roomId, name), chatId: threadId, kind: "thread" }, ConditionExpression: "attribute_not_exists(pk)" } },
-        ],
-      }));
-      const message = await chatRepo().send(user, { roomId, chatId: threadId, clientId: input.clientId, text: input.text });
+      try {
+        await db.send(new TransactWriteCommand({
+          TransactItems: [
+            { Put: { TableName, Item: item } },
+            { Put: { TableName, Item: { ...chatMetaKey(threadId), roomId, lastSeq: 0, kind: "thread", number } } },
+            { Put: { TableName, Item: { ...nameKey(roomId, name), chatId: threadId, kind: "thread" }, ConditionExpression: "attribute_not_exists(pk)" } },
+          ],
+        }));
+      } catch (e) {
+        // Only older data can hold this guard (new chats can't take thread-<N> names); a retry gets the next number.
+        if (failedAt(e, 2)) throw new Conflict(`#${name} is already a chat's name; try again.`);
+        throw e;
+      }
+      const message = await chat.send(user, { roomId, chatId: threadId, clientId: input.clientId, text: input.text }, admitted);
       const thread = summary(item, Date.now());
       await announce(thread);
       return { thread, message };
@@ -138,6 +143,7 @@ export function threadsRepo() {
      */
     async nameIfProvisional(roomId: string, threadId: string, suggestion: string): Promise<ThreadSummary | null> {
       const thread = await byId(roomId, threadId);
+      // The write checks this again, for a rename landing after this read.
       if (!thread || thread.named) return null;
       let base: string;
       try {
@@ -147,7 +153,7 @@ export function threadsRepo() {
       }
       for (const name of uniqueCandidates(base).filter((n) => !isNumberedName(n))) {
         try {
-          return await moveName(thread, name);
+          return await moveName(thread, name, { unnamedOnly: true });
         } catch (e) {
           if (!conditionFailed(e)) throw e;
           if (!failedAt(e, 1)) return null;

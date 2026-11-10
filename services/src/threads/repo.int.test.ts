@@ -1,11 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { randomUUID } from "node:crypto";
-import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand, ScanCommand, UpdateCommand, type ScanCommandOutput } from "@aws-sdk/lib-dynamodb";
 import { docClient, tableName } from "../lib/db.js";
-import { Conflict, Forbidden, NotFound } from "../lib/errors.js";
+import { Conflict, Forbidden, Gone, NotFound } from "../lib/errors.js";
 import { roomsRepo } from "../rooms/repo.js";
 import { chatRepo } from "../chat/repo.js";
 import { searchRoom } from "../chat/search.js";
+import { RATE_PER_MIN } from "../chat/model.js";
 import { budgetRepo } from "../budget/repo.js";
 import { monthKey } from "../budget/model.js";
 import { threadSk } from "./model.js";
@@ -20,6 +21,26 @@ const user = (name: string) => ({ userId: randomUUID(), username: name });
 let clients = 0;
 const start = (u: ReturnType<typeof user>, roomId: string, text = "look into this") =>
   threads.createThread(u, roomId, { text, clientId: `k${++clients}` });
+
+const get = async (pk: string, sk: string) =>
+  (await docClient().send(new GetCommand({ TableName: tableName(), Key: { pk, sk }, ConsistentRead: true }))).Item;
+
+/** Every thread item, thread chat and name guard for the room, wherever it lives in the table. */
+async function threadItemsOf(roomId: string) {
+  const items: Record<string, unknown>[] = [];
+  let ExclusiveStartKey: ScanCommandOutput["LastEvaluatedKey"];
+  do {
+    const page: ScanCommandOutput = await docClient().send(new ScanCommand({
+      TableName: tableName(), ExclusiveStartKey, ConsistentRead: true,
+      FilterExpression: "(pk = :room AND (begins_with(sk, :thread) OR begins_with(sk, :name))) OR (roomId = :r AND #kind = :kind)",
+      ExpressionAttributeNames: { "#kind": "kind" },
+      ExpressionAttributeValues: { ":room": `ROOM#${roomId}`, ":thread": "THREAD#", ":name": "CHATNAME#thread-", ":r": roomId, ":kind": "thread" },
+    }));
+    items.push(...(page.Items ?? []));
+    ExclusiveStartKey = page.LastEvaluatedKey;
+  } while (ExclusiveStartKey);
+  return items;
+}
 
 async function room() {
   const owner = user("owner");
@@ -114,6 +135,43 @@ describe("threads repo on Floci", () => {
     await expect(budget.setCap(admin, roomId, 1_000_000)).rejects.toBeInstanceOf(Forbidden);
     expect(await budget.setCap(owner, roomId, 5_000_000)).toMatchObject({ capMicros: 5_000_000, spentMicros: 4_250 });
     expect(await budget.get(roomId, now)).toMatchObject({ capMicros: 5_000_000 });
+  });
+
+  it("a refused first message writes nothing: no thread, chat, guard or number", async () => {
+    const { owner, roomId } = await room();
+    // Fill this minute's and the next one's rate windows, so the test can't straddle a fresh window.
+    const minute = Math.floor(Date.now() / 60_000);
+    for (const m of [minute, minute + 1]) {
+      await docClient().send(new PutCommand({ TableName: tableName(), Item: { pk: `RATE#${owner.userId}`, sk: String(m), n: RATE_PER_MIN } }));
+    }
+    await expect(start(owner, roomId)).rejects.toThrow(/Slow down/);
+    expect(await threadItemsOf(roomId)).toEqual([]);
+    expect((await get(`ROOM#${roomId}`, "META"))?.threadSeq).toBeUndefined();
+  });
+
+  it("a chat already holding a thread's provisional name refuses that create with a Conflict; the next number works", async () => {
+    const { owner, roomId } = await room();
+    await docClient().send(new PutCommand({ TableName: tableName(), Item: { pk: `ROOM#${roomId}`, sk: "CHATNAME#thread-1", chatId: "legacy" } }));
+    await expect(start(owner, roomId)).rejects.toThrow(new Conflict("#thread-1 is already a chat's name; try again."));
+    expect((await start(owner, roomId)).thread).toMatchObject({ number: 2, name: "thread-2" });
+  });
+
+  it("a suggestion never renames a thread marked named, even one still called thread-N", async () => {
+    const { owner, roomId } = await room();
+    const { thread } = await start(owner, roomId);
+    await docClient().send(new UpdateCommand({
+      TableName: tableName(), Key: { pk: `ROOM#${roomId}`, sk: threadSk(1) }, UpdateExpression: "SET #named = :t",
+      ExpressionAttributeNames: { "#named": "named" }, ExpressionAttributeValues: { ":t": true },
+    }));
+    expect(await threads.nameIfProvisional(roomId, thread.threadId, "pr-check")).toBeNull();
+    expect(await threads.threadById(roomId, thread.threadId)).toMatchObject({ name: "thread-1" });
+  });
+
+  it("an archived room takes no new threads and no new cap", async () => {
+    const { owner, roomId } = await room();
+    await rooms.archiveRoom(roomId, owner.userId);
+    await expect(start(owner, roomId)).rejects.toBeInstanceOf(Gone);
+    await expect(budget.setCap(owner, roomId, 1_000_000)).rejects.toBeInstanceOf(Gone);
   });
 
   it("a non-member can't start a thread", async () => {

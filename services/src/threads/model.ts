@@ -1,5 +1,5 @@
 import { ValidationError } from "../lib/errors.js";
-import type { ThreadStatus } from "./types.js";
+import type { ThreadStatus, ThreadSummary } from "./types.js";
 
 export const ARCHIVE_AFTER_SEC = 604_800;
 
@@ -39,6 +39,14 @@ export function uniqueCandidates(name: string): string[] {
 /** A running thread is never archived, however long it has been quiet. */
 export function isArchived(t: { status: ThreadStatus; lastActivityAt: string }, nowMs: number): boolean {
   return t.status !== "running" && nowMs - Date.parse(t.lastActivityAt) > ARCHIVE_AFTER_SEC * 1000;
+}
+
+/** A stored thread as clients get it: the bookkeeping fields stay on the server, and `archived` is worked out now. */
+export function summary(
+  { pk: _pk, sk: _sk, activeRunId: _run, named: _named, from: _from, ...rest }: Record<string, unknown>, nowMs: number,
+): ThreadSummary {
+  const thread = rest as Omit<ThreadSummary, "archived">;
+  return { ...thread, archived: isArchived(thread, nowMs) };
 }
 
 /** `#12` or `#name` at the very start of a message; a tag later in the text is just text. */

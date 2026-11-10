@@ -5,10 +5,8 @@ import {
 import { batchGet, conditionFailed, docClient, failedAt, queryAll, tableName } from "../lib/db.js";
 import { Conflict, Forbidden, Gone, NotFound, ValidationError } from "../lib/errors.js";
 import { isOnline, type Presence } from "../live/presence.js";
-import { budgetOf } from "../budget/repo.js";
-import { monthKey } from "../budget/model.js";
-import { claimableName } from "../threads/model.js";
-import { summary } from "../threads/repo.js";
+import { budgetOf, monthKey } from "../budget/model.js";
+import { claimableName, summary } from "../threads/model.js";
 import type { Budget, ThreadSummary } from "../threads/types.js";
 import { can, type Action, type Role } from "./access.js";
 import { chatName, roomName } from "./model.js";

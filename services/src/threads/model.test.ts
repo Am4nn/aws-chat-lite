@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ARCHIVE_AFTER_SEC, PROVISIONAL, claimableName, isArchived, isNumberedName, leadingTag, summaryLine, threadName, threadSk, uniqueCandidates } from "./model.js";
+import { ARCHIVE_AFTER_SEC, PROVISIONAL, claimableName, isArchived, isNumberedName, summary, leadingTag, summaryLine, threadName, threadSk, uniqueCandidates } from "./model.js";
 
 describe("threadName", () => {
   it("trims and lowercases", () => expect(threadName(" PR-Check ")).toBe("pr-check"));
@@ -54,4 +54,18 @@ describe("leadingTag", () => {
 describe("summaryLine", () => {
   it("takes the first non-empty line", () => expect(summaryLine("\n\nShip it.\nmore")).toBe("Ship it."));
   it("cuts at 80 characters", () => expect(summaryLine("a".repeat(100))).toBe("a".repeat(80) + "…"));
+});
+
+describe("summary", () => {
+  const now = Date.parse("2026-11-11T00:00:00Z");
+  const stored = {
+    pk: "ROOM#r", sk: "THREAD#0000000001", roomId: "r", threadId: "t", number: 1, name: "thread-1", named: false,
+    activeRunId: "run", from: { chatId: "c", seq: 3 }, status: "done", rev: 4, steps: 2, costMicros: 9, createdBy: "u",
+    lastActivityAt: new Date(now - (ARCHIVE_AFTER_SEC + 1) * 1000).toISOString(),
+  };
+  it("keeps the bookkeeping on the server and works out archived", () => {
+    const t = summary(stored, now);
+    for (const k of ["pk", "sk", "named", "activeRunId", "from"]) expect(t).not.toHaveProperty(k);
+    expect(t).toMatchObject({ threadId: "t", number: 1, status: "done", rev: 4, archived: true });
+  });
 });
