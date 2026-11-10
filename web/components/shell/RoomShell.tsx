@@ -9,10 +9,12 @@ import { enterFrom } from "@/lib/motion";
 import { isAdmin, type Me, type RoomSummary, type RoomView } from "@/lib/types";
 import { CommandPalette, type PaletteItem } from "@/components/overlays/CommandPalette";
 import { Modal } from "@/components/overlays/Modal";
-import { ToastProvider } from "@/components/overlays/Toast";
+import { useToast } from "@/components/overlays/Toast";
 import { CreateChat } from "@/components/rooms/CreateChat";
 import { CreateRoom } from "@/components/rooms/CreateRoom";
 import { MemberList } from "@/components/rooms/MemberList";
+import { InvitePanel } from "@/components/rooms/InvitePanel";
+import { inviteUrl } from "@/components/rooms/invite";
 import { Header } from "./Header";
 import { Panel } from "./Panel";
 import { Sidebar } from "./Sidebar";
@@ -22,6 +24,7 @@ type Dialog = "chat" | "room" | null;
 
 export function RoomShell({ view, rooms, me, children }: { view: RoomView; rooms: RoomSummary[]; me: Me; children: ReactNode }) {
   const router = useRouter();
+  const toast = useToast();
   const pathname = usePathname();
   const { chatId } = useParams<{ chatId?: string }>();
   const [panelOpen, setPanelOpen] = useState(true);
@@ -48,6 +51,14 @@ export function RoomShell({ view, rooms, me, children }: { view: RoomView; rooms
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  /** Copies the room's live invite link, creating one first when there is none. */
+  async function copyInvite() {
+    const path = `/bff/api/rooms/${view.room.roomId}/invite`;
+    const invite = await bff<{ code: string }>(path).catch(() => bff<{ code: string }>(path, { body: {} }));
+    await navigator.clipboard.writeText(inviteUrl(window.location.origin, invite.code));
+    toast("Invite link copied");
+  }
+
   async function signOut() {
     await bff("/bff/auth/signout", { body: {} });
     router.replace("/login");
@@ -57,7 +68,10 @@ export function RoomShell({ view, rooms, me, children }: { view: RoomView; rooms
     ...view.chats.map((c) => ({ id: `chat-${c.chatId}`, group: "Chats", label: `#${c.name}`, icon: "#", run: () => router.push(`/r/${view.room.roomId}/c/${c.chatId}`) })),
     ...rooms.filter((r) => r.roomId !== view.room.roomId)
       .map((r) => ({ id: `room-${r.roomId}`, group: "Rooms", label: r.name, icon: r.name.slice(0, 1).toUpperCase(), run: () => router.push(`/r/${r.roomId}`) })),
-    ...(isAdmin(view.me.role) ? [{ id: "new-chat", group: "Actions", label: "New chat…", icon: "+", run: () => setDialog("chat") }] : []),
+    ...(isAdmin(view.me.role) ? [
+      { id: "new-chat", group: "Actions", label: "New chat…", icon: "+", run: () => setDialog("chat") },
+      { id: "copy-invite", group: "Actions", label: "Copy invite link", icon: "↗", run: copyInvite },
+    ] : []),
     ...(me.isCreator ? [{ id: "new-room", group: "Actions", label: "New room…", icon: "+", run: () => setDialog("room") }] : []),
     { id: "panel", group: "Actions", label: "Toggle room panel", icon: "⇥", run: () => setPanelOpen((o) => !o) },
     { id: "signout", group: "Actions", label: "Sign out", icon: "↩", run: signOut },
@@ -66,7 +80,7 @@ export function RoomShell({ view, rooms, me, children }: { view: RoomView; rooms
   const activeChat = view.chats.find((c) => c.chatId === chatId);
 
   return (
-    <ToastProvider>
+    <>
       <div className="flex h-dvh overflow-hidden bg-ink">
         <Sidebar
           view={view} rooms={rooms} me={me} activeChatId={chatId} newChatIds={newChatIds}
@@ -82,7 +96,13 @@ export function RoomShell({ view, rooms, me, children }: { view: RoomView; rooms
             </AnimatePresence>
           </div>
         </main>
-        <Panel open={panelOpen} tabs={[{ id: "members", label: `Members · ${view.members.length}`, content: <MemberList members={view.members} /> }]} />
+        <Panel
+          open={panelOpen}
+          tabs={[
+            { id: "members", label: `Members · ${view.members.length}`, content: <MemberList roomId={view.room.roomId} members={view.members} myRole={view.me.role} myUserId={me.userId} /> },
+            ...(isAdmin(view.me.role) ? [{ id: "invite", label: "Invite", content: <InvitePanel roomId={view.room.roomId} /> }] : []),
+          ]}
+        />
       </div>
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} items={paletteItems} />
@@ -92,6 +112,6 @@ export function RoomShell({ view, rooms, me, children }: { view: RoomView; rooms
       <Modal open={dialog === "room"} onClose={() => setDialog(null)} title="New room">
         <CreateRoom onDone={() => setDialog(null)} />
       </Modal>
-    </ToastProvider>
+    </>
   );
 }

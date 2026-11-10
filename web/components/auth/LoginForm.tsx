@@ -17,7 +17,7 @@ export function LoginForm({ next, emailSignup }: { next: string; emailSignup: bo
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const set = (key: keyof typeof form) => (e: { target: { value: string } }) => setForm({ ...form, [key]: e.target.value });
+  const set = (key: keyof typeof form) => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
   async function submit(e: FormEvent) {
     e.preventDefault();
