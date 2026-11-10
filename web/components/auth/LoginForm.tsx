@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { bff } from "@/lib/client/bff";
 import { dur, easeOut, spring } from "@/lib/motion";
@@ -12,7 +11,6 @@ import { Spinner } from "@/components/ui/Spinner";
 type Mode = "signin" | "signup" | "confirm";
 
 export function LoginForm({ next, emailSignup }: { next: string; emailSignup: boolean }) {
-  const router = useRouter();
   const [mode, setMode] = useState<Mode>("signin");
   const [form, setForm] = useState({ username: "", password: "", email: "", code: "" });
   const [sentTo, setSentTo] = useState("");
@@ -36,8 +34,8 @@ export function LoginForm({ next, emailSignup }: { next: string; emailSignup: bo
       } else {
         await bff(mode === "confirm" ? "/bff/auth/confirm" : "/bff/auth/signin", { body: form });
       }
-      router.replace(next);
-      router.refresh();
+      // A full page load after sign-in: the session cookies just changed, so every server component and cache starts fresh.
+      window.location.assign(next);
     } catch (err) {
       setError((err as Error).message);
     } finally {
