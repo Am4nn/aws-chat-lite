@@ -114,6 +114,70 @@ ROOM "dev-team"   (only Aman creates rooms; people join by invite link)
 ### Notifications
 Web push when you're @mentioned, or when a thread you started finishes or needs an approval. This works on Android and desktop, and on iPhone once the site is added to the home screen. Badges show in the app.
 
+## UI and motion (decided 2026-11-10, direction "G2")
+Aman picked G2 after four rounds of mockups.
+- **Canvas:** https://claude.ai/artifact/Qivq6HCgVo8ggqRiwW5XWJ (bottom row).
+- **Reference copies:** in `docs/design/prototypes/`. `Fluid2.dc.html` is the room screen; `RunMap.dc.html` is the per-run Map view.
+- **The bar he set:** *the real app's animations, transitions and UI/UX must be as good as the prototypes, or better.* Every step that touches UI is reviewed against it.
+
+**Look**
+- **Dark first.**
+  - Ink `#0A0C0D`; surfaces `#0C0F10` / `#101315` / `#111416`; hairlines `#171C1E` / `#22282B`.
+  - Text `#ECF1F0`, secondary `#9DA9A8`, tertiary `#7E8A89`.
+- **Accent colours mean something:**
+  - lime `#C8F169`: live work and the primary action;
+  - amber `#FFC46B`: needs you;
+  - sky `#7CC7FF`: done, and helper hand-offs.
+- **Type:** Geist for UI, Geist Mono for tools, numbers and costs, Space Grotesk for headings and answer headlines.
+- **No AI-slop effects:** no glows, glass, gradient washes, emoji or pulsing dots.
+  - Icons are inline stroke SVG.
+  - Every control has hover, focus-visible and active states.
+  - No layout shift; thin themed scrollbars.
+
+**Layout**
+- **Left sidebar (272 px):** room switcher; Ctrl K; agent threads with live status; chats; room budget.
+- **Centre:** the open thread or chat in a ~780 px reading column. The composer has a model pill and doubles as **steer** while a run is live.
+- **Right panel (320 px, collapsible):** Context (files made, sources, "this run" step/time/cost) and Memory.
+- **Header:**
+  - breadcrumb, the live capsule (state + current step + step count + elapsed) and presence;
+  - a **Timeline | Map** switch on threads (Map ships in step 9).
+
+**Honest progress (a rule, not a style)**
+- **An agent never shows a percentage or progress bar.** It can't know its total steps.
+- **Allowed indicators:** state (a working spinner, amber needs-you, ✓ done), step count, elapsed time, the current step's name (shimmer while running) and cost.
+- **The only bars are money** (spend against the room cap) and the Map view's *share of time/cost* breakdown.
+
+**Motion (the minimum the real app must match)**
+
+| Moment | Motion |
+|---|---|
+| Sidebar selection | the highlight glides to the new row (spring, ~420 ms) |
+| Switch thread | content enters from the direction you moved (up/down, 450 ms) |
+| Step finishes | check pops (overshoot scale) + a brief lime row flash |
+| Running step | name shimmers; spinner arc; elapsed ticks |
+| Step output | click a finished step → output expands (height + fade) |
+| Answer streaming | words fade/blur in one by one (~400 ms each); headline rises in |
+| Steer while running | your steer bubble springs in; a new step appears |
+| Approval | card grows in; on approve it shrinks into "Approved ✓" |
+| Toasts | another thread needs you → a toast drops in; click jumps there |
+| Panels | right panel width slides; Context/Memory tab pill slides |
+| New file / memory | slides in with a short highlight |
+| Ctrl K | backdrop fades, palette scales in, rows cascade |
+| Map view | nodes drop in, smooth bezier edges draw themselves, waiting edge flows |
+
+**Rules for all motion:**
+- Animate only `transform` and `opacity` (plus a few height or width transitions) so it holds 60 fps.
+- Use spring or ease-out curves, between 150 and 500 ms.
+- Honour `prefers-reduced-motion` with instant state changes.
+- Never block input, and never animate on every token: words batch per frame.
+
+**Map view (step 9)**
+- **Per-run view.** Lanes per agent (the main agent plus each helper), with time flowing left to right.
+- **Nodes:** each step is a card showing time and cost, and its files hang off the step that made them.
+- **Edges:** smooth bezier edges (Aman rejected right-angle connectors as too rigid). Helper hand-offs are blue.
+- **Overview:** a "where the time went" bar sits above the map.
+- **Details:** clicking a node opens its started time, duration, tokens, cost and output; a gated step offers Approve or Deny there too.
+
 ## Agent capabilities
 
 ### Tools (v1)
@@ -227,7 +291,7 @@ Browser ── https://chat.amanarya.com ── CloudFront
 6. **Sandbox:** the Docker adapter, room files in S3, the Files panel, then the AgentCore adapter.
 7. **Tools and approvals:** the GitHub App, Tavily and fetch, Approve/Deny, the audit log.
 8. **MCP:** a remote MCP client per room (OAuth), then chat-lite as an MCP server.
-9. **Agents and memory:** the agents list, sharing by copy, subagents, room memory, scheduled jobs.
+9. **Agents and memory:** the agents list, sharing by copy, subagents, the run **Map view**, room memory, scheduled jobs.
 10. **Media and notifications:** voice in and out, Gemini images, image understanding, web push.
 11. **Real AWS:** `chat.amanarya.com` (Spaceship DNS plus an ACM cert in us-east-1, as with lite), Secrets Manager, ops dashboard and alarms, then a live test with invited friends.
 

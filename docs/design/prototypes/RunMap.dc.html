@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>chat-lite · Run map</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;family=Space+Grotesk:wght@600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0A0C0D}
+a{color:#C8F169}a:hover{color:#E2FFA3}
+@keyframes m-node{from{opacity:0;transform:translateY(6px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes m-draw{from{stroke-dashoffset:300}to{stroke-dashoffset:0}}
+@keyframes m-fade{from{opacity:0}to{opacity:1}}
+@keyframes m-side{from{opacity:0;transform:translateX(12px)}to{opacity:1;transform:none}}
+@keyframes m-flow{to{stroke-dashoffset:-16}}
+@keyframes m-grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.m-node{animation:m-node .45s cubic-bezier(.2,1.15,.4,1) both}
+.m-draw{stroke-dasharray:300;animation:m-draw .6s cubic-bezier(.4,0,.2,1) both}
+.m-fade{animation:m-fade .4s ease both}
+.m-side{animation:m-side .3s cubic-bezier(.2,.9,.2,1) both}
+.m-flow{stroke-dasharray:4 4;animation:m-flow .9s linear infinite}
+.m-grow{transform-origin:left;animation:m-grow .8s cubic-bezier(.2,.9,.2,1) both}
+@media (prefers-reduced-motion:reduce){.m-node,.m-draw,.m-fade,.m-side,.m-flow,.m-grow{animation:none}.m-draw{stroke-dasharray:none}}
+.m-card{position:absolute;box-sizing:border-box;width:108px;height:72px;padding:9px 10px;border-radius:12px;border:1px solid #20262A;background:#101315;color:#ECF1F0;font:inherit;text-align:left;cursor:pointer;transition:border-color .25s,background .25s,box-shadow .25s,transform .2s}
+.m-card:hover{border-color:#35403F;transform:translateY(-2px)}
+.m-card:focus-visible,.m-btn:focus-visible,.m-rail:focus-visible{outline:2px solid #C8F169;outline-offset:2px}
+.m-btn{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 12px;border:1px solid #22282B;border-radius:10px;background:#111416;color:#C9D3D2;font:inherit;font-size:12.5px;cursor:pointer;text-decoration:none;transition:border-color .2s,color .2s,transform .12s}
+.m-btn:hover{border-color:#36403F;color:#ECF1F0}
+.m-btn:active{transform:scale(.96)}
+.m-rail{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border:0;border-radius:11px;background:transparent;color:#9DA9A8;cursor:pointer}
+.m-rail:hover{background:#161B1D;color:#ECF1F0}
+.m-mono{font-family:'Geist Mono',monospace}
+.m-label{font-size:11.5px;font-weight:600;color:#7E8A89;letter-spacing:.02em}
+</style>
+</helmet>
+<div style="display: flex; height: 900px; overflow: hidden; background: #0A0C0D; color: #ECF1F0; font-family: Geist, system-ui, sans-serif; font-size: 14px; line-height: 1.5;">
+
+  <nav aria-label="Room" style="flex: none; width: 64px; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 0; border-right: 1px solid #171C1E; background: #0C0F10;">
+    <span style="width: 34px; height: 34px; border-radius: 10px; background: #C8F169; color: #10170A; font-family: 'Space Grotesk', sans-serif; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 10px;">D</span>
+    <button class="m-rail" style="background: #161B1D;" aria-label="Thread pr-check" aria-current="page"><span style="width: 9px; height: 9px; border-radius: 5px; background: #FFC46B;"></span></button>
+    <button class="m-rail" aria-label="Thread flaky-tests"><span style="width: 9px; height: 9px; border-radius: 5px; background: #FFC46B;"></span></button>
+    <button class="m-rail" aria-label="Thread morning-digest"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7E8A89" stroke-width="2.6"><path d="m5 12 4.5 4.5L19 7"/></svg></button>
+    <button class="m-rail" aria-label="Thread aws-docs"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7E8A89" stroke-width="2.6"><path d="m5 12 4.5 4.5L19 7"/></svg></button>
+  </nav>
+
+  <main style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+    <header style="display: flex; align-items: center; gap: 12px; height: 64px; padding: 0 22px; border-bottom: 1px solid #171C1E;">
+      <span style="font-size: 13px; color: #7E8A89;">dev-team</span>
+      <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#3E4749" stroke-width="2"><path d="m9 6 6 6-6 6"/></svg>
+      <span class="m-mono" style="color: #7E8A89; font-size: 13px;">#12</span>
+      <h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 18px; font-weight: 700;">pr-check</h1>
+      <div style="position: relative; display: flex; margin-left: 6px; padding: 3px; border-radius: 11px; background: #111416; border: 1px solid #1A1F22;">
+        <span aria-hidden="true" style="position: absolute; top: 3px; bottom: 3px; left: 50%; width: calc(50% - 3px); border-radius: 8px; background: #1C2225;"></span>
+        <a href="Fluid2.dc.html" class="m-btn" style="position: relative; height: 26px; border: 0; background: transparent; color: #9DA9A8;">Timeline</a>
+        <span class="m-btn" style="position: relative; height: 26px; border: 0; background: transparent; color: #ECF1F0;" aria-current="page">Map</span>
+      </div>
+      <button class="m-btn" style="margin-left: auto;" onClick="{{replay}}"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4v16l13-8z"/></svg>Replay</button>
+    </header>
+
+    <div style="display: flex; align-items: center; gap: 22px; height: 56px; padding: 0 22px; border-bottom: 1px solid #141819;">
+      <span style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px;"><span style="width: 8px; height: 8px; border-radius: 4px; background: #FFC46B;"></span>Waiting for approval</span>
+      <span class="m-mono" style="font-size: 12.5px; color: #7E8A89;"><span style="color: #ECF1F0;">9</span> steps · <span style="color: #ECF1F0;">1</span> helper · <span style="color: #ECF1F0;">2:23</span> · <span style="color: #ECF1F0;">$0.05</span></span>
+      <div style="margin-left: auto; display: flex; align-items: center; gap: 12px;">
+        <span class="m-label">Where the time went</span>
+        <span style="display: flex; width: 220px; height: 6px; border-radius: 3px; overflow: hidden; background: #1A1F22;" role="img" aria-label="thinking 57%, researcher 22%, npm test 17%, write 4%">
+          <span class="m-grow" style="width: 57%; background: #3A4446;"></span>
+          <span class="m-grow" style="width: 22%; background: #7CC7FF; animation-delay: .1s;"></span>
+          <span class="m-grow" style="width: 17%; background: #FFC46B; animation-delay: .2s;"></span>
+          <span class="m-grow" style="width: 4%; background: #C8F169; animation-delay: .3s;"></span>
+        </span>
+        <span style="display: flex; gap: 10px; font-size: 11.5px; color: #7E8A89;"><span><span style="color: #5B6668;">■</span> thinking</span><span><span style="color: #7CC7FF;">■</span> helper</span><span><span style="color: #FFC46B;">■</span> tests</span></span>
+      </div>
+    </div>
+
+    <div style="position: relative; flex: 1; min-height: 0; overflow: hidden;">
+      <div aria-hidden="true" style="position: absolute; left: 16px; right: 16px; top: 64px; height: 152px; border-radius: 16px; background: #0D1011;"></div>
+      <div aria-hidden="true" style="position: absolute; left: 16px; right: 16px; top: 266px; height: 230px; border-radius: 16px; background: #0D1011;"></div>
+      <div class="m-label" style="position: absolute; left: 32px; top: 78px;">reviewer</div>
+      <div class="m-label" style="position: absolute; left: 32px; top: 280px;">researcher<span style="font-weight: 400; color: #5B6668;"> · helper</span></div>
+      <div class="m-mono" style="position: absolute; right: 32px; top: 280px; font-size: 11.5px; color: #7E8A89;">3 sources · 0:31 · $0.012</div>
+
+      <sc-if value="{{visible}}" hint-placeholder-val="{{ true }}">
+        <div style="position: absolute; inset: 0;">
+          <svg aria-hidden="true" width="1056" height="640" viewBox="0 0 1056 640" style="position: absolute; left: 0; top: 0; pointer-events: none;" fill="none" stroke-linecap="round">
+            <defs>
+              <marker id="ma" viewBox="0 0 6 6" refX="3" refY="3" markerWidth="6" markerHeight="6"><circle cx="3" cy="3" r="2.4" fill="#4A5557"/></marker>
+              <marker id="mb" viewBox="0 0 6 6" refX="3" refY="3" markerWidth="6" markerHeight="6"><circle cx="3" cy="3" r="2.4" fill="#7CC7FF"/></marker>
+            </defs>
+            <path class="m-draw" d="M222 148 C 234 148, 234 148, 246 148" stroke="#34403F" stroke-width="1.6" marker-end="url(#ma)" style="animation-delay: .2s;"/>
+            <path class="m-draw" d="M354 148 C 366 148, 366 148, 378 148" stroke="#34403F" stroke-width="1.6" marker-end="url(#ma)" style="animation-delay: .4s;"/>
+            <path class="m-draw" d="M486 148 C 498 148, 498 148, 510 148" stroke="#34403F" stroke-width="1.6" marker-end="url(#ma)" style="animation-delay: .6s;"/>
+            <path class="m-draw" d="M564 184 C 564 270, 614 266, 614 352" stroke="#7CC7FF" stroke-width="1.6" marker-end="url(#mb)" style="animation-delay: .9s;"/>
+            <path class="m-draw" d="M668 388 C 690 388, 684 348, 706 348" stroke="#34403F" stroke-width="1.6" marker-end="url(#ma)" style="animation-delay: 1.2s;"/>
+            <path class="m-draw" d="M668 388 C 690 388, 684 428, 706 428" stroke="#34403F" stroke-width="1.6" marker-end="url(#ma)" style="animation-delay: 1.2s;"/>
+            <path class="m-draw" d="M814 348 C 836 348, 830 388, 852 388" stroke="#34403F" stroke-width="1.6" marker-end="url(#ma)" style="animation-delay: 1.5s;"/>
+            <path class="m-draw" d="M814 428 C 836 428, 830 388, 852 388" stroke="#34403F" stroke-width="1.6" style="animation-delay: 1.5s;"/>
+            <path class="m-draw" d="M906 352 C 906 266, 828 270, 828 184" stroke="#7CC7FF" stroke-width="1.6" marker-end="url(#mb)" style="animation-delay: 1.8s;"/>
+            <path class="m-fade" d="M618 140 C 660 104, 732 104, 774 140" stroke="#2C3437" stroke-width="1.6" stroke-dasharray="1 6" style="animation-delay: .9s;"/>
+            <path class="m-flow" d="M882 148 C 894 148, 894 148, 906 148" stroke="#FFC46B" stroke-width="1.6"/>
+          </svg>
+          <span class="m-fade m-mono" style="position: absolute; left: 642px; top: 92px; width: 108px; text-align: center; font-size: 10.5px; color: #5B6668; animation-delay: 1s;">waits for helper</span>
+
+          <sc-for list="{{nodes}}" as="n" hint-placeholder-count="10">
+            <button class="m-card m-node" style="left: {{n.x}}; top: {{n.y}}; animation-delay: {{n.delay}}; border-color: {{n.border}}; background: {{n.bg}}; box-shadow: {{n.ring}};" onClick="{{n.pick}}" aria-pressed="{{n.pressed}}">
+              <span style="display: flex; align-items: center; gap: 6px;">
+                <sc-if value="{{n.ok}}"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#C8F169" stroke-width="3.2"><path d="m5 12 4.5 4.5L19 7"/></svg></sc-if>
+                <sc-if value="{{n.warn}}"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#FFC46B" stroke-width="3.2"><path d="M12 5v9M12 18.5v.5"/></svg></sc-if>
+                <sc-if value="{{n.wait}}"><span style="width: 7px; height: 7px; border-radius: 4px; background: #FFC46B;"></span></sc-if>
+                <span class="m-mono" style="font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{n.name}}</span>
+              </span>
+              <span class="m-mono" style="display: block; margin-top: 3px; font-size: 10.5px; color: #7E8A89; white-space: nowrap;">{{n.meta}}</span>
+              <span style="display: block; margin-top: 4px; font-size: 10.5px; color: {{n.fileColor}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{n.file}}</span>
+            </button>
+          </sc-for>
+        </div>
+      </sc-if>
+    </div>
+  </main>
+
+  <aside aria-label="Step details" style="flex: none; width: 320px; border-left: 1px solid #171C1E; background: #0C0F10; box-sizing: border-box;">
+    <sc-if value="{{dv}}" hint-placeholder-val="{{ true }}">
+      <div class="m-side" style="padding: 20px 18px; display: flex; flex-direction: column; gap: 16px;">
+        <div class="m-label">{{detail.agent}}</div>
+        <div style="display: flex; align-items: center; gap: 10px; margin-top: -10px;"><span class="m-mono" style="font-size: 16px; font-weight: 500;">{{detail.name}}</span><span style="margin-left: auto; font-size: 12px; color: {{detail.statusColor}};">{{detail.status}}</span></div>
+        <div style="font-size: 13px; color: #9DA9A8; margin-top: -10px;">{{detail.what}}</div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
+          <div style="padding: 10px; border-radius: 10px; background: #101315;"><div class="m-mono" style="font-size: 15px;">{{detail.started}}</div><div style="font-size: 11px; color: #7E8A89;">started</div></div>
+          <div style="padding: 10px; border-radius: 10px; background: #101315;"><div class="m-mono" style="font-size: 15px;">{{detail.took}}</div><div style="font-size: 11px; color: #7E8A89;">took</div></div>
+          <div style="padding: 10px; border-radius: 10px; background: #101315;"><div class="m-mono" style="font-size: 15px;">{{detail.tokens}}</div><div style="font-size: 11px; color: #7E8A89;">tokens</div></div>
+          <div style="padding: 10px; border-radius: 10px; background: #101315;"><div class="m-mono" style="font-size: 15px;">{{detail.cost}}</div><div style="font-size: 11px; color: #7E8A89;">cost</div></div>
+        </div>
+        <div class="m-label">Output</div>
+        <pre class="m-mono" style="margin: -10px 0 0; padding: 12px; border-radius: 10px; background: #0F1213; border: 1px solid #1A1F22; font-size: 11.5px; line-height: 1.6; color: #B7C2C1; white-space: pre-wrap;">{{detail.output}}</pre>
+        <sc-if value="{{detail.isGate}}">
+          <div style="display: flex; gap: 8px;"><button class="m-btn" style="flex: 1; justify-content: center;">Deny</button><button class="m-btn" style="flex: 1; justify-content: center; background: #FFC46B; border-color: #FFC46B; color: #1F1505; font-weight: 600;">Approve</button></div>
+        </sc-if>
+      </div>
+    </sc-if>
+  </aside>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { sel: 'test', visible: true, dv: true };
+  }
+  renderVals() {
+    const sel = this.state.sel;
+    const col = (i) => 168 + i * 132 - 54;
+    const defs = [
+      { id: 'ask', name: 'aman asks', c: 0, y: 112, agent: 'you', status: 'sent', what: 'Check PR 41 and 42 before tonight\'s deploy. Anything risky in auth?', started: '0:00', took: '—', tokens: '—', usd: 0, output: 'Message in #general → started thread #12 with @reviewer.', kind: 'ok', meta: '#general' },
+      { id: 'list', name: 'list_prs', c: 1, y: 112, agent: 'reviewer · tool', status: 'done', what: 'GitHub: open pull requests', started: '0:03', took: '0.4s', tokens: '1.1k', usd: 0.003, output: '#41  auth: rotate refresh tokens   +182 −40\n#42  copy: login page wording       +6 −6', kind: 'ok' },
+      { id: 'diff', name: 'read_diff', c: 2, y: 112, agent: 'reviewer · tool', status: 'done', what: 'GitHub: the diff of PR 41', started: '0:06', took: '1.1s', tokens: '6.8k', usd: 0.011, output: 'auth/refresh.ts      +96 −22\nauth/session.ts      +41 −10\nauth/refresh.test.ts +12 −0', kind: 'ok' },
+      { id: 'test', name: 'npm test', c: 3, y: 112, agent: 'reviewer · sandbox', status: '1 failed', what: 'Ran the test suite in the room sandbox', started: '0:14', took: '24s', tokens: '2.3k', usd: 0.004, output: '✓ 38 passed\n✗ refresh rejects revoked token\n  expected 401, received 200', kind: 'warn', file: 'test-output.txt' },
+      { id: 'search', name: 'search', c: 3, x: 560, y: 352, agent: 'researcher · tool', status: 'done', what: 'Tavily: refresh token rotation testing', started: '0:41', took: '1.8s', tokens: '1.9k', usd: 0.002, output: '5 results · picked auth0.com docs and RFC 6819', kind: 'ok' },
+      { id: 'auth0', name: 'fetch auth0', c: 4, x: 706, y: 312, agent: 'researcher · tool', status: 'done', what: 'Read auth0.com refresh-token docs', started: '0:44', took: '2.6s', tokens: '3.4k', usd: 0.004, output: 'Rotate on every use; on reuse, revoke the whole token family.', kind: 'ok' },
+      { id: 'rfc', name: 'fetch rfc6819', c: 4, x: 706, y: 392, agent: 'researcher · tool', status: 'done', what: 'Read RFC 6819, in parallel with auth0', started: '0:44', took: '3.1s', tokens: '2.9k', usd: 0.003, output: 'Refresh token rotation detects replay of a stolen token.', kind: 'ok' },
+      { id: 'sum', name: 'summarise', c: 5, x: 852, y: 352, agent: 'researcher', status: 'done', what: 'Handed the findings back to reviewer', started: '1:09', took: '3.2s', tokens: '1.6k', usd: 0.003, output: 'Test expired, revoked and reused refresh tokens; each must return 401.', kind: 'ok' },
+      { id: 'write', name: 'write review', c: 5, y: 112, agent: 'reviewer · sandbox', status: 'done', what: 'Drafted the review as a file', started: '1:41', took: '6.4s', tokens: '4.1k', usd: 0.009, output: '## PR 41 review\n- add test: expired refresh token → 401\n- fix: revoked token returns 200', kind: 'ok', file: 'pr-41-review.md' },
+      { id: 'comment', name: 'comment #41', c: 6, y: 112, agent: 'reviewer · write action', status: 'needs approval', what: 'Post the review on PR 41 (GitHub write)', started: '2:23', took: 'waiting', tokens: '—', usd: 0, output: 'Waiting for someone in dev-team to approve.\nExpires in 2 h, then skipped.', kind: 'wait', meta: 'needs approval' },
+    ];
+    const delays = [0, .2, .4, .6, 1.0, 1.3, 1.3, 1.6, 1.9, 2.1];
+    const nodes = defs.map((d, i) => {
+      const selected = sel === d.id;
+      return {
+        name: d.name, x: (d.x !== undefined ? d.x : col(d.c)) + 'px', y: d.y + 'px',
+        meta: d.meta || (d.took + ' · $' + d.usd.toFixed(3)),
+        file: d.file ? '↳ ' + d.file : (d.kind === 'wait' ? 'Approve or deny' : ''),
+        fileColor: d.kind === 'wait' ? '#FFC46B' : '#B7E36A',
+        ok: d.kind === 'ok', warn: d.kind === 'warn', wait: d.kind === 'wait',
+        delay: delays[i] + 's',
+        border: selected ? '#C8F169' : d.kind === 'wait' ? '#4A3E1C' : '#20262A',
+        bg: selected ? '#131A11' : d.kind === 'wait' ? '#14130E' : '#101315',
+        ring: selected ? '0 0 0 3px rgba(200,241,105,.14)' : 'none',
+        pressed: selected ? 'true' : 'false',
+        pick: () => { this.setState({ sel: d.id, dv: false }); setTimeout(() => this.setState({ dv: true }), 20); },
+      };
+    });
+    const d = defs.find((x) => x.id === sel);
+    const detail = {
+      agent: d.agent, name: d.name, what: d.what, status: d.status,
+      statusColor: d.kind === 'ok' ? '#C8F169' : '#FFC46B',
+      started: d.started, took: d.took, tokens: d.tokens, cost: d.usd ? '$' + d.usd.toFixed(3) : '—',
+      output: d.output + (d.file ? '\n→ saved ' + d.file : ''), isGate: d.kind === 'wait',
+    };
+    return {
+      nodes, detail, visible: this.state.visible, dv: this.state.dv,
+      replay: () => { this.setState({ visible: false, sel: 'test' }); setTimeout(() => this.setState({ visible: true }), 30); },
+    };
+  }
+}
+</script>
+</body>
+</html>
