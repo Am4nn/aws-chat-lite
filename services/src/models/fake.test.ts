@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { NAME_PROMPT, gateway, type ModelChunk, type ModelMessage, type ModelRequest } from "./gateway.js";
+import { NAME_PROMPT, type ModelChunk, type ModelMessage, type ModelRequest } from "./gateway.js";
 import { fakeModel } from "./fake.js";
+import { gateway } from "./index.js";
 
 const model = fakeModel({ sleep: async () => {} });
 const request = (messages: ModelMessage[], over: Partial<ModelRequest> = {}): ModelRequest => ({
@@ -54,13 +55,25 @@ describe("fakeModel", () => {
 
   it("prices usage at 3 and 15 micro-dollars per token of ceil(chars / 4)", async () => {
     const chunks = await collect(request([user("x tools:0 words:1")], { system: "s".repeat(23) }));
-    const outputTokens = Math.ceil(textOf(chunks).length / 4);
-    expect(chunks.at(-1)).toEqual({
-      type: "usage",
-      inputTokens: 10,
-      outputTokens,
-      costMicros: 30 + 15 * outputTokens,
-    });
+    expect(textOf(chunks)).toHaveLength(26);
+    expect(chunks.at(-1)).toEqual({ type: "usage", inputTokens: 10, outputTokens: 7, costMicros: 135 });
+  });
+
+  it("counts assistant and tool message text as input", async () => {
+    const chunks = await collect(
+      request([
+        user("x tools:0 words:1"),
+        { role: "assistant", text: "abcd", toolCalls: [{ id: "call-1", name: "fake.lookup", input: {} }] },
+        toolResult(1),
+      ]),
+    );
+    expect(chunks.at(-1)).toMatchObject({ type: "usage", inputTokens: Math.ceil((17 + 4 + 2) / 4) });
+  });
+
+  it("counts the call JSON as output on a tool-call turn", async () => {
+    const chunks = await collect(request([user("x tools:1")]));
+    const [call] = toolCalls(chunks);
+    expect(chunks.at(-1)).toMatchObject({ outputTokens: Math.ceil(JSON.stringify(call).length / 4) });
   });
 
   it("stops streaming text on abort but still reports usage", async () => {

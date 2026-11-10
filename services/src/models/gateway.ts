@@ -1,10 +1,8 @@
-import { fakeModel } from "./fake.js";
-
 export type ToolCall = { id: string; name: string; input: Record<string, unknown> };
 export type ModelMessage =
   | { role: "user"; author: string; text: string }
   | { role: "assistant"; text: string; toolCalls?: ToolCall[] }
-  | { role: "tool"; toolCallId: string; output: string };
+  | { role: "tool"; toolCallId: string; output: string; isError?: boolean };
 export type ToolSpec = { name: string; description: string; inputSchema: object };
 export type ModelRequest = {
   model: string;
@@ -23,8 +21,3 @@ export interface ModelGateway {
 }
 
 export const NAME_PROMPT = "Name this thread in 1 to 3 lowercase words joined by dashes. Reply with the name only.";
-
-export function gateway(env: Record<string, string | undefined> = process.env): ModelGateway {
-  if (env.MODEL_GATEWAY === "fake") return fakeModel();
-  throw new Error(`Unknown model gateway: ${env.MODEL_GATEWAY}`);
-}
