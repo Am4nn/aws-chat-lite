@@ -96,7 +96,8 @@ export class LiveSocket {
       this.attempt = 0;
       this.everOpened = true;
       this.setStatus("open");
-      this.pingTimer = setInterval(() => this.request("ping", {}).catch(() => {}), PING_EVERY_MS);
+      // The server answers a ping with a pong, not an ack, so nothing waits on it.
+      this.pingTimer = setInterval(() => ws.send(JSON.stringify({ action: "ping" })), PING_EVERY_MS);
       this.emit({ type: "reconnected" });
     };
     ws.onmessage = (e) => this.receive(JSON.parse(String(e.data)));

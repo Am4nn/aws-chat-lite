@@ -30,7 +30,8 @@ export function addChat(stack: CoreStack) {
     if (s3PublicEndpoint) signer.addEnvironment("S3_PUBLIC_ENDPOINT", s3PublicEndpoint);
   }
 
-  stack.route("POST", "/ws/ticket", fn);
+  // Not under /ws: Floci answers every /ws/* path on the HTTP API host itself, before any route is matched.
+  stack.route("POST", "/live/ticket", fn);
   stack.route("GET", "/rooms/{roomId}/chats/{chatId}/messages", fn);
   stack.route("GET", "/rooms/{roomId}/search", fn);
   stack.route("POST", "/rooms/{roomId}/attachments", fn);

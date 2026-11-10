@@ -25,9 +25,9 @@ const params = { roomId: "r1", chatId: "c1" };
 const HISTORY = "GET /rooms/{roomId}/chats/{chatId}/messages";
 
 describe("chat handler", () => {
-  it("POST /ws/ticket issues a ticket for the caller and says where to connect", async () => {
+  it("POST /live/ticket issues a ticket for the caller and says where to connect", async () => {
     const deps = fakeDeps();
-    const res = await makeHandler(deps)(ev("POST /ws/ticket"));
+    const res = await makeHandler(deps)(ev("POST /live/ticket"));
     expect(res.statusCode).toBe(200);
     expect(body(res)).toEqual({ ticket: "t1", url: "ws://sockets.example/live" });
     expect(deps.issueTicket).toHaveBeenCalledWith(caller);

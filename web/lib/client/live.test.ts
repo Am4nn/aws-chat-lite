@@ -83,10 +83,10 @@ describe("LiveSocket", () => {
     expect(onReconnected).toHaveBeenCalledWith({ type: "reconnected" });
   });
 
-  it("pings every 4 minutes while open", async () => {
+  it("pings every 4 minutes while open, without waiting for an ack (the server answers pong)", async () => {
     await openSocket();
     await vi.advanceTimersByTimeAsync(4 * 60_000);
-    expect(FakeSocket.all[0].sent.map((f) => f.action)).toEqual(["ping"]);
+    expect(FakeSocket.all[0].sent).toEqual([{ action: "ping" }]);
   });
 
   it("rejects pending requests when the socket closes", async () => {

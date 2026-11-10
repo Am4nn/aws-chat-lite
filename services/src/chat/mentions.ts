@@ -15,3 +15,9 @@ export function parseMentions(text: string, members: Member[]): { mentions: stri
     everyone: mentioned(plain, "everyone"),
   };
 }
+
+/** Who a message's mentions reach: the whole room for @everyone, otherwise the members it names; never its author. */
+export function notified(m: { mentions: string[]; everyone: boolean }, members: Member[], authorId: string): string[] {
+  const ids = m.everyone ? members.map((x) => x.userId) : m.mentions;
+  return ids.filter((id) => id !== authorId);
+}

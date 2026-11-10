@@ -27,7 +27,7 @@ export function useLiveStatus() {
 
 /** One socket per tab, shared by everything in the room. */
 export function LiveProvider({ children }: { children: ReactNode }) {
-  const [live] = useState(() => new LiveSocket({ getTicket: () => bff("/bff/api/ws/ticket", { body: {} }) }));
+  const [live] = useState(() => new LiveSocket({ getTicket: () => bff("/bff/api/live/ticket", { body: {} }) }));
   useEffect(() => {
     live.start();
     // Outside production the socket is reachable from the console, so a test can drop it and watch the reconnect.
