@@ -1,7 +1,8 @@
 import { GetCommand, PutCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { conditionFailed, docClient, failedAt, tableName } from "../lib/db.js";
-import type { Role } from "../rooms/access.js";
-import { Conflict, Forbidden, Gone, NotFound, ValidationError } from "../lib/errors.js";
+import { Conflict, Forbidden, NotFound, ValidationError } from "../lib/errors.js";
+import { withUrls } from "./files.js";
+import { requireMember } from "./membership.js";
 import { parseMentions } from "./mentions.js";
 import {
   EDIT_WINDOW_SEC, LAST_SEQ, MAX_ATTACHMENTS, PAGE, RATE_PER_MIN, canEdit, deleteMode, excerpt, forReaders, messageText,
@@ -22,11 +23,14 @@ const messageKey = (at: ChatRef, seq: number) => ({ pk: chatKey(at.chatId), sk: 
 
 const NEEDS_CONTENT = "A message needs text or an attachment.";
 
-/** Reactions are stored as string sets (DynamoDB drops a set once it's empty); the wire format wants arrays. */
-function toMessage({ pk: _pk, sk: _sk, reactions, ...rest }: Record<string, unknown>): Message {
+/**
+ * A stored message as readers get it. Reactions are stored as string sets (DynamoDB drops a set once it's empty);
+ * the wire format wants arrays.
+ */
+export function toMessage({ pk: _pk, sk: _sk, reactions, ...rest }: Record<string, unknown>): Promise<Message> {
   const sets = (reactions ?? {}) as Record<string, Set<string>>;
   const lists = Object.fromEntries(Object.entries(sets).map(([k, users]) => [k, [...users]]));
-  return forReaders({ ...rest, reactions: lists } as StoredMessage);
+  return withUrls(forReaders({ ...rest, reactions: lists } as StoredMessage));
 }
 
 function attachmentList(raw: unknown, roomId: string, userId: string): Attachment[] {
@@ -39,17 +43,6 @@ function attachmentList(raw: unknown, roomId: string, userId: string): Attachmen
 export function chatRepo() {
   const db = docClient();
   const TableName = tableName();
-
-  /**
-   * Read strongly consistently, so someone removed a moment ago is refused at once. An archived room stays readable
-   * but takes no new writes.
-   */
-  async function member(roomId: string, userId: string, opts: { writing?: boolean } = {}): Promise<Role> {
-    const { Item } = await db.send(new GetCommand({ TableName, Key: memberKey(roomId, userId), ConsistentRead: true }));
-    if (!Item) throw new NotFound("Room not found.");
-    if (opts.writing && Item.archived) throw new Gone("This room is archived.");
-    return Item.role as Role;
-  }
 
   /** A fixed-window counter: one item per user per calendar minute, incremented atomically and swept by TTL. */
   async function countTowardsRate(userId: string) {
@@ -137,7 +130,7 @@ export function chatRepo() {
       const text = messageText(input.text);
       const attachments = attachmentList(input.attachments, at.roomId, user.userId);
       if (!text && !attachments.length) throw new ValidationError(NEEDS_CONTENT);
-      await member(at.roomId, user.userId, { writing: true });
+      await requireMember(at.roomId, user.userId, { writing: true });
       await countTowardsRate(user.userId);
       const quoted = input.replyToSeq === undefined ? undefined : await storedMessage(at, input.replyToSeq);
       const members = text.includes("@") ? await roomMembers(at.roomId) : [];
@@ -159,14 +152,14 @@ export function chatRepo() {
         readOwnMessage(at, user.userId, seq),
         countMentions(at, notified.filter((id) => id !== user.userId)),
       ]);
-      return message;
+      return withUrls(message);
     },
 
     /** The old text is kept as a version item in the same transaction, so no edit ever loses what it replaced. */
     async edit(user: User, input: ChatRef & { seq: number; text: unknown }): Promise<Message> {
       const at = { roomId: input.roomId, chatId: input.chatId };
       const text = messageText(input.text);
-      await member(at.roomId, user.userId, { writing: true });
+      await requireMember(at.roomId, user.userId, { writing: true });
       const old = await storedMessage(at, input.seq);
       const now = Date.now();
       if (!canEdit(old, user.userId, now)) throw new Forbidden("You can edit only your own messages, for 15 minutes.");
@@ -202,7 +195,7 @@ export function chatRepo() {
     /** Marks the message deleted; the stored text stays, and readers get it blanked. */
     async remove(user: User, input: ChatRef & { seq: number }): Promise<Message> {
       const at = { roomId: input.roomId, chatId: input.chatId };
-      const role = await member(at.roomId, user.userId, { writing: true });
+      const role = await requireMember(at.roomId, user.userId, { writing: true });
       const msg = await storedMessage(at, input.seq);
       if (msg.deleted) throw new Conflict("That message is already deleted.");
       const deleted = deleteMode(msg, user.userId, role, Date.now());
@@ -222,7 +215,7 @@ export function chatRepo() {
     /** Set ADD/DELETE make a double tap harmless: adding someone twice or removing someone absent changes nothing. */
     async react(user: User, input: ChatRef & { seq: number; reaction: Reaction; on: boolean }): Promise<Message> {
       const at = { roomId: input.roomId, chatId: input.chatId };
-      await member(at.roomId, user.userId, { writing: true });
+      await requireMember(at.roomId, user.userId, { writing: true });
       try {
         const { Attributes } = await db.send(new UpdateCommand({
           TableName, Key: messageKey(at, input.seq), UpdateExpression: `${input.on ? "ADD" : "DELETE"} reactions.#k :me`,
@@ -237,8 +230,8 @@ export function chatRepo() {
     },
 
     /** Typing is relayed only for someone who may post in the room, about a chat that is in it. */
-    async assertCanPost(userId: string, at: ChatRef): Promise<void> {
-      await member(at.roomId, userId, { writing: true });
+    async assertCanType(userId: string, at: ChatRef): Promise<void> {
+      await requireMember(at.roomId, userId, { writing: true });
       await chatInRoom(at);
     },
 
@@ -250,7 +243,7 @@ export function chatRepo() {
      */
     async markRead(user: User, input: ChatRef & { seq: number }): Promise<{ lastReadSeq: number }> {
       const at = { roomId: input.roomId, chatId: input.chatId };
-      await member(at.roomId, user.userId);
+      await requireMember(at.roomId, user.userId);
       for (let attempt = 0; attempt < 3; attempt++) {
         const { Item } = await db.send(new GetCommand({ TableName, Key: readKey(at, user.userId), ConsistentRead: true }));
         const read = Number(Item?.lastReadSeq ?? 0);
@@ -295,7 +288,7 @@ export function chatRepo() {
      * side of one (for jumping to a quoted message). The chat's counter item proves the chat is in this room.
      */
     async history(user: User, roomId: string, chatId: string, cursor: Cursor): Promise<{ messages: Message[] }> {
-      await member(roomId, user.userId);
+      await requireMember(roomId, user.userId);
       await chatInRoom({ roomId, chatId });
       const { before, after, around } = cursor;
       const items = around !== undefined
@@ -303,7 +296,7 @@ export function chatRepo() {
         : after !== undefined
           ? await page(chatId, after + 1, LAST_SEQ, false, PAGE)
           : await page(chatId, 0, before === undefined ? LAST_SEQ : before - 1, true, PAGE);
-      return { messages: items.map(toMessage) };
+      return { messages: await Promise.all(items.map(toMessage)) };
     },
   };
 }

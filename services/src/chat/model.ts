@@ -27,7 +27,7 @@ export const REACTIONS: readonly Reaction[] = ["thumbs", "heart", "joy", "tada",
 export const EDIT_WINDOW_SEC = 900;
 const MAX_TEXT = 4000;
 export const MAX_ATTACHMENTS = 5;
-const MAX_FILE_BYTES = 10_485_760;
+export const MAX_FILE_BYTES = 10_485_760;
 export const RATE_PER_MIN = 30;
 export const PAGE = 50;
 
@@ -85,8 +85,9 @@ export function excerpt(text: string): string {
   return flat.length > EXCERPT_LENGTH ? `${flat.slice(0, EXCERPT_LENGTH)}…` : flat;
 }
 
+/** A deleted message keeps its text and files in the table; readers get neither. */
 export function forReaders({ textLower: _textLower, ...message }: StoredMessage): Message {
-  return message.deleted ? { ...message, text: "" } : message;
+  return message.deleted ? { ...message, text: "", attachments: [] } : message;
 }
 
 export function validAttachment(a: unknown, roomId: string, userId: string): Attachment {

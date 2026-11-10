@@ -76,9 +76,11 @@ describe("forReaders", () => {
     roomId: "r", chatId: "c", seq: 1, authorId: "u1", authorName: "a", text: "secret", textLower: "secret",
     createdAt: "2026-11-11T10:00:00Z", attachments: [], reactions: {}, mentions: [], everyone: false,
   };
-  it("blanks a deleted message and drops textLower", () => {
-    const out = forReaders({ ...stored, deleted: "admin" });
+  it("blanks a deleted message, its files too, and drops textLower", () => {
+    const file = { key: "rooms/r/u1/id/a.png", name: "a.png", size: 1, type: "image/png" };
+    const out = forReaders({ ...stored, attachments: [file], deleted: "admin" });
     expect(out.text).toBe("");
+    expect(out.attachments).toEqual([]);
     expect(out).not.toHaveProperty("textLower");
   });
   it("keeps the text otherwise", () => expect(forReaders(stored).text).toBe("secret"));

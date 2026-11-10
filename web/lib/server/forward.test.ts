@@ -16,6 +16,11 @@ describe("matchForward (/bff/api/* → HTTP API allowlist)", () => {
     ["POST", ["invites", "AbC_12-x", "accept"], "/invites/AbC_12-x/accept"],
     ["POST", ["ws", "ticket"], "/ws/ticket"],
     ["GET", ["rooms", "r1", "chats", "c1", "messages"], "/rooms/r1/chats/c1/messages"],
+    ["POST", ["rooms", "r1", "attachments"], "/rooms/r1/attachments"],
+    ["GET", ["rooms", "r1", "search"], "/rooms/r1/search"],
+    ["PATCH", ["rooms", "r1", "chats", "c1", "prefs"], "/rooms/r1/chats/c1/prefs"],
+    ["POST", ["rooms", "r1", "leave"], "/rooms/r1/leave"],
+    ["POST", ["rooms", "r1", "archive"], "/rooms/r1/archive"],
   ])("%s %j → %s", (method, segs, path) => {
     expect(matchForward(method, segs)).toBe(path);
   });
@@ -29,6 +34,8 @@ describe("matchForward (/bff/api/* → HTTP API allowlist)", () => {
     ["GET", ["health"]],
     ["GET", ["ws", "ticket"]],
     ["POST", ["rooms", "r1", "chats", "c1", "messages"]],
+    ["GET", ["rooms", "r1", "attachments"]],
+    ["POST", ["rooms", "r1", "search"]],
     ["GET", []],
   ])("refuses %s %j", (method, segs) => {
     expect(matchForward(method, segs)).toBeNull();

@@ -5,6 +5,8 @@ import { docClient, tableName } from "../lib/db.js";
 import { roomsRepo } from "../rooms/repo.js";
 import { Conflict, Forbidden, Gone, NotFound, ValidationError } from "../lib/errors.js";
 import { chatRepo } from "./repo.js";
+import { presignUpload } from "./files.js";
+import { searchRoom } from "./search.js";
 import { seqKey } from "./model.js";
 
 // Runs against DynamoDB on Floci: npm run floci:up && npm run deploy:local, then npm -w services run test:int
@@ -27,6 +29,14 @@ async function room(...names: string[]) {
 let clients = 0;
 const say = (u: User, at: { roomId: string; chatId: string }, text = "hi") =>
   chat.send(u, { ...at, clientId: `k${++clients}`, text });
+
+/** Posts `body` to a presigned upload form, as a browser would; resolves the HTTP status. */
+async function upload(form: { url: string; fields: Record<string, string> }, body: Blob) {
+  const data = new FormData();
+  for (const [k, v] of Object.entries(form.fields)) data.append(k, v);
+  data.append("file", body);
+  return (await fetch(form.url, { method: "POST", body: data })).status;
+}
 
 const item = async (pk: string, sk: string) =>
   (await docClient().send(new GetCommand({ TableName: tableName(), Key: { pk, sk }, ConsistentRead: true }))).Item;
@@ -182,7 +192,7 @@ describe("chat repo on Floci", () => {
     await say(other.owner, other.at, "private");
     await expect(chat.history(mine.owner, mine.roomId, other.chatId, {})).rejects.toBeInstanceOf(NotFound);
     await expect(chat.markRead(mine.owner, { ...elsewhere, seq: 1 })).rejects.toBeInstanceOf(NotFound);
-    await expect(chat.assertCanPost(mine.owner.userId, elsewhere)).rejects.toBeInstanceOf(NotFound);
+    await expect(chat.assertCanType(mine.owner.userId, elsewhere)).rejects.toBeInstanceOf(NotFound);
     expect(await item(`ROOM#${mine.roomId}`, `READ#${mine.owner.userId}#${other.chatId}`)).toBeUndefined();
   });
 
@@ -203,5 +213,41 @@ describe("chat repo on Floci", () => {
     } finally {
       send.mockRestore();
     }
+  });
+
+  it("search finds a word across the room's chats, newest first, skipping deleted messages", async () => {
+    const { owner, members: [b], roomId, at } = await room("bee");
+    const ops = { roomId, chatId: (await rooms.createChat(roomId, owner.userId, "ops")).chatId };
+    await say(owner, at, "Deploy at noon");
+    await say(b, ops, "unrelated");
+    await say(b, ops, "the deploy failed");
+    const gone = await say(owner, at, "deploy secrets");
+    await chat.remove(owner, { ...at, seq: gone.seq });
+    const { results } = await searchRoom(b, roomId, " DEPLOY ");
+    expect(results.map((m) => [m.chatId, m.text])).toEqual([[ops.chatId, "the deploy failed"], [at.chatId, "Deploy at noon"]]);
+    await expect(searchRoom(user("stranger"), roomId, "deploy")).rejects.toBeInstanceOf(NotFound);
+  });
+
+  it("files: S3 takes an upload on the presigned form, and history hands out a working download link", async () => {
+    const { owner, at } = await room();
+    const form = await presignUpload(at.roomId, owner.userId, { name: "notes.txt", size: 5, type: "text/plain" });
+    expect(await upload(form, new Blob(["hello"], { type: "text/plain" }))).toBeLessThan(300);
+
+    const file = { key: form.key, name: "notes.txt", size: 5, type: "text/plain" };
+    const sent = await chat.send(owner, { ...at, clientId: "f1", text: "", attachments: [file] });
+    expect(sent.attachments[0].url).toMatch(/^http:\/\/localhost:4566\//);
+    const { messages: [stored] } = await chat.history(owner, at.roomId, at.chatId, {});
+    const download = await fetch(stored.attachments[0].url!);
+    expect(download.status).toBe(200);
+    expect(await download.text()).toBe("hello");
+    const foreign = { ...file, key: `rooms/${at.roomId}/someone-else/x/notes.txt` };
+    await expect(chat.send(owner, { ...at, clientId: "f2", text: "", attachments: [foreign] })).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  it("S3 refuses an 11 MB upload on the presigned form", async () => {
+    const { owner, at } = await room();
+    const form = await presignUpload(at.roomId, owner.userId, { name: "big.bin", size: 100, type: "application/octet-stream" });
+    const big = new Blob([new Uint8Array(11 * 1024 * 1024)], { type: "application/octet-stream" });
+    expect(await upload(form, big)).toBe(400);
   });
 });

@@ -11,6 +11,8 @@ const MATRIX: [Action, Role, Role | undefined, boolean][] = [
   ["removeMember", "member", "member", false],
   ["setRole", "owner", "member", true], ["setRole", "owner", "admin", true], ["setRole", "owner", "owner", false],
   ["setRole", "admin", "member", false], ["setRole", "admin", "admin", false], ["setRole", "member", "member", false],
+  ["archive", "owner", undefined, true], ["archive", "admin", undefined, false], ["archive", "member", undefined, false],
+  ["leave", "owner", undefined, false], ["leave", "admin", undefined, true], ["leave", "member", undefined, true],
 ];
 
 describe("can (the room role matrix)", () => {

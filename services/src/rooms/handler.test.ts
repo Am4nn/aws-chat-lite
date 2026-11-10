@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { makeHandler } from "./handler.js";
 import { Forbidden, NotFound, Conflict, Gone, ValidationError } from "../lib/errors.js";
 import type { RoomsRepo } from "./repo.js";
@@ -7,7 +7,7 @@ import type { RoomsRepo } from "./repo.js";
 function fakeRepo(over: Partial<Record<keyof RoomsRepo, unknown>> = {}): RoomsRepo {
   const base: Record<string, unknown> = {};
   const names: (keyof RoomsRepo)[] = ["createRoom", "listMyRooms", "getRoomView", "createChat", "setRole", "removeMember",
-    "rotateInvite", "getInvite", "revokeInvite", "previewInvite", "acceptInvite"];
+    "rotateInvite", "getInvite", "revokeInvite", "previewInvite", "acceptInvite", "setChatPrefs", "leaveRoom", "archiveRoom"];
   for (const n of names) {
     const v = over[n];
     base[n] = async () => { if (v instanceof Error) throw v; return v ?? {}; };
@@ -22,11 +22,11 @@ const ev = (routeKey: string, o: { body?: unknown; params?: Record<string, strin
   requestContext: { authorizer: { jwt: { claims: { sub: "u1", "cognito:username": "aman", ...(o.groups ? { "cognito:groups": o.groups } : {}) } } } },
 }) as any;
 
-const status = async (repo: RoomsRepo, e: any) => (await makeHandler(repo)(e)).statusCode;
+const status = async (repo: RoomsRepo, e: any) => (await makeHandler(repo, vi.fn())(e)).statusCode;
 
 describe("rooms handler", () => {
   it("GET /me reports creator from the token", async () => {
-    const res = await makeHandler(fakeRepo())(ev("GET /me", { groups: "[creators]" }));
+    const res = await makeHandler(fakeRepo(), vi.fn())(ev("GET /me", { groups: "[creators]" }));
     expect(JSON.parse(res.body as string)).toEqual({ userId: "u1", username: "aman", isCreator: true });
   });
 
@@ -53,11 +53,44 @@ describe("rooms handler", () => {
   it("every route in the table answers", async () => {
     const routes = ["GET /rooms", "GET /rooms/{roomId}", "POST /rooms/{roomId}/chats", "PATCH /rooms/{roomId}/members/{userId}",
       "DELETE /rooms/{roomId}/members/{userId}", "POST /rooms/{roomId}/invite", "GET /rooms/{roomId}/invite",
-      "DELETE /rooms/{roomId}/invite", "GET /invites/{code}", "POST /invites/{code}/accept"];
+      "DELETE /rooms/{roomId}/invite", "GET /invites/{code}", "POST /invites/{code}/accept",
+      "PATCH /rooms/{roomId}/chats/{chatId}/prefs", "POST /rooms/{roomId}/leave", "POST /rooms/{roomId}/archive"];
     for (const r of routes) {
       const s = await status(fakeRepo(), ev(r, { params: { roomId: "r1", userId: "u2", code: "c" }, body: { name: "x", role: "admin" } }));
       expect([200, 201, 204], r).toContain(s);
     }
+  });
+
+  it("writes that change what members see tell the room to refetch; reads and invite admin don't", async () => {
+    const repo = fakeRepo({ acceptInvite: { roomId: "r9" } });
+    const p = { params: { roomId: "r1", userId: "u2", code: "c", chatId: "c1" }, body: { name: "x", role: "admin", muted: true } };
+    const notified = async (route: string) => {
+      const notify = vi.fn(async (_roomId: string) => {});
+      await makeHandler(repo, notify)(ev(route, p));
+      return notify.mock.calls.map(([roomId]) => roomId);
+    };
+    for (const r of ["POST /rooms/{roomId}/chats", "PATCH /rooms/{roomId}/members/{userId}", "DELETE /rooms/{roomId}/members/{userId}",
+      "POST /rooms/{roomId}/leave", "POST /rooms/{roomId}/archive"]) {
+      expect(await notified(r), r).toEqual(["r1"]);
+    }
+    expect(await notified("POST /invites/{code}/accept")).toEqual(["r9"]);
+    for (const r of ["GET /rooms/{roomId}", "POST /rooms/{roomId}/invite", "PATCH /rooms/{roomId}/chats/{chatId}/prefs"]) {
+      expect(await notified(r), r).toEqual([]);
+    }
+  });
+
+  it("a failed write tells nobody", async () => {
+    const notify = vi.fn(async () => {});
+    await makeHandler(fakeRepo({ leaveRoom: new Forbidden("owner") }), notify)(ev("POST /rooms/{roomId}/leave", { params: { roomId: "r1" } }));
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it("PATCH prefs passes the chat and the muted flag", async () => {
+    const setChatPrefs = vi.fn(async () => ({ muted: true }));
+    const repo = { ...fakeRepo(), setChatPrefs } as unknown as RoomsRepo;
+    const res = await makeHandler(repo, vi.fn())(ev("PATCH /rooms/{roomId}/chats/{chatId}/prefs", { params: { roomId: "r1", chatId: "c1" }, body: { muted: true } }));
+    expect(JSON.parse(res.body as string)).toEqual({ muted: true });
+    expect(setChatPrefs).toHaveBeenCalledWith("r1", "u1", "c1", true);
   });
 
   it("unknown route is a 404", async () => {

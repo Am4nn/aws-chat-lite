@@ -1,13 +1,24 @@
 import { describe, it, expect, vi } from "vitest";
 import { randomUUID } from "node:crypto";
-import { DeleteCommand, GetCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, GetCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { roomsRepo } from "./repo.js";
+import { chatRepo } from "../chat/repo.js";
+import { markConnected } from "../live/presence.js";
 import { docClient, tableName } from "../lib/db.js";
 import { Conflict, Forbidden, Gone, NotFound } from "../lib/errors.js";
 
 // Runs against DynamoDB on Floci: npm run floci:up && npm run deploy:local, then npm -w services run test:int
 const repo = roomsRepo();
 const user = (name: string) => ({ userId: randomUUID(), username: name });
+
+/** A room with its owner and one member who joined through the invite link. */
+async function roomWithMember() {
+  const owner = user("owner");
+  const member = user("member");
+  const { roomId, generalChatId } = await repo.createRoom(owner, "Pair");
+  await repo.acceptInvite((await repo.rotateInvite(roomId, owner.userId)).code, member);
+  return { owner, member, roomId, generalChatId };
+}
 
 describe("rooms repo on Floci", () => {
   it("createRoom writes the room, its owner and #general; listMyRooms finds it", async () => {
@@ -171,5 +182,59 @@ describe("rooms repo on Floci", () => {
     await expect(repo.setRole(roomId, a.userId, a2.userId, "member")).rejects.toBeInstanceOf(Forbidden);
     await repo.removeMember(roomId, owner.userId, a2.userId);
     await expect(repo.getRoomView(roomId, a2.userId)).rejects.toBeInstanceOf(NotFound);
+  });
+
+  it("a member can leave, taking their socket subscriptions with them; the owner can't", async () => {
+    const { owner, member, roomId } = await roomWithMember();
+    const subscription = { pk: `ROOM#${roomId}`, sk: `CONN#${randomUUID()}`, userId: member.userId };
+    await docClient().send(new PutCommand({ TableName: tableName(), Item: subscription }));
+    await expect(repo.leaveRoom(roomId, owner.userId)).rejects.toBeInstanceOf(Forbidden);
+    expect(await repo.leaveRoom(roomId, member.userId)).toEqual({});
+    await expect(repo.getRoomView(roomId, member.userId)).rejects.toBeInstanceOf(NotFound);
+    expect((await repo.getRoomView(roomId, owner.userId)).members.map((m) => m.userId)).toEqual([owner.userId]);
+    const { Item } = await docClient().send(new GetCommand({
+      TableName: tableName(), Key: { pk: subscription.pk, sk: subscription.sk }, ConsistentRead: true,
+    }));
+    expect(Item).toBeUndefined();
+  });
+
+  it("archive: owner only; the room leaves everyone's list and the view says archived", async () => {
+    const { owner, member, roomId } = await roomWithMember();
+    await expect(repo.archiveRoom(roomId, member.userId)).rejects.toBeInstanceOf(Forbidden);
+    await repo.archiveRoom(roomId, owner.userId);
+    for (const u of [owner, member]) {
+      expect((await repo.listMyRooms(u.userId)).map((r) => r.roomId)).not.toContain(roomId);
+      expect((await repo.getRoomView(roomId, u.userId)).room.archived).toBe(true);
+    }
+  });
+
+  it("muting a chat shows in the view; a chat from another room is NotFound", async () => {
+    const { owner, roomId, generalChatId } = await roomWithMember();
+    const other = await repo.createRoom(user("o2"), "Other");
+    expect(await repo.setChatPrefs(roomId, owner.userId, generalChatId, true)).toEqual({ muted: true });
+    expect((await repo.getRoomView(roomId, owner.userId)).chats[0]).toMatchObject({ chatId: generalChatId, muted: true });
+    await expect(repo.setChatPrefs(roomId, owner.userId, other.generalChatId, true)).rejects.toBeInstanceOf(NotFound);
+  });
+
+  it("the view counts unread messages and mentions per chat; the room list totals mentions", async () => {
+    const { owner, member, roomId, generalChatId } = await roomWithMember();
+    const chat = chatRepo();
+    const at = { roomId, chatId: generalChatId };
+    await chat.send(owner, { ...at, clientId: "a", text: "hello" });
+    await chat.send(owner, { ...at, clientId: "b", text: "hey @member" });
+    expect((await repo.getRoomView(roomId, member.userId)).chats[0])
+      .toMatchObject({ lastSeq: 2, unread: 2, mentions: 1, muted: false });
+    expect((await repo.getRoomView(roomId, owner.userId)).chats[0]).toMatchObject({ unread: 0, mentions: 0 });
+    expect((await repo.listMyRooms(member.userId)).find((r) => r.roomId === roomId)).toMatchObject({ mentions: 1 });
+  });
+
+  it("members show online from their presence, with when they were last seen", async () => {
+    const { owner, member, roomId } = await roomWithMember();
+    await markConnected(member.userId);
+    const { members } = await repo.getRoomView(roomId, owner.userId);
+    expect(members.find((m) => m.userId === member.userId)).toMatchObject({ online: true, lastSeen: expect.any(String) });
+    const ownerSeen = members.find((m) => m.userId === owner.userId);
+    expect(ownerSeen).toMatchObject({ online: false });
+    expect(ownerSeen).not.toHaveProperty("lastSeen");
   });
 });

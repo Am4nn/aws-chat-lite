@@ -31,6 +31,9 @@ chat-lite needs, exercises each one through the AWS SDK, then destroys it.
 - EventBridge Scheduler one-time `at(...)` schedules fire on Floci (a few seconds late, like AWS) with a role assumed by `scheduler.amazonaws.com`.
 - Floci returns Function URLs as `<id>.lambda-url.us-east-1.127.0.0.1:4566`, which `new URL()` rejects; call them as `<id>.lambda-url.us-east-1.localhost.floci.io:4566`.
 - CDK: naming a `WebSocketLambdaIntegration` "Default" collides with the `$default` route's logical ID (`SectionAlreadyContains`); use distinct names.
+- S3 presigned URLs: a Lambda's own S3 endpoint is an address inside Docker, so URLs for the browser are signed against `S3_PUBLIC_ENDPOINT=http://localhost:4566` with path-style addressing. Floci enforces what matters here: the POST policy's `content-length-range` (an 11 MB upload gets 400), bucket CORS (an unlisted origin's preflight gets 403), and the signed `response-content-type` / `response-content-disposition` overrides on GET.
+- CDK `autoDeleteObjects` fails on Floci: its custom-resource Lambda calls S3 on port 443 (`ECONNREFUSED`), which Floci doesn't serve. The local files bucket uses `RemovalPolicy.DESTROY` without it.
+- Floci doesn't roll back a failed stack update ("Rollback is not implemented"): the stack stays `UPDATE_ROLLBACK_FAILED`, and `ContinueUpdateRollback` doesn't clear it. Delete the stack and deploy again (Floci data is disposable).
 
 <!-- aws:start -->
 ## Real AWS (Sydney)

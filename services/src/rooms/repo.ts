@@ -2,18 +2,19 @@ import { randomUUID } from "node:crypto";
 import {
   DeleteCommand, GetCommand, PutCommand, QueryCommand, TransactWriteCommand, UpdateCommand, type TransactWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
-import { conditionFailed, docClient, tableName } from "../lib/db.js";
-import { can, type Action, type Role } from "./access.js";
+import { batchGet, conditionFailed, docClient, tableName } from "../lib/db.js";
 import { Conflict, Forbidden, Gone, NotFound, ValidationError } from "../lib/errors.js";
+import { isOnline, type Presence } from "../live/presence.js";
+import { can, type Action, type Role } from "./access.js";
 import { chatName, roomName } from "./model.js";
 import { INVITE_TTL_SEC, inviteState, newInviteCode } from "./invites.js";
 
 interface User { userId: string; username: string }
 interface RoomView {
-  room: { roomId: string; name: string; ownerId: string };
+  room: { roomId: string; name: string; ownerId: string; archived: boolean };
   me: { role: Role };
-  chats: { chatId: string; name: string }[];
-  members: { userId: string; username: string; role: Role }[];
+  chats: { chatId: string; name: string; lastSeq: number; unread: number; mentions: number; muted: boolean }[];
+  members: { userId: string; username: string; role: Role; online: boolean; lastSeen?: string }[];
 }
 
 const nowSec = () => Math.floor(Date.now() / 1000);
@@ -22,6 +23,10 @@ const roomKey = (roomId: string) => `ROOM#${roomId}`;
 const memberKey = (roomId: string, userId: string) => ({ pk: roomKey(roomId), sk: `MEMBER#${userId}` });
 const roomInviteKey = (roomId: string) => ({ pk: roomKey(roomId), sk: "INVITE" });
 const inviteKey = (code: string) => ({ pk: `INVITE#${code}`, sk: "META" });
+const counterKey = (chatId: string) => ({ pk: `CHAT#${chatId}`, sk: "META" });
+const presenceKey = (userId: string) => ({ pk: `USER#${userId}`, sk: "PRESENCE" });
+/** The id at the end of a key such as `CHAT#<id>` or `READ#<userId>#<chatId>` (ids never contain "#"). */
+const lastPart = (key: unknown) => String(key).slice(String(key).lastIndexOf("#") + 1);
 
 /**
  * Member item. gsi1 lists a user's rooms in join order; the copied room name saves a read per room in that list.
@@ -44,7 +49,7 @@ function chatItem(roomId: string, chatId: string, name: string, createdBy: strin
  * next seq, and the stored roomId lets that same increment prove the chat belongs to the room the sender is in.
  */
 function chatCounterItem(roomId: string, chatId: string) {
-  return { pk: `CHAT#${chatId}`, sk: "META", roomId, lastSeq: 0 };
+  return { ...counterKey(chatId), roomId, lastSeq: 0 };
 }
 
 /** One item per chat name in a room, so a conditional put on it can refuse a duplicate name. */
@@ -141,15 +146,22 @@ export function roomsRepo() {
       return { roomId, name, generalChatId: chatId };
     },
 
+    /** Archived rooms drop out of the list. The member item's mention total feeds the list's dot. */
     async listMyRooms(userId: string) {
       const { Items = [] } = await db.send(new QueryCommand({
         TableName, IndexName: "gsi1", KeyConditionExpression: "gsi1pk = :u",
         ExpressionAttributeValues: { ":u": `USER#${userId}` },
       }));
-      return Items.map((i) => ({ roomId: String(i.roomId), name: String(i.roomName), role: i.role as Role }));
+      return Items.filter((i) => !i.archived).map((i) => ({
+        roomId: String(i.roomId), name: String(i.roomName), role: i.role as Role, mentions: Number(i.mentions ?? 0),
+      }));
     },
 
-    /** Read consistently so a room you just created or joined is there on the very next page load. */
+    /**
+     * One query of the room's partition brings the room, its chats, its members and your read state; it reads
+     * consistently, so a room you just created or joined is there on the very next page load. Each chat's message
+     * count lives in the chat's own partition and each member's presence in theirs, so those come from two BatchGets.
+     */
     async getRoomView(roomId: string, userId: string): Promise<RoomView> {
       const { Items = [] } = await db.send(new QueryCommand({
         TableName, KeyConditionExpression: "pk = :p", ExpressionAttributeValues: { ":p": roomKey(roomId) }, ConsistentRead: true,
@@ -157,12 +169,36 @@ export function roomsRepo() {
       const me = Items.find((i) => i.sk === `MEMBER#${userId}`);
       const meta = Items.find((i) => i.sk === "META");
       if (!me || !meta) throw new NotFound("Room not found.");
+      const startingWith = (prefix: string) => Items.filter((i) => String(i.sk).startsWith(prefix));
+      const chats = startingWith("CHAT#");
+      const members = startingWith("MEMBER#");
+      const reads = new Map(startingWith(`READ#${userId}#`).map((r) => [lastPart(r.sk), r]));
+      const [counters, presences] = await Promise.all([
+        batchGet(chats.map((c) => counterKey(String(c.chatId))), { consistent: true }),
+        batchGet(members.map((m) => presenceKey(String(m.userId)))),
+      ]);
+      const lastSeqOf = new Map(counters.map((c) => [lastPart(c.pk), Number(c.lastSeq)]));
+      const presenceOf = new Map(presences.map((p) => [lastPart(p.pk), p as unknown as Presence]));
+      const now = Math.floor(Date.now() / 1000);
       return {
-        room: { roomId, name: String(meta.name), ownerId: String(meta.ownerId) },
+        room: { roomId, name: String(meta.name), ownerId: String(meta.ownerId), archived: !!meta.archived },
         me: { role: me.role as Role },
-        chats: Items.filter((i) => String(i.sk).startsWith("CHAT#")).map((i) => ({ chatId: String(i.chatId), name: String(i.name) })),
-        members: Items.filter((i) => String(i.sk).startsWith("MEMBER#"))
-          .map((i) => ({ userId: String(i.userId), username: String(i.username), role: i.role as Role })),
+        chats: chats.map((c) => {
+          const chatId = String(c.chatId);
+          const read = reads.get(chatId);
+          const lastSeq = lastSeqOf.get(chatId) ?? 0;
+          return {
+            chatId, name: String(c.name), lastSeq, unread: Math.max(0, lastSeq - Number(read?.lastReadSeq ?? 0)),
+            mentions: Number(read?.mentions ?? 0), muted: !!read?.muted,
+          };
+        }),
+        members: members.map((m) => {
+          const presence = presenceOf.get(String(m.userId));
+          return {
+            userId: String(m.userId), username: String(m.username), role: m.role as Role,
+            online: isOnline(presence, now), ...(presence && { lastSeen: presence.lastSeen }),
+          };
+        }),
       };
     },
 
@@ -219,6 +255,74 @@ export function roomsRepo() {
         }));
       } catch (e) {
         if (conditionFailed(e)) throw new Conflict("Their role just changed; try again.");
+        throw e;
+      }
+      return {};
+    },
+
+    /** Mute is per member and per chat, so it lives on the member's read state for that chat. */
+    async setChatPrefs(roomId: string, userId: string, chatId: string, muted: unknown) {
+      if (typeof muted !== "boolean") throw new ValidationError("muted must be true or false.");
+      await requireRole(roomId, userId, "read");
+      try {
+        await db.send(new TransactWriteCommand({
+          TransactItems: [
+            // The chat's counter proves the chat is in this room, so no read state is written for another room's chat.
+            { ConditionCheck: { TableName, Key: counterKey(chatId), ConditionExpression: "roomId = :r", ExpressionAttributeValues: { ":r": roomId } } },
+            {
+              Update: {
+                TableName, Key: { pk: roomKey(roomId), sk: `READ#${userId}#${chatId}` },
+                UpdateExpression: "SET muted = :m", ExpressionAttributeValues: { ":m": muted },
+              },
+            },
+          ],
+        }));
+      } catch (e) {
+        if (conditionFailed(e)) throw new NotFound("Chat not found.");
+        throw e;
+      }
+      return { muted };
+    },
+
+    /**
+     * Your membership goes, and so do your sockets' subscriptions to the room. Live events already skip anyone who
+     * isn't a member; deleting the subscriptions saves the room's fan-out from reading them.
+     */
+    async leaveRoom(roomId: string, userId: string) {
+      const role = await memberRole(roomId, userId);
+      if (!role) throw new NotFound("Room not found.");
+      if (!can("leave", role)) throw new Forbidden("The owner can't leave their own room.");
+      await db.send(new DeleteCommand({ TableName, Key: memberKey(roomId, userId) }));
+      const { Items: subscriptions = [] } = await db.send(new QueryCommand({
+        TableName, KeyConditionExpression: "pk = :p AND begins_with(sk, :c)", FilterExpression: "userId = :u",
+        ExpressionAttributeValues: { ":p": roomKey(roomId), ":c": "CONN#", ":u": userId },
+      }));
+      await Promise.all(subscriptions.map((s) => db.send(new DeleteCommand({ TableName, Key: { pk: s.pk, sk: s.sk } }))));
+      return {};
+    },
+
+    /**
+     * Marks the room and every member item archived in one transaction, so the room is never half archived, with some
+     * members refused new messages while others still post. The member items carry the flag because every chat write
+     * already reads the member item, and the room list reads them through gsi1. A transaction holds at most 100
+     * items, which caps this at rooms of 99 members.
+     */
+    async archiveRoom(roomId: string, userId: string) {
+      await requireRole(roomId, userId, "archive");
+      const { Items: members = [] } = await db.send(new QueryCommand({
+        TableName, KeyConditionExpression: "pk = :p AND begins_with(sk, :m)", ProjectionExpression: "sk", ConsistentRead: true,
+        ExpressionAttributeValues: { ":p": roomKey(roomId), ":m": "MEMBER#" },
+      }));
+      const archive = (sk: string) => ({
+        Update: {
+          TableName, Key: { pk: roomKey(roomId), sk }, UpdateExpression: "SET archived = :t",
+          ConditionExpression: "attribute_exists(pk)", ExpressionAttributeValues: { ":t": true },
+        },
+      });
+      try {
+        await db.send(new TransactWriteCommand({ TransactItems: [archive("META"), ...members.map((m) => archive(String(m.sk)))] }));
+      } catch (e) {
+        if (conditionFailed(e)) throw new Conflict("The members just changed; try again.");
         throw e;
       }
       return {};
