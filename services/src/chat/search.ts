@@ -1,5 +1,5 @@
 import { QueryCommand } from "@aws-sdk/lib-dynamodb";
-import { docClient, tableName } from "../lib/db.js";
+import { docClient, queryAll, tableName } from "../lib/db.js";
 import { ValidationError } from "../lib/errors.js";
 import { requireMember } from "./membership.js";
 import { LAST_SEQ, seqKey, type Message } from "./model.js";
@@ -44,10 +44,10 @@ async function matchesIn(chatId: string, q: string) {
 export async function searchRoom(user: User, roomId: string, rawQuery: unknown): Promise<{ results: Message[] }> {
   const q = normalizeQuery(rawQuery);
   await requireMember(roomId, user.userId);
-  const { Items: chats = [] } = await docClient().send(new QueryCommand({
-    TableName: tableName(), KeyConditionExpression: "pk = :p AND begins_with(sk, :c)", ProjectionExpression: "chatId",
+  const chats = await queryAll({
+    KeyConditionExpression: "pk = :p AND begins_with(sk, :c)", ProjectionExpression: "chatId",
     ExpressionAttributeValues: { ":p": `ROOM#${roomId}`, ":c": "CHAT#" },
-  }));
+  });
   const perChat = await Promise.all(chats.map((c) => matchesIn(String(c.chatId), q)));
   const newest = perChat.flat()
     .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))

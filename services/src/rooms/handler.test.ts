@@ -79,6 +79,21 @@ describe("rooms handler", () => {
     }
   });
 
+  it("leaving also tells the leaver's own sockets, which the room fan-out no longer reaches", async () => {
+    const notify = vi.fn(async (_roomId: string, _alsoUserId?: string) => {});
+    await makeHandler(fakeRepo(), notify)(ev("POST /rooms/{roomId}/leave", { params: { roomId: "r1" } }));
+    expect(notify).toHaveBeenCalledWith("r1", "u1");
+  });
+
+  it("a failed broadcast is logged, and the write it follows still succeeds", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const notify = vi.fn(async () => { throw new Error("socket API down"); });
+    const res = await makeHandler(fakeRepo(), notify)(ev("POST /rooms/{roomId}/archive", { params: { roomId: "r1" } }));
+    expect(res.statusCode).toBe(200);
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
+
   it("a failed write tells nobody", async () => {
     const notify = vi.fn(async () => {});
     await makeHandler(fakeRepo({ leaveRoom: new Forbidden("owner") }), notify)(ev("POST /rooms/{roomId}/leave", { params: { roomId: "r1" } }));

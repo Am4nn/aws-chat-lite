@@ -5,7 +5,7 @@ import { roomsRepo } from "./repo.js";
 import { chatRepo } from "../chat/repo.js";
 import { markConnected } from "../live/presence.js";
 import { docClient, tableName } from "../lib/db.js";
-import { Conflict, Forbidden, Gone, NotFound } from "../lib/errors.js";
+import { Conflict, Forbidden, Gone, NotFound, ValidationError } from "../lib/errors.js";
 
 // Runs against DynamoDB on Floci: npm run floci:up && npm run deploy:local, then npm -w services run test:int
 const repo = roomsRepo();
@@ -97,9 +97,10 @@ describe("rooms repo on Floci", () => {
       await repo.getRoomView(roomId, owner.userId);
       const sent = send.mock.calls.map(([command]) => command);
       const roleRead = sent.find((c) => c instanceof GetCommand && String(c.input.Key?.sk).startsWith("MEMBER#"));
-      const viewQuery = sent.find((c) => c instanceof QueryCommand && !c.input.IndexName);
+      const viewQueries = sent.filter((c) => c instanceof QueryCommand && !c.input.IndexName) as QueryCommand[];
       expect((roleRead as GetCommand).input.ConsistentRead).toBe(true);
-      expect((viewQuery as QueryCommand).input.ConsistentRead).toBe(true);
+      expect(viewQueries.length).toBeGreaterThan(0);
+      for (const q of viewQueries) expect(q.input.ConsistentRead).toBe(true);
     } finally {
       send.mockRestore();
     }
@@ -205,6 +206,59 @@ describe("rooms repo on Floci", () => {
     for (const u of [owner, member]) {
       expect((await repo.listMyRooms(u.userId)).map((r) => r.roomId)).not.toContain(roomId);
       expect((await repo.getRoomView(roomId, u.userId)).room.archived).toBe(true);
+    }
+  });
+
+  it("an archived room is read-only: its link is revoked, and no chats, links or joins", async () => {
+    const owner = user("owner");
+    const { roomId } = await repo.createRoom(owner, "Read-only");
+    const { code } = await repo.rotateInvite(roomId, owner.userId);
+    await repo.archiveRoom(roomId, owner.userId);
+    await expect(repo.previewInvite(code)).rejects.toThrow("This invite link was revoked.");
+    await expect(repo.acceptInvite(code, user("late"))).rejects.toBeInstanceOf(Gone);
+    await expect(repo.createChat(roomId, owner.userId, "more")).rejects.toThrow(new Gone("This room is archived."));
+    await expect(repo.rotateInvite(roomId, owner.userId)).rejects.toThrow(new Gone("This room is archived."));
+  });
+
+  it("a join on a still-live link can't land in a room archived in the meantime", async () => {
+    const owner = user("owner");
+    const late = user("late");
+    const { roomId } = await repo.createRoom(owner, "Race");
+    const { code } = await repo.rotateInvite(roomId, owner.userId);
+    // The archive committing between the join's read of the link and its write.
+    await docClient().send(new UpdateCommand({
+      TableName: tableName(), Key: { pk: `ROOM#${roomId}`, sk: "META" },
+      UpdateExpression: "SET archived = :t", ExpressionAttributeValues: { ":t": true },
+    }));
+    await expect(repo.acceptInvite(code, late)).rejects.toThrow(new Gone("This room is archived."));
+    const { Item } = await docClient().send(new GetCommand({
+      TableName: tableName(), Key: { pk: `ROOM#${roomId}`, sk: `MEMBER#${late.userId}` }, ConsistentRead: true,
+    }));
+    expect(Item).toBeUndefined();
+  });
+
+  it("a room too big for one archive transaction is refused in words, not with a server error", async () => {
+    const owner = user("owner");
+    const { roomId } = await repo.createRoom(owner, "Crowd");
+    await Promise.all(Array.from({ length: 99 }, (_, i) => docClient().send(new PutCommand({
+      TableName: tableName(), Item: { pk: `ROOM#${roomId}`, sk: `MEMBER#m${i}`, userId: `m${i}`, role: "member" },
+    }))));
+    await expect(repo.archiveRoom(roomId, owner.userId)).rejects.toBeInstanceOf(ValidationError);
+    expect((await repo.getRoomView(roomId, owner.userId)).room.archived).toBe(false);
+  });
+
+  it("the room view reads only the caller's own read state", async () => {
+    const { owner, member, roomId } = await roomWithMember();
+    const send = vi.spyOn(docClient(), "send");
+    try {
+      await repo.getRoomView(roomId, member.userId);
+      const conditions = send.mock.calls.map(([c]) => c)
+        .filter((c) => c instanceof QueryCommand)
+        .map((q) => Object.values((q as QueryCommand).input.ExpressionAttributeValues ?? {}).map(String));
+      expect(conditions.flat().filter((v) => v.startsWith("READ#"))).toEqual([`READ#${member.userId}#`]);
+      expect(conditions.flat()).not.toContain(`READ#${owner.userId}#`);
+    } finally {
+      send.mockRestore();
     }
   });
 
