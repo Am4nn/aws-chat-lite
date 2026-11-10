@@ -1,0 +1,93 @@
+import type { Role } from "../rooms/access.js";
+import { ValidationError } from "../rooms/model.js";
+
+export type Reaction = "thumbs" | "heart" | "joy" | "tada" | "eyes" | "check";
+export type Attachment = { key: string; name: string; size: number; type: string; url?: string };
+export type Message = {
+  roomId: string;
+  chatId: string;
+  seq: number;
+  authorId: string;
+  authorName: string;
+  clientId?: string;
+  text: string;
+  createdAt: string;
+  editedAt?: string;
+  deleted?: "self" | "admin";
+  replyTo?: { seq: number; authorName: string; excerpt: string };
+  attachments: Attachment[];
+  reactions: Partial<Record<Reaction, string[]>>;
+  mentions: string[];
+  everyone: boolean;
+};
+/** `textLower` backs search; it never leaves the server. */
+export type StoredMessage = Message & { textLower: string };
+
+export const REACTIONS: readonly Reaction[] = ["thumbs", "heart", "joy", "tada", "eyes", "check"];
+export const EDIT_WINDOW_SEC = 900;
+export const MAX_TEXT = 4000;
+export const MAX_ATTACHMENTS = 5;
+export const MAX_FILE_BYTES = 10_485_760;
+export const RATE_PER_MIN = 30;
+export const PAGE = 50;
+
+const MAX_NAME = 200;
+const MAX_TYPE = 100;
+const EXCERPT_LENGTH = 140;
+
+/** Zero-padded so DynamoDB's string sort order matches numeric order. */
+export function seqKey(seq: number): string {
+  return `MSG#${String(seq).padStart(10, "0")}`;
+}
+
+export function messageText(raw: unknown): string {
+  if (typeof raw !== "string") throw new ValidationError("text must be a string");
+  const text = raw.trim();
+  if (text.length > MAX_TEXT) throw new ValidationError(`text must be at most ${MAX_TEXT} characters`);
+  return text;
+}
+
+type Authored = { authorId: string; createdAt: string; deleted?: "self" | "admin" };
+
+function withinWindow(msg: Authored, nowMs: number): boolean {
+  return nowMs - Date.parse(msg.createdAt) <= EDIT_WINDOW_SEC * 1000;
+}
+
+export function canEdit(msg: Authored, userId: string, nowMs: number): boolean {
+  return !msg.deleted && msg.authorId === userId && withinWindow(msg, nowMs);
+}
+
+export function deleteMode(msg: Authored, userId: string, role: Role, nowMs: number): "self" | "admin" | null {
+  if (msg.authorId === userId && withinWindow(msg, nowMs)) return "self";
+  return role === "owner" || role === "admin" ? "admin" : null;
+}
+
+export function excerpt(text: string): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > EXCERPT_LENGTH ? `${flat.slice(0, EXCERPT_LENGTH)}…` : flat;
+}
+
+export function forReaders({ textLower: _textLower, ...message }: StoredMessage): Message {
+  return message.deleted ? { ...message, text: "" } : message;
+}
+
+export function validAttachment(a: unknown, roomId: string, userId: string): Attachment {
+  const { key, name, size, type } = (a ?? {}) as Record<string, unknown>;
+  if (
+    typeof key !== "string" ||
+    !key.startsWith(`rooms/${roomId}/${userId}/`) ||
+    typeof name !== "string" ||
+    name.length < 1 ||
+    name.length > MAX_NAME ||
+    typeof size !== "number" ||
+    !Number.isInteger(size) ||
+    size < 1 ||
+    size > MAX_FILE_BYTES ||
+    typeof type !== "string" ||
+    type.length < 1 ||
+    type.length > MAX_TYPE
+  ) {
+    throw new ValidationError("invalid attachment");
+  }
+  return { key, name, size, type };
+}
