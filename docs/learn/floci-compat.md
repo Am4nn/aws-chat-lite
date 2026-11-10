@@ -31,3 +31,20 @@ chat-lite needs, exercises each one through the AWS SDK, then destroys it.
 - EventBridge Scheduler one-time `at(...)` schedules fire on Floci (a few seconds late, like AWS) with a role assumed by `scheduler.amazonaws.com`.
 - Floci returns Function URLs as `<id>.lambda-url.us-east-1.127.0.0.1:4566`, which `new URL()` rejects; call them as `<id>.lambda-url.us-east-1.localhost.floci.io:4566`.
 - CDK: naming a `WebSocketLambdaIntegration` "Default" collides with the `$default` route's logical ID (`SectionAlreadyContains`); use distinct names.
+
+<!-- aws:start -->
+## Real AWS (Sydney)
+
+Run by `npm run spike:aws` on 2026-11-10, region ap-southeast-2; the stack is destroyed afterwards.
+
+| Service | Feature | Works? | Notes | ms |
+|---|---|---|---|---|
+| CloudFormation (CDK) | deploy the spike stack | ✅ |  | 134201 |
+| API Gateway WebSocket | two clients connect; one message reaches both (postToConnection fan-out) | ✅ | wss://12gz544cn2.execute-api.ap-southeast-2.amazonaws.com/spike · round trip 721 ms | 3350 |
+| API Gateway WebSocket | after one client leaves, the other still gets messages ($disconnect / Gone cleanup) | ✅ | ok (still here) | 4239 |
+| Lambda streaming (SSE) | 5 events arrive as they are written, not all at the end | ✅ | streamed via Function URL: first event 1576 ms, all 5 by 3537 ms | 3538 |
+| Lambda streaming (SSE) | resume with Last-Event-ID: 3 → only events 4, 5 | ✅ | via Function URL | 1934 |
+| Lambda durable functions | steps + a 5 s durable wait complete with checkpointed results | ✅ | result {"a":1,"b":2,"waitedMs":6837}, total 10594 ms | 10594 |
+| EventBridge Scheduler | a one-time schedule invokes the Lambda (within ~2 min) | ✅ | fired 28 s after the scheduled time | 102994 |
+| AgentCore Code Interpreter | start a session, run Python print(6*7) → 42, stop it | ✅ | session start 2137 ms, run 518 ms | 3155 |
+<!-- aws:end -->
