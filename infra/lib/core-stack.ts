@@ -65,7 +65,7 @@ export class CoreStack extends Stack {
     });
   }
 
-  /** A Lambda from services/src with STAGE and TABLE_NAME set and, unless `tableAccess` is false, table read/write. */
+  /** A Lambda from services/src with STAGE and TABLE_NAME set. Table read/write is opt-in, so each function gets least privilege. */
   addFunction(name: string, entry: string, opts: { tableAccess?: boolean } = {}): NodejsFunction {
     const fn = new NodejsFunction(this, `Fn-${name}`, {
       functionName: `${this.stageConfig.prefix}-${name}`,
@@ -76,7 +76,7 @@ export class CoreStack extends Stack {
       environment: { STAGE: this.stageConfig.stage, TABLE_NAME: this.table.tableName },
       bundling: { minify: true },
     });
-    if (opts.tableAccess !== false) this.table.grantReadWriteData(fn);
+    if (opts.tableAccess) this.table.grantReadWriteData(fn);
     return fn;
   }
 }

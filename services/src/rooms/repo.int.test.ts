@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { randomUUID } from "node:crypto";
-import { GetCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, GetCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { roomsRepo } from "./repo.js";
 import { docClient, tableName } from "../lib/db.js";
 import { Conflict, Forbidden, Gone, NotFound } from "./model.js";
@@ -110,6 +110,49 @@ describe("rooms repo on Floci", () => {
       for (const r of results) if (r.status === "rejected") expect(r.reason).toBeInstanceOf(Conflict);
       await repo.rotateInvite(roomId, owner.userId);
     }
+  });
+
+  it("members can't see, rotate or revoke the invite link", async () => {
+    const owner = user("o");
+    const m = user("m");
+    const { roomId } = await repo.createRoom(owner, "Member invites");
+    const { code } = await repo.rotateInvite(roomId, owner.userId);
+    await repo.acceptInvite(code, m);
+    await expect(repo.getInvite(roomId, m.userId)).rejects.toBeInstanceOf(Forbidden);
+    await expect(repo.rotateInvite(roomId, m.userId)).rejects.toBeInstanceOf(Forbidden);
+    await expect(repo.revokeInvite(roomId, m.userId)).rejects.toBeInstanceOf(Forbidden);
+  });
+
+  it("a role change for someone removed mid-request is NotFound, not a server error", async () => {
+    const owner = user("o");
+    const m = user("m");
+    const { roomId } = await repo.createRoom(owner, "Role race");
+    await repo.acceptInvite((await repo.rotateInvite(roomId, owner.userId)).code, m);
+    const client = docClient();
+    const realSend = client.send.bind(client);
+    // The removal lands between setRole's read of the target and its update.
+    const send = vi.spyOn(client, "send").mockImplementation((async (command: unknown) => {
+      if (command instanceof UpdateCommand) {
+        await realSend(new DeleteCommand({ TableName: tableName(), Key: { pk: `ROOM#${roomId}`, sk: `MEMBER#${m.userId}` } }));
+      }
+      return realSend(command as never);
+    }) as never);
+    try {
+      await expect(repo.setRole(roomId, owner.userId, m.userId, "admin")).rejects.toBeInstanceOf(NotFound);
+    } finally {
+      send.mockRestore();
+    }
+  });
+
+  it("revoking a link the table already expired doesn't leave an item that never expires", async () => {
+    const owner = user("o");
+    const { roomId } = await repo.createRoom(owner, "TTL");
+    const { code } = await repo.rotateInvite(roomId, owner.userId);
+    // What DynamoDB's TTL sweep does a day after the link expires.
+    await docClient().send(new DeleteCommand({ TableName: tableName(), Key: { pk: `INVITE#${code}`, sk: "META" } }));
+    await repo.revokeInvite(roomId, owner.userId);
+    const { Item } = await docClient().send(new GetCommand({ TableName: tableName(), Key: { pk: `INVITE#${code}`, sk: "META" } }));
+    expect(Item === undefined || typeof Item.ttl === "number").toBe(true);
   });
 
   it("the owner can't be removed or demoted; admins can't remove admins", async () => {

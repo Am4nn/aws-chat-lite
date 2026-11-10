@@ -1,5 +1,8 @@
 const BASE = "http://site.invalid";
 
+/** Set by the proxy on every page request: the path being rendered, so a server component can return the user to it. */
+export const PATH_HEADER = "x-cl-path";
+
 /**
  * The `?next=` destination after login or a token refresh. Only a path on this site is accepted, and never an auth
  * page, which would loop. The value is parsed the way a browser will parse it, because browsers drop tabs and line

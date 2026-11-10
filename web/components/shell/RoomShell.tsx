@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { bff } from "@/lib/client/bff";
+import { bff, bffOrNull, errorText } from "@/lib/client/bff";
 import { isPaletteShortcut } from "@/lib/keys";
 import { enterFrom } from "@/lib/motion";
 import { isAdmin, type Me, type RoomSummary, type RoomView } from "@/lib/types";
@@ -54,9 +54,13 @@ export function RoomShell({ view, rooms, me, children }: { view: RoomView; rooms
   /** Copies the room's live invite link, creating one first when there is none. */
   async function copyInvite() {
     const path = `/bff/api/rooms/${view.room.roomId}/invite`;
-    const invite = await bff<{ code: string }>(path).catch(() => bff<{ code: string }>(path, { body: {} }));
-    await navigator.clipboard.writeText(inviteUrl(window.location.origin, invite.code));
-    toast("Invite link copied");
+    try {
+      const invite = (await bffOrNull<{ code: string }>(path)) ?? (await bff<{ code: string }>(path, { body: {} }));
+      await navigator.clipboard.writeText(inviteUrl(window.location.origin, invite.code));
+      toast("Invite link copied");
+    } catch (e) {
+      toast(errorText(e), "error");
+    }
   }
 
   async function signOut() {

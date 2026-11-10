@@ -53,6 +53,8 @@ sequenceDiagram
   - The **server** checks its expiry on every accept, because DynamoDB's TTL deletes items lazily, sometimes days later.
   - Rotating marks the old link revoked in the same transaction that creates the new one, so there's never a moment with two live links.
   - That transaction is also **optimistically locked**: it only applies if the room still points at the code it read. Without the lock, two admins rotating at the same instant would both revoke the same old code, and one new code would stay live for a week with nothing pointing at it. The loser gets a 409 and simply tries again. Revoke uses the same check.
+- **Strongly consistent reads for permission checks.** DynamoDB reads are eventually consistent by default, so a member removed a moment ago could still pass a role check for a fraction of a second. The role read and the room query ask for `ConsistentRead: true`; base-table reads allow it, at twice the read cost.
+- **Least privilege per Lambda.** `addFunction` grants table access only when asked (`tableAccess: true`): the rooms API gets read/write, while the public `/health` check and the sign-up trigger get no table permissions at all. A test reads the synthesized IAM policies to pin this.
 - **The cookie BFF:**
   - `cl_id` (the ID token) is httpOnly and SameSite=Lax.
   - `cl_refresh` is httpOnly and only sent to `/bff/auth/*`, so the long-lived credential isn't attached to every request.

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Copy, Link2, RefreshCw } from "lucide-react";
-import { bff } from "@/lib/client/bff";
+import { bff, bffOrNull, errorText } from "@/lib/client/bff";
 import { dur, easeOut } from "@/lib/motion";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
@@ -22,15 +22,20 @@ export function InvitePanel({ roomId }: { roomId: string }) {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    bff<Invite>(`/bff/api/rooms/${roomId}/invite`)
-      .then((invite) => setState({ kind: "active", invite }))
-      .catch(() => setState({ kind: "none" }));
-  }, [roomId]);
+    bffOrNull<Invite>(`/bff/api/rooms/${roomId}/invite`)
+      .then((invite) => setState(invite ? { kind: "active", invite } : { kind: "none" }))
+      .catch((e) => {
+        toast(errorText(e), "error");
+        setState({ kind: "none" });
+      });
+  }, [roomId, toast]);
 
   async function run(action: () => Promise<State>) {
     setBusy(true);
     try {
       setState(await action());
+    } catch (e) {
+      toast(errorText(e), "error");
     } finally {
       setBusy(false);
     }

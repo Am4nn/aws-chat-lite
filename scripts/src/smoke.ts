@@ -129,6 +129,30 @@ async function main() {
     const longestCssMs = await ownerPage.evaluate(`Math.max(0, ...[...document.querySelectorAll("*")].flatMap((el) =>
       getComputedStyle(el).transitionDuration.split(",").map((d) => parseFloat(d) * (d.trim().endsWith("ms") ? 1 : 1000))))`) as number;
     check(longestCssMs <= 1, `with reduced motion CSS transitions are instant (longest ${longestCssMs}ms)`);
+
+    await ownerPage.goto(roomUrl, { waitUntil: "networkidle0" });
+    await ownerPage.click('button[aria-label="Toggle room panel"]');
+    await new Promise((r) => setTimeout(r, 600));
+    const focusable = await ownerPage.evaluate(() => [...document.querySelectorAll('aside[aria-label="Room panel"] button')]
+      .some((el) => { (el as HTMLElement).focus(); return document.activeElement === el; }));
+    check(!focusable, "the closed room panel can't take keyboard focus");
+    await ownerPage.click('button[aria-label="Toggle room panel"]');
+
+    // The guest is removed behind the owner's back, so the owner's next action on them fails and must say so.
+    await bff(ownerPage, `/bff/api/rooms/${roomId}/members/${guestId}`, "DELETE", {});
+    await ownerPage.click(`button[aria-label="Actions for ${guest}"]`);
+    await ownerPage.waitForSelector("[role=menuitem]");
+    await ownerPage.evaluate(() => ([...document.querySelectorAll("[role=menuitem]")] as HTMLElement[]).find((b) => b.textContent === "Make member")?.click());
+    const toasted = await ownerPage.waitForFunction(() => document.querySelector("[aria-live=polite]")?.textContent?.includes("Not a member of this room."), { timeout: 4000 })
+      .then(() => true, () => false);
+    check(toasted, "a failed member action shows the server's reason instead of failing silently");
+
+    // A token that looks fresh but the API rejects (as after a user pool reset) sends the user to sign in, then back here.
+    const stalePage = await (await browser.createBrowserContext()).newPage();
+    const fake = (o: object) => Buffer.from(JSON.stringify(o)).toString("base64url");
+    await stalePage.setCookie({ name: "cl_id", value: `${fake({ alg: "RS256" })}.${fake({ sub: "x", exp: Math.floor(Date.now() / 1000) + 3600 })}.sig`, url: WEB, httpOnly: true });
+    await stalePage.goto(roomUrl, { waitUntil: "networkidle0" });
+    check(stalePage.url().endsWith(`/login?next=${encodeURIComponent(`/r/${roomId}`)}`), `a rejected session goes to sign-in and remembers the page (${stalePage.url().replace(WEB, "")})`);
   } finally {
     await browser.close();
   }

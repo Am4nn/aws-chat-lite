@@ -80,9 +80,15 @@ export function roomsRepo() {
     return Item as { code: string; expiresAt: number } | undefined;
   }
 
-  /** Marked revoked rather than deleted, so someone holding the old link is told it was revoked, not that it never existed. */
+  /**
+   * Marked revoked rather than deleted, so someone holding the old link is told it was revoked, not that it never
+   * existed. If the TTL sweep already deleted the item, the update recreates it, so it gets an expiry of its own.
+   */
   const revokeCode = (code: string) => ({
-    Update: { TableName, Key: inviteKey(code), UpdateExpression: "SET revoked = :t", ExpressionAttributeValues: { ":t": true } },
+    Update: {
+      TableName, Key: inviteKey(code), UpdateExpression: "SET revoked = :t, #ttl = if_not_exists(#ttl, :ttl)",
+      ExpressionAttributeNames: { "#ttl": "ttl" }, ExpressionAttributeValues: { ":t": true, ":ttl": nowSec() + 86400 },
+    },
   });
 
   /**
@@ -180,11 +186,17 @@ export function roomsRepo() {
       // The caller's own access is checked before revealing whether the target is in the room.
       await requireRole(roomId, actorId, "setRole", target ?? "member");
       if (!target) throw new NotFound("Not a member of this room.");
-      await db.send(new UpdateCommand({
-        TableName, Key: memberKey(roomId, targetId),
-        UpdateExpression: "SET #r = :r", ConditionExpression: "attribute_exists(pk) AND #r <> :owner",
-        ExpressionAttributeNames: { "#r": "role" }, ExpressionAttributeValues: { ":r": role, ":owner": "owner" },
-      }));
+      try {
+        // The condition stops the update from recreating someone who was removed after our read.
+        await db.send(new UpdateCommand({
+          TableName, Key: memberKey(roomId, targetId),
+          UpdateExpression: "SET #r = :r", ConditionExpression: "attribute_exists(pk) AND #r <> :owner",
+          ExpressionAttributeNames: { "#r": "role" }, ExpressionAttributeValues: { ":r": role, ":owner": "owner" },
+        }));
+      } catch (e) {
+        if (conditionFailed(e)) throw new NotFound("Not a member of this room.");
+        throw e;
+      }
       return { userId: targetId, role };
     },
 

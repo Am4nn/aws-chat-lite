@@ -4,7 +4,7 @@ import { useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { MoreHorizontal } from "lucide-react";
-import { bff } from "@/lib/client/bff";
+import { bff, errorText } from "@/lib/client/bff";
 import { useClickOutside } from "@/lib/client/useClickOutside";
 import { dur, easeOut, spring } from "@/lib/motion";
 import type { Member, Role } from "@/lib/types";
@@ -49,14 +49,19 @@ export function MemberList({ roomId, members, myRole, myUserId }: { roomId: stri
 
   async function change(m: Member, action: "promote" | "demote" | "remove") {
     setOpenFor(null);
-    if (action === "remove") {
-      await bff(`/bff/api/rooms/${roomId}/members/${m.userId}`, { method: "DELETE", body: {} });
-      toast(`${m.username} removed`);
-    } else {
-      const role = action === "promote" ? "admin" : "member";
-      await bff(`/bff/api/rooms/${roomId}/members/${m.userId}`, { method: "PATCH", body: { role } });
-      toast(`${m.username} is now ${role === "admin" ? "an admin" : "a member"}`);
+    try {
+      if (action === "remove") {
+        await bff(`/bff/api/rooms/${roomId}/members/${m.userId}`, { method: "DELETE", body: {} });
+        toast(`${m.username} removed`);
+      } else {
+        const role = action === "promote" ? "admin" : "member";
+        await bff(`/bff/api/rooms/${roomId}/members/${m.userId}`, { method: "PATCH", body: { role } });
+        toast(`${m.username} is now ${role === "admin" ? "an admin" : "a member"}`);
+      }
+    } catch (e) {
+      toast(errorText(e), "error");
     }
+    // Refresh either way: a failure usually means the member list changed underneath us.
     router.refresh();
   }
 

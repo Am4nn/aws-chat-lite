@@ -9,6 +9,7 @@ type PanelTab = { id: string; label: string; content: ReactNode };
 /**
  * The right-hand room panel. It slides its width rather than popping in and out, and the active tab is marked by a
  * pill that slides between tabs. The inner column keeps a fixed width so content never reflows while the panel moves.
+ * Closed, it is inert: hidden from screen readers and out of the tab order, so focus never lands on invisible buttons.
  */
 export function Panel({ open, tabs }: { open: boolean; tabs: PanelTab[] }) {
   const [active, setActive] = useState(tabs[0].id);
@@ -17,7 +18,7 @@ export function Panel({ open, tabs }: { open: boolean; tabs: PanelTab[] }) {
   return (
     <motion.aside
       aria-label="Room panel"
-      aria-hidden={!open}
+      inert={!open}
       initial={false}
       animate={{ width: open ? 320 : 0 }}
       transition={spring.panel}

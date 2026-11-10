@@ -2,7 +2,7 @@ import type { CoreStack } from "./core-stack.js";
 
 /** Rooms, chats, members and invite links: one Lambda behind the HTTP API (JWT on all but the invite preview). */
 export function addRooms(stack: CoreStack) {
-  const fn = stack.addFunction("rooms", "rooms/handler.ts");
+  const fn = stack.addFunction("rooms", "rooms/handler.ts", { tableAccess: true });
   stack.route("GET", "/me", fn);
   stack.route("GET", "/rooms", fn);
   stack.route("POST", "/rooms", fn);

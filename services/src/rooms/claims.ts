@@ -3,12 +3,13 @@ const CREATORS = "creators";
 
 /**
  * True when the token's `cognito:groups` holds "creators". API Gateway's JWT authorizer passes array
- * claims as a bracketed, space-separated string ("[creators admins]"); a decoded token has a real array.
+ * claims as a bracketed, space-separated string ("[creators admins]"), other emulators may pass JSON text
+ * ('["creators"]'), and a decoded token has a real array; stripping brackets and quotes handles all three.
  */
 export function isCreator(claims: Record<string, unknown>): boolean {
   const raw = claims["cognito:groups"];
   const groups = Array.isArray(raw)
     ? raw.map(String)
-    : typeof raw === "string" ? raw.replace(/^\[|\]$/g, "").split(/[\s,]+/).filter(Boolean) : [];
+    : typeof raw === "string" ? raw.replace(/[[\]"]/g, "").split(/[\s,]+/).filter(Boolean) : [];
   return groups.includes(CREATORS);
 }

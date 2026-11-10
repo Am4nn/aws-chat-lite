@@ -38,7 +38,18 @@ describe("rooms API", () => {
     template().resourcePropertiesCountIs("AWS::ApiGatewayV2::Authorizer", { AuthorizerType: "JWT" }, 1);
   });
 
-  it("the rooms Lambda can read and write the table", () => {
-    template().hasResourceProperties("AWS::Lambda::Function", { FunctionName: "cl-local-rooms" });
+  /** Function names whose execution role has a policy allowing DynamoDB writes. */
+  const tableWriters = () => {
+    const t = template();
+    const writerRoles = Object.values(t.findResources("AWS::IAM::Policy"))
+      .filter((p: any) => JSON.stringify(p.Properties.PolicyDocument).includes("dynamodb:PutItem"))
+      .flatMap((p: any) => p.Properties.Roles.map((r: any) => r.Ref));
+    return Object.values(t.findResources("AWS::Lambda::Function"))
+      .filter((f: any) => writerRoles.includes(f.Properties.Role["Fn::GetAtt"][0]))
+      .map((f: any) => f.Properties.FunctionName);
+  };
+
+  it("only the rooms Lambda gets table access (the public health check and sign-up trigger get none)", () => {
+    expect(tableWriters()).toEqual(["cl-local-rooms"]);
   });
 });
