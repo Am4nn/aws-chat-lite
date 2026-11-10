@@ -17,6 +17,7 @@ export class LiveSocket {
   private ws?: WebSocket;
   private attempt = 0;
   private wanted = false;
+  private generation = 0;
   private retryTimer?: ReturnType<typeof setTimeout>;
   private pingTimer?: ReturnType<typeof setInterval>;
   private nextId = 0;
@@ -29,13 +30,14 @@ export class LiveSocket {
   start() {
     if (this.wanted) return;
     this.wanted = true;
-    void this.connect();
+    void this.connect(this.generation);
   }
 
   stop() {
     this.wanted = false;
+    this.generation++;
     clearTimeout(this.retryTimer);
-    this.ws?.close();
+    this.dropSocket();
     this.setStatus("closed");
   }
 
@@ -75,16 +77,17 @@ export class LiveSocket {
     this.handlers.get(e.type)?.forEach((fn) => fn(e as never));
   }
 
-  private async connect() {
+  // A stop() or restart bumps the generation, so a connect still awaiting its ticket must not open a socket.
+  private async connect(gen: number) {
     this.setStatus("connecting");
     let ticket: Ticket;
     try {
       ticket = await this.opts.getTicket();
     } catch {
-      this.scheduleReconnect();
+      if (gen === this.generation) this.scheduleReconnect(gen);
       return;
     }
-    if (!this.wanted) return;
+    if (gen !== this.generation) return;
     const ws = new (this.opts.WebSocketImpl ?? WebSocket)(`${ticket.url}?ticket=${encodeURIComponent(ticket.ticket)}`);
     this.ws = ws;
     ws.onopen = () => {
@@ -95,19 +98,33 @@ export class LiveSocket {
     };
     ws.onmessage = (e) => this.receive(JSON.parse(String(e.data)));
     ws.onclose = () => {
-      clearInterval(this.pingTimer);
-      this.pending.forEach((p, id) => {
-        clearTimeout(p.timer);
-        p.reject(new Error("connection closed"));
-        this.pending.delete(id);
-      });
-      if (this.wanted) this.scheduleReconnect();
+      this.failPending();
+      if (gen === this.generation) this.scheduleReconnect(gen);
     };
   }
 
-  private scheduleReconnect() {
+  private dropSocket() {
+    const ws = this.ws;
+    this.ws = undefined;
+    if (ws) {
+      ws.onopen = ws.onmessage = ws.onclose = null;
+      ws.close();
+    }
+    this.failPending();
+  }
+
+  private failPending() {
+    clearInterval(this.pingTimer);
+    this.pending.forEach((p, id) => {
+      clearTimeout(p.timer);
+      p.reject(new Error("connection closed"));
+      this.pending.delete(id);
+    });
+  }
+
+  private scheduleReconnect(gen: number) {
     this.setStatus("connecting");
-    this.retryTimer = setTimeout(() => void this.connect(), backoffMs(this.attempt++, Math.random));
+    this.retryTimer = setTimeout(() => void this.connect(gen), backoffMs(this.attempt++, Math.random));
   }
 
   private receive(frame: LiveEvent | { type: "ack"; requestId: string; ok: boolean; data?: unknown; error?: string }) {

@@ -75,4 +75,57 @@ describe("LiveSocket", () => {
     await vi.advanceTimersByTimeAsync(4 * 60_000);
     expect(FakeSocket.all[0].sent.map((f) => f.action)).toEqual(["ping"]);
   });
+
+  it("rejects pending requests when the socket closes", async () => {
+    const live = await openSocket();
+    const p = live.request("edit", {});
+    FakeSocket.all[0].close();
+    await expect(p).rejects.toThrow("connection closed");
+  });
+});
+
+describe("LiveSocket lifecycle", () => {
+  it("stops retrying after stop() when the ticket fetch fails", async () => {
+    let fail: (e: Error) => void = () => {};
+    const getTicket = vi.fn(() => new Promise<{ ticket: string; url: string }>((_, reject) => { fail = reject; }));
+    const live = new LiveSocket({ getTicket, WebSocketImpl: FakeSocket as unknown as typeof WebSocket });
+    live.start();
+    live.stop();
+    fail(new Error("down"));
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(getTicket).toHaveBeenCalledTimes(1);
+    expect(live.status).toBe("closed");
+  });
+
+  it("opens exactly one socket after stop() then start() while a ticket is pending", async () => {
+    const resolvers: ((t: { ticket: string; url: string }) => void)[] = [];
+    const getTicket = () => new Promise<{ ticket: string; url: string }>((r) => resolvers.push(r));
+    const live = new LiveSocket({ getTicket, WebSocketImpl: FakeSocket as unknown as typeof WebSocket });
+    live.start();
+    live.stop();
+    live.start();
+    resolvers.forEach((r, i) => r({ ticket: `t${i}`, url: "wss://x/live" }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(FakeSocket.all).toHaveLength(1);
+  });
+
+  it("ignores a stale socket closing after restart", async () => {
+    const live = make();
+    live.start();
+    await vi.advanceTimersByTimeAsync(0);
+    const stale = FakeSocket.all[0];
+    stale.open();
+    live.stop();
+    live.start();
+    await vi.advanceTimersByTimeAsync(0);
+    const fresh = FakeSocket.all[1];
+    fresh.open();
+    const rejected = vi.fn();
+    live.request("edit", {}).catch(rejected);
+    stale.close();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(rejected).not.toHaveBeenCalled();
+    expect(FakeSocket.all).toHaveLength(2);
+    expect(live.status).toBe("open");
+  });
 });
