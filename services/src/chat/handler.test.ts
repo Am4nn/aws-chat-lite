@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { makeHandler } from "./handler.js";
-import { NotFound } from "../rooms/model.js";
+import { NotFound } from "../lib/errors.js";
 
 process.env.WS_URL = "ws://sockets.example/live";
 
@@ -36,6 +36,13 @@ describe("chat handler", () => {
   it("a cursor that isn't a whole number is a 400", async () => {
     const res = await makeHandler(fakeHistory(), vi.fn())(ev(HISTORY, { params, query: { before: "abc" } }));
     expect(res.statusCode).toBe(400);
+  });
+
+  it("an empty cursor is a 400, not seq 0", async () => {
+    const repo = fakeHistory();
+    const res = await makeHandler(repo, vi.fn())(ev(HISTORY, { params, query: { before: "" } }));
+    expect(res.statusCode).toBe(400);
+    expect(repo.history).not.toHaveBeenCalled();
   });
 
   it("maps repo errors to their status", async () => {

@@ -7,7 +7,8 @@ import { chatRepo, type ChatRepo } from "./repo.js";
 
 type Event = APIGatewayProxyEventV2WithJWTAuthorizer;
 
-const cursor = (raw: string | undefined) => (raw === undefined ? undefined : seqNumber(Number(raw)));
+// Number("") is 0, so an empty cursor would silently read from the start instead of being refused.
+const cursor = (raw: string | undefined) => (raw === undefined ? undefined : seqNumber(raw === "" ? NaN : Number(raw)));
 
 /**
  * Chat over HTTP: the ticket that lets a browser open the live socket, and the message history the socket can't

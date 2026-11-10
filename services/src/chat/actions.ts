@@ -1,5 +1,5 @@
 import { broadcastToRoom, sendToConnection, sendToUser } from "../live/broadcast.js";
-import { UserError, ValidationError } from "../rooms/model.js";
+import { UserError, ValidationError } from "../lib/errors.js";
 import { REACTIONS, seqNumber, type Message, type Reaction } from "./model.js";
 import { chatRepo, type ChatRepo } from "./repo.js";
 
@@ -46,7 +46,7 @@ async function perform(connId: string, user: User, f: Frame): Promise<Outcome> {
     }
     case "typing": {
       const { roomId, chatId } = chatRef(f);
-      await chat().assertCanPost(user.userId, roomId);
+      await chat().assertCanPost(user.userId, { roomId, chatId });
       const event = { type: "typing", roomId, chatId, userId: user.userId, username: user.username };
       return { notify: () => broadcastToRoom(roomId, event, { exceptConnId: connId }) };
     }

@@ -4,7 +4,8 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import { conditionFailed, docClient, tableName } from "../lib/db.js";
 import { can, type Action, type Role } from "./access.js";
-import { chatName, roomName, Conflict, Forbidden, Gone, NotFound, ValidationError } from "./model.js";
+import { Conflict, Forbidden, Gone, NotFound, ValidationError } from "../lib/errors.js";
+import { chatName, roomName } from "./model.js";
 import { INVITE_TTL_SEC, inviteState, newInviteCode } from "./invites.js";
 
 interface User { userId: string; username: string }

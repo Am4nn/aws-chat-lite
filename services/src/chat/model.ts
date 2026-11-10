@@ -1,5 +1,5 @@
 import type { Role } from "../rooms/access.js";
-import { ValidationError } from "../rooms/model.js";
+import { ValidationError } from "../lib/errors.js";
 
 export type Reaction = "thumbs" | "heart" | "joy" | "tada" | "eyes" | "check";
 export type Attachment = { key: string; name: string; size: number; type: string; url?: string };

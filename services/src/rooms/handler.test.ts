@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { makeHandler } from "./handler.js";
-import { Forbidden, NotFound, Conflict, Gone, ValidationError } from "./model.js";
+import { Forbidden, NotFound, Conflict, Gone, ValidationError } from "../lib/errors.js";
 import type { RoomsRepo } from "./repo.js";
 
 /** A fake repo: each method resolves `value` or rejects with `error`. */

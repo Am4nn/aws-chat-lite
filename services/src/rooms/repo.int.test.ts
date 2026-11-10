@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { DeleteCommand, GetCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { roomsRepo } from "./repo.js";
 import { docClient, tableName } from "../lib/db.js";
-import { Conflict, Forbidden, Gone, NotFound } from "./model.js";
+import { Conflict, Forbidden, Gone, NotFound } from "../lib/errors.js";
 
 // Runs against DynamoDB on Floci: npm run floci:up && npm run deploy:local, then npm -w services run test:int
 const repo = roomsRepo();

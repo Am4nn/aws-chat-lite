@@ -1,7 +1,7 @@
 import { GetCommand, PutCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
-import { conditionFailed, docClient, tableName } from "../lib/db.js";
+import { conditionFailed, docClient, failedAt, tableName } from "../lib/db.js";
 import type { Role } from "../rooms/access.js";
-import { Conflict, Forbidden, Gone, NotFound, ValidationError } from "../rooms/model.js";
+import { Conflict, Forbidden, Gone, NotFound, ValidationError } from "../lib/errors.js";
 import { parseMentions } from "./mentions.js";
 import {
   EDIT_WINDOW_SEC, LAST_SEQ, MAX_ATTACHMENTS, PAGE, RATE_PER_MIN, canEdit, deleteMode, excerpt, forReaders, messageText,
@@ -74,6 +74,11 @@ export function chatRepo() {
       if (conditionFailed(e)) throw new NotFound("Chat not found.");
       throw e;
     }
+  }
+
+  async function chatInRoom(at: ChatRef) {
+    const { Item } = await db.send(new GetCommand({ TableName, Key: counterKey(at.chatId), ConsistentRead: true }));
+    if (Item?.roomId !== at.roomId) throw new NotFound("Chat not found.");
   }
 
   async function storedMessage(at: ChatRef, seq: number): Promise<StoredMessage> {
@@ -231,15 +236,17 @@ export function chatRepo() {
       }
     },
 
-    /** Typing is relayed only for someone who may post in the room. */
-    async assertCanPost(userId: string, roomId: string): Promise<void> {
-      await member(roomId, userId, { writing: true });
+    /** Typing is relayed only for someone who may post in the room, about a chat that is in it. */
+    async assertCanPost(userId: string, at: ChatRef): Promise<void> {
+      await member(at.roomId, userId, { writing: true });
+      await chatInRoom(at);
     },
 
     /**
      * Moves the read marker forward, clears the chat's mentions and takes the same number off the member's room total,
      * in one transaction. Optimistic: the write only applies if the mentions are still the count we read, so a mention
-     * arriving meanwhile is never wiped without being subtracted; on a clash it reads again and retries.
+     * arriving meanwhile is never wiped without being subtracted; on a clash it reads again and retries. The chat's
+     * counter, checked in the same transaction, proves the chat is in this room and the seq has been sent.
      */
     async markRead(user: User, input: ChatRef & { seq: number }): Promise<{ lastReadSeq: number }> {
       const at = { roomId: input.roomId, chatId: input.chatId };
@@ -253,6 +260,12 @@ export function chatRepo() {
         try {
           await db.send(new TransactWriteCommand({
             TransactItems: [
+              {
+                ConditionCheck: {
+                  TableName, Key: counterKey(at.chatId), ConditionExpression: "roomId = :r AND lastSeq >= :seq",
+                  ExpressionAttributeValues: { ":r": at.roomId, ":seq": input.seq },
+                },
+              },
               {
                 Update: {
                   TableName, Key: readKey(at, user.userId), UpdateExpression: "SET lastReadSeq = :last, mentions = :zero",
@@ -271,6 +284,7 @@ export function chatRepo() {
           return { lastReadSeq };
         } catch (e) {
           if (!conditionFailed(e)) throw e;
+          if (failedAt(e, 0)) throw new NotFound("Chat not found.");
         }
       }
       throw new Conflict("Your read state kept changing; try again.");
@@ -282,8 +296,7 @@ export function chatRepo() {
      */
     async history(user: User, roomId: string, chatId: string, cursor: Cursor): Promise<{ messages: Message[] }> {
       await member(roomId, user.userId);
-      const { Item: counter } = await db.send(new GetCommand({ TableName, Key: counterKey(chatId) }));
-      if (counter?.roomId !== roomId) throw new NotFound("Chat not found.");
+      await chatInRoom({ roomId, chatId });
       const { before, after, around } = cursor;
       const items = around !== undefined
         ? [...await page(chatId, 0, around - 1, true, PAGE / 2), ...await page(chatId, around, LAST_SEQ, false, PAGE / 2)]

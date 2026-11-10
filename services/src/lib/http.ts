@@ -1,5 +1,5 @@
 import type { APIGatewayProxyStructuredResultV2 } from "aws-lambda";
-import { Conflict, Forbidden, Gone, NotFound, ValidationError } from "../rooms/model.js";
+import { Conflict, Forbidden, Gone, NotFound, ValidationError } from "./errors.js";
 
 /** JSON response for API Gateway HTTP API (payload v2). */
 export function json(statusCode: number, body: unknown): APIGatewayProxyStructuredResultV2 {

@@ -1,9 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { GetCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { docClient, tableName } from "../lib/db.js";
 import { roomsRepo } from "../rooms/repo.js";
-import { Conflict, Forbidden, Gone, NotFound, ValidationError } from "../rooms/model.js";
+import { Conflict, Forbidden, Gone, NotFound, ValidationError } from "../lib/errors.js";
 import { chatRepo } from "./repo.js";
 import { seqKey } from "./model.js";
 
@@ -174,12 +174,34 @@ describe("chat repo on Floci", () => {
     await expect(say(owner, at)).rejects.toBeInstanceOf(Gone);
   });
 
-  it("a chat from another room is NotFound, for sends and history alike", async () => {
+  it("a chat from another room is NotFound, for sends, history, reads and typing alike", async () => {
     const mine = await room();
     const other = await room();
     const elsewhere = { roomId: mine.roomId, chatId: other.chatId };
     await expect(say(mine.owner, elsewhere)).rejects.toBeInstanceOf(NotFound);
     await say(other.owner, other.at, "private");
     await expect(chat.history(mine.owner, mine.roomId, other.chatId, {})).rejects.toBeInstanceOf(NotFound);
+    await expect(chat.markRead(mine.owner, { ...elsewhere, seq: 1 })).rejects.toBeInstanceOf(NotFound);
+    await expect(chat.assertCanPost(mine.owner.userId, elsewhere)).rejects.toBeInstanceOf(NotFound);
+    expect(await item(`ROOM#${mine.roomId}`, `READ#${mine.owner.userId}#${other.chatId}`)).toBeUndefined();
+  });
+
+  it("markRead can't move past the chat's last message", async () => {
+    const { owner, at } = await room();
+    await say(owner, at);
+    await expect(chat.markRead(owner, { ...at, seq: 5 })).rejects.toBeInstanceOf(NotFound);
+  });
+
+  it("history reads the chat's counter consistently, so a chat created a moment ago never 404s", async () => {
+    const { owner, at } = await room();
+    const send = vi.spyOn(docClient(), "send");
+    try {
+      await chat.history(owner, at.roomId, at.chatId, {});
+      const counterRead = send.mock.calls.map(([c]) => c)
+        .find((c) => c instanceof GetCommand && c.input.Key?.sk === "META") as GetCommand;
+      expect(counterRead.input.ConsistentRead).toBe(true);
+    } finally {
+      send.mockRestore();
+    }
   });
 });

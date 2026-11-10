@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   canEdit, deleteMode, excerpt, forReaders, messageText, seqKey, seqNumber, validAttachment, versionKey, type StoredMessage,
 } from "./model.js";
-import { ValidationError } from "../rooms/model.js";
+import { ValidationError } from "../lib/errors.js";
 
 const T0 = Date.parse("2026-11-11T10:00:00Z");
 const min = 60_000;

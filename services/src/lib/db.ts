@@ -23,3 +23,8 @@ export function conditionFailed(e: unknown): boolean {
   return err.name === "ConditionalCheckFailedException"
     || (err.name === "TransactionCanceledException" && !!err.CancellationReasons?.some((r) => r.Code === "ConditionalCheckFailed"));
 }
+
+/** True when a transaction was cancelled because item `index` (in TransactItems order) failed its condition. */
+export function failedAt(e: unknown, index: number): boolean {
+  return (e as { CancellationReasons?: { Code?: string }[] }).CancellationReasons?.[index]?.Code === "ConditionalCheckFailed";
+}
