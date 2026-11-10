@@ -8,6 +8,7 @@ import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
 import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import type { StageConfig } from "./config.js";
 import { addAuth, type Auth } from "./auth.js";
+import { addRooms } from "./rooms.js";
 
 /** Path to a handler file in services/src */
 export const servicePath = (file: string) =>
@@ -48,6 +49,7 @@ export class CoreStack extends Stack {
     this.api = new apigwv2.HttpApi(this, "Api", { apiName: `${prefix}-api` });
     this.auth = addAuth(this);
     this.route("GET", "/health", this.addFunction("health", "health.ts"), { public: true });
+    addRooms(this);
 
     new CfnOutput(this, "ApiUrl", { value: this.api.apiEndpoint });
     new CfnOutput(this, "TableName", { value: this.table.tableName });

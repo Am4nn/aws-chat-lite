@@ -16,3 +16,12 @@ export function chatName(input: unknown): string {
   }
   return name;
 }
+
+/** The caller's role doesn't allow this → 403. */
+export class Forbidden extends Error {}
+/** No such room, or you're not in it (we never reveal which) → 404. */
+export class NotFound extends Error {}
+/** The name or slot is taken → 409. */
+export class Conflict extends Error {}
+/** The invite link expired or was revoked → 410. */
+export class Gone extends Error {}
