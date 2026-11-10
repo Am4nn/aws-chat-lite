@@ -8,16 +8,19 @@ const TABLE = () => process.env.TABLE_NAME!;
 
 /**
  * Where to POST messages back to connected sockets. AWS: https://<domain>/<stage>.
- * Floci (AWS_ENDPOINT_URL set inside its Lambdas): its own endpoint, unless WS_CALLBACK_URL overrides.
+ * Floci (it sets AWS_ENDPOINT_URL inside its Lambdas): the API's own host, <apiId>.execute-api.localhost.floci.io:4566
+ * (its main endpoint answers "Unknown operation" to /@connections). WS_CALLBACK_URL overrides both.
  */
-export function callbackEndpoint(domainName: string, stage: string, env: NodeJS.ProcessEnv = process.env): string {
+export function callbackEndpoint(
+  ctx: { apiId: string; domainName: string; stage: string }, env: NodeJS.ProcessEnv = process.env,
+): string {
   if (env.WS_CALLBACK_URL) return env.WS_CALLBACK_URL;
-  if (env.AWS_ENDPOINT_URL) return `${env.AWS_ENDPOINT_URL.replace(/\/$/, "")}/${stage}`;
-  return `https://${domainName}/${stage}`;
+  if (env.AWS_ENDPOINT_URL) return `http://${ctx.apiId}.execute-api.localhost.floci.io:4566/${ctx.stage}`;
+  return `https://${ctx.domainName}/${ctx.stage}`;
 }
 
 export async function handler(event: APIGatewayProxyWebsocketEventV2): Promise<APIGatewayProxyResultV2> {
-  const { routeKey, connectionId, domainName, stage } = event.requestContext;
+  const { routeKey, connectionId } = event.requestContext;
   if (routeKey === "$connect") {
     await db.send(new PutCommand({ TableName: TABLE(), Item: { pk: "CONN", sk: connectionId } }));
     return { statusCode: 200 };
@@ -28,7 +31,7 @@ export async function handler(event: APIGatewayProxyWebsocketEventV2): Promise<A
   }
   // $default: {"say": "..."} → broadcast {"echo", "from"} to every connection
   const say = JSON.parse(event.body ?? "{}").say ?? "";
-  const api = new ApiGatewayManagementApiClient({ endpoint: callbackEndpoint(domainName, stage) });
+  const api = new ApiGatewayManagementApiClient({ endpoint: callbackEndpoint(event.requestContext) });
   const { Items = [] } = await db.send(new QueryCommand({
     TableName: TABLE(), KeyConditionExpression: "pk = :p", ExpressionAttributeValues: { ":p": "CONN" },
   }));
