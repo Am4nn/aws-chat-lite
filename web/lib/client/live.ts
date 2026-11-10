@@ -1,7 +1,7 @@
 import type { LiveEvent } from "../types";
 
 export type ClientEvent = LiveEvent | { type: "reconnected" };
-type Status = "connecting" | "open" | "closed";
+type Status = "connecting" | "open" | "reconnecting" | "closed";
 type Ticket = { ticket: string; url: string };
 type Pending = { resolve: (data: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> };
 
@@ -16,6 +16,7 @@ export class LiveSocket {
   status: Status = "closed";
   private ws?: WebSocket;
   private attempt = 0;
+  private everOpened = false;
   private wanted = false;
   private generation = 0;
   private retryTimer?: ReturnType<typeof setTimeout>;
@@ -80,7 +81,7 @@ export class LiveSocket {
 
   // A stop() or restart bumps the generation, so a connect still awaiting its ticket must not open a socket.
   private async connect(gen: number) {
-    this.setStatus("connecting");
+    this.setStatus(this.everOpened ? "reconnecting" : "connecting");
     let ticket: Ticket;
     try {
       ticket = await this.opts.getTicket();
@@ -93,6 +94,7 @@ export class LiveSocket {
     this.ws = ws;
     ws.onopen = () => {
       this.attempt = 0;
+      this.everOpened = true;
       this.setStatus("open");
       this.pingTimer = setInterval(() => this.request("ping", {}).catch(() => {}), PING_EVERY_MS);
       this.emit({ type: "reconnected" });
@@ -124,7 +126,7 @@ export class LiveSocket {
   }
 
   private scheduleReconnect(gen: number) {
-    this.setStatus("connecting");
+    this.setStatus(this.everOpened ? "reconnecting" : "connecting");
     this.retryTimer = setTimeout(() => void this.connect(gen), backoffMs(this.attempt++, Math.random));
   }
 

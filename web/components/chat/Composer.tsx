@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ArrowUp, Paperclip, Pencil, Reply, Users, X } from "lucide-react";
 import { mentionQuery, type Mentionable } from "@/lib/client/mentions";
@@ -26,6 +26,7 @@ type Props = {
 
 export function Composer({ members, meId, mode, uploads, onModeChange, onSend, onSaveEdit, onEditLast, onTyping }: Props) {
   const reduced = useReducedMotion();
+  const listId = useId();
   const area = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const lastTyping = useRef(0);
@@ -144,6 +145,7 @@ export function Composer({ members, meId, mode, uploads, onModeChange, onSend, o
       <AnimatePresence>
         {options.length > 0 && (
           <motion.ul
+            id={listId}
             role="listbox"
             aria-label="Mention someone"
             initial={{ opacity: 0, y: reduced ? 0 : 6 }}
@@ -155,6 +157,7 @@ export function Composer({ members, meId, mode, uploads, onModeChange, onSend, o
             {options.map((name, i) => (
               <li
                 key={name}
+                id={`${listId}-${i}`}
                 role="option"
                 aria-selected={i === highlight}
                 onMouseDown={(e) => { e.preventDefault(); insertMention(name); }}
@@ -226,6 +229,11 @@ export function Composer({ members, meId, mode, uploads, onModeChange, onSend, o
             id="composer"
             ref={area}
             rows={1}
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={options.length > 0}
+            aria-controls={options.length ? listId : undefined}
+            aria-activedescendant={options.length ? `${listId}-${highlight}` : undefined}
             value={text}
             placeholder={editing ? "Edit your message" : "Message"}
             onChange={(e) => change(e.target.value, e.target.selectionStart)}

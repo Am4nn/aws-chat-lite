@@ -8,7 +8,7 @@ import { dur, instant } from "@/lib/motion";
 import { Spinner } from "@/components/ui/Spinner";
 
 const SHOWN_MS = 5000;
-// A socket that reconnects within this long never shows a notice, so a blip doesn't flicker the line.
+// A socket that connects or reconnects within this long never shows a notice, so a blip doesn't flicker the line.
 const QUIET_MS = 1500;
 
 type Typist = { userId: string; username: string; until: number };
@@ -21,7 +21,7 @@ export function TypingLine({ roomId, chatId, meId }: { roomId: string; chatId: s
   const reduced = useReducedMotion();
   const [typists, setTypists] = useState<Typist[]>([]);
   const status = useLiveStatus();
-  const [offline, setOffline] = useState(false);
+  const [shownStatus, setShownStatus] = useState<typeof status>("open");
 
   useLiveEvent("typing", (e) => {
     if (e.roomId !== roomId || e.chatId !== chatId || e.userId === meId) return;
@@ -41,14 +41,15 @@ export function TypingLine({ roomId, chatId, meId }: { roomId: string; chatId: s
 
   useEffect(() => {
     if (status === "open") {
-      setOffline(false);
+      setShownStatus(status);
       return;
     }
-    const timer = setTimeout(() => setOffline(true), QUIET_MS);
+    const timer = setTimeout(() => setShownStatus(status), QUIET_MS);
     return () => clearTimeout(timer);
   }, [status]);
 
-  const text = offline ? "Reconnecting…" : typingText(typists.map((t) => t.username));
+  const notice = shownStatus === "connecting" ? "Connecting…" : shownStatus === "reconnecting" ? "Reconnecting…" : "";
+  const text = notice || typingText(typists.map((t) => t.username));
   return (
     <div className="relative mx-auto h-6 w-full max-w-[836px] px-7">
       <AnimatePresence initial={false}>
@@ -61,7 +62,7 @@ export function TypingLine({ roomId, chatId, meId }: { roomId: string; chatId: s
             transition={reduced ? instant : { duration: dur.fast }}
             className="absolute inset-x-7 top-0.5 flex items-center gap-1.5 truncate text-[12.5px] text-text-3"
           >
-            {offline && <Spinner />}
+            {notice && <Spinner />}
             {text}
           </motion.p>
         )}

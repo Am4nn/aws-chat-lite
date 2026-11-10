@@ -17,15 +17,15 @@ export function fileSize(bytes: number): string {
   return `${Number(value.toFixed(1))} ${unit}`;
 }
 
+/** Where the browser leaves its time zone for the server's next render. */
+export const TZ_COOKIE = "tz";
+
 /**
  * Times render on the server and again in the browser, so both format with the reader's zone (passed in) and a fixed
  * locale. Newer ICU builds put a narrow no-break space before AM/PM; normalising it keeps Node and the browser in step.
  */
-/** Where the browser leaves its time zone for the server's next render. */
-export const TZ_COOKIE = "tz";
-
 export const clockTime = (iso: string, timeZone: string) =>
-  new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone }).replace(/ /g, " ");
+  new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone }).replace(/\u202f/g, " ");
 
 export function dayKey(iso: string | number, timeZone: string): string {
   const parts = new Intl.DateTimeFormat("en-US", { year: "numeric", month: "2-digit", day: "2-digit", timeZone }).formatToParts(new Date(iso));

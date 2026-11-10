@@ -5,6 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ArrowDown } from "lucide-react";
 import { dayKey, dayLabel } from "@/lib/client/format";
 import { startsGroup } from "@/lib/client/messageRules";
+import { pickAnchor } from "@/lib/client/scrollAnchor";
 import { dur, easeOut, instant } from "@/lib/motion";
 import { Spinner } from "@/components/ui/Spinner";
 import { MessageRow, type Row, type RowActions, type RowContext } from "./MessageRow";
@@ -14,34 +15,61 @@ const PREFETCH_PX = 600;
 
 export type Jump = { to: number | "bottom"; n: number };
 
+function firstVisibleRow(scroller: HTMLElement) {
+  const rows = [...scroller.querySelectorAll<HTMLElement>("[data-key]")].map((row) => {
+    const box = row.getBoundingClientRect();
+    return { key: row.dataset.key!, top: box.top, bottom: box.bottom };
+  });
+  return pickAnchor(rows, scroller.getBoundingClientRect().top);
+}
+
 type Props = {
   rows: Row[]; ctx: RowContext; actions: RowActions; fresh: Set<string>; editingKey?: string;
-  hasOlder: boolean; hasNewer: boolean; loadingOlder: boolean; jump: Jump | null; unseen: number; intro: ReactNode;
+  hasOlder: boolean; hasNewer: boolean; loadingOlder: boolean; olderFailed: boolean; jump: Jump | null; unseen: number;
+  intro: ReactNode;
   onLoadOlder: () => void; onLoadNewer: () => void; onPinnedChange: (pinned: boolean) => void; onShowLatest: () => void;
 };
 
 /**
  * The scroller is `flex-col-reverse`, so its scroll position counts from the bottom: it opens at the newest message
- * before any script runs, stays pinned there as messages arrive, and doesn't move when older pages load above. The
- * one case it gets wrong (messages added below while you read history) is corrected in a layout effect.
+ * before any script runs and stays pinned there as messages arrive. Away from the bottom, any height change (a new
+ * message, a reaction row, a delete, the composer growing) would move what you're reading, so the first visible row
+ * and its offset are recorded on every scroll and restored whenever the content or the viewport resizes. Browser
+ * scroll anchoring is off so the two never both correct the same change.
  */
 export function MessageList(p: Props) {
   const reduced = useReducedMotion();
   const scroller = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
-  const last = useRef({ key: p.rows.at(-1)?.key, height: 0, detached: p.hasNewer });
+  const anchor = useRef<{ key: string; top: number }>(undefined);
+  // Read by the resize observer, which runs after layout effects: a ref updated after paint still holds the value from
+  // before this commit, so pages loaded forward from a jump stay put even on the render that ends detachment.
+  const detached = useRef(p.hasNewer);
+  useEffect(() => { detached.current = p.hasNewer; });
   const [activeKey, setActiveKey] = useState<string>();
   const [flash, setFlash] = useState<{ seq: number; n: number }>();
   const toggleActive = useCallback((key: string) => setActiveKey((a) => (a === key ? undefined : key)), []);
 
+  useEffect(() => {
+    const el = scroller.current!;
+    const hold = () => {
+      const a = anchor.current;
+      const row = a && el.querySelector(`[data-key="${CSS.escape(a.key)}"]`);
+      if ((!pinned.current || detached.current) && a && row) {
+        el.scrollTop += row.getBoundingClientRect().top - el.getBoundingClientRect().top - a.top;
+      }
+      anchor.current = firstVisibleRow(el);
+    };
+    const observer = new ResizeObserver(hold);
+    observer.observe(el);
+    observer.observe(content.current!);
+    return () => observer.disconnect();
+  }, []);
+
   useLayoutEffect(() => {
     const el = scroller.current!;
-    const key = p.rows.at(-1)?.key;
-    if (key !== last.current.key && (!pinned.current || last.current.detached)) {
-      el.scrollTop -= el.scrollHeight - last.current.height;
-    }
-    last.current = { key, height: el.scrollHeight, detached: p.hasNewer };
-    if (p.hasOlder && !p.loadingOlder && el.scrollHeight <= el.clientHeight) p.onLoadOlder();
+    if (p.hasOlder && !p.loadingOlder && !p.olderFailed && el.scrollHeight <= el.clientHeight) p.onLoadOlder();
   });
 
   useEffect(() => {
@@ -58,6 +86,7 @@ export function MessageList(p: Props) {
 
   function onScroll() {
     const el = scroller.current!;
+    anchor.current = firstVisibleRow(el);
     const fromBottom = -el.scrollTop;
     const fromTop = el.scrollHeight - el.clientHeight - fromBottom;
     const isPinned = fromBottom < PINNED_PX;
@@ -65,17 +94,27 @@ export function MessageList(p: Props) {
       pinned.current = isPinned;
       p.onPinnedChange(isPinned);
     }
-    if (fromTop < PREFETCH_PX && p.hasOlder && !p.loadingOlder) p.onLoadOlder();
+    if (fromTop < PREFETCH_PX && p.hasOlder && !p.loadingOlder && !p.olderFailed) p.onLoadOlder();
     if (fromBottom < PREFETCH_PX && p.hasNewer) p.onLoadNewer();
   }
 
   return (
     <div className="relative min-h-0 flex-1">
       <div ref={scroller} onScroll={onScroll} className="flex h-full flex-col-reverse overflow-y-auto [overflow-anchor:none]">
-        <div className="mx-auto w-full max-w-[836px] px-4 pb-2 pt-6 sm:px-7">
-          {p.hasOlder
-            ? <div className="grid h-10 place-items-center text-text-3">{p.loadingOlder && <Spinner />}</div>
-            : p.intro}
+        <div ref={content} className="mx-auto w-full max-w-[836px] px-4 pb-2 pt-6 sm:px-7">
+          {!p.hasOlder
+            ? p.intro
+            : (
+              <div className="grid h-10 place-items-center text-[12.5px] text-text-3">
+                {p.olderFailed
+                  ? (
+                    <button onClick={p.onLoadOlder} className="rounded-md px-2 py-1 transition-colors hover:bg-surface-2 hover:text-text">
+                      Couldn&apos;t load older messages · <span className="text-text-2 underline underline-offset-2">Retry</span>
+                    </button>
+                  )
+                  : p.loadingOlder && <Spinner />}
+              </div>
+            )}
           {p.rows.map((row, i) => {
             const prev = p.rows[i - 1]?.message;
             const m = row.message;
@@ -84,7 +123,9 @@ export function MessageList(p: Props) {
               <Fragment key={row.key}>
                 {newDay && <DayDivider label={dayLabel(m.createdAt, p.ctx.now, p.ctx.timeZone)} />}
                 <MessageRow
-                  row={row}
+                  rowKey={row.key}
+                  message={m}
+                  status={row.status}
                   ctx={p.ctx}
                   actions={p.actions}
                   groupStart={newDay || startsGroup(prev, m)}

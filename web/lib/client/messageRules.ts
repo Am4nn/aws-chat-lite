@@ -1,4 +1,4 @@
-import { isAdmin, type Message, type Role } from "../types";
+import { isAdmin, type Message, type Reaction, type Role } from "../types";
 
 /** The server's rules, mirrored so the UI only offers what will succeed. The server remains the real check. */
 const EDIT_WINDOW_MS = 15 * 60_000;
@@ -20,3 +20,16 @@ export function canEditLast(messages: Message[], me: string, now: number): Messa
 /** Consecutive messages from one person share a header until they pause for five minutes. */
 export const startsGroup = (prev: Message | undefined, m: Message) =>
   !prev || prev.authorId !== m.authorId || Date.parse(m.createdAt) - Date.parse(prev.createdAt) > GROUP_GAP_MS;
+
+/** One person's reaction added or taken away. Applied to the newest copy of a message, so others' reactions survive. */
+export function withReaction(m: Message, reaction: Reaction, userId: string, on: boolean): Message {
+  const others = (m.reactions[reaction] ?? []).filter((u) => u !== userId);
+  const users = on ? [...others, userId] : others;
+  const { [reaction]: _old, ...rest } = m.reactions;
+  return { ...m, reactions: users.length ? { ...rest, [reaction]: users } : rest };
+}
+
+export const REACTION_NAMES: Record<Reaction, string> = { thumbs: "thumbs up", heart: "heart", joy: "laughing", tada: "party", eyes: "eyes", check: "check" };
+
+export const reactionLabel = (reaction: Reaction, count: number, mine: boolean) =>
+  `${REACTION_NAMES[reaction]}, ${count}${mine ? ", you" : ""}`;

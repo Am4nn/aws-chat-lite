@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "../types";
-import { canDelete, canEdit, canEditLast, startsGroup } from "./messageRules";
+import { canDelete, canEdit, canEditLast, reactionLabel, startsGroup, withReaction } from "./messageRules";
 
 const NOW = Date.parse("2026-11-11T12:00:00Z");
 const ago = (min: number) => new Date(NOW - min * 60_000).toISOString();
@@ -47,5 +47,21 @@ describe("startsGroup", () => {
     expect(startsGroup(msg(1, { createdAt: ago(3) }), msg(2, { createdAt: ago(1) }))).toBe(false);
     expect(startsGroup(msg(1, { createdAt: ago(9) }), msg(2, { createdAt: ago(1) }))).toBe(true);
     expect(startsGroup(msg(1, { authorId: "bob" }), msg(2))).toBe(true);
+  });
+});
+
+describe("withReaction", () => {
+  it("adds or removes one person's reaction without touching the others", () => {
+    const m = msg(1, { reactions: { thumbs: ["bob"] } });
+    expect(withReaction(m, "thumbs", "me", true).reactions).toEqual({ thumbs: ["bob", "me"] });
+    expect(withReaction(m, "thumbs", "bob", false).reactions).toEqual({});
+    expect(withReaction(withReaction(m, "heart", "me", true), "heart", "me", true).reactions.heart).toEqual(["me"]);
+  });
+});
+
+describe("reactionLabel", () => {
+  it("names the reaction, the count and whether I'm in it", () => {
+    expect(reactionLabel("thumbs", 1, true)).toBe("thumbs up, 1, you");
+    expect(reactionLabel("tada", 3, false)).toBe("party, 3");
   });
 });

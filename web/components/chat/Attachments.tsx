@@ -26,8 +26,8 @@ export function MessageAttachments({ attachments }: { attachments: Attachment[] 
 }
 
 /**
- * Attachments carry no dimensions, so the preview reserves a fixed 4:3 box and the image fills it: nothing below moves
- * when it loads. It fades in once decoded; a cached image may finish before hydration, hence the `complete` check.
+ * Attachments carry no dimensions, so the preview reserves a fixed 4:3 box and the whole image fits inside it, never
+ * cropped: nothing below moves when it loads. It fades in once decoded; a cached image may finish before hydration, hence the `complete` check.
  */
 function ImagePreview({ attachment: a }: { attachment: Attachment }) {
   const img = useRef<HTMLImageElement>(null);
@@ -50,7 +50,7 @@ function ImagePreview({ attachment: a }: { attachment: Attachment }) {
           width={PREVIEW.width}
           height={PREVIEW.height}
           onLoad={() => setLoaded(true)}
-          className={`size-full object-cover transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
+          className={`size-full object-contain transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
         />
       )}
     </a>

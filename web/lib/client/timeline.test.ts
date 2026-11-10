@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "../types";
-import { addPending, applyMessages, dropPending, failPending, newestSeq, type Timeline } from "./timeline";
+import { addPending, applyMessages, dropPending, failPending, newestSeq, updateMessage, type Timeline } from "./timeline";
 
 const msg = (seq: number, extra: Partial<Message> = {}): Message => ({
   roomId: "r", chatId: "c", seq, authorId: "u", authorName: "a", text: `m${seq}`, createdAt: "t",
@@ -32,6 +32,11 @@ describe("timeline", () => {
   it("drops a pending entry by clientId", () => {
     const t = addPending(addPending(empty, { clientId: "a", text: "x", createdAt: "t", attachments: [] }), { clientId: "b", text: "y", createdAt: "t", attachments: [] });
     expect(dropPending(t, "a").pending.map((p) => p.clientId)).toEqual(["b"]);
+  });
+  it("updates one message from its newest copy, and leaves the timeline alone when the seq isn't loaded", () => {
+    const t = applyMessages(empty, [msg(1), msg(2)]);
+    expect(updateMessage(t, 2, (m) => ({ ...m, text: "x" })).messages.map((m) => m.text)).toEqual(["m1", "x"]);
+    expect(updateMessage(t, 9, (m) => ({ ...m, text: "x" }))).toBe(t);
   });
   it("reports the newest seq, 0 when empty", () => {
     expect(newestSeq(empty)).toBe(0);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { errorText } from "@/lib/client/bff";
 import { isInlineImage, screenFiles, uploadFile } from "@/lib/client/uploads";
 import type { Attachment } from "@/lib/types";
@@ -12,6 +12,13 @@ export type Upload = { id: string; file: File; type: string; previewUrl?: string
 export function useUploads(roomId: string) {
   const toast = useToast();
   const [uploads, setUploads] = useState<Upload[]>([]);
+  const current = useRef(uploads);
+  useEffect(() => { current.current = uploads; });
+  // Leaving the chat with files still attached: stop their uploads and free their previews.
+  useEffect(() => () => current.current.forEach((u) => {
+    u.abort.abort();
+    if (u.previewUrl) URL.revokeObjectURL(u.previewUrl);
+  }), []);
 
   function remove(id: string) {
     const u = uploads.find((x) => x.id === id);

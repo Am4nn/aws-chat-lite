@@ -16,7 +16,7 @@ import { MemberList } from "@/components/rooms/MemberList";
 import { InvitePanel } from "@/components/rooms/InvitePanel";
 import { inviteUrl } from "@/components/rooms/invite";
 import { MentionSound } from "@/components/chat/MentionSound";
-import { LiveProvider } from "@/lib/client/LiveProvider";
+import { useLive } from "@/lib/client/LiveProvider";
 import { Header } from "./Header";
 import { Panel } from "./Panel";
 import { Sidebar } from "./Sidebar";
@@ -33,6 +33,14 @@ export function RoomShell({ view, rooms, me, children }: { view: RoomView; rooms
   const [panelOpen, setPanelOpen] = useState(true);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
+  const live = useLive();
+  const roomId = view.room.roomId;
+
+  // The socket outlives room switches, so a room joined since it connected is subscribed to here; a socket that
+  // isn't open yet subscribes to every room when it connects.
+  useEffect(() => {
+    if (live.status === "open") live.request("subscribe", {}).catch(() => {});
+  }, [live, roomId]);
 
   const index = view.chats.findIndex((c) => c.chatId === chatId);
   const prevIndex = useRef(index);
@@ -86,7 +94,7 @@ export function RoomShell({ view, rooms, me, children }: { view: RoomView; rooms
   const activeChat = view.chats.find((c) => c.chatId === chatId);
 
   return (
-    <LiveProvider>
+    <>
       <MentionSound meId={me.userId} />
       <div className="flex h-dvh overflow-hidden bg-ink">
         <Sidebar
@@ -119,6 +127,6 @@ export function RoomShell({ view, rooms, me, children }: { view: RoomView; rooms
       <Modal open={dialog === "room"} onClose={() => setDialog(null)} title="New room">
         <CreateRoom onDone={() => setDialog(null)} />
       </Modal>
-    </LiveProvider>
+    </>
   );
 }

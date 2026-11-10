@@ -58,6 +58,19 @@ describe("LiveSocket", () => {
     await assertion;
   });
 
+  it("says connecting until the first open and reconnecting after a drop", async () => {
+    const live = make();
+    live.start();
+    expect(live.status).toBe("connecting");
+    await vi.advanceTimersByTimeAsync(0);
+    FakeSocket.all[0].open();
+    expect(live.status).toBe("open");
+    FakeSocket.all[0].close();
+    expect(live.status).toBe("reconnecting");
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(live.status).toBe("reconnecting");
+  });
+
   it("reconnects with a fresh ticket and emits reconnected", async () => {
     const live = await openSocket();
     const onReconnected = vi.fn();

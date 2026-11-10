@@ -35,3 +35,10 @@ export const dropPending = (t: Timeline, clientId: string): Timeline => ({
 });
 
 export const newestSeq = (t: Timeline) => t.messages.at(-1)?.seq ?? 0;
+
+/** Changes the loaded copy of message `seq`, whatever has happened to it since; unloaded messages are left alone. */
+export function updateMessage(t: Timeline, seq: number, change: (m: Message) => Message): Timeline {
+  const index = t.messages.findIndex((m) => m.seq === seq);
+  if (index < 0) return t;
+  return { ...t, messages: t.messages.with(index, change(t.messages[index])) };
+}
