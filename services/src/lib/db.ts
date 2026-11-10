@@ -16,3 +16,10 @@ export const tableName = () => {
   if (!t) throw new Error("TABLE_NAME not set");
   return t;
 };
+
+/** True when a write failed its condition (single write or one item of a transaction). */
+export function conditionFailed(e: unknown): boolean {
+  const err = e as { name?: string; CancellationReasons?: { Code?: string }[] };
+  return err.name === "ConditionalCheckFailedException"
+    || (err.name === "TransactionCanceledException" && !!err.CancellationReasons?.some((r) => r.Code === "ConditionalCheckFailed"));
+}

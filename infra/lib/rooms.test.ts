@@ -20,7 +20,12 @@ const ROUTES = [
 ];
 
 describe("rooms API", () => {
-  const routes = () => Object.values(template().findResources("AWS::ApiGatewayV2::Route")).map((r: any) => r.Properties);
+  const routes = () => {
+    const [httpApi] = Object.keys(template().findResources("AWS::ApiGatewayV2::Api", { Properties: { ProtocolType: "HTTP" } }));
+    return Object.values(template().findResources("AWS::ApiGatewayV2::Route"))
+      .map((r: any) => r.Properties)
+      .filter((p) => p.ApiId.Ref === httpApi);
+  };
 
   it("has every route", () => {
     const keys = routes().map((p) => p.RouteKey);
@@ -49,7 +54,7 @@ describe("rooms API", () => {
       .map((f: any) => f.Properties.FunctionName);
   };
 
-  it("only the rooms Lambda gets table access (the public health check and sign-up trigger get none)", () => {
-    expect(tableWriters()).toEqual(["cl-local-rooms"]);
+  it("only the rooms and live Lambdas get table access (the public health check and sign-up trigger get none)", () => {
+    expect(tableWriters().sort()).toEqual(["cl-local-live", "cl-local-rooms"]);
   });
 });

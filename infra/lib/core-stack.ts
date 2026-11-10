@@ -9,6 +9,7 @@ import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations
 import type { StageConfig } from "./config.js";
 import { addAuth, type Auth } from "./auth.js";
 import { addRooms } from "./rooms.js";
+import { addLive } from "./live.js";
 
 /** Path to a handler file in services/src */
 export const servicePath = (file: string) =>
@@ -24,6 +25,9 @@ export class CoreStack extends Stack {
   readonly api: apigwv2.HttpApi;
   readonly stageConfig: StageConfig;
   readonly auth: Auth;
+  readonly live: ReturnType<typeof addLive>;
+  /** Where browsers open the live socket. */
+  readonly wsUrl: string;
 
   constructor(scope: Construct, id: string, props: CoreStackProps) {
     super(scope, id, props);
@@ -50,8 +54,12 @@ export class CoreStack extends Stack {
     this.auth = addAuth(this);
     this.route("GET", "/health", this.addFunction("health", "health.ts"), { public: true });
     addRooms(this);
+    this.live = addLive(this);
+    this.allowBroadcast(this.live.liveFn);
+    this.wsUrl = props.config.isLocal ? `ws://${this.flociWsEndpoint()}` : this.live.stage.url;
 
     new CfnOutput(this, "ApiUrl", { value: this.api.apiEndpoint });
+    new CfnOutput(this, "WsUrl", { value: this.wsUrl });
     new CfnOutput(this, "TableName", { value: this.table.tableName });
   }
 
@@ -63,6 +71,20 @@ export class CoreStack extends Stack {
       integration: new HttpLambdaIntegration(`Int-${method}-${path}`, fn),
       authorizer: opts.public ? undefined : this.auth.authorizer,
     });
+  }
+
+  /** Lets `fn` post to open sockets (API Gateway's management API). */
+  allowBroadcast(fn: NodejsFunction) {
+    this.live.stage.grantManagementApiAccess(fn);
+    fn.addEnvironment("WS_CALLBACK_URL", this.stageConfig.isLocal ? `http://${this.flociWsEndpoint()}` : this.live.stage.callbackUrl);
+  }
+
+  /**
+   * Floci serves each WebSocket API, sockets and management calls alike, on its own host; the amazonaws.com URLs
+   * CloudFormation reports for it don't resolve locally.
+   */
+  private flociWsEndpoint() {
+    return `${this.live.wsApi.apiId}.execute-api.localhost.floci.io:4566/${this.live.stage.stageName}`;
   }
 
   /** A Lambda from services/src with STAGE and TABLE_NAME set. Table read/write is opt-in, so each function gets least privilege. */

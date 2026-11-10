@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   DeleteCommand, GetCommand, PutCommand, QueryCommand, TransactWriteCommand, UpdateCommand, type TransactWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
-import { docClient, tableName } from "../lib/db.js";
+import { conditionFailed, docClient, tableName } from "../lib/db.js";
 import { can, type Action, type Role } from "./access.js";
 import { chatName, roomName, Conflict, Forbidden, Gone, NotFound, ValidationError } from "./model.js";
 import { INVITE_TTL_SEC, inviteState, newInviteCode } from "./invites.js";
@@ -21,13 +21,6 @@ const roomKey = (roomId: string) => `ROOM#${roomId}`;
 const memberKey = (roomId: string, userId: string) => ({ pk: roomKey(roomId), sk: `MEMBER#${userId}` });
 const roomInviteKey = (roomId: string) => ({ pk: roomKey(roomId), sk: "INVITE" });
 const inviteKey = (code: string) => ({ pk: `INVITE#${code}`, sk: "META" });
-
-/** True when a write failed its condition (single write or one item of a transaction). */
-function conditionFailed(e: unknown): boolean {
-  const err = e as { name?: string; CancellationReasons?: { Code?: string }[] };
-  return err.name === "ConditionalCheckFailedException"
-    || (err.name === "TransactionCanceledException" && !!err.CancellationReasons?.some((r) => r.Code === "ConditionalCheckFailed"));
-}
 
 /** Member item. gsi1 lists a user's rooms in join order; the copied room name saves a read per room in that list. */
 function memberItem(roomId: string, roomName: string, user: User, role: Role, at: string) {
