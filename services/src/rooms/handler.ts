@@ -46,7 +46,8 @@ export function makeHandler(repo: RoomsRepo, notifyRoom: (roomId: string, alsoUs
         case "PATCH /rooms/{roomId}/members/{userId}":
           return changed(200, await repo.setRole(params.roomId!, subFromEvent(event), params.userId!, body.role), params.roomId!);
         case "DELETE /rooms/{roomId}/members/{userId}":
-          return changed(200, await repo.removeMember(params.roomId!, subFromEvent(event), params.userId!), params.roomId!);
+          // Like leaving: the room fan-out no longer reaches the removed member, so their sockets are told directly.
+          return changed(200, await repo.removeMember(params.roomId!, subFromEvent(event), params.userId!), params.roomId!, params.userId!);
         case "POST /rooms/{roomId}/leave":
           // The room fan-out no longer reaches someone who left, so their other tabs are told directly.
           return changed(200, await repo.leaveRoom(params.roomId!, subFromEvent(event)), params.roomId!, subFromEvent(event));

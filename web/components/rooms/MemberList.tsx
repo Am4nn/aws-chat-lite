@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { MoreHorizontal } from "lucide-react";
+import { lastSeenText } from "@/lib/client/badges";
 import { bff, errorText } from "@/lib/client/bff";
 import { useClickOutside } from "@/lib/client/useClickOutside";
 import { dur, easeOut, spring } from "@/lib/motion";
@@ -12,6 +13,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { useToast } from "@/components/overlays/Toast";
 
 const ROLE_ORDER: Record<Role, number> = { owner: 0, admin: 1, member: 2 };
+const CLOCK_TICK_MS = 60_000;
 
 function RoleBadge({ role }: { role: Role }) {
   return (
@@ -45,6 +47,13 @@ export function MemberList({ roomId, members, myRole, myUserId }: { roomId: stri
   const router = useRouter();
   const toast = useToast();
   const [openFor, setOpenFor] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  // The server rendered "last seen" with its own clock, so the browser's takes over at once, then every minute.
+  useEffect(() => {
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), CLOCK_TICK_MS);
+    return () => clearInterval(timer);
+  }, []);
   const sorted = [...members].sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || a.username.localeCompare(b.username));
 
   async function change(m: Member, action: "promote" | "demote" | "remove") {
@@ -79,8 +88,13 @@ export function MemberList({ roomId, members, myRole, myUserId }: { roomId: stri
               transition={spring.glide}
               className="relative flex h-10 items-center gap-2.5 rounded-[10px] px-2 text-[13px] hover:bg-surface-2"
             >
-              <Avatar name={m.username} />
-              <span className="truncate">{m.username}{m.userId === myUserId && <span className="text-text-3"> (you)</span>}</span>
+              <Avatar name={m.username} online={m.online} />
+              <span className="flex min-w-0 flex-col">
+                <span className="truncate leading-4">{m.username}{m.userId === myUserId && <span className="text-text-3"> (you)</span>}{m.online && <span className="sr-only">, online</span>}</span>
+                {!m.online && m.lastSeen && (
+                  <span suppressHydrationWarning className="truncate font-mono text-[11px] leading-4 text-text-3">{lastSeenText(m.lastSeen, now)}</span>
+                )}
+              </span>
               <span className="ml-auto"><RoleBadge role={m.role} /></span>
               {hasActions && (
                 <MemberMenu open={openFor === m.userId} onToggle={(o) => setOpenFor(o ? m.userId : null)} name={m.username}>

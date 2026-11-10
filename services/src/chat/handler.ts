@@ -33,7 +33,7 @@ export function makeHandler(deps: Deps) {
     if (body === null) return json(400, { error: "Body must be JSON." });
     try {
       switch (event.routeKey) {
-        case "POST /ws/ticket":
+        case "POST /live/ticket":
           return json(200, { ...(await deps.issueTicket(callerFromEvent(event))), url: process.env.WS_URL });
         case "GET /rooms/{roomId}/chats/{chatId}/messages":
           return json(200, await deps.history(callerFromEvent(event), params.roomId!, params.chatId!, {

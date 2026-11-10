@@ -161,6 +161,20 @@ describe("chat repo on Floci", () => {
     expect(await item(`ROOM#${roomId}`, `MEMBER#${b.userId}`)).toMatchObject({ mentions: 0 });
   });
 
+  it("an edit parses mentions again: the stored message follows the text, and only someone newly named is counted", async () => {
+    const { owner, members: [b, c], roomId, chatId, at } = await room("bee", "cee");
+    const m = await say(owner, at, "ping @bee");
+    const edited = await chat.edit(owner, { ...at, seq: m.seq, text: "ping @cee" });
+    expect(edited).toMatchObject({ mentions: [c.userId], everyone: false });
+    expect(await item(`CHAT#${chatId}`, seqKey(m.seq))).toMatchObject({ mentions: [c.userId], everyone: false });
+    expect(await item(`ROOM#${roomId}`, `READ#${c.userId}#${chatId}`)).toMatchObject({ mentions: 1 });
+    // Counted when it was sent; not taken back.
+    expect(await item(`ROOM#${roomId}`, `READ#${b.userId}#${chatId}`)).toMatchObject({ mentions: 1 });
+
+    await chat.edit(owner, { ...at, seq: m.seq, text: "ping @cee again" });
+    expect(await item(`ROOM#${roomId}`, `MEMBER#${c.userId}`)).toMatchObject({ mentions: 1 });
+  });
+
   it("@everyone counts for every member except the sender", async () => {
     const { owner, members: [b, c], roomId, at } = await room("bee", "cee");
     await say(b, at, "@everyone standup");

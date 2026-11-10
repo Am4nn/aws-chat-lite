@@ -85,6 +85,12 @@ describe("rooms handler", () => {
     expect(notify).toHaveBeenCalledWith("r1", "u1");
   });
 
+  it("removing someone also tells the removed member's sockets, so their open room can send them home", async () => {
+    const notify = vi.fn(async (_roomId: string, _alsoUserId?: string) => {});
+    await makeHandler(fakeRepo(), notify)(ev("DELETE /rooms/{roomId}/members/{userId}", { params: { roomId: "r1", userId: "u2" } }));
+    expect(notify).toHaveBeenCalledWith("r1", "u2");
+  });
+
   it("a failed broadcast is logged, and the write it follows still succeeds", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const notify = vi.fn(async () => { throw new Error("socket API down"); });

@@ -3,6 +3,7 @@ import type { Message } from "../types";
 export type PendingMessage = {
   clientId: string;
   text: string;
+  createdAt: string;
   replyTo?: Message["replyTo"];
   attachments: Message["attachments"];
   failed?: boolean;
@@ -28,4 +29,16 @@ export const failPending = (t: Timeline, clientId: string): Timeline => ({
   pending: t.pending.map((p) => (p.clientId === clientId ? { ...p, failed: true } : p)),
 });
 
+export const dropPending = (t: Timeline, clientId: string): Timeline => ({
+  ...t,
+  pending: t.pending.filter((p) => p.clientId !== clientId),
+});
+
 export const newestSeq = (t: Timeline) => t.messages.at(-1)?.seq ?? 0;
+
+/** Changes the loaded copy of message `seq`, whatever has happened to it since; unloaded messages are left alone. */
+export function updateMessage(t: Timeline, seq: number, change: (m: Message) => Message): Timeline {
+  const index = t.messages.findIndex((m) => m.seq === seq);
+  if (index < 0) return t;
+  return { ...t, messages: t.messages.with(index, change(t.messages[index])) };
+}

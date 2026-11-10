@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseMentions } from "./mentions";
+import { mentionQuery, parseMentions } from "./mentions";
 
 const members = [{ userId: "u1", username: "alice" }, { userId: "u2", username: "bob" }];
 
@@ -18,5 +18,17 @@ describe("parseMentions", () => {
   });
   it("sets everyone", () => {
     expect(parseMentions("@everyone look", members)).toEqual({ mentions: [], everyone: true });
+  });
+});
+
+describe("mentionQuery", () => {
+  it("finds the @word being typed at the caret", () => {
+    expect(mentionQuery("hey @al")).toEqual({ start: 4, query: "al" });
+    expect(mentionQuery("@")).toEqual({ start: 0, query: "" });
+  });
+  it("ignores emails, finished words and code spans", () => {
+    expect(mentionQuery("mail x@al")).toBeNull();
+    expect(mentionQuery("@alice ")).toBeNull();
+    expect(mentionQuery("see `@al")).toBeNull();
   });
 });

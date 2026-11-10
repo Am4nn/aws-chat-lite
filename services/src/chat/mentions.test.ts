@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseMentions } from "./mentions.js";
+import { notified, parseMentions } from "./mentions.js";
 
 const alice = { userId: "u-alice", username: "alice" };
 const bob = { userId: "u-bob", username: "bob" };
@@ -18,4 +18,11 @@ describe("parseMentions", () => {
   it("dedupes", () => expect(parseMentions("@bob @BOB @bob", members).mentions).toEqual(["u-bob"]));
   it("requires a word boundary after the name", () => expect(parseMentions("@bobby", members).mentions).toEqual([]));
   it("sets everyone", () => expect(parseMentions("@everyone", members)).toEqual({ mentions: [], everyone: true }));
+});
+
+describe("notified", () => {
+  it("is the members a message names, never its author", () =>
+    expect(notified({ mentions: ["u-alice", "u-bob"], everyone: false }, members, "u-alice")).toEqual(["u-bob"]));
+  it("is every member but the author for @everyone", () =>
+    expect(notified({ mentions: [], everyone: true }, members, "u-bob")).toEqual(["u-alice", "u-carol"]));
 });

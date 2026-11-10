@@ -22,3 +22,13 @@ export function parseMentions(text: string, members: Mentionable[]) {
   }
   return { mentions: [...ids], everyone: found.some((f) => f.name === "everyone") };
 }
+
+/**
+ * The `@name` being typed just before the caret, for autocomplete: `start` is where the `@` sits. Inside a code span,
+ * or right after a word character (an email), it isn't a mention.
+ */
+export function mentionQuery(beforeCaret: string): { start: number; query: string } | null {
+  const m = /(?<![\w`])@([\w.-]*)$/.exec(beforeCaret);
+  if (!m || (beforeCaret.match(/`/g)?.length ?? 0) % 2 === 1) return null;
+  return { start: m.index, query: m[1] };
+}

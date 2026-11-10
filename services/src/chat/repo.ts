@@ -3,7 +3,7 @@ import { conditionFailed, docClient, failedAt, tableName } from "../lib/db.js";
 import { Conflict, Forbidden, NotFound, ValidationError } from "../lib/errors.js";
 import { withUrls } from "./files.js";
 import { requireMember } from "./membership.js";
-import { parseMentions } from "./mentions.js";
+import { notified, parseMentions } from "./mentions.js";
 import {
   EDIT_WINDOW_SEC, LAST_SEQ, MAX_ATTACHMENTS, PAGE, RATE_PER_MIN, canEdit, deleteMode, excerpt, forReaders, messageText,
   seqKey, validAttachment, versionKey, type Attachment, type Message, type Reaction, type StoredMessage,
@@ -163,15 +163,18 @@ export function chatRepo() {
         TableName, Item: { ...messageKey(at, seq), ...message, textLower: text.toLowerCase() },
         ConditionExpression: "attribute_not_exists(sk)",
       }));
-      const notified = everyone ? members.map((m) => m.userId) : mentions;
       await Promise.all([
         readOwnMessage(at, user.userId, seq),
-        countMentions(at, notified.filter((id) => id !== user.userId)),
+        countMentions(at, notified(message, members, user.userId)),
       ]);
       return withUrls(message);
     },
 
-    /** The old text is kept as a version item in the same transaction, so no edit ever loses what it replaced. */
+    /**
+     * The old text is kept as a version item in the same transaction, so no edit ever loses what it replaced.
+     * Mentions are parsed again: someone newly named gets a badge, but a badge already counted for a mention the
+     * edit removed stays until that member reads the chat, because taking it back would race their read marker.
+     */
     async edit(user: User, input: ChatRef & { seq: number; text: unknown }): Promise<Message> {
       const at = { roomId: input.roomId, chatId: input.chatId };
       const text = messageText(input.text);
@@ -180,6 +183,8 @@ export function chatRepo() {
       const now = Date.now();
       if (!canEdit(old, user.userId, now)) throw new Forbidden("You can edit only your own messages, for 15 minutes.");
       if (!text && !old.attachments.length) throw new ValidationError(NEEDS_CONTENT);
+      const members = text.includes("@") ? await roomMembers(at.roomId) : [];
+      const { mentions, everyone } = parseMentions(text, members);
       const editedAt = new Date(now).toISOString();
       try {
         await db.send(new TransactWriteCommand({
@@ -188,13 +193,14 @@ export function chatRepo() {
             {
               Update: {
                 TableName, Key: messageKey(at, input.seq),
-                UpdateExpression: "SET #text = :text, textLower = :lower, editedAt = :at",
+                UpdateExpression: "SET #text = :text, textLower = :lower, editedAt = :at, mentions = :mentions, everyone = :everyone",
                 // The rules again, plus "the text is still what we saved as the version", so a delete or another edit
                 // landing between the read and this write can't be overwritten.
                 ConditionExpression: "authorId = :me AND attribute_not_exists(deleted) AND createdAt >= :cutoff AND #text = :old",
                 ExpressionAttributeNames: { "#text": "text" },
                 ExpressionAttributeValues: {
                   ":text": text, ":lower": text.toLowerCase(), ":at": editedAt, ":me": user.userId, ":old": old.text,
+                  ":mentions": mentions, ":everyone": everyone,
                   ":cutoff": new Date(now - EDIT_WINDOW_SEC * 1000).toISOString(),
                 },
               },
@@ -205,7 +211,9 @@ export function chatRepo() {
         if (conditionFailed(e)) throw new Conflict("That message just changed; try again.");
         throw e;
       }
-      return toMessage({ ...old, text, editedAt });
+      const before = new Set(notified(old, members, user.userId));
+      await countMentions(at, notified({ mentions, everyone }, members, user.userId).filter((id) => !before.has(id)));
+      return toMessage({ ...old, text, editedAt, mentions, everyone });
     },
 
     /** Marks the message deleted; the stored text stays, and readers get it blanked. */

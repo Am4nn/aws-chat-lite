@@ -1,11 +1,12 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Command } from "cmdk";
 import { AnimatePresence, motion } from "motion/react";
 import { Search } from "lucide-react";
 import { dur, easeOut } from "@/lib/motion";
 
-export type PaletteItem = { id: string; group: string; label: string; hint?: string; icon: string; run: () => void };
+export type PaletteItem = { id: string; group: string; label: string; hint?: string; icon: ReactNode; run: () => void };
 
 /** Ctrl K: one place to jump anywhere or run an action. Typing filters every group at once. */
 export function CommandPalette({ open, onClose, items }: { open: boolean; onClose: () => void; items: PaletteItem[] }) {

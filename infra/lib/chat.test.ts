@@ -13,7 +13,7 @@ const template = () => {
 };
 
 const ROUTES = [
-  "POST /ws/ticket", "GET /rooms/{roomId}/chats/{chatId}/messages", "POST /rooms/{roomId}/attachments", "GET /rooms/{roomId}/search",
+  "POST /live/ticket", "GET /rooms/{roomId}/chats/{chatId}/messages", "POST /rooms/{roomId}/attachments", "GET /rooms/{roomId}/search",
 ];
 
 const fn = (name: string) => {

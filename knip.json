@@ -34,7 +34,6 @@
       ]
     },
     "web": {
-      "ignore": ["lib/client/sound.ts"],
       "project": [
         "**/*.{ts,tsx}"
       ],
