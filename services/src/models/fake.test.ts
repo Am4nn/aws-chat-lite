@@ -64,10 +64,11 @@ describe("fakeModel", () => {
       request([
         user("x tools:0 words:1"),
         { role: "assistant", text: "abcd", toolCalls: [{ id: "call-1", name: "fake.lookup", input: {} }] },
-        toolResult(1),
+        { role: "tool", toolCallId: "call-1", output: "wxyz" },
       ]),
     );
-    expect(chunks.at(-1)).toMatchObject({ type: "usage", inputTokens: Math.ceil((17 + 4 + 2) / 4) });
+    // 17 + 4 + 4 = 25 chars; dropping either the assistant or the tool text would give 21 chars, 6 tokens.
+    expect(chunks.at(-1)).toMatchObject({ type: "usage", inputTokens: 7 });
   });
 
   it("counts the call JSON as output on a tool-call turn", async () => {
