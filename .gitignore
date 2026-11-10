@@ -14,3 +14,4 @@ infra/cdk.context.json
 *.key
 web/next-env.d.ts
 web/tsconfig.tsbuildinfo
+.secrets/

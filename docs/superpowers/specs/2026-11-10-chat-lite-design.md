@@ -295,6 +295,64 @@ Browser ── https://chat.amanarya.com ── CloudFront
 10. **Media and notifications:** voice in and out, Gemini images, image understanding, web push.
 11. **Real AWS:** `chat.amanarya.com` (Spaceship DNS plus an ACM cert in us-east-1, as with lite), Secrets Manager, ops dashboard and alarms, then a live test with invited friends.
 
+## Decisions for steps 3–11 (grill with Aman, 2026-11-11)
+These settle what the sections above left open. Where they differ from earlier text, these win.
+
+**Step 3: people chat**
+- **Delete:** your own message, within 15 minutes of sending. Others see a "Message deleted" stub.
+- **Admin removal:** owners and admins can remove anyone's message at any time ("removed by an admin").
+- **Nothing is truly deleted:** removed messages stay in DynamoDB, and every edit's earlier version is kept but hidden. The UI shows only "(edited)". The edit window is 15 minutes.
+- **Formatting:** light markdown (bold, italic, inline code, code blocks, links), plus @mentions and #thread tags. Quote-replies, no human sub-threads. No link previews (server-side fetching is an SSRF risk).
+- **Reactions:** a fixed set of 6: 👍 ❤️ 😂 🎉 👀 ✅.
+- **Attachments:** any file up to 10 MB. Images preview inline; other files show as a download chip.
+- **@everyone:** anyone may use it.
+- **Rate limit:** 30 messages per user per minute.
+- **Presence:** online (a static dot) and "last seen …". No read receipts and no DMs.
+- **Rooms and members:** members can leave a room (the owner can't). The owner can archive a room, which makes it read-only and hidden and stops its schedules. Nothing is deleted.
+- **Chats:** a chat can be muted. Muted chats get no badge or push except @mentions. A subtle sound plays on @mention while the tab is open; there are no other sounds.
+- **Profiles:** a username and an initials avatar; no uploads. The app is dark only in v1.
+
+**Step 4: agent threads**
+- Any member can stop a run. Threads are archived, never deleted.
+- Budgets reset on the 1st of each month at 00:00 UTC. The owner sets each room's cap (default $3).
+
+**Step 5: models**
+- **Picker:** Auto · Sonnet · Haiku · Opus · Fable · DeepSeek Flash · DeepSeek Pro. Claude means the 5.5 models (`claude-sonnet-5-5`, `claude-haiku-5-5`, `claude-opus-5-5`), plus `claude-fable-5-2`. DeepSeek means `deepseek-flash` and `deepseek-v4-pro`.
+- **Manual only:** Auto never picks Opus or Fable.
+- **Auto:** leans Sonnet when unsure between Haiku and Sonnet.
+- **Load test:** 25 concurrent fake-model runs plus 100 WebSocket clients on Floci.
+
+**Step 6: sandbox**
+- Room files keep only the latest version: an overwrite or delete is final (storage matters).
+- Any member can upload files to the workspace.
+
+**Step 7: tools and approvals**
+- Every GitHub write needs approval: branch push, PR, comment, label, issue and merge.
+- Agents may merge a PR, with approval.
+- The test repo is `Am4nn/chat-lite-playground` (GitHub App `aws-chat-lite-aman`).
+
+**Step 8: MCP**
+- A remote MCP tool call needs approval unless the tool is marked `readOnlyHint`.
+- The client is tested against a local OAuth MCP test server.
+
+**Step 9: agents, memory, schedules**
+- An agent can be edited or deleted by its creator or a room admin; anyone can use any agent.
+- Schedules use the room's timezone (admins set it; default Asia/Kolkata).
+
+**Step 10: media and notifications**
+- Images use `gemini-3.1-flash-image` (verify the price before building).
+- Voice out uses Polly's US English neural voice Matthew. Transcribe and Polly sit behind adapters with fakes locally and are tested live on AWS later.
+
+**Step 11**
+- Without Aman: the IaC and a runbook only, no deploy.
+- Alarms email the same address as instagram-lite.
+
+**How the steps are built**
+- **Process:** a plan, then a fresh implementer and reviewer per task, then a cleanup pass, then a final whole-branch review where every finding is fixed. Then the learn doc, then merge to master and push.
+- **Blocked parts:** a local substitute or fake, noted in the learn doc.
+- **Real-key testing:** smoke-sized, at most $3 in total.
+- **Phone width:** every new screen also works on a phone.
+
 ## Repo and secrets
 - `C:\Aman\Coding-Bamzii\Web Development\aws\chat-lite`, public at `github.com/Am4nn/aws-chat-lite` from day 1. It's pushed only when Aman says so.
 - From the first commit, `.env*`, `infra/cdk.context.json` and anything with keys are gitignored, and a secret scan runs before each push.
