@@ -73,7 +73,8 @@ async function steer(owner: { userId: string; username: string }, roomId: string
 const answersIn = async (owner: { userId: string; username: string }, roomId: string, threadId: string) =>
   (await chat.history(owner, roomId, threadId, {})).messages.filter((m) => m.authorId === "agent");
 
-describe("the run loop on Floci", () => {
+// Each durable step checkpoints through Floci, which takes up to a second or two while other suites share it.
+describe("the run loop on Floci", { timeout: 60_000 }, () => {
   it("tools:2 → two steps, the answer, usage and a thread name; the month's spend rises by the run's cost", async () => {
     const { owner, roomId, thread, runId, started } = await startRun("go tools:2 words:10");
     expect(started).toBe(true);
@@ -106,7 +107,7 @@ describe("the run loop on Floci", () => {
     const { owner, roomId, thread, runId } = await startRun("slow tools:2 words:5");
     await eventOf(runId, (e) => e.type === "step.started");
     expect(await steer(owner, roomId, thread.threadId, "also check prod")).toEqual({ runId, started: false });
-    expect((await finished(runId)).status).toBe("done");
+    expect((await finished(runId, 40_000)).status).toBe("done");
 
     const events = await runs.events(runId, 0, 1000);
     expect(events.find((e) => e.type === "steer")).toMatchObject({ messageSeq: 2, authorName: "owner", text: "also check prod" });
@@ -129,7 +130,7 @@ describe("the run loop on Floci", () => {
     expect(answers).toHaveLength(1);
     expect(answers[0]!.text.match(/Fake answer for/g)).toHaveLength(2);
     expect(answers[0]!.seq).toBe(3);
-  }, 60_000);
+  });
 
   it("Stop: the streaming answer ends within 3 s, keeping the text so far", async () => {
     const { owner, roomId, thread, runId } = await startRun("slow words:400");

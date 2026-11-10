@@ -37,6 +37,7 @@ const SETUP_NOTES = [
   "CDK: naming a `WebSocketLambdaIntegration` \"Default\" collides with the `$default` route's logical ID (`SectionAlreadyContains`); use distinct names.",
   "S3 presigned URLs: a Lambda's own S3 endpoint is an address inside Docker, so URLs for the browser are signed against `S3_PUBLIC_ENDPOINT=http://localhost:4566` with path-style addressing. Floci enforces what matters here: the POST policy's `content-length-range` (an 11 MB upload gets 400), bucket CORS (an unlisted origin's preflight gets 403), and the signed `response-content-type` / `response-content-disposition` overrides on GET.",
   "CDK `autoDeleteObjects` fails on Floci: its custom-resource Lambda calls S3 on port 443 (`ECONNREFUSED`), which Floci doesn't serve. The local files bucket uses `RemovalPolicy.DESTROY` without it.",
+  "Floci rewrites its whole DynamoDB store (`/app/data/dynamodb-items.json`) on every write, so writes slow down as test data piles up: about 5 ms per read but 350 ms per write at 14,000 items (8 MB). When the integration suites start timing out, reset the Floci volume (its data is disposable) and deploy again.",
   "Floci doesn't roll back a failed stack update (\"Rollback is not implemented\"): the stack stays `UPDATE_ROLLBACK_FAILED`, and `ContinueUpdateRollback` doesn't clear it. Delete the stack and deploy again (Floci data is disposable).",
 ];
 
