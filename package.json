@@ -4,7 +4,8 @@
   "workspaces": [
     "infra",
     "services",
-    "scripts"
+    "scripts",
+    "web"
   ],
   "scripts": {
     "floci:up": "npm -w scripts run floci-up",
@@ -13,7 +14,8 @@
     "deploy:local": "npm -w scripts run deploy-local",
     "spike": "npm -w scripts run spike",
     "spike:aws": "npm -w scripts run spike-aws",
-    "grant": "npm -w scripts run grant --"
+    "grant": "npm -w scripts run grant --",
+    "dev": "npm -w web run dev"
   },
   "devDependencies": {
     "@types/node": "^22",

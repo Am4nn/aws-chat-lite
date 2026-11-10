@@ -1,12 +1,14 @@
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { localEnv, useLocalEnv } from "./env.js";
 import { assertOurFlociUp } from "./floci-owner.js";
 import { cleanStaleStacks } from "./stale.js";
+import { devEnvFile } from "./dev-env.js";
 
 export const infraDir = fileURLToPath(new URL("../../infra/", import.meta.url));
+const webEnvPath = fileURLToPath(new URL("../../web/.env.development.local", import.meta.url));
 
 /** Run the CDK CLI inside infra/ (default: with Floci env vars). Throws on non-zero exit. */
 export function cdk(args: string[], env: NodeJS.ProcessEnv = localEnv(process.env)): void {
@@ -40,7 +42,9 @@ async function main() {
   if (stale.length) console.log(`Floci was reset; removed stale stack records: ${stale.join(", ")}`);
   cdk(["bootstrap", "aws://000000000000/us-east-1", "-c", "stage=local"]);
   const out = await deployLocalStack();
-  console.log(`\nTry: curl ${localApiUrl(out.ApiUrl)}/health\n`);
+  const api = localApiUrl(out.ApiUrl);
+  writeFileSync(webEnvPath, devEnvFile({ apiUrl: api, userPoolClientId: out.UserPoolClientId }));
+  console.log(`\nAPI: ${api}  (try: curl ${api}/health)\nWrote web/.env.development.local. Next: npm run dev\n`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
