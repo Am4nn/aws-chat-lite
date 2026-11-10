@@ -1,0 +1,14 @@
+node_modules/
+cdk.out/
+.next/
+.open-next/
+out/
+*.log
+.superpowers/
+# secrets and personal deploy settings: never committed
+.env
+.env.*
+!.env.example
+infra/cdk.context.json
+*.pem
+*.key
