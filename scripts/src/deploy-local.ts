@@ -2,7 +2,8 @@ import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { assertFlociUp, localEnv, useLocalEnv } from "./env.js";
+import { localEnv, useLocalEnv } from "./env.js";
+import { assertOurFlociUp } from "./floci-owner.js";
 import { cleanStaleStacks } from "./stale.js";
 
 export const infraDir = fileURLToPath(new URL("../../infra/", import.meta.url));
@@ -33,7 +34,7 @@ export async function deployLocalStack(): Promise<Record<string, string>> {
 }
 
 async function main() {
-  await assertFlociUp();
+  await assertOurFlociUp();
   useLocalEnv();
   const stale = await cleanStaleStacks();
   if (stale.length) console.log(`Floci was reset; removed stale stack records: ${stale.join(", ")}`);

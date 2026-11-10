@@ -7,13 +7,13 @@ chat-lite needs, exercises each one through the AWS SDK, then destroys it.
 
 | Service | Feature | Works? | Notes | ms |
 |---|---|---|---|---|
-| CloudFormation (CDK) | deploy the spike stack | ✅ | plain `cdk deploy` | 26639 |
-| API Gateway WebSocket | two clients connect; one message reaches both (postToConnection fan-out) | ✅ | ws://46c2e396c4.execute-api.localhost.floci.io:4566/spike · round trip 29 ms | 1504 |
-| API Gateway WebSocket | after one client leaves, the other still gets messages ($disconnect / Gone cleanup) | ✅ | ok (still here) | 1025 |
-| Lambda streaming (SSE) | 5 events arrive as they are written, not all at the end | ❌ | got event ids [] from "" → local substitute: a local HTTP server that calls the stream handler | 1884 |
-| Lambda streaming (SSE) | resume with Last-Event-ID: 3 → only events 4, 5 | ❌ | got [] → local substitute: a local HTTP server that calls the stream handler | 631 |
-| Lambda durable functions | steps + a 5 s durable wait complete with checkpointed results | ✅ | result {"a":1,"b":2,"waitedMs":5557}, total 6099 ms | 6099 |
-| EventBridge Scheduler | a one-time schedule invokes the Lambda (within ~2 min) | ✅ | fired 9 s after the scheduled time | 80250 |
+| CloudFormation (CDK) | deploy the spike stack | ✅ | plain `cdk deploy` | 25027 |
+| API Gateway WebSocket | two clients connect; one message reaches both (postToConnection fan-out) | ✅ | ws://eef7941e77.execute-api.localhost.floci.io:4566/spike · round trip 40 ms | 1792 |
+| API Gateway WebSocket | after one client leaves, the other still gets messages ($disconnect / Gone cleanup) | ✅ | ok (still here) | 1036 |
+| Lambda streaming (SSE) | 5 events arrive as they are written, not all at the end | ❌ | got event ids [] from "" → local substitute: a local HTTP server that calls the stream handler | 1957 |
+| Lambda streaming (SSE) | resume with Last-Event-ID: 3 → only events 4, 5 | ❌ | got [] → local substitute: a local HTTP server that calls the stream handler | 620 |
+| Lambda durable functions | steps + a 5 s durable wait complete with checkpointed results | ✅ | result {"a":1,"b":2,"waitedMs":5846}, total 7128 ms | 7128 |
+| EventBridge Scheduler | a one-time schedule invokes the Lambda (within ~2 min) | ✅ | fired 0 s after the scheduled time | 70176 |
 
 ## Workarounds needed
 

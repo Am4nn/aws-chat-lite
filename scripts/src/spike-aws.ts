@@ -9,7 +9,7 @@ import { STSClient, GetCallerIdentityCommand } from "@aws-sdk/client-sts";
 import { CloudFormationClient, DescribeStacksCommand } from "@aws-sdk/client-cloudformation";
 import { awsEnv, useAwsEnv, AWS_STAGE_REGION } from "./env.js";
 import { cdk, readOutputs } from "./deploy-local.js";
-import { replaceAwsSection } from "./aws-section.js";
+import { replaceAwsSection, finishAwsSpike } from "./aws-section.js";
 import type { CheckResult } from "./report.js";
 import * as websocket from "./checks/websocket.js";
 import * as sse from "./checks/sse.js";
@@ -61,10 +61,21 @@ async function main() {
       "|---|---|---|---|---|",
       ...results.map((r) => `| ${r.service} | ${cell(r.feature)} | ${r.ok ? "✅" : "❌"} | ${cell(r.notes)} | ${r.ms} |`),
     ].join("\n");
-    writeFileSync(reportPath, replaceAwsSection(readFileSync(reportPath, "utf8"), section));
-    console.log(`Report: ${reportPath}`);
-    try { cdk(["destroy", STACK, ...ctx, "--force"], env); } catch (e) { console.error(`destroy failed: ${(e as Error).message}`); }
+    process.exitCode = finishAwsSpike({
+      destroy: () => cdk(["destroy", STACK, ...ctx, "--force"], env),
+      writeReport: () => {
+        writeFileSync(reportPath, replaceAwsSection(readFileSync(reportPath, "utf8"), section));
+        console.log(`Report: ${reportPath}`);
+      },
+      log: (l) => console.error(l),
+    });
   }
 }
+
+// Ctrl+C mid-deploy skips the finally above: say how to clean up by hand.
+process.once("SIGINT", () => {
+  console.error("\nInterrupted. If cl-aws-spike was created, remove it: cd infra && npx cdk destroy cl-aws-spike -c stage=aws -c spike=true --profile ig");
+  process.exit(130);
+});
 
 main().catch((e) => { console.error(String(e.message ?? e)); process.exit(1); });

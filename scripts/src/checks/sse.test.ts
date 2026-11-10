@@ -15,8 +15,8 @@ describe("parseSse", () => {
 });
 
 describe("classifyStream", () => {
-  it("classifies buffered vs streamed", () => {
-    expect(classifyStream(100, 1500)).toBe("streamed");
-    expect(classifyStream(1450, 1500)).toBe("buffered");
+  it("classifies buffered vs streamed by when each event arrived (handler spaces them 300 ms apart)", () => {
+    expect(classifyStream([1800, 2100, 2400, 2700, 3000])).toBe("streamed"); // slow cold start, still streamed
+    expect(classifyStream([1450, 1450, 1451, 1451, 1452])).toBe("buffered"); // early headers don't count
   });
 });

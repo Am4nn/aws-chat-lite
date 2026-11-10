@@ -22,25 +22,36 @@ export function parseSse(text: string): SseEvent[] {
   });
 }
 
-/** Streamed when the first bytes arrive well before the end; buffered when they arrive all at once. */
-export function classifyStream(firstChunkMs: number, totalMs: number): "streamed" | "buffered" {
-  return firstChunkMs < totalMs * 0.5 ? "streamed" : "buffered";
+/**
+ * Streamed when the events arrived spread out (the handler writes them 300 ms apart, so ~1.2 s from first to
+ * last), buffered when they all arrived together. Uses event arrival times, so a slow cold start or early
+ * headers can't flip the answer.
+ */
+export function classifyStream(eventArrivalMs: number[]): "streamed" | "buffered" {
+  if (eventArrivalMs.length < 2) return "buffered";
+  return eventArrivalMs[eventArrivalMs.length - 1] - eventArrivalMs[0] >= 1000 ? "streamed" : "buffered";
 }
 
-interface Read { text: string; firstChunkMs: number; totalMs: number; via: string }
+interface Read { text: string; eventMs: number[]; totalMs: number; via: string }
+
+/** Arrival time of every newly completed SSE frame in `text`, appended to `eventMs`. */
+function stamp(text: string, eventMs: number[], t: number) {
+  const complete = parseSse(text).length;
+  while (eventMs.length < complete) eventMs.push(t);
+}
 
 async function readUrl(url: string, lastEventId?: string): Promise<Read> {
   const t0 = Date.now();
   const res = await fetch(url, { headers: lastEventId ? { "last-event-id": lastEventId } : {} });
   if (!res.ok || !res.body) throw new Error(`GET ${url} → ${res.status}`);
   let text = "";
-  let firstChunkMs = -1;
+  const eventMs: number[] = [];
   const dec = new TextDecoder();
   for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
-    if (firstChunkMs < 0) firstChunkMs = Date.now() - t0;
     text += dec.decode(chunk, { stream: true });
+    stamp(text, eventMs, Date.now() - t0);
   }
-  return { text, firstChunkMs, totalMs: Date.now() - t0, via: "Function URL" };
+  return { text, eventMs, totalMs: Date.now() - t0, via: "Function URL" };
 }
 
 async function readInvoke(fnName: string, lastEventId?: string): Promise<Read> {
@@ -50,18 +61,18 @@ async function readInvoke(fnName: string, lastEventId?: string): Promise<Read> {
     FunctionName: fnName, Payload: Buffer.from(JSON.stringify(event)),
   }));
   let raw = "";
-  let firstChunkMs = -1;
+  const eventMs: number[] = [];
   const dec = new TextDecoder();
+  // HttpResponseStream prefixes a JSON prelude + 8 null bytes before the body.
+  const body = (r: string) => (r.includes("\0\0\0\0\0\0\0\0") ? r.slice(r.indexOf("\0\0\0\0\0\0\0\0") + 8) : r);
   for await (const e of res.EventStream ?? []) {
     if (e.PayloadChunk?.Payload) {
-      if (firstChunkMs < 0) firstChunkMs = Date.now() - t0;
       raw += dec.decode(e.PayloadChunk.Payload, { stream: true });
+      stamp(body(raw), eventMs, Date.now() - t0);
     }
     if (e.InvokeComplete?.ErrorCode) throw new Error(`stream error ${e.InvokeComplete.ErrorCode}: ${e.InvokeComplete.ErrorDetails}`);
   }
-  // HttpResponseStream prefixes a JSON prelude + 8 null bytes before the body.
-  const text = raw.includes("\0\0\0\0\0\0\0\0") ? raw.slice(raw.indexOf("\0\0\0\0\0\0\0\0") + 8) : raw;
-  return { text, firstChunkMs, totalMs: Date.now() - t0, via: "InvokeWithResponseStream" };
+  return { text: body(raw), eventMs, totalMs: Date.now() - t0, via: "InvokeWithResponseStream" };
 }
 
 export async function run(o: Outputs, stage: Stage) {
@@ -84,9 +95,9 @@ export async function run(o: Outputs, stage: Stage) {
       const r = await withTimeout(read(), 30_000, "SSE stream");
       const ids = parseSse(r.text).map((e) => e.id);
       assert(ids.join(",") === "1,2,3,4,5", `got event ids [${ids}] from ${JSON.stringify(r.text.slice(0, 120))}`);
-      const kind = classifyStream(r.firstChunkMs, r.totalMs);
-      assert(kind === "streamed", `buffered, not streamed: first chunk at ${r.firstChunkMs} ms of ${r.totalMs} ms (via ${via})`);
-      return `streamed via ${via}: first event ${r.firstChunkMs} ms, all 5 by ${r.totalMs} ms`;
+      const kind = classifyStream(r.eventMs);
+      assert(kind === "streamed", `buffered, not streamed: events arrived at [${r.eventMs}] ms (via ${via})`);
+      return `streamed via ${via}: events at [${r.eventMs}] ms`;
     }),
     await check("Lambda streaming (SSE)", "resume with Last-Event-ID: 3 → only events 4, 5", async () => {
       const r = await withTimeout(read("3"), 30_000, "SSE resume");

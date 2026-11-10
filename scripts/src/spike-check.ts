@@ -1,6 +1,8 @@
-import { writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { assertFlociUp, useLocalEnv, FLOCI_ENDPOINT } from "./env.js";
+import { useLocalEnv, FLOCI_ENDPOINT } from "./env.js";
+import { assertOurFlociUp } from "./floci-owner.js";
+import { keepAwsSection } from "./aws-section.js";
 import { cleanStaleStacks } from "./stale.js";
 import { cdk, readOutputs } from "./deploy-local.js";
 import { renderReport, type CheckResult } from "./report.js";
@@ -44,7 +46,7 @@ async function teardown() {
 }
 
 async function main() {
-  await assertFlociUp();
+  await assertOurFlociUp();
   useLocalEnv();
   await cleanStaleStacks();
   cdk(["bootstrap", "aws://000000000000/us-east-1", "-c", "stage=local"]);
@@ -72,11 +74,12 @@ async function main() {
     results.push({ service: "CloudFormation (CDK)", feature: "deploy the spike stack", ok: false, notes: String((e as Error).message), ms: Date.now() - t0 });
   } finally {
     const health = await fetch(`${FLOCI_ENDPOINT}/_floci/health`).then((r) => r.json()).catch(() => ({}));
-    writeFileSync(reportPath, renderReport(results, {
+    const old = existsSync(reportPath) ? readFileSync(reportPath, "utf8") : "";
+    writeFileSync(reportPath, keepAwsSection(old, renderReport(results, {
       flociVersion: (health as { version?: string }).version ?? "unknown",
       date: new Date().toISOString().slice(0, 10),
       setupNotes: SETUP_NOTES,
-    }));
+    })));
     console.log(`Report: ${reportPath}`);
     await teardown();
   }

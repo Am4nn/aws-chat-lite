@@ -10,7 +10,7 @@ export function portOwner(dockerPs: string, port: number): string | undefined {
   return undefined;
 }
 
-function dockerPs(): string {
+export function dockerPs(): string {
   const res = spawnSync("docker", ["ps", "--format", "{{.Names}}\t{{.Ports}}"], { encoding: "utf8" });
   if (res.status !== 0) throw new Error("docker ps failed: is Docker Desktop running?");
   return res.stdout;
