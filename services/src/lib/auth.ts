@@ -17,14 +17,3 @@ export function usernameFromEvent(event: APIGatewayProxyEventV2WithJWTAuthorizer
   const u = claimsFromEvent(event)["cognito:username"];
   return typeof u === "string" ? u : "";
 }
-
-/** Parses a JSON body; undefined body → {}. Returns null on invalid JSON. */
-export function parseBody(event: { body?: string; isBase64Encoded?: boolean }): unknown | null {
-  if (!event.body) return {};
-  const raw = event.isBase64Encoded ? Buffer.from(event.body, "base64").toString("utf8") : event.body;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}

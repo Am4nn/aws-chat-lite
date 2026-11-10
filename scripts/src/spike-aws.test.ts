@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { replaceAwsSection } from "./aws-section.js";
+import { replaceAwsSection, keepAwsSection, finishAwsSpike } from "./aws-section.js";
 
 describe("replaceAwsSection", () => {
   it("replaces the marked section", () => {
@@ -14,8 +14,6 @@ describe("replaceAwsSection", () => {
     expect(doc).toContain("<!-- aws:start -->\nnew\n<!-- aws:end -->");
   });
 });
-
-import { keepAwsSection, finishAwsSpike } from "./aws-section.js";
 
 describe("keepAwsSection (local spike must not erase the Sydney results)", () => {
   it("carries the aws block from the old report into the new one", () => {

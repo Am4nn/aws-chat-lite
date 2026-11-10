@@ -13,9 +13,12 @@ interface RoomView {
   members: { userId: string; username: string; role: Role }[];
 }
 
-const now = () => Math.floor(Date.now() / 1000);
-const iso = () => new Date().toISOString();
-const ROOM = (id: string) => `ROOM#${id}`;
+const nowSec = () => Math.floor(Date.now() / 1000);
+const nowIso = () => new Date().toISOString();
+const roomKey = (roomId: string) => `ROOM#${roomId}`;
+const memberKey = (roomId: string, userId: string) => ({ pk: roomKey(roomId), sk: `MEMBER#${userId}` });
+const roomInviteKey = (roomId: string) => ({ pk: roomKey(roomId), sk: "INVITE" });
+const inviteKey = (code: string) => ({ pk: `INVITE#${code}`, sk: "META" });
 
 /** True when a write failed its condition (single write or one item of a transaction). */
 function conditionFailed(e: unknown): boolean {
@@ -24,13 +27,31 @@ function conditionFailed(e: unknown): boolean {
     || (err.name === "TransactionCanceledException" && !!err.CancellationReasons?.some((r) => r.Code === "ConditionalCheckFailed"));
 }
 
+/** Member item. gsi1 lists a user's rooms in join order; the copied room name saves a read per room in that list. */
+function memberItem(roomId: string, roomName: string, user: User, role: Role, at: string) {
+  return {
+    ...memberKey(roomId, user.userId), roomId, roomName, userId: user.userId, username: user.username, role, joinedAt: at,
+    gsi1pk: `USER#${user.userId}`, gsi1sk: `ROOM#${at}#${roomId}`,
+  };
+}
+
+/** Chats sort by creation time within the room. */
+function chatItem(roomId: string, chatId: string, name: string, createdBy: string, at: string) {
+  return { pk: roomKey(roomId), sk: `CHAT#${at}#${chatId}`, chatId, name, createdBy, createdAt: at };
+}
+
+/** One item per chat name in a room, so a conditional put on it can refuse a duplicate name. */
+function chatNameItem(roomId: string, name: string, chatId: string) {
+  return { pk: roomKey(roomId), sk: `CHATNAME#${name}`, chatId };
+}
+
 /** DynamoDB access for rooms, chats, members and invites (single table). Every method checks the caller's role. */
 export function roomsRepo() {
   const db = docClient();
-  const T = tableName;
+  const TableName = tableName();
 
   async function memberRole(roomId: string, userId: string): Promise<Role | undefined> {
-    const { Item } = await db.send(new GetCommand({ TableName: T(), Key: { pk: ROOM(roomId), sk: `MEMBER#${userId}` } }));
+    const { Item } = await db.send(new GetCommand({ TableName, Key: memberKey(roomId, userId) }));
     return Item?.role as Role | undefined;
   }
 
@@ -43,9 +64,27 @@ export function roomsRepo() {
   }
 
   async function roomMeta(roomId: string) {
-    const { Item } = await db.send(new GetCommand({ TableName: T(), Key: { pk: ROOM(roomId), sk: "META" } }));
+    const { Item } = await db.send(new GetCommand({ TableName, Key: { pk: roomKey(roomId), sk: "META" } }));
     if (!Item) throw new NotFound("Room not found.");
     return Item as { name: string; ownerId: string };
+  }
+
+  async function currentInvite(roomId: string) {
+    const { Item } = await db.send(new GetCommand({ TableName, Key: roomInviteKey(roomId) }));
+    return Item as { code: string; expiresAt: number } | undefined;
+  }
+
+  /** Marked revoked rather than deleted, so someone holding the old link is told it was revoked, not that it never existed. */
+  const revokeCode = (code: string) => ({
+    Update: { TableName, Key: inviteKey(code), UpdateExpression: "SET revoked = :t", ExpressionAttributeValues: { ":t": true } },
+  });
+
+  async function liveInvite(code: string) {
+    const { Item } = await db.send(new GetCommand({ TableName, Key: inviteKey(code) }));
+    const state = inviteState(Item as { expiresAt: number; revoked?: boolean } | undefined, nowSec());
+    if (state === "missing") throw new NotFound("This invite link doesn't exist.");
+    if (state !== "ok") throw new Gone(state === "revoked" ? "This invite link was revoked." : "This invite link expired.");
+    return Item as { roomId: string; roomName: string; expiresAt: number };
   }
 
   return {
@@ -54,13 +93,13 @@ export function roomsRepo() {
       const name = roomName(rawName);
       const roomId = randomUUID();
       const chatId = randomUUID();
-      const at = iso();
+      const at = nowIso();
       await db.send(new TransactWriteCommand({
         TransactItems: [
-          { Put: { TableName: T(), Item: { pk: ROOM(roomId), sk: "META", name, ownerId: owner.userId, createdAt: at }, ConditionExpression: "attribute_not_exists(pk)" } },
-          { Put: { TableName: T(), Item: memberItem(roomId, name, owner, "owner", at) } },
-          { Put: { TableName: T(), Item: { pk: ROOM(roomId), sk: `CHAT#${at}#${chatId}`, chatId, name: "general", createdBy: owner.userId, createdAt: at } } },
-          { Put: { TableName: T(), Item: { pk: ROOM(roomId), sk: "CHATNAME#general", chatId } } },
+          { Put: { TableName, Item: { pk: roomKey(roomId), sk: "META", name, ownerId: owner.userId, createdAt: at }, ConditionExpression: "attribute_not_exists(pk)" } },
+          { Put: { TableName, Item: memberItem(roomId, name, owner, "owner", at) } },
+          { Put: { TableName, Item: chatItem(roomId, chatId, "general", owner.userId, at) } },
+          { Put: { TableName, Item: chatNameItem(roomId, "general", chatId) } },
         ],
       }));
       return { roomId, name, generalChatId: chatId };
@@ -68,7 +107,7 @@ export function roomsRepo() {
 
     async listMyRooms(userId: string) {
       const { Items = [] } = await db.send(new QueryCommand({
-        TableName: T(), IndexName: "gsi1", KeyConditionExpression: "gsi1pk = :u",
+        TableName, IndexName: "gsi1", KeyConditionExpression: "gsi1pk = :u",
         ExpressionAttributeValues: { ":u": `USER#${userId}` },
       }));
       return Items.map((i) => ({ roomId: String(i.roomId), name: String(i.roomName), role: i.role as Role }));
@@ -76,7 +115,7 @@ export function roomsRepo() {
 
     async getRoomView(roomId: string, userId: string): Promise<RoomView> {
       const { Items = [] } = await db.send(new QueryCommand({
-        TableName: T(), KeyConditionExpression: "pk = :p", ExpressionAttributeValues: { ":p": ROOM(roomId) },
+        TableName, KeyConditionExpression: "pk = :p", ExpressionAttributeValues: { ":p": roomKey(roomId) },
       }));
       const me = Items.find((i) => i.sk === `MEMBER#${userId}`);
       const meta = Items.find((i) => i.sk === "META");
@@ -95,12 +134,12 @@ export function roomsRepo() {
       const name = chatName(rawName);
       await requireRole(roomId, userId, "createChat");
       const chatId = randomUUID();
-      const at = iso();
+      const at = nowIso();
       try {
         await db.send(new TransactWriteCommand({
           TransactItems: [
-            { Put: { TableName: T(), Item: { pk: ROOM(roomId), sk: `CHATNAME#${name}`, chatId }, ConditionExpression: "attribute_not_exists(pk)" } },
-            { Put: { TableName: T(), Item: { pk: ROOM(roomId), sk: `CHAT#${at}#${chatId}`, chatId, name, createdBy: userId, createdAt: at } } },
+            { Put: { TableName, Item: chatNameItem(roomId, name, chatId), ConditionExpression: "attribute_not_exists(pk)" } },
+            { Put: { TableName, Item: chatItem(roomId, chatId, name, userId, at) } },
           ],
         }));
       } catch (e) {
@@ -113,10 +152,11 @@ export function roomsRepo() {
     async setRole(roomId: string, actorId: string, targetId: string, role: unknown) {
       if (role !== "admin" && role !== "member") throw new ValidationError("Role must be admin or member.");
       const target = await memberRole(roomId, targetId);
+      // The caller's own access is checked before revealing whether the target is in the room.
       await requireRole(roomId, actorId, "setRole", target ?? "member");
       if (!target) throw new NotFound("Not a member of this room.");
       await db.send(new UpdateCommand({
-        TableName: T(), Key: { pk: ROOM(roomId), sk: `MEMBER#${targetId}` },
+        TableName, Key: memberKey(roomId, targetId),
         UpdateExpression: "SET #r = :r", ConditionExpression: "attribute_exists(pk) AND #r <> :owner",
         ExpressionAttributeNames: { "#r": "role" }, ExpressionAttributeValues: { ":r": role, ":owner": "owner" },
       }));
@@ -130,7 +170,7 @@ export function roomsRepo() {
       try {
         // The condition stops a race where the target was promoted between our read and this delete.
         await db.send(new DeleteCommand({
-          TableName: T(), Key: { pk: ROOM(roomId), sk: `MEMBER#${targetId}` },
+          TableName, Key: memberKey(roomId, targetId),
           ConditionExpression: "#r = :r", ExpressionAttributeNames: { "#r": "role" }, ExpressionAttributeValues: { ":r": target },
         }));
       } catch (e) {
@@ -144,17 +184,14 @@ export function roomsRepo() {
     async rotateInvite(roomId: string, userId: string) {
       await requireRole(roomId, userId, "manageInvite");
       const meta = await roomMeta(roomId);
-      const old = await db.send(new GetCommand({ TableName: T(), Key: { pk: ROOM(roomId), sk: "INVITE" } }));
+      const old = await currentInvite(roomId);
       const code = newInviteCode();
-      const expiresAt = now() + INVITE_TTL_SEC;
+      const expiresAt = nowSec() + INVITE_TTL_SEC;
       await db.send(new TransactWriteCommand({
         TransactItems: [
-          { Put: { TableName: T(), Item: { pk: ROOM(roomId), sk: "INVITE", code, expiresAt, createdBy: userId } } },
-          { Put: { TableName: T(), Item: { pk: `INVITE#${code}`, sk: "META", roomId, roomName: meta.name, expiresAt, ttl: expiresAt + 86400 } } },
-          ...(old.Item ? [{ Update: {
-            TableName: T(), Key: { pk: `INVITE#${old.Item.code}`, sk: "META" }, UpdateExpression: "SET revoked = :t",
-            ExpressionAttributeValues: { ":t": true },
-          } }] : []),
+          { Put: { TableName, Item: { ...roomInviteKey(roomId), code, expiresAt, createdBy: userId } } },
+          { Put: { TableName, Item: { ...inviteKey(code), roomId, roomName: meta.name, expiresAt, ttl: expiresAt + 86400 } } },
+          ...(old ? [revokeCode(old.code)] : []),
         ],
       }));
       return { code, expiresAt };
@@ -162,20 +199,17 @@ export function roomsRepo() {
 
     async getInvite(roomId: string, userId: string) {
       await requireRole(roomId, userId, "manageInvite");
-      const { Item } = await db.send(new GetCommand({ TableName: T(), Key: { pk: ROOM(roomId), sk: "INVITE" } }));
-      if (!Item || inviteState(Item as { expiresAt: number }, now()) !== "ok") throw new NotFound("No active invite link.");
-      return { code: String(Item.code), expiresAt: Number(Item.expiresAt) };
+      const invite = await currentInvite(roomId);
+      if (!invite || inviteState(invite, nowSec()) !== "ok") throw new NotFound("No active invite link.");
+      return { code: String(invite.code), expiresAt: Number(invite.expiresAt) };
     },
 
     async revokeInvite(roomId: string, userId: string) {
       await requireRole(roomId, userId, "manageInvite");
-      const { Item } = await db.send(new GetCommand({ TableName: T(), Key: { pk: ROOM(roomId), sk: "INVITE" } }));
-      if (!Item) return {};
+      const invite = await currentInvite(roomId);
+      if (!invite) return {};
       await db.send(new TransactWriteCommand({
-        TransactItems: [
-          { Delete: { TableName: T(), Key: { pk: ROOM(roomId), sk: "INVITE" } } },
-          { Update: { TableName: T(), Key: { pk: `INVITE#${Item.code}`, sk: "META" }, UpdateExpression: "SET revoked = :t", ExpressionAttributeValues: { ":t": true } } },
-        ],
+        TransactItems: [{ Delete: { TableName, Key: roomInviteKey(roomId) } }, revokeCode(invite.code)],
       }));
       return {};
     },
@@ -184,8 +218,8 @@ export function roomsRepo() {
     async previewInvite(code: string) {
       const inv = await liveInvite(code);
       const { Count = 0 } = await db.send(new QueryCommand({
-        TableName: T(), KeyConditionExpression: "pk = :p AND begins_with(sk, :m)",
-        ExpressionAttributeValues: { ":p": ROOM(inv.roomId), ":m": "MEMBER#" }, Select: "COUNT",
+        TableName, KeyConditionExpression: "pk = :p AND begins_with(sk, :m)",
+        ExpressionAttributeValues: { ":p": roomKey(inv.roomId), ":m": "MEMBER#" }, Select: "COUNT",
       }));
       return { roomName: inv.roomName, memberCount: Count, expiresAt: inv.expiresAt };
     },
@@ -195,30 +229,14 @@ export function roomsRepo() {
       const inv = await liveInvite(code);
       try {
         await db.send(new PutCommand({
-          TableName: T(), Item: memberItem(inv.roomId, inv.roomName, user, "member", iso()),
+          TableName, Item: memberItem(inv.roomId, inv.roomName, user, "member", nowIso()),
           ConditionExpression: "attribute_not_exists(pk)",
         }));
       } catch (e) {
-        if (!conditionFailed(e)) throw e; // already a member (or a concurrent accept won): fine
+        if (!conditionFailed(e)) throw e; // Already a member, or a concurrent accept won: either way they are in.
       }
       return { roomId: inv.roomId };
     },
-  };
-
-  async function liveInvite(code: string) {
-    const { Item } = await db.send(new GetCommand({ TableName: T(), Key: { pk: `INVITE#${code}`, sk: "META" } }));
-    const state = inviteState(Item as { expiresAt: number; revoked?: boolean } | undefined, now());
-    if (state === "missing") throw new NotFound("This invite link doesn't exist.");
-    if (state !== "ok") throw new Gone(state === "revoked" ? "This invite link was revoked." : "This invite link expired.");
-    return Item as { roomId: string; roomName: string; expiresAt: number };
-  }
-}
-
-/** Member item; gsi1 lists a user's rooms (newest join last). Keeps the room name for the room list. */
-function memberItem(roomId: string, roomName: string, user: User, role: Role, at: string) {
-  return {
-    pk: ROOM(roomId), sk: `MEMBER#${user.userId}`, roomId, roomName, userId: user.userId, username: user.username, role, joinedAt: at,
-    gsi1pk: `USER#${user.userId}`, gsi1sk: `ROOM#${at}#${roomId}`,
   };
 }
 

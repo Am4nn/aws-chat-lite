@@ -37,5 +37,4 @@ describe("auth", () => {
   it("has the creators group", () => {
     template("local").hasResourceProperties("AWS::Cognito::UserPoolGroup", { GroupName: "creators" });
   });
-
 });

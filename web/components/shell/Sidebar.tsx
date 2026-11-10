@@ -4,8 +4,7 @@ import Link from "next/link";
 import { motion } from "motion/react";
 import { Bot, Hash, LogOut, Plus, Search } from "lucide-react";
 import { spring } from "@/lib/motion";
-import type { Chat, Me, RoomSummary, RoomView } from "@/lib/types";
-import { isAdmin } from "@/lib/types";
+import { isAdmin, type Chat, type Me, type RoomSummary, type RoomView } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { RoomSwitcher } from "./RoomSwitcher";
 

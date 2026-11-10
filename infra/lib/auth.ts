@@ -10,8 +10,9 @@ export interface Auth {
 }
 
 /**
- * Cognito users + the `creators` group (who may create rooms) + the JWT authorizer for the HTTP API.
- * local: a PreSignUp trigger auto-confirms (Floci sends no email). aws: email + confirmation code.
+ * Cognito users, the `creators` group (who may create rooms) and the JWT authorizer for the HTTP API.
+ * Floci sends no email, so locally a PreSignUp trigger confirms every account at once; on AWS sign-up needs an
+ * email address and a confirmation code.
  */
 export function addAuth(stack: CoreStack): Auth {
   const { prefix, isLocal } = stack.stageConfig;
@@ -39,7 +40,7 @@ export function addAuth(stack: CoreStack): Auth {
     groupName: "creators",
     description: "May create rooms (npm run grant -- <username> creators)",
   });
-  // Floci issues tokens as http://127.0.0.1:4566/<pool> (a literal loopback IP, see floci-compat.md).
+  // Floci's tokens name their issuer with a literal loopback IP, http://127.0.0.1:4566/<pool>, not localhost.
   const issuer = isLocal
     ? `http://127.0.0.1:4566/${userPool.userPoolId}`
     : `https://cognito-idp.${stack.region}.amazonaws.com/${userPool.userPoolId}`;

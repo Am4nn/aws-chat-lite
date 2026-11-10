@@ -6,9 +6,10 @@ import { jsonError, readJson, str, withCookies } from "@/lib/server/respond";
 
 export async function POST(req: Request) {
   const b = await readJson(req);
-  if (!str(b.username) || !str(b.password)) return jsonError(400, "Username and password are required.");
+  const [username, password] = [str(b.username), str(b.password)];
+  if (!username || !password) return jsonError(400, "Username and password are required.");
   try {
-    const tokens = await signIn(str(b.username), str(b.password));
+    const tokens = await signIn(username, password);
     return withCookies(NextResponse.json({ ok: true }), sessionCookies(tokens, serverEnv().secureCookies));
   } catch (e) {
     return jsonError(400, authErrorMessage(e));

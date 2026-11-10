@@ -28,14 +28,3 @@ export function assert(cond: unknown, msg: string): asserts cond {
 }
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-/**
- * Floci answers AWS hostnames under *.localhost.floci.io:4566 (public DNS → 127.0.0.1), over plain http/ws.
- * Parsed by regex, not `new URL()`: Floci's own Function URL form `<id>.lambda-url.us-east-1.127.0.0.1:4566`
- * is not a valid URL host.
- */
-export function flociHost(awsUrl: string): string {
-  const m = /^[a-z]+:\/\/([a-z0-9]+)\.(execute-api|lambda-url)\./.exec(awsUrl);
-  if (!m) throw new Error(`unknown AWS URL: ${awsUrl}`);
-  return `${m[1]}.${m[2] === "lambda-url" ? "lambda-url.us-east-1" : "execute-api"}.localhost.floci.io:4566`;
-}

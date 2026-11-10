@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* The G2 palette. Accent colours carry meaning: lime is live work and the primary action, amber needs you, sky is done. */
+/* The palette. Accent colours carry meaning: lime is live work and the primary action, amber needs you, sky is done. */
 @theme {
   --color-ink: #0a0c0d;
   --color-surface-1: #0c0f10;

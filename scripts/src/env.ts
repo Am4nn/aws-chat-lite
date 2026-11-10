@@ -28,22 +28,30 @@ export function useLocalEnv(): void {
 }
 
 /** Fails fast with a clear message instead of a hung CDK/SDK call. */
-export async function assertFlociUp(
-  endpoint: string = FLOCI_ENDPOINT,
-  fetchFn: typeof fetch = fetch,
-): Promise<void> {
+export async function assertFlociUp(fetchFn: typeof fetch = fetch): Promise<void> {
   try {
-    await fetchFn(`${endpoint}/_floci/health`, { signal: AbortSignal.timeout(3000) });
+    await fetchFn(`${FLOCI_ENDPOINT}/_floci/health`, { signal: AbortSignal.timeout(3000) });
   } catch {
-    throw new Error(`Floci not reachable at ${endpoint} — run \`npm run floci:up\``);
+    throw new Error(`Floci not reachable at ${FLOCI_ENDPOINT} — run \`npm run floci:up\``);
   }
+}
+
+/**
+ * Floci answers AWS hostnames under *.localhost.floci.io:4566 (public DNS → 127.0.0.1), over plain http/ws.
+ * Parsed by regex, not `new URL()`: Floci's own Function URL form `<id>.lambda-url.us-east-1.127.0.0.1:4566`
+ * is not a valid URL host.
+ */
+export function flociHost(awsUrl: string): string {
+  const m = /^[a-z]+:\/\/([a-z0-9]+)\.(execute-api|lambda-url)\./.exec(awsUrl);
+  if (!m) throw new Error(`unknown AWS URL: ${awsUrl}`);
+  return `${m[1]}.${m[2] === "lambda-url" ? "lambda-url.us-east-1" : "execute-api"}.localhost.floci.io:4566`;
 }
 
 export const AWS_STAGE_REGION = "ap-southeast-2";
 
 /**
  * Env for real AWS (stage aws): never an emulator endpoint or Floci's fake keys, a named profile
- * (default `ig`, from `aws login --profile ig`) and the Sydney region (the new AWS experience fixes the project Region).
+ * (default `ig`, from `aws login --profile ig`) and the project's fixed region, Sydney.
  */
 export function awsEnv(base: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   if (base.AWS_ENDPOINT_URL) {
@@ -58,12 +66,4 @@ export function awsEnv(base: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 /** Points this process (SDK clients created afterwards) at real AWS via the profile. */
 export function useAwsEnv(): void {
   Object.assign(process.env, awsEnv(process.env));
-}
-
-/** Which stack a script talks to: local (Floci) unless `--stage=aws` or CL_STAGE=aws. */
-export function scriptStage(env: NodeJS.ProcessEnv, argv: string[] = []): "local" | "aws" {
-  const flag = argv.find((a) => a.startsWith("--stage="))?.slice("--stage=".length);
-  const stage = flag ?? env.CL_STAGE ?? "local";
-  if (stage !== "local" && stage !== "aws") throw new Error(`CL_STAGE / --stage must be local or aws (got "${stage}")`);
-  return stage;
 }

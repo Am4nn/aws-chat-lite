@@ -1,5 +1,6 @@
 import WebSocket from "ws";
-import { check, withTimeout, assert, flociHost, sleep, type Outputs, type Stage } from "./util.js";
+import { flociHost } from "../env.js";
+import { check, withTimeout, assert, sleep, type Outputs, type Stage } from "./util.js";
 
 function open(url: string): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
@@ -32,10 +33,9 @@ export async function run(o: Outputs, stage: Stage) {
       [a, b] = await withTimeout(Promise.all([open(url), open(url)]), 20_000, `connect ${url}`);
       await sleep(500); // let $connect finish storing both connections
       const t0 = Date.now();
-      const [ea, eb] = await withTimeout(
-        Promise.all([nextEcho(a, "hi"), nextEcho(b, "hi"), Promise.resolve(a.send(JSON.stringify({ say: "hi" })))]),
-        20_000, "echo to both clients",
-      );
+      const echoes = Promise.all([nextEcho(a, "hi"), nextEcho(b, "hi")]);
+      a.send(JSON.stringify({ say: "hi" }));
+      const [ea, eb] = await withTimeout(echoes, 20_000, "echo to both clients");
       assert(ea.from === eb.from, "both echoes should name the same sender");
       return `${url} · round trip ${Date.now() - t0} ms`;
     }),
@@ -43,11 +43,10 @@ export async function run(o: Outputs, stage: Stage) {
       assert(a && b, "needs the previous check's connections");
       a.close();
       await sleep(1000);
-      const got = await withTimeout(
-        Promise.all([nextEcho(b, "still here"), Promise.resolve(b.send(JSON.stringify({ say: "still here" })))]),
-        20_000, "echo after a client left",
-      );
-      return `ok (${got[0].echo})`;
+      const echo = nextEcho(b, "still here");
+      b.send(JSON.stringify({ say: "still here" }));
+      const got = await withTimeout(echo, 20_000, "echo after a client left");
+      return `ok (${got.echo})`;
     }),
   ];
   a?.terminate();

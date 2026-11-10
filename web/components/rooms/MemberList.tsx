@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { MoreHorizontal } from "lucide-react";
 import { bff } from "@/lib/client/bff";
+import { useClickOutside } from "@/lib/client/useClickOutside";
 import { dur, easeOut, spring } from "@/lib/motion";
 import type { Member, Role } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
@@ -91,14 +92,9 @@ export function MemberList({ roomId, members, myRole, myUserId }: { roomId: stri
   );
 }
 
-function MemberMenu({ open, onToggle, name, children }: { open: boolean; onToggle: (open: boolean) => void; name: string; children: React.ReactNode }) {
+function MemberMenu({ open, onToggle, name, children }: { open: boolean; onToggle: (open: boolean) => void; name: string; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && onToggle(false);
-    window.addEventListener("mousedown", close);
-    return () => window.removeEventListener("mousedown", close);
-  }, [open, onToggle]);
+  useClickOutside(ref, open, () => onToggle(false));
 
   return (
     <div ref={ref} className="relative">
@@ -130,7 +126,7 @@ function MemberMenu({ open, onToggle, name, children }: { open: boolean; onToggl
   );
 }
 
-function MenuItem({ danger = false, onClick, children }: { danger?: boolean; onClick: () => void; children: React.ReactNode }) {
+function MenuItem({ danger = false, onClick, children }: { danger?: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button
       role="menuitem"

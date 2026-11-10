@@ -14,8 +14,10 @@ export function jwtClaims(token: string): { sub?: string; exp?: number } | null 
   }
 }
 
-/** Fresh means valid for more than `skewMs` longer, so a request never leaves with a token that expires in flight. */
-export function isFresh(token: string | undefined, nowMs: number = Date.now(), skewMs = 60_000): boolean {
+/** A token counts as fresh only with more than a minute left, so a request never leaves with one that expires in flight. */
+const EXPIRY_MARGIN_MS = 60_000;
+
+export function isFresh(token: string | undefined, nowMs: number = Date.now()): boolean {
   const exp = token ? jwtClaims(token)?.exp : undefined;
-  return typeof exp === "number" && exp * 1000 - nowMs > skewMs;
+  return typeof exp === "number" && exp * 1000 - nowMs > EXPIRY_MARGIN_MS;
 }

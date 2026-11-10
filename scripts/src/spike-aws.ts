@@ -10,7 +10,7 @@ import { CloudFormationClient, DescribeStacksCommand } from "@aws-sdk/client-clo
 import { awsEnv, useAwsEnv, AWS_STAGE_REGION } from "./env.js";
 import { cdk, readOutputs } from "./deploy-local.js";
 import { replaceAwsSection, finishAwsSpike } from "./aws-section.js";
-import type { CheckResult } from "./report.js";
+import { resultsTable, type CheckResult } from "./report.js";
 import * as websocket from "./checks/websocket.js";
 import * as sse from "./checks/sse.js";
 import * as durable from "./checks/durable.js";
@@ -20,7 +20,6 @@ import * as agentcore from "./checks/agentcore.js";
 const STACK = "cl-aws-spike";
 const ctx = ["-c", "stage=aws", "-c", "spike=true"];
 const reportPath = fileURLToPath(new URL("../../docs/learn/floci-compat.md", import.meta.url));
-const cell = (s: string) => s.replace(/\|/g, "\|").replace(/\n/g, " ");
 
 async function main() {
   const env = awsEnv(process.env); // refuses an emulator endpoint or Floci's fake keys
@@ -39,7 +38,7 @@ async function main() {
     const o = readOutputs(STACK, "outputs-aws-spike.json");
     const probes: [string, () => Promise<CheckResult[]>][] = [
       ["API Gateway WebSocket", () => websocket.run(o, "aws")], ["Lambda streaming (SSE)", () => sse.run(o, "aws")],
-      ["Lambda durable functions", () => durable.run(o, "aws")], ["EventBridge Scheduler", () => scheduler.run(o, "aws")],
+      ["Lambda durable functions", () => durable.run(o)], ["EventBridge Scheduler", () => scheduler.run(o)],
       ["AgentCore Code Interpreter", () => agentcore.run()],
     ];
     for (const [service, probe] of probes) {
@@ -57,9 +56,7 @@ async function main() {
       "",
       `Run by \`npm run spike:aws\` on ${new Date().toISOString().slice(0, 10)}, region ${AWS_STAGE_REGION}; the stack is destroyed afterwards.`,
       "",
-      "| Service | Feature | Works? | Notes | ms |",
-      "|---|---|---|---|---|",
-      ...results.map((r) => `| ${r.service} | ${cell(r.feature)} | ${r.ok ? "✅" : "❌"} | ${cell(r.notes)} | ${r.ms} |`),
+      ...resultsTable(results),
     ].join("\n");
     process.exitCode = finishAwsSpike({
       destroy: () => cdk(["destroy", STACK, ...ctx, "--force"], env),

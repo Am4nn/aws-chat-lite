@@ -18,7 +18,7 @@ interface CoreStackProps extends StackProps {
   config: StageConfig;
 }
 
-/** The app's long-lived stack: table, auth, HTTP API; each step adds its feature. */
+/** The app's long-lived stack: the table, auth, the HTTP API and the Lambdas behind it. */
 export class CoreStack extends Stack {
   readonly table: dynamodb.Table;
   readonly api: apigwv2.HttpApi;
@@ -30,7 +30,7 @@ export class CoreStack extends Stack {
     this.stageConfig = props.config;
     const { prefix } = props.config;
 
-    // One table for everything (single-table design), like instagram-lite.
+    // Single-table design: every entity lives in this one table, and gsi1 serves the lookups by user.
     this.table = new dynamodb.Table(this, "Main", {
       tableName: `${prefix}-main`,
       partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
@@ -38,7 +38,7 @@ export class CoreStack extends Stack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       timeToLiveAttribute: "ttl",
       stream: dynamodb.StreamViewType.NEW_IMAGE,
-      removalPolicy: RemovalPolicy.DESTROY, // learning project: destroy leaves nothing behind
+      removalPolicy: RemovalPolicy.DESTROY, // A learning project: `cdk destroy` should leave nothing behind.
     });
     this.table.addGlobalSecondaryIndex({
       indexName: "gsi1",
@@ -65,17 +65,15 @@ export class CoreStack extends Stack {
     });
   }
 
-  /** A Lambda from services/src with STAGE + TABLE_NAME env and (by default) table read/write. */
-  addFunction(
-    name: string, entry: string, opts: { env?: Record<string, string>; timeout?: number; tableAccess?: boolean } = {},
-  ): NodejsFunction {
+  /** A Lambda from services/src with STAGE and TABLE_NAME set and, unless `tableAccess` is false, table read/write. */
+  addFunction(name: string, entry: string, opts: { tableAccess?: boolean } = {}): NodejsFunction {
     const fn = new NodejsFunction(this, `Fn-${name}`, {
       functionName: `${this.stageConfig.prefix}-${name}`,
       entry: servicePath(entry),
       runtime: lambda.Runtime.NODEJS_22_X,
       memorySize: 256,
-      timeout: Duration.seconds(opts.timeout ?? 10),
-      environment: { STAGE: this.stageConfig.stage, TABLE_NAME: this.table.tableName, ...opts.env },
+      timeout: Duration.seconds(10),
+      environment: { STAGE: this.stageConfig.stage, TABLE_NAME: this.table.tableName },
       bundling: { minify: true },
     });
     if (opts.tableAccess !== false) this.table.grantReadWriteData(fn);

@@ -20,6 +20,6 @@ export function dockerPs(): string {
 export function assertPortFree(port: number, allowed: string, ps: string = dockerPs()): void {
   const owner = portOwner(ps, port);
   if (owner && owner !== allowed) {
-    throw new Error(`Port ${port} is held by container ${owner}: stop it first (instagram-lite: npm run floci:down)`);
+    throw new Error(`Port ${port} is held by container ${owner}: stop that project's Floci first (npm run floci:down in its repo)`);
   }
 }

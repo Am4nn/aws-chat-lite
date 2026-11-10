@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import { Check, ChevronDown, Plus } from "lucide-react";
+import { useClickOutside } from "@/lib/client/useClickOutside";
 import { dur, easeOut } from "@/lib/motion";
 import type { RoomSummary } from "@/lib/types";
 
@@ -12,13 +13,7 @@ export function RoomSwitcher({ current, rooms, canCreate, onCreate }: {
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
-    window.addEventListener("mousedown", close);
-    return () => window.removeEventListener("mousedown", close);
-  }, [open]);
+  useClickOutside(ref, open, () => setOpen(false));
 
   return (
     <div ref={ref} className="relative">

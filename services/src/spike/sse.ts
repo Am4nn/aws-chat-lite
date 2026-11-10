@@ -8,13 +8,15 @@ declare const awslambda: {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** SSE frame: id lets a reconnecting client say where it stopped (Last-Event-ID). */
-export const sseFrame = (n: number) => `id: ${n}\nevent: tick\ndata: {"n":${n}}\n\n`;
+const TOTAL_EVENTS = 5;
 
-/** Events still to send after `lastEventId` (resume), out of 1..total. */
-export function remaining(lastEventId: string | undefined, total = 5): number[] {
+/** SSE frame: the id lets a reconnecting client say where it stopped (Last-Event-ID). */
+const sseFrame = (n: number) => `id: ${n}\nevent: tick\ndata: {"n":${n}}\n\n`;
+
+/** Events 1..TOTAL_EVENTS still to send after `lastEventId`, so a reconnect resumes instead of starting over. */
+function remaining(lastEventId: string | undefined): number[] {
   const from = Math.max(0, Number.parseInt(lastEventId ?? "0", 10) || 0);
-  return Array.from({ length: total }, (_, i) => i + 1).filter((n) => n > from);
+  return Array.from({ length: TOTAL_EVENTS }, (_, i) => i + 1).filter((n) => n > from);
 }
 
 export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxyEventV2, stream) => {

@@ -13,7 +13,6 @@ export function addRooms(stack: CoreStack) {
   stack.route("POST", "/rooms/{roomId}/invite", fn);
   stack.route("GET", "/rooms/{roomId}/invite", fn);
   stack.route("DELETE", "/rooms/{roomId}/invite", fn);
-  stack.route("GET", "/invites/{code}", fn, { public: true }); // preview before you sign in
+  stack.route("GET", "/invites/{code}", fn, { public: true }); // The invite page shows the room before sign-in.
   stack.route("POST", "/invites/{code}/accept", fn);
-  return fn;
 }

@@ -18,7 +18,7 @@ import { inviteUrl } from "@/components/rooms/invite";
 import { Header } from "./Header";
 import { Panel } from "./Panel";
 import { Sidebar } from "./Sidebar";
-import { direction, navIndex } from "./nav";
+import { direction } from "./nav";
 
 type Dialog = "chat" | "room" | null;
 
@@ -32,8 +32,7 @@ export function RoomShell({ view, rooms, me, children }: { view: RoomView; rooms
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
 
-  const chatItems = view.chats.map((c) => ({ id: c.chatId }));
-  const index = navIndex(chatItems, chatId ?? "");
+  const index = view.chats.findIndex((c) => c.chatId === chatId);
   const prevIndex = useRef(index);
   const dir = direction(prevIndex.current, index);
   useEffect(() => { prevIndex.current = index; }, [index]);

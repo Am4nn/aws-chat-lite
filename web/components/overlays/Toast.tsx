@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Check } from "lucide-react";
-import { spring } from "@/lib/motion";
+import { dur, spring } from "@/lib/motion";
 
 type Toast = { id: number; text: string };
 const ToastContext = createContext<(text: string) => void>(() => {});
@@ -30,7 +30,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               layout
               initial={{ opacity: 0, y: -14, scale: 0.96 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.15 } }}
+              exit={{ opacity: 0, scale: 0.96, transition: { duration: dur.fast } }}
               transition={spring.pop}
               className="flex items-center gap-2.5 rounded-xl border border-line-strong bg-surface-2 px-3.5 py-2.5 text-[13px] shadow-[0_16px_40px_rgba(0,0,0,.45)]"
             >
