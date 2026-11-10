@@ -32,6 +32,11 @@ export function failedAt(e: unknown, index: number): boolean {
   return (e as { CancellationReasons?: { Code?: string }[] }).CancellationReasons?.[index]?.Code === "ConditionalCheckFailed";
 }
 
+/** True when a transaction was cancelled because another transaction was writing one of its items at the same time. */
+export function transactionConflict(e: unknown): boolean {
+  return !!(e as { CancellationReasons?: { Code?: string }[] }).CancellationReasons?.some((r) => r.Code === "TransactionConflict");
+}
+
 /** Every item a query matches. One Query call returns at most 1 MB, so this follows LastEvaluatedKey to the end. */
 export async function queryAll(input: Omit<QueryCommandInput, "TableName" | "ExclusiveStartKey">) {
   const items: Record<string, unknown>[] = [];

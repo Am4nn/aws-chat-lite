@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { BatchGetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
-import { batchGet, docClient, queryAll } from "./db.js";
+import { batchGet, docClient, queryAll, transactionConflict } from "./db.js";
 
 process.env.TABLE_NAME = "t";
 process.env.AWS_REGION = "us-east-1";
@@ -40,5 +40,14 @@ describe("batchGet", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("transactionConflict", () => {
+  it("is true only when a transaction was cancelled because another one was writing the same item", () => {
+    const cancelled = (...codes: string[]) => ({ name: "TransactionCanceledException", CancellationReasons: codes.map((Code) => ({ Code })) });
+    expect(transactionConflict(cancelled("None", "TransactionConflict"))).toBe(true);
+    expect(transactionConflict(cancelled("None", "ConditionalCheckFailed"))).toBe(false);
+    expect(transactionConflict(new Error("boom"))).toBe(false);
   });
 });

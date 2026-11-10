@@ -1,6 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import WebSocket from "ws";
 import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { docClient, tableName } from "../lib/db.js";
@@ -11,12 +12,15 @@ import { budgetText, monthKey } from "../budget/model.js";
 import { threadSk } from "../threads/model.js";
 import { threadsRepo } from "../threads/repo.js";
 import type { RunEvent } from "../threads/types.js";
+import { issueTicket } from "../live/tickets.js";
 import { runsRepo } from "./repo.js";
 import { startOrSteer } from "./start.js";
+import { requestStop } from "./stop.js";
 
 // Runs against the deployed run function on Floci: npm run floci:up && npm run deploy:local, then npm -w services run test:int
 const outputs = JSON.parse(readFileSync(new URL("../../../infra/cdk.out/outputs-local.json", import.meta.url), "utf8"));
-process.env.WS_CALLBACK_URL = String(outputs["cl-local-core"].WsUrl).replace(/^ws/, "http");
+const wsUrl = String(outputs["cl-local-core"].WsUrl);
+process.env.WS_CALLBACK_URL = wsUrl.replace(/^ws/, "http");
 process.env.RUN_FN_NAME = "cl-local-run";
 process.env.RUN_FN_QUALIFIER = "live";
 
@@ -70,6 +74,21 @@ async function steer(owner: { userId: string; username: string }, roomId: string
   return startOrSteer(owner, roomId, threadId, message);
 }
 
+type Frame = Record<string, any>;
+const sockets: WebSocket[] = [];
+afterEach(() => { for (const ws of sockets.splice(0)) ws.terminate(); });
+
+/** A member's live socket, recording every frame it gets. */
+async function listen(u: { userId: string; username: string }): Promise<Frame[]> {
+  const { ticket } = await issueTicket(u);
+  const ws = new WebSocket(`${wsUrl}?ticket=${ticket}`);
+  sockets.push(ws);
+  const frames: Frame[] = [];
+  ws.on("message", (data) => frames.push(JSON.parse(String(data))));
+  await new Promise((resolve, reject) => { ws.once("open", resolve); ws.once("error", reject); });
+  return frames;
+}
+
 const answersIn = async (owner: { userId: string; username: string }, roomId: string, threadId: string) =>
   (await chat.history(owner, roomId, threadId, {})).messages.filter((m) => m.authorId === "agent");
 
@@ -103,6 +122,47 @@ describe("the run loop on Floci", { timeout: 60_000 }, () => {
     expect((await budgetRepo().get(roomId, new Date())).spentMicros).toBe(cost);
   });
 
+  it("the room hears the run: run.updated with the cost while it streams, then the answer as message.new", async () => {
+    const at = await room();
+    const frames = await listen(at.owner);
+    const { thread, runId } = await startRun("go tools:0 words:3", at);
+    await finished(runId);
+    const answer = await until("the answer frame", async () =>
+      frames.find((f) => f.type === "message.new" && f.message.authorId === "agent"));
+    expect(answer.message).toMatchObject({ chatId: thread.threadId, seq: 2, agent: { runId, status: "done" } });
+    const updates = frames.filter((f) => f.type === "run.updated" && f.thread.threadId === thread.threadId);
+    expect(updates.some((f) => f.thread.status === "running" && f.thread.costMicros > 0 && f.budget.spentMicros > 0)).toBe(true);
+    expect(await until("the done frame", async () =>
+      frames.find((f) => f.type === "run.updated" && f.thread.status === "done"))).toBeDefined();
+  });
+
+  it("a seq nobody filled (a send that died after taking its number) doesn't keep the run from closing", async () => {
+    const { owner, roomId } = await room();
+    const { thread, message } = await threadsRepo().createThread(owner, roomId, { text: "go tools:0 words:3", clientId: `k${++clients}` });
+    await docClient().send(new UpdateCommand({
+      TableName: tableName(), Key: { pk: `CHAT#${thread.threadId}`, sk: "META" }, UpdateExpression: "ADD lastSeq :one",
+      ExpressionAttributeValues: { ":one": 1 },
+    }));
+    const { runId } = await startOrSteer(owner, roomId, thread.threadId, message);
+    expect((await finished(runId)).status).toBe("done");
+    const events = await runs.allEvents(runId);
+    // The naming call and one model turn: the hole never made the run go round again.
+    expect(events.filter((e) => e.type === "usage")).toHaveLength(2);
+    expect((await answersIn(owner, roomId, thread.threadId))[0]).toMatchObject({ seq: 3 });
+  });
+
+  it("a thread its first run couldn't name is named by a later run", async () => {
+    const at = await room();
+    await budgetRepo().record(at.roomId, 3_000_000, new Date());
+    const { thread, runId } = await startRun("go tools:0 words:3", at);
+    expect((await finished(runId)).status).toBe("capped");
+    await budgetRepo().setCap(at.owner, at.roomId, 5_000_000);
+    const next = await steer(at.owner, at.roomId, thread.threadId, "try again");
+    expect(next.started).toBe(true);
+    expect((await finished(next.runId)).status).toBe("done");
+    expect((await threadsRepo().threadById(at.roomId, thread.threadId))?.name).toBe("go-tools-0");
+  });
+
   it("a message during a step steers the run: one more step, then done", async () => {
     const { owner, roomId, thread, runId } = await startRun("slow tools:2 words:5");
     await eventOf(runId, (e) => e.type === "step.started");
@@ -129,13 +189,15 @@ describe("the run loop on Floci", { timeout: 60_000 }, () => {
     const answers = await answersIn(owner, roomId, thread.threadId);
     expect(answers).toHaveLength(1);
     expect(answers[0]!.text.match(/Fake answer for/g)).toHaveLength(2);
+    // The second turn's text starts its own paragraph.
+    expect(answers[0]!.text).toMatch(/\.\n\nFake answer for/);
     expect(answers[0]!.seq).toBe(3);
   });
 
   it("Stop: the streaming answer ends within 3 s, keeping the text so far", async () => {
     const { owner, roomId, thread, runId } = await startRun("slow words:400");
     await eventOf(runId, (e) => e.type === "text");
-    expect(await runs.requestStop(owner, roomId, thread.threadId)).toEqual({ runId });
+    expect(await requestStop(owner, roomId, thread.threadId)).toEqual({ runId });
     const stoppedAt = Date.now();
     const run = await finished(runId, 3_000);
     expect(Date.now() - stoppedAt).toBeLessThan(3_000);

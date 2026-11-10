@@ -37,3 +37,21 @@ export function buildContext(prior: Message[], events: RunEvent[]): ModelMessage
   }
   return messages;
 }
+
+/**
+ * The run's answer: every text event in order (exactly what viewers saw stream), and the final turn's text, the part
+ * after the last tool step or steer, which the thread's card summarizes.
+ */
+export function answerOf(events: RunEvent[]): { text: string; final: string } {
+  let text = "";
+  let final = "";
+  for (const e of events) {
+    if (e.type === "text") {
+      text += e.text;
+      final += e.text;
+    } else if (e.type === "step.started" || e.type === "step.finished" || e.type === "steer") {
+      final = "";
+    }
+  }
+  return { text, final: final.trim() };
+}

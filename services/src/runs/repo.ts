@@ -1,14 +1,9 @@
 import { GetCommand, PutCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { conditionFailed, docClient, failedAt, queryAll, tableName } from "../lib/db.js";
-import { Conflict, NotFound } from "../lib/errors.js";
-import { requireMember } from "../chat/membership.js";
 import { LAST_SEQ, forReaders, seqKey, type Message, type StoredMessage } from "../chat/model.js";
-import { summary, summaryLine, threadSk } from "../threads/model.js";
-import { threadsRepo } from "../threads/repo.js";
+import { summary, threadSk } from "../threads/model.js";
 import type { RunEndStatus, RunEvent, RunEventBody, ThreadSummary } from "../threads/types.js";
 import { eventSk } from "./model.js";
-
-interface User { userId: string; username: string }
 
 /** A run's META item: one durable execution answering one thread message (plus any steers it reads). */
 export type Run = {
@@ -21,6 +16,7 @@ export type Run = {
   startedBy: string;
   startedAt: string;
   endedAt?: string;
+  reason?: string;
   /** The message that started the run. */
   firstSeq: number;
   /** The newest thread message the run has read. */
@@ -55,7 +51,10 @@ export function setFields(fields: Record<string, unknown>) {
 
 const withoutKeys = ({ pk: _pk, sk: _sk, ...rest }: Item) => rest;
 
-/** Only what the model reads; attachment links are left out, so the run needs no access to the files bucket. */
+/**
+ * A stored message without its attachment links (the model doesn't read them, and an agent's answer has none), so the
+ * run needs no access to the files bucket.
+ */
 const asMessage = (item: Item): Message => forReaders({ ...withoutKeys(item), reactions: {} } as StoredMessage);
 
 /**
@@ -66,6 +65,11 @@ export function runsRepo() {
   const db = docClient();
   const TableName = tableName();
 
+  async function getRun(runId: string): Promise<Run | undefined> {
+    const { Item } = await db.send(new GetCommand({ TableName, Key: runKey(runId), ConsistentRead: true }));
+    return Item && (withoutKeys(Item) as Run);
+  }
+
   async function lastEventSeq(runId: string): Promise<number> {
     const { Items = [] } = await db.send(new QueryCommand({
       TableName, KeyConditionExpression: "pk = :p AND begins_with(sk, :ev)", ScanIndexForward: false, Limit: 1,
@@ -74,18 +78,24 @@ export function runsRepo() {
     return Number(Items[0]?.seq ?? 0);
   }
 
-  async function lastSeqOf(threadId: string): Promise<number> {
+  async function chatLastSeq(threadId: string): Promise<number> {
     const { Item } = await db.send(new GetCommand({ TableName, Key: chatMetaKey(threadId), ConsistentRead: true }));
     return Number(Item?.lastSeq ?? 0);
   }
 
+  /** The answer an earlier close posted, for a close that is repeated. */
+  async function storedAnswer(run: Run): Promise<Message | undefined> {
+    const seq = (await getRun(run.runId))?.answerSeq;
+    if (seq === undefined) return undefined;
+    const { Item } = await db.send(new GetCommand({ TableName, Key: { pk: `CHAT#${run.threadId}`, sk: seqKey(seq) }, ConsistentRead: true }));
+    return Item && asMessage(Item);
+  }
+
   return {
     lastEventSeq,
-
-    async getRun(runId: string): Promise<Run | undefined> {
-      const { Item } = await db.send(new GetCommand({ TableName, Key: runKey(runId), ConsistentRead: true }));
-      return Item && (withoutKeys(Item) as Run);
-    },
+    getRun,
+    /** The thread chat's counter: the newest seq any send has taken, written or not. */
+    chatLastSeq,
 
     /**
      * Appends events after the newest stored one. Each put waits for the one before it, so events land in seq order
@@ -155,24 +165,18 @@ export function runsRepo() {
       return summary(Attributes!, Date.now());
     },
 
-    /** Any member may stop the thread's run. The flag is only set while the run is still running. */
-    async requestStop(user: User, roomId: string, threadId: string): Promise<{ runId: string }> {
-      await requireMember(roomId, user.userId);
-      const thread = await threadsRepo().threadById(roomId, threadId);
-      if (!thread) throw new NotFound("Thread not found.");
-      if (thread.status === "running" && thread.runId) {
-        try {
-          await db.send(new UpdateCommand({
-            TableName, Key: runKey(thread.runId), UpdateExpression: "SET stopRequestedBy = :by",
-            ConditionExpression: "#status = :running", ExpressionAttributeNames: { "#status": "status" },
-            ExpressionAttributeValues: { ":by": user.username, ":running": "running" },
-          }));
-          return { runId: thread.runId };
-        } catch (e) {
-          if (!conditionFailed(e)) throw e;
-        }
+    /** Asks a running run to stop; false when it is no longer running. */
+    async flagStop(runId: string, username: string): Promise<boolean> {
+      try {
+        await db.send(new UpdateCommand({
+          TableName, Key: runKey(runId), UpdateExpression: "SET stopRequestedBy = :by", ConditionExpression: "#status = :running",
+          ExpressionAttributeNames: { "#status": "status" }, ExpressionAttributeValues: { ":by": username, ":running": "running" },
+        }));
+        return true;
+      } catch (e) {
+        if (conditionFailed(e)) return false;
+        throw e;
       }
-      throw new Conflict("Nothing is running.");
     },
 
     /**
@@ -184,11 +188,11 @@ export function runsRepo() {
      *
      * Item 1 failing means a member wrote after the run's last read: "unread", and the run stays open to read it.
      * A forced close (stop, cap, limits, errors) instead lands after whatever is there. Item 4 failing means an
-     * earlier attempt already closed the run: "already".
+     * earlier attempt already closed the run: "already", with the answer it stored.
      */
     async closeRun(
-      run: Run, opts: { status: RunEndStatus; reason?: string; text: string; seenSeq: number; force: boolean },
-    ): Promise<"closed" | "unread" | "already"> {
+      run: Run, opts: { status: RunEndStatus; reason?: string; text: string; summary: string; seenSeq: number; force: boolean },
+    ): Promise<{ result: "closed" | "unread" | "already"; answer?: Message }> {
       const { status, reason, text, force } = opts;
       let seen = opts.seenSeq;
       for (let attempt = 1; ; attempt++) {
@@ -203,7 +207,7 @@ export function runsRepo() {
           },
         };
         const thread = setFields({
-          status, summary: summaryLine(text) || reason || "", endedAt: now, lastActivityAt: now, steps: run.steps,
+          status, summary: opts.summary, endedAt: now, lastActivityAt: now, steps: run.steps,
           costMicros: run.costMicros,
         });
         const closed = setFields({ status, reason, answerSeq: seq, seenSeq: seen, endedAt: now, steps: run.steps, costMicros: run.costMicros });
@@ -228,13 +232,13 @@ export function runsRepo() {
               { Update: { TableName, Key: runKey(run.runId), ...closed, ConditionExpression: "attribute_not_exists(answerSeq)" } },
             ],
           }));
-          return "closed";
+          return { result: "closed", answer };
         } catch (e) {
-          if (failedAt(e, 3)) return "already";
+          if (failedAt(e, 3)) return { result: "already", answer: await storedAnswer(run) };
           if (!failedAt(e, 0)) throw e;
-          if (!force) return "unread";
+          if (!force) return { result: "unread" };
           if (attempt === FORCED_CLOSE_ATTEMPTS) throw e;
-          seen = await lastSeqOf(run.threadId);
+          seen = await chatLastSeq(run.threadId);
         }
       }
     },

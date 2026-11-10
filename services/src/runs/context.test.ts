@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "../chat/model.js";
 import type { RunEvent, RunEventBody } from "../threads/types.js";
-import { buildContext } from "./context.js";
+import { answerOf, buildContext } from "./context.js";
 
 const message = (seq: number, authorId: string, authorName: string, text: string): Message => ({
   roomId: "r", chatId: "t", seq, authorId, authorName, text, createdAt: "2026-11-11T00:00:00.000Z",
@@ -50,5 +50,21 @@ describe("buildContext", () => {
   it("text before a tool call stays in the same assistant message", () => {
     const run = events({ type: "text", text: "Let me look." }, started(1), finished(1));
     expect(buildContext([], run).slice(0, 1)).toEqual([{ role: "assistant", text: "Let me look.", toolCalls: [call(1)] }]);
+  });
+});
+
+describe("answerOf", () => {
+  it("joins every text event, and takes the final turn's text for the summary", () => {
+    const run = events(
+      { type: "text", text: "Let me look." }, started(1), finished(1),
+      { type: "text", text: "\n\nFirst answer." },
+      { type: "steer", messageSeq: 2, authorName: "ravi", text: "more" },
+      { type: "text", text: "\n\nSecond " }, { type: "text", text: "answer." },
+    );
+    expect(answerOf(run)).toEqual({ text: "Let me look.\n\nFirst answer.\n\nSecond answer.", final: "Second answer." });
+  });
+
+  it("a run that ends during a step has no final text", () => {
+    expect(answerOf(events({ type: "text", text: "Looking." }, started(1)))).toEqual({ text: "Looking.", final: "" });
   });
 });
