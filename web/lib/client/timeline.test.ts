@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "../types";
-import { addPending, applyMessages, failPending, newestSeq, type Timeline } from "./timeline";
+import { addPending, applyMessages, dropPending, failPending, newestSeq, type Timeline } from "./timeline";
 
 const msg = (seq: number, extra: Partial<Message> = {}): Message => ({
   roomId: "r", chatId: "c", seq, authorId: "u", authorName: "a", text: `m${seq}`, createdAt: "t",
@@ -17,7 +17,7 @@ describe("timeline", () => {
     expect(applyMessages(empty, [msg(3), msg(1), msg(2)]).messages.map((m) => m.seq)).toEqual([1, 2, 3]);
   });
   it("drops the pending entry whose clientId arrived", () => {
-    const p = { clientId: "k", text: "hi", attachments: [] };
+    const p = { clientId: "k", text: "hi", createdAt: "t", attachments: [] };
     const t = applyMessages(addPending(empty, p), [msg(1, { clientId: "k" })]);
     expect(t.pending).toEqual([]);
   });
@@ -26,8 +26,12 @@ describe("timeline", () => {
     expect(t.messages[0].text).toBe("edited");
   });
   it("marks a pending entry failed", () => {
-    const t = failPending(addPending(empty, { clientId: "k", text: "x", attachments: [] }), "k");
+    const t = failPending(addPending(empty, { clientId: "k", text: "x", createdAt: "t", attachments: [] }), "k");
     expect(t.pending[0].failed).toBe(true);
+  });
+  it("drops a pending entry by clientId", () => {
+    const t = addPending(addPending(empty, { clientId: "a", text: "x", createdAt: "t", attachments: [] }), { clientId: "b", text: "y", createdAt: "t", attachments: [] });
+    expect(dropPending(t, "a").pending.map((p) => p.clientId)).toEqual(["b"]);
   });
   it("reports the newest seq, 0 when empty", () => {
     expect(newestSeq(empty)).toBe(0);

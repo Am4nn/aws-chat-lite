@@ -15,6 +15,8 @@ import { CreateRoom } from "@/components/rooms/CreateRoom";
 import { MemberList } from "@/components/rooms/MemberList";
 import { InvitePanel } from "@/components/rooms/InvitePanel";
 import { inviteUrl } from "@/components/rooms/invite";
+import { MentionSound } from "@/components/chat/MentionSound";
+import { LiveProvider } from "@/lib/client/LiveProvider";
 import { Header } from "./Header";
 import { Panel } from "./Panel";
 import { Sidebar } from "./Sidebar";
@@ -84,7 +86,8 @@ export function RoomShell({ view, rooms, me, children }: { view: RoomView; rooms
   const activeChat = view.chats.find((c) => c.chatId === chatId);
 
   return (
-    <>
+    <LiveProvider>
+      <MentionSound meId={me.userId} />
       <div className="flex h-dvh overflow-hidden bg-ink">
         <Sidebar
           view={view} rooms={rooms} me={me} activeChatId={chatId} newChatIds={newChatIds}
@@ -116,6 +119,6 @@ export function RoomShell({ view, rooms, me, children }: { view: RoomView; rooms
       <Modal open={dialog === "room"} onClose={() => setDialog(null)} title="New room">
         <CreateRoom onDone={() => setDialog(null)} />
       </Modal>
-    </>
+    </LiveProvider>
   );
 }

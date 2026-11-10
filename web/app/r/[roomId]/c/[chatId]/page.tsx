@@ -1,30 +1,34 @@
 import { notFound } from "next/navigation";
-import { Hash } from "lucide-react";
-import { serverApi } from "@/lib/server/api";
-import type { RoomView } from "@/lib/types";
+import { serverApi, serverApiOrNull } from "@/lib/server/api";
+import { readerTimeZone } from "@/lib/server/timeZone";
+import type { Me, Message, RoomView } from "@/lib/types";
+import { ChatView } from "@/components/chat/ChatView";
 
+/** The newest page renders on the server, so a chat opens on its latest messages with no loading state. */
 export default async function ChatPage({ params }: { params: Promise<{ roomId: string; chatId: string }> }) {
   const { roomId, chatId } = await params;
-  const view = await serverApi<RoomView>(`/rooms/${roomId}`);
+  const [view, me, history, timeZone] = await Promise.all([
+    serverApi<RoomView>(`/rooms/${roomId}`),
+    serverApi<Me>("/me"),
+    serverApiOrNull<{ messages: Message[] }>(`/rooms/${roomId}/chats/${chatId}/messages`),
+    readerTimeZone(),
+  ]);
   const chat = view.chats.find((c) => c.chatId === chatId);
-  if (!chat) notFound();
+  if (!chat || !history) notFound();
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex flex-1 items-end justify-center px-7 pb-6">
-        <div className="w-full max-w-[780px]">
-          <span className="mb-4 grid size-12 place-items-center rounded-2xl bg-surface-3 text-text-2">
-            <Hash aria-hidden="true" size={22} />
-          </span>
-          <h2 className="font-display text-[27px] font-bold tracking-tight">Welcome to #{chat.name}</h2>
-          <p className="mt-1.5 text-[15px] text-text-2">This is the start of the conversation in {view.room.name}.</p>
-        </div>
-      </div>
-      <div className="flex justify-center px-7 pb-6">
-        <div className="flex h-[54px] w-full max-w-[780px] items-center rounded-2xl border border-line-strong bg-surface-2 px-[18px] text-text-3">
-          Live messaging isn&apos;t switched on yet.
-        </div>
-      </div>
-    </div>
+    <ChatView
+      key={chatId}
+      roomId={roomId}
+      chatId={chatId}
+      chatName={chat.name}
+      roomName={view.room.name}
+      me={me}
+      role={view.me.role}
+      members={view.members}
+      archived={view.room.archived}
+      initial={history.messages}
+      serverTimeZone={timeZone}
+    />
   );
 }

@@ -4,12 +4,13 @@ export type Me = { userId: string; username: string; isCreator: boolean };
 
 export type RoomSummary = { roomId: string; name: string; role: Role };
 
-export type Chat = { chatId: string; name: string };
+/** `unread` and `mentions` are mine; a muted chat still counts them, it just doesn't badge unread. */
+export type Chat = { chatId: string; name: string; lastSeq: number; unread: number; mentions: number; muted: boolean };
 
-export type Member = { userId: string; username: string; role: Role };
+export type Member = { userId: string; username: string; role: Role; online: boolean; lastSeen?: string };
 
 export type RoomView = {
-  room: { roomId: string; name: string; ownerId: string };
+  room: { roomId: string; name: string; ownerId: string; archived: boolean };
   me: { role: Role };
   chats: Chat[];
   members: Member[];
@@ -45,4 +46,4 @@ export type LiveEvent =
   | { type: "room.updated"; roomId: string }
   | { type: "pong" };
 
-export const isAdmin =(role: Role) => role === "owner" || role === "admin";
+export const isAdmin = (role: Role) => role === "owner" || role === "admin";

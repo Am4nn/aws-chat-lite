@@ -1,6 +1,6 @@
 import type { LiveEvent } from "../types";
 
-type ClientEvent = LiveEvent | { type: "reconnected" };
+export type ClientEvent = LiveEvent | { type: "reconnected" };
 type Status = "connecting" | "open" | "closed";
 type Ticket = { ticket: string; url: string };
 type Pending = { resolve: (data: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> };
@@ -55,7 +55,8 @@ export class LiveSocket {
     });
   }
 
-  on<T extends ClientEvent["type"]>(type: T, fn: (e: Extract<ClientEvent, { type: T }>) => void): () => void {
+  // An intersection, not Extract: message.new and message.updated share one member, which Extract would drop.
+  on<T extends ClientEvent["type"]>(type: T, fn: (e: ClientEvent & { type: T }) => void): () => void {
     const set = this.handlers.get(type) ?? new Set();
     this.handlers.set(type, set);
     set.add(fn as (e: never) => void);
