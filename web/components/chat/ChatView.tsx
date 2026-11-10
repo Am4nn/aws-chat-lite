@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type DragEvent } from "react";
+import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Archive, Hash, Paperclip } from "lucide-react";
 import { errorText } from "@/lib/client/bff";
@@ -62,6 +63,15 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
     return () => clearInterval(timer);
   }, []);
   useEffect(() => () => latest.current.pending.forEach((p) => revokePreviews(p.attachments)), [latest]);
+
+  // `?m=<seq>` (a search result) jumps to that message. It is dropped from the address afterwards, so clicking the
+  // same result again is a real change that jumps again, and a reload opens at the newest messages.
+  const target = Number(useSearchParams().get("m"));
+  useEffect(() => {
+    if (!Number.isInteger(target) || target < 1) return;
+    void jumpTo(target);
+    window.history.replaceState(null, "", window.location.pathname);
+  }, [target, jumpTo]);
 
   // Only a confirmed read counts, so one sent before the socket opened (or lost in a drop) is sent again once it's up.
   const lastRead = useRef(0);

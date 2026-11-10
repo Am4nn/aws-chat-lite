@@ -2,7 +2,8 @@ export type Role = "owner" | "admin" | "member";
 
 export type Me = { userId: string; username: string; isCreator: boolean };
 
-export type RoomSummary = { roomId: string; name: string; role: Role };
+/** `mentions`: how many times I was mentioned there since I last read, across its chats. */
+export type RoomSummary = { roomId: string; name: string; role: Role; mentions: number };
 
 /** `unread` and `mentions` are mine; a muted chat still counts them, it just doesn't badge unread. */
 export type Chat = { chatId: string; name: string; lastSeq: number; unread: number; mentions: number; muted: boolean };

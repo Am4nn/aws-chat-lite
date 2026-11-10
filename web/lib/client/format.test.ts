@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clockTime, dayKey, dayLabel, excerpt, fileSize, typingText } from "./format";
+import { clockTime, dayKey, dayLabel, excerpt, fileSize, matchSnippet, shortWhen, typingText } from "./format";
 
 describe("typingText", () => {
   it("names up to two people, then counts", () => {
@@ -43,4 +43,22 @@ describe("times and days", () => {
     expect(dayLabel("2026-11-02T01:00:00Z", now, tz)).toBe("Monday, November 2");
     expect(dayLabel("2025-11-02T01:00:00Z", now, tz)).toBe("Sunday, November 2, 2025");
   });
+  it("shortWhen: the time today, the date before, the year only when it differs", () => {
+    expect(shortWhen("2026-11-11T04:30:00Z", now, tz)).toBe("10:00 AM");
+    expect(shortWhen("2026-11-02T01:00:00Z", now, tz)).toBe("Nov 2");
+    expect(shortWhen("2025-11-02T01:00:00Z", now, tz)).toBe("Nov 2, 2025");
+  });
+});
+
+describe("matchSnippet", () => {
+  it("splits out the first match, ignoring case", () =>
+    expect(matchSnippet("Deploy the API\ntoday", "the api")).toEqual({ before: "Deploy ", match: "the API", after: " today" }));
+  it("trims long context on both sides", () => {
+    const s = matchSnippet(`${"a".repeat(80)} needle ${"b".repeat(200)}`, "needle");
+    expect(s.before).toBe(`…${"a".repeat(39)} `);
+    expect(s.match).toBe("needle");
+    expect(s.after).toBe(` ${"b".repeat(119)}…`);
+  });
+  it("falls back to the plain excerpt when the text doesn't contain it", () =>
+    expect(matchSnippet("hello", "zz")).toEqual({ before: "hello", match: "", after: "" }));
 });

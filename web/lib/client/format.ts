@@ -42,3 +42,28 @@ export function dayLabel(iso: string, now: number, timeZone: string): string {
     weekday: "long", month: "long", day: "numeric", ...(sameYear ? {} : { year: "numeric" }), timeZone,
   });
 }
+
+/** A compact timestamp for lists: the time for today, otherwise the date. */
+export function shortWhen(iso: string, now: number, timeZone: string): string {
+  if (dayKey(iso, timeZone) === dayKey(now, timeZone)) return clockTime(iso, timeZone);
+  const sameYear = dayKey(iso, timeZone).slice(0, 4) === dayKey(now, timeZone).slice(0, 4);
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }), timeZone });
+}
+
+const SNIPPET_BEFORE = 40;
+const SNIPPET_AFTER = 120;
+
+/** A search result's text around its first match, so the match is always in view however long the message is. */
+export function matchSnippet(text: string, query: string): { before: string; match: string; after: string } {
+  const flat = text.replace(/\s+/g, " ").trim();
+  const at = flat.toLowerCase().indexOf(query.trim().toLowerCase());
+  if (at < 0 || !query.trim()) return { before: excerpt(flat), match: "", after: "" };
+  const end = at + query.trim().length;
+  const from = Math.max(0, at - SNIPPET_BEFORE);
+  const to = Math.min(flat.length, end + SNIPPET_AFTER);
+  return {
+    before: `${from > 0 ? "…" : ""}${flat.slice(from, at)}`,
+    match: flat.slice(at, end),
+    after: `${flat.slice(end, to)}${to < flat.length ? "…" : ""}`,
+  };
+}

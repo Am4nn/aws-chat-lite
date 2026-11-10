@@ -1,34 +1,51 @@
-import { ChevronRight, Hash, PanelRight } from "lucide-react";
+import type { ReactNode } from "react";
+import { ChevronRight, Hash, Menu, PanelRight, Search } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import type { Member } from "@/lib/types";
 
-export function Header({ roomName, chatName, members, onTogglePanel }: {
-  roomName: string; chatName?: string; members: Member[]; onTogglePanel: () => void;
+const STACK = 4;
+
+export function Header({ roomName, chatName, members, onMenu, onSearch, onTogglePanel }: {
+  roomName: string; chatName?: string; members: Member[]; onMenu: () => void; onSearch: () => void; onTogglePanel: () => void;
 }) {
+  // Whoever is online leads the stack, so presence is visible even in a big room.
+  const stack = [...members].sort((a, b) => Number(b.online) - Number(a.online)).slice(0, STACK);
+  const online = members.filter((m) => m.online).length;
+
   return (
-    <header className="flex h-16 shrink-0 items-center gap-3 border-b border-line px-5">
-      <span className="text-[13px] text-text-3">{roomName}</span>
+    <header className="flex h-16 shrink-0 items-center gap-3 border-b border-line px-3 md:px-5">
+      <HeaderButton label="Open sidebar" onClick={onMenu} className="md:hidden"><Menu aria-hidden="true" size={16} /></HeaderButton>
+      <span className="truncate text-[13px] text-text-3 max-md:hidden">{roomName}</span>
       {chatName && (
         <>
-          <ChevronRight aria-hidden="true" size={13} className="text-[#3e4749]" />
-          <h1 className="flex items-center gap-1 font-display text-lg font-bold">
-            <Hash aria-hidden="true" size={16} className="text-text-3" />
-            {chatName}
+          <ChevronRight aria-hidden="true" size={13} className="shrink-0 text-[#3e4749] max-md:hidden" />
+          <h1 className="flex min-w-0 items-center gap-1 font-display text-lg font-bold">
+            <Hash aria-hidden="true" size={16} className="shrink-0 text-text-3" />
+            <span className="truncate">{chatName}</span>
           </h1>
         </>
       )}
-      <div className="ml-auto flex items-center gap-2">
-        <span className="mr-1 flex -space-x-2" aria-label={`${members.length} members`}>
-          {members.slice(0, 4).map((m) => <Avatar key={m.userId} name={m.username} ring />)}
+      <div className="ml-auto flex shrink-0 items-center gap-2">
+        <span role="img" className="mr-1 flex -space-x-2 max-sm:hidden" aria-label={`${members.length} members, ${online} online`}>
+          {/* Each avatar sits above the next, so the online dot in its corner is never covered. */}
+          {stack.map((m, i) => <span key={m.userId} className="relative flex" style={{ zIndex: STACK - i }}><Avatar name={m.username} online={m.online} ring /></span>)}
         </span>
-        <button
-          onClick={onTogglePanel}
-          aria-label="Toggle room panel"
-          className="grid size-8 place-items-center rounded-[10px] border border-line-strong bg-surface-2 text-text-2 transition-colors hover:border-[#36403f] hover:text-text"
-        >
-          <PanelRight aria-hidden="true" size={15} />
-        </button>
+        <HeaderButton label="Search messages" onClick={onSearch}><Search aria-hidden="true" size={15} /></HeaderButton>
+        <HeaderButton label="Toggle room panel" onClick={onTogglePanel}><PanelRight aria-hidden="true" size={15} /></HeaderButton>
       </div>
     </header>
+  );
+}
+
+function HeaderButton({ label, onClick, className = "", children }: { label: string; onClick: () => void; className?: string; children: ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className={`grid size-8 shrink-0 place-items-center rounded-[10px] border border-line-strong bg-surface-2 text-text-2 transition-[border-color,color,transform] hover:border-[#36403f] hover:text-text active:scale-[0.94] ${className}`}
+    >
+      {children}
+    </button>
   );
 }
