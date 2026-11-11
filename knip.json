@@ -1,8 +1,7 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "ignoreIssues": {
-    "services/src/models/catalog.ts": ["exports", "types"],
-    "services/src/models/picks.ts": ["exports"]
+    "services/src/models/catalog.ts": ["exports", "types"]
   },
   "workspaces": {
     "infra": {

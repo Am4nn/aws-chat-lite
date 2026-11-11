@@ -1,4 +1,5 @@
 import { budgetRepo } from "../budget/repo.js";
+import { JOBS } from "../models/catalog.js";
 import { gateway } from "../models/index.js";
 import { NAME_PROMPT, type ModelChunk, type ToolCall } from "../models/gateway.js";
 import { isNumberedName } from "../threads/model.js";
@@ -66,7 +67,8 @@ export async function nameThread(run: Run): Promise<number> {
   const messages = buildContext(await runs.prior(run.threadId, run.firstSeq), []);
   let name = "";
   let usage: Usage | undefined;
-  for await (const chunk of gateway().stream({ model: run.model, system: NAME_PROMPT, messages, tools: [] })) {
+  const request = { model: run.model, system: NAME_PROMPT, messages, tools: [], maxTokens: JOBS.name.maxTokens };
+  for await (const chunk of gateway().stream(request)) {
     if (chunk.type === "text") name += chunk.text;
     else if (chunk.type === "usage") usage = chunk;
   }
@@ -135,11 +137,13 @@ async function stream(run: Run, writer: Writer, messages: ReturnType<typeof buil
   const toolCalls: ToolCall[] = [];
   let usage: Usage | undefined;
   try {
-    const chunks = gateway().stream({ model: run.model, system: SYSTEM, messages, tools: FAKE_TOOLS, signal: abort.signal });
+    const chunks = gateway().stream({
+      model: run.model, system: SYSTEM, messages, tools: FAKE_TOOLS, maxTokens: JOBS.run.maxTokens, signal: abort.signal,
+    });
     for await (const chunk of chunks) {
       if (chunk.type === "text") pending += chunk.text;
       else if (chunk.type === "tool_call") toolCalls.push(chunk.call);
-      else usage = chunk;
+      else if (chunk.type === "usage") usage = chunk;
     }
   } catch (e) {
     // A model may reject its stream once aborted; a stop is not an error.
