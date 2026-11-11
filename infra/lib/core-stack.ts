@@ -15,6 +15,7 @@ import { addChat } from "./chat.js";
 import { addThreads } from "./threads.js";
 import { addRuns } from "./runs.js";
 import { addStream } from "./stream.js";
+import { addSandbox } from "./sandbox.js";
 
 /** Path to a handler file in services/src */
 export const servicePath = (file: string) =>
@@ -65,6 +66,7 @@ export class CoreStack extends Stack {
     this.allowBroadcast(addRooms(this));
     addChat(this);
     this.runs = addRuns(this);
+    addSandbox(this, this.runs.runFn);
     // A message sent in a thread over the socket starts or steers its run.
     this.allowRunStart(this.live.liveFn);
     const threadsFn = addThreads(this);
