@@ -21,16 +21,18 @@ function formatIn(tz: string) {
 }
 
 /**
- * A zone name Intl knows, kept exactly as given: it is what Scheduler gets. ICU's resolved name would rewrite some
- * zones to their old names (Asia/Kolkata as Asia/Calcutta), so it is never used.
+ * Intl accepts any casing (`utc`, `asia/kolkata`), which Scheduler may refuse, so only exact IANA names pass. Node
+ * lists a few zones under their old names (Asia/Calcutta), so the current ones are added.
+ */
+const ZONES = new Set([...Intl.supportedValuesOf("timeZone"), "UTC", "Asia/Kolkata"]);
+
+/**
+ * An exact zone name, kept as given: it is what Scheduler gets. ICU's resolved name would rewrite some zones to their
+ * old names (Asia/Kolkata as Asia/Calcutta), so it is never used.
  */
 export function roomTimeZone(raw: unknown): string {
   const name = typeof raw === "string" ? raw.trim() : "";
-  try {
-    formatIn(name);
-  } catch {
-    throw new ValidationError("Unknown time zone.");
-  }
+  if (!ZONES.has(name)) throw new ValidationError("Unknown time zone.");
   return name;
 }
 

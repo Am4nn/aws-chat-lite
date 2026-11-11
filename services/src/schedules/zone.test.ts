@@ -3,11 +3,11 @@ import { fromZoned, roomTimeZone, zonedParts } from "./zone.js";
 
 describe("roomTimeZone", () => {
   // ICU would report Asia/Kolkata as Asia/Calcutta; the name must reach Scheduler as given.
-  it.each(["Asia/Kolkata", "UTC", "America/New_York", "utc"])("keeps %j as given", (zone) => expect(roomTimeZone(zone)).toBe(zone));
+  it.each(["Asia/Kolkata", "UTC", "America/New_York"])("keeps %j as given", (zone) => expect(roomTimeZone(zone)).toBe(zone));
 
   it("trims the name", () => expect(roomTimeZone(" Europe/London ")).toBe("Europe/London"));
 
-  it.each(["Mars/Base", "", 5, undefined])("refuses %j", (raw) => {
+  it.each(["Mars/Base", "utc", "asia/kolkata", "", 5, undefined])("refuses %j", (raw) => {
     expect(() => roomTimeZone(raw)).toThrow("Unknown time zone.");
   });
 });
