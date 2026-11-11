@@ -3,8 +3,9 @@ import { toolKeys } from "./keys.js";
 
 const keys = {
   TAVILY_API_KEY: "t", GITHUB_APP_ID: "1", GITHUB_APP_SLUG: "chat-lite", GITHUB_APP_PRIVATE_KEY: "pem",
+  GITHUB_APP_CLIENT_ID: "Iv1.c", GITHUB_APP_CLIENT_SECRET: "cs",
 };
-const expected = { tavilyKey: "t", githubAppId: "1", githubAppSlug: "chat-lite", githubPrivateKey: "pem" };
+const expected = { tavilyKey: "t", githubAppId: "1", githubAppSlug: "chat-lite", githubPrivateKey: "pem", githubClientId: "Iv1.c", githubClientSecret: "cs" };
 
 describe("toolKeys", () => {
   it("reads the keys from the environment when there is no secret", async () => {

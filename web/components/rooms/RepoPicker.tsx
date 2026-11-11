@@ -25,7 +25,7 @@ export function RepoPicker({ installations, initial, busy, onCancel, onSave }: {
     });
   }
 
-  if (installations.length === 0) return <p className="text-[12.5px] text-text-3">The App isn&apos;t installed on any account yet.</p>;
+  if (installations.length === 0) return <p className="text-[12.5px] text-text-3">The App isn&apos;t installed on any account your GitHub sign-in can reach.</p>;
 
   return (
     <div className="flex flex-col gap-3">

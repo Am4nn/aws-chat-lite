@@ -90,10 +90,13 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
   const query = useSearchParams();
   const mcpName = query.get("mcp");
   const mcpError = query.get("mcpError");
+  const githubError = query.get("githubError");
+  const githubPick = query.get("github") === "pick";
+  const [pickGitHub, setPickGitHub] = useState(false);
   const onMap = !!activeThread && query.get("view") === "map";
   // A step picked on another run's Map (another thread's, or this thread's before its next run) isn't shown.
   const shownStep = onMap && picked?.runId === (query.get("run") ?? activeThread.runId) ? picked : null;
-  const shownMcpResult = useRef<string | null>(null);
+  const shownReturn = useRef<string | null>(null);
 
   // The socket outlives room switches and subscribes only to the rooms the user was in when it connected, so each
   // room asks for its own events once the socket is open (again after every reconnect).
@@ -106,17 +109,19 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
     if (e.roomId === roomId) router.refresh();
   });
 
-  // Connecting an MCP server comes back here from its sign-in with the result in the address. It is shown once, with
-  // the Connections tab open, then dropped from the address so a reload doesn't show it again. The ref stops Strict
-  // Mode's second effect run from showing it twice.
+  // Connecting an MCP server or signing in with GitHub comes back here with the result in the address. It is shown
+  // once, with the Connections tab open (and the repo picker, after GitHub), then dropped from the address so a reload
+  // doesn't show it again. The ref stops Strict Mode's second effect run from showing it twice.
   useEffect(() => {
-    const result = mcpError ?? (mcpName && `Connected ${mcpName}`);
-    if (!result || shownMcpResult.current === result) return;
-    shownMcpResult.current = result;
-    toast(result, mcpError ? "error" : "done");
+    const error = mcpError ?? githubError;
+    const result = error ?? (mcpName && `Connected ${mcpName}`) ?? (githubPick ? "github" : null);
+    if (!result || shownReturn.current === result) return;
+    shownReturn.current = result;
+    if (githubPick) setPickGitHub(true);
+    else toast(result, error ? "error" : "done");
     setPanelTab("connections");
     window.history.replaceState(null, "", window.location.pathname);
-  }, [mcpName, mcpError, toast]);
+  }, [mcpName, mcpError, githubError, githubPick, toast]);
 
   // Read once: the order only needs to know which threads the sidebar lists, and that changes by days, not seconds.
   const loadedAt = useNow(false);
@@ -306,7 +311,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
                 />
               ),
             },
-            { id: "connections", label: "Connections", icon: Plug, content: <ConnectionsPanel roomId={roomId} archived={room.archived} /> },
+            { id: "connections", label: "Connections", icon: Plug, content: <ConnectionsPanel roomId={roomId} archived={room.archived} pickGitHub={pickGitHub} onPickStarted={() => setPickGitHub(false)} /> },
             { id: "members", label: `Members · ${members.length}`, icon: Users, content: <MemberList roomId={roomId} members={members} myRole={view.me.role} myUserId={me.userId} /> },
             ...(isAdmin(view.me.role) && !room.archived ? [{ id: "invite", label: "Invite", icon: UserPlus, content: <InvitePanel roomId={roomId} /> }] : []),
             { id: "search", label: "Search", icon: Search, content: <SearchPanel roomId={roomId} chats={view.chats} serverTimeZone={serverTimeZone} focusSignal={searchFocus} onPick={() => setOverlay(null)} /> },

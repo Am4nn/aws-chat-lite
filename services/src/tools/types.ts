@@ -1,7 +1,9 @@
 import type { ToolSpec } from "../models/gateway.js";
 import type { GitHubConnection, Source } from "../threads/types.js";
 
-export type ToolKeys = { tavilyKey?: string; githubAppId?: string; githubAppSlug?: string; githubPrivateKey?: string };
+export type ToolKeys = {
+  tavilyKey?: string; githubAppId?: string; githubAppSlug?: string; githubPrivateKey?: string; githubClientId?: string; githubClientSecret?: string;
+};
 export type Page = { url: string; status: number; contentType: string; body: string };
 export type ToolResult = { ok: boolean; output: string; sources?: Source[] };
 export type ToolEnv = {

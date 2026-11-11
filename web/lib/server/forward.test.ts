@@ -30,6 +30,7 @@ describe("matchForward (/bff/api/* → HTTP API allowlist)", () => {
     ["GET", ["rooms", "r", "connections", "github", "installations"], "/rooms/r/connections/github/installations"],
     ["PUT", ["rooms", "r", "connections", "github"], "/rooms/r/connections/github"],
     ["DELETE", ["rooms", "r", "connections", "github"], "/rooms/r/connections/github"],
+    ["POST", ["rooms", "r", "connections", "github", "sign-in"], "/rooms/r/connections/github/sign-in"],
     ["PUT", ["rooms", "r", "approval-timeout"], "/rooms/r/approval-timeout"],
     ["GET", ["rooms", "r", "audit"], "/rooms/r/audit"],
     ["POST", ["runs", "abc", "approvals", "2"], "/runs/abc/approvals/2"],
@@ -93,8 +94,9 @@ describe("matchForward (/bff/api/* → HTTP API allowlist)", () => {
     ["POST", ["oauth", "token"]],
     ["DELETE", ["rooms", "r", "connections", "mcp"]],
     ["POST", ["rooms", "r", "connections", "mcp", "test"]],
-    // A flow is finished only by the OAuth return route, never straight from a page.
+    // A flow is finished only by its OAuth return route, never straight from a page.
     ["POST", ["mcp-flows", "finish"]],
+    ["POST", ["github-flows", "finish"]],
     // Memory is written by agents; members only edit and delete it.
     ["POST", ["rooms", "r", "memory"]],
     ["GET", ["rooms", "r", "timezone"]],
