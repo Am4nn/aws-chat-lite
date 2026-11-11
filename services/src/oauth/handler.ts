@@ -36,7 +36,7 @@ export function makeHandler(repo: OAuthRepo) {
         case "GET /oauth/authorize": {
           const result = await repo.startRequest(event.queryStringParameters ?? {}, ip);
           if ("error" in result) return { statusCode: result.status, headers: { "content-type": "text/plain; charset=utf-8" }, body: result.error };
-          return { statusCode: 302, headers: { location: "consent" in result ? result.consent : result.redirect } };
+          return { statusCode: 302, headers: { location: result.consent } };
         }
         case "POST /oauth/token":
           return noStore(json(200, await repo.token(formOf(event))));

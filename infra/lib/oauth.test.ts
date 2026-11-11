@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { fnNamed, template } from "./test-templates.js";
+import { fnNamed, statementsOf, template } from "./test-templates.js";
 
 const PUBLIC = [
   "GET /.well-known/oauth-authorization-server", "GET /.well-known/oauth-protected-resource", "GET /.well-known/oauth-protected-resource/mcp",
@@ -30,6 +30,30 @@ describe("the OAuth authorization server", () => {
     expect(fnNamed("cl-aws-oauth", "aws").props.Environment.Variables).toMatchObject({
       MCP_BASE_URL: "https://chat.amanarya.com", SITE_URL: "https://chat.amanarya.com",
     });
+  });
+
+  it("reaches only its own items: OAuth clients, requests, codes, grants and its rate counters, plus the apps index", () => {
+    const statements = statementsOf(fnNamed("cl-local-oauth"));
+    const onTable = statements.filter((s: any) => JSON.stringify(s.Resource).includes("Main"));
+    expect(onTable).toHaveLength(2);
+    const [items, index] = onTable;
+    expect([items.Action].flat().sort()).toEqual(
+      ["dynamodb:ConditionCheckItem", "dynamodb:DeleteItem", "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem"],
+    );
+    expect(items.Condition).toEqual({
+      "ForAllValues:StringLike": { "dynamodb:LeadingKeys": ["OAUTHCLIENT#*", "OAUTHREQ#*", "OAUTHCODE#*", "OAUTHGRANT#*", "RATE#oauth#*"] },
+      Null: { "dynamodb:LeadingKeys": "false" },
+    });
+    expect(JSON.stringify(items.Resource)).not.toContain("index");
+    expect(index.Action).toBe("dynamodb:Query");
+    expect(JSON.stringify(index.Resource)).toContain("/index/gsi1");
+  });
+
+  it("may look up a user in the pool, so a deleted account's apps lose access", () => {
+    const fn = fnNamed("cl-local-oauth");
+    expect(fn.props.Environment.Variables.USER_POOL_ID).toEqual({ Ref: expect.stringMatching(/^Users/) });
+    const cognito = statementsOf(fn).filter((s: any) => JSON.stringify(s.Action).includes("cognito-idp"));
+    expect(cognito).toEqual([expect.objectContaining({ Action: "cognito-idp:AdminGetUser", Resource: { "Fn::GetAtt": [expect.stringMatching(/^Users/), "Arn"] } })]);
   });
 
   it("sends no CORS headers: MCP clients call it from servers and apps, never from a browser page", () => {

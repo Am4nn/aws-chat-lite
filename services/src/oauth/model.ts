@@ -1,4 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { requiredEnv } from "../lib/env.js";
 import type { Scope } from "../threads/types.js";
 
 const SCOPES: Scope[] = ["rooms:read", "rooms:write"];
@@ -8,12 +9,6 @@ export class OAuthError extends Error {
   constructor(readonly code: string, description: string, readonly status = 400) {
     super(description);
   }
-}
-
-function requiredEnv(name: string) {
-  const value = process.env[name];
-  if (!value) throw new Error(`${name} not set`);
-  return value;
 }
 
 /** The issuer, and the base every OAuth and MCP URL is built on. */
