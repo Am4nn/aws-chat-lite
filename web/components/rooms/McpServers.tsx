@@ -4,7 +4,7 @@ import { useState, type FormEvent, type InputHTMLAttributes } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ChevronDown, Server } from "lucide-react";
 import { bff, errorText } from "@/lib/client/bff";
-import { keptLine, toolLabel } from "@/lib/client/mcp";
+import { keptLine, markFlowStarted, toolLabel } from "@/lib/client/mcp";
 import { dur, easeOut, instant } from "@/lib/motion";
 import type { McpConnection } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
@@ -33,6 +33,7 @@ export function McpServers({ roomId, servers, manage, onChange }: {
   /** Returns true when the browser is leaving for the server's sign-in, so the spinner stays until the page goes. */
   function connected(answer: Answer): boolean {
     if ("authorizeUrl" in answer) {
+      markFlowStarted();
       window.location.assign(answer.authorizeUrl);
       return true;
     }
@@ -103,13 +104,13 @@ function ServerRow({ server, fresh, manage, busy, onReconnect, onRefresh, onRemo
       aria-label={server.name}
       initial={fresh && !reduced ? { opacity: 0, y: 8 } : false}
       animate={{ opacity: 1, y: 0 }}
-      exit={reduced ? { opacity: 0, transition: instant } : { opacity: 0, height: 0, transition: { duration: 0.18, ease: easeOut } }}
-      transition={{ duration: 0.22, ease: easeOut }}
+      exit={reduced ? { opacity: 0, transition: instant } : { opacity: 0, height: 0, transition: { duration: dur.fast, ease: easeOut } }}
+      transition={{ duration: dur.base, ease: easeOut }}
       className="relative isolate overflow-hidden rounded-xl border border-line-strong bg-surface-2 p-3"
     >
       {fresh && !reduced && (
         <motion.span
-          key={server.toolsAt} aria-hidden="true" initial={{ opacity: 1 }} animate={{ opacity: 0 }} transition={{ duration: 0.5, ease: easeOut }}
+          key={server.toolsAt} aria-hidden="true" initial={{ opacity: 1 }} animate={{ opacity: 0 }} transition={{ duration: dur.slow, ease: easeOut }}
           className="absolute inset-0 -z-10 bg-[rgba(200,241,105,.10)]"
         />
       )}
