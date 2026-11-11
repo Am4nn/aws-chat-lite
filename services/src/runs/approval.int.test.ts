@@ -15,9 +15,10 @@ import type { RunEvent } from "../threads/types.js";
 import { gateOf } from "./approval.js";
 import { finishRun } from "./finish.js";
 import { DEAD_AFTER_MS } from "./model.js";
+import { BUILT_IN } from "../agents/model.js";
 import { runsRepo, type Run } from "./repo.js";
 import { startOrSteer } from "./start.js";
-import { toolStep } from "./steps.js";
+import { toolStep, type RoutedRun } from "./steps.js";
 import { requestStop } from "./stop.js";
 
 // Runs against the deployed run function on Floci, in fake model and tool modes: npm run deploy:local, then this file.
@@ -187,15 +188,15 @@ describe("approvals in the run loop, on Floci", { timeout: 60_000 }, () => {
   });
 
   // These call the tool step directly, in this process, on a run that is stored but not executing.
-  async function storedRun(at: Awaited<ReturnType<typeof room>>): Promise<Run & { model: string }> {
+  async function storedRun(at: Awaited<ReturnType<typeof room>>): Promise<RoutedRun> {
     const { thread, message } = await threadsRepo().createThread(at.aman, at.roomId, { text: "x", clientId: `k${++clients}` });
     const run: Run & { model: string } = {
-      runId: randomUUID(), roomId: at.roomId, threadId: thread.threadId, number: thread.number, status: "running", model: "fake",
+      runId: randomUUID(), roomId: at.roomId, threadId: thread.threadId, number: thread.number, agentId: "agent", status: "running", model: "fake",
       pick: "auto", pickBy: "default", startedBy: "aman", startedAt: new Date().toISOString(),
       deadAt: new Date(Date.now() + 7_800_000).toISOString(), firstSeq: message.seq, seenSeq: message.seq, steps: 0, costMicros: 0,
     };
     await docClient().send(new PutCommand({ TableName: tableName(), Item: { pk: `RUN#${run.runId}`, sk: "META", ...run } }));
-    return run;
+    return { ...run, agent: BUILT_IN, others: [] };
   }
 
   it("a write step found already started is never run again: the model is told it may have happened", async () => {

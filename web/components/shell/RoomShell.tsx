@@ -3,9 +3,9 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { motion, useReducedMotion } from "motion/react";
-import { Bot, Folder, Plug, Search, UserPlus, Users } from "lucide-react";
+import { Activity, Bot, CalendarClock, Folder, NotebookPen, Plug, Search, UserPlus, Users, Workflow } from "lucide-react";
 import { bff, bffOrNull, errorText } from "@/lib/client/bff";
-import { useLive, useLiveStatus } from "@/lib/client/LiveProvider";
+import { useLive, useLiveEvent, useLiveStatus } from "@/lib/client/LiveProvider";
 import { returnToast } from "@/lib/client/mcp";
 import { ModelsProvider } from "@/lib/client/ModelsProvider";
 import { sidebarThreads } from "@/lib/client/threads";
@@ -20,20 +20,26 @@ import { CommandPalette, type PaletteItem } from "@/components/overlays/CommandP
 import { Confirm } from "@/components/overlays/Confirm";
 import { Modal } from "@/components/overlays/Modal";
 import { useToast } from "@/components/overlays/Toast";
+import { AgentsPanel } from "@/components/rooms/AgentsPanel";
 import { ConnectionsPanel } from "@/components/rooms/ConnectionsPanel";
 import { CreateChat } from "@/components/rooms/CreateChat";
 import { CreateRoom } from "@/components/rooms/CreateRoom";
 import { MemberList } from "@/components/rooms/MemberList";
+import { MemoryPanel } from "@/components/rooms/MemoryPanel";
+import { SchedulesPanel } from "@/components/rooms/SchedulesPanel";
 import { InvitePanel } from "@/components/rooms/InvitePanel";
 import { inviteUrl } from "@/components/rooms/invite";
 import { MentionSound } from "@/components/chat/MentionSound";
 import { FilesPanel } from "@/components/files/FilesPanel";
 import { useRoomFiles } from "@/components/files/useRoomFiles";
 import { SearchPanel } from "@/components/chat/SearchPanel";
+import { StepDetails } from "@/components/threads/map/StepDetails";
+import { StepPick, type PickedStep } from "@/components/threads/map/stepPick";
 import { RunCapsule } from "@/components/threads/RunCapsule";
 import { RunPanel } from "@/components/threads/RunPanel";
 import { ThreadList } from "@/components/threads/ThreadList";
 import { ThreadTitle } from "@/components/threads/ThreadTitle";
+import { ViewSwitch } from "@/components/threads/ViewSwitch";
 import { BudgetCard } from "./BudgetCard";
 import { Header } from "./Header";
 import { Backdrop, MobileNav } from "./MobileNav";
@@ -67,6 +73,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
   const [searchFocus, setSearchFocus] = useState(0);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
+  const [picked, setPicked] = useState<PickedStep | null>(null);
   const live = useLive();
   const status = useLiveStatus();
   const { room } = view;
@@ -81,12 +88,20 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
   const query = useSearchParams();
   const mcpName = query.get("mcp");
   const mcpError = query.get("mcpError");
+  const onMap = !!activeThread && query.get("view") === "map";
+  // A step picked on another run's Map (another thread's, or this thread's before its next run) isn't shown.
+  const shownStep = onMap && picked?.runId === (query.get("run") ?? activeThread.runId) ? picked : null;
 
   // The socket outlives room switches and subscribes only to the rooms the user was in when it connected, so each
   // room asks for its own events once the socket is open (again after every reconnect).
   useEffect(() => {
     if (status === "open") live.request("subscribe", { roomId }).catch(() => {});
   }, [live, status, roomId]);
+
+  // Thread labels, the agent picker and the @ list read the agents from the room view, so a change fetches it again.
+  useLiveEvent("agents.changed", (e) => {
+    if (e.roomId === roomId) router.refresh();
+  });
 
   // Connecting an MCP server comes back here from its sign-in with the result in the address. It is shown once, with
   // the Connections tab open, then dropped from the address so a reload doesn't show it again.
@@ -135,6 +150,14 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
   function togglePanel() {
     if (isPhoneNow()) setOverlay((o) => (o === "panel" ? null : "panel"));
     else setPanelOpen((o) => !o);
+  }
+
+  /** A step picked on the Map opens in the panel's Step tab. */
+  function pickStep(step: PickedStep) {
+    setPicked(step);
+    setPanelTab("step");
+    if (isPhoneNow()) setOverlay("panel");
+    else setPanelOpen(true);
   }
 
   function openSearch() {
@@ -211,6 +234,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
   const enter = enterFrom(dir, reducedMotion);
   const activeChat = view.chats.find((c) => c.chatId === chatId);
   const isOwner = view.me.role === "owner";
+  const meInRoom = { userId: me.userId, role: view.me.role };
 
   return (
     <ModelsProvider view={view}>
@@ -240,6 +264,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
               <>
                 <ThreadTitle thread={activeThread} />
                 {activeThread.runId && <RunCapsule key={activeThread.threadId} thread={activeThread} />}
+                <ViewSwitch map={onMap} />
               </>
             )}
             taint={activeThread?.taint}
@@ -247,7 +272,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
           />
           <div className="relative min-h-0 flex-1 overflow-hidden">
             <motion.div key={pathname} {...enter} initial={navigated ? enter.initial : false} className="absolute inset-0">
-              {children}
+              <StepPick.Provider value={{ picked, pick: pickStep }}>{children}</StepPick.Provider>
             </motion.div>
           </div>
         </main>
@@ -257,7 +282,17 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
           active={panelTab}
           onActiveChange={setPanelTab}
           tabs={[
-            ...(activeThread ? [{ id: "context", label: "Context", icon: Bot, content: <RunPanel thread={activeThread} files={files.files} /> }] : []),
+            ...(shownStep ? [{ id: "step", label: "Step", icon: Workflow, content: <StepDetails {...shownStep} /> }] : []),
+            ...(activeThread ? [{ id: "context", label: "Context", icon: Activity, content: <RunPanel thread={activeThread} files={files.files} /> }] : []),
+            { id: "memory", label: "Memory", icon: NotebookPen, content: <MemoryPanel key={roomId} roomId={roomId} archived={room.archived} /> },
+            {
+              id: "agents", label: "Agents", icon: Bot,
+              content: <AgentsPanel key={roomId} roomId={roomId} me={meInRoom} rooms={rooms} models={view.models} archived={room.archived} />,
+            },
+            {
+              id: "schedules", label: "Schedules", icon: CalendarClock,
+              content: <SchedulesPanel key={roomId} roomId={roomId} me={meInRoom} chats={view.chats} archived={room.archived} />,
+            },
             {
               id: "files", label: `Files · ${files.files.length}`, icon: Folder,
               content: (
@@ -267,16 +302,19 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
                 />
               ),
             },
+            { id: "connections", label: "Connections", icon: Plug, content: <ConnectionsPanel roomId={roomId} archived={room.archived} /> },
             { id: "members", label: `Members · ${members.length}`, icon: Users, content: <MemberList roomId={roomId} members={members} myRole={view.me.role} myUserId={me.userId} /> },
             ...(isAdmin(view.me.role) && !room.archived ? [{ id: "invite", label: "Invite", icon: UserPlus, content: <InvitePanel roomId={roomId} /> }] : []),
-            { id: "connections", label: "Connections", icon: Plug, content: <ConnectionsPanel roomId={roomId} archived={room.archived} /> },
             { id: "search", label: "Search", icon: Search, content: <SearchPanel roomId={roomId} chats={view.chats} serverTimeZone={serverTimeZone} focusSignal={searchFocus} onPick={() => setOverlay(null)} /> },
           ]}
         />
         <Backdrop open={overlay !== null} onClose={() => setOverlay(null)} />
       </div>
 
-      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} items={paletteItems} onAsk={room.archived ? undefined : askAgent} />
+      <CommandPalette
+        open={paletteOpen} onClose={() => setPaletteOpen(false)} items={paletteItems}
+        agentNames={view.agents.map((a) => a.name)} onAsk={room.archived ? undefined : askAgent}
+      />
       <Modal open={dialog === "chat"} onClose={() => setDialog(null)} title="New chat">
         <CreateChat roomId={roomId} onDone={() => setDialog(null)} />
       </Modal>

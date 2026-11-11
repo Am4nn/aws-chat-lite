@@ -3,6 +3,7 @@ import { modelInfo, type Provider } from "../models/catalog.js";
 import type { ToolCall, ToolSpec } from "../models/gateway.js";
 import { mcpTaint, type TaintSource } from "../models/privacy.js";
 import { LANGUAGES, MAX_TIMEOUT_SEC } from "../sandbox/sandbox.js";
+import type { Agent, ToolKind } from "../threads/types.js";
 import { findTool, roomTools, type RoomMcp } from "../tools/index.js";
 import type { Tool } from "../tools/types.js";
 
@@ -29,17 +30,48 @@ export const SANDBOX_TOOL: ToolSpec = {
   },
 };
 
+export const firstLine = (text: unknown) => String(text ?? "").split("\n").map((l) => l.trim()).find(Boolean) ?? "";
+
+export const DELEGATE = "delegate";
+const DELEGATE_ABOUT = "Hand one sub-task to another agent of this room. It sees only the task you write, works with its own "
+  + "tools and instructions, and its final answer comes back as this tool's result.";
+
 /**
- * The tools a model is offered. Sandbox output carries room files, so only a model that may see private content gets
- * the sandbox; the fake's tools are ones only the fake accepts; GitHub's need the room to be connected, and an MCP
- * server's a signed-in connection.
+ * Another agent of the room as a run knows it: enough to pick it for a sub-task. The run's first step checkpoints
+ * the room's other agents, and twenty full instructions would come near the checkpoint's size limit, so a helper's
+ * whole agent is read when it starts.
  */
-export function toolsFor(model: string, served: Provider, room: RoomMcp & { github: boolean }): ToolSpec[] {
+export type AgentCard = Pick<Agent, "agentId" | "name"> & { about: string };
+
+export const agentCard = (a: Agent): AgentCard => ({ agentId: a.agentId, name: a.name, about: firstLine(a.instructions).slice(0, 120) });
+
+/** The tool that hands a sub-task to one of `others`, the agents a run's agent can ask; none when there are none. */
+export function delegateSpec(others: AgentCard[]): ToolSpec | undefined {
+  if (!others.length) return undefined;
+  const roster = others.map((a) => (a.about ? `@${a.name}: ${a.about}` : `@${a.name}`));
+  return {
+    name: DELEGATE,
+    description: [DELEGATE_ABOUT, "Agents:", ...roster].join("\n"),
+    inputSchema: {
+      type: "object",
+      properties: { agent: { enum: others.map((a) => a.name) }, task: { type: "string" } },
+      required: ["agent", "task"],
+    },
+  };
+}
+
+/**
+ * The tools a model is offered: those of the kinds its agent may use, plus the room memory, which every agent shares.
+ * Sandbox output carries room files, so only a model that may see private content gets the sandbox; the fake's tools
+ * are ones only the fake accepts; GitHub's need the room to be connected, and an MCP server's a signed-in connection.
+ */
+export function toolsFor(model: string, served: Provider, room: RoomMcp & { github: boolean }, kinds: ToolKind[]): ToolSpec[] {
   const privateOk = modelInfo(model).privateOk;
+  const allowed = (t: Tool) => t.kind === "memory" || kinds.includes(t.kind);
   return [
     ...(served === "fake" ? FAKE_TOOLS : []),
-    ...(privateOk ? [SANDBOX_TOOL] : []),
-    ...roomTools({ ...room, privateOk }).map((t) => t.spec),
+    ...(privateOk && kinds.includes("sandbox") ? [SANDBOX_TOOL] : []),
+    ...roomTools({ ...room, privateOk }).filter(allowed).map((t) => t.spec),
   ];
 }
 
@@ -47,25 +79,24 @@ export function toolsFor(model: string, served: Provider, room: RoomMcp & { gith
  * Whether a call may run: a tool its model could be offered were every room connection signed in. A room's missing or
  * signed-out connection is left to the tool's own check, which tells the model so, rather than calling the tool unknown.
  */
-export function mayRun(model: string, served: Provider, name: string, { roomId, mcp }: RoomMcp): boolean {
+export function mayRun(model: string, served: Provider, name: string, { roomId, mcp }: RoomMcp, kinds: ToolKind[]): boolean {
   const signedIn = mcp.map((c) => ({ ...c, status: "connected" as const }));
-  return toolsFor(model, served, { roomId, github: true, mcp: signedIn }).some((t) => t.name === name);
+  return toolsFor(model, served, { roomId, github: true, mcp: signedIn }, kinds).some((t) => t.name === name);
 }
 
 /**
  * Whether a call waits for a member's approval. A write always does. A web or MCP call sends its input out, so text
  * injected into private content could have the model carry that content out in it: such a call asks once the thread
- * holds any private content but what this same MCP server returned itself. `taint` is the thread's, with whatever
- * the model's turn saw that the stored taint may lag behind.
+ * holds any private content but what this same MCP server returned itself. GitHub reads and memory keep their input
+ * inside what the room already shares. `taint` is the thread's, with whatever the model's turn saw that the stored taint
+ * may lag behind.
  */
 export function asksFirst(tool: Pick<Tool, "spec" | "kind" | "write">, taint: TaintSource[]): boolean {
   if (tool.write) return true;
-  if (tool.kind === "github") return false;
+  if (tool.kind !== "web" && tool.kind !== "mcp") return false;
   const own = tool.kind === "mcp" ? mcpTaint(mcpServerOf(tool.spec.name)) : undefined;
   return taint.some((t) => t !== own);
 }
-
-const firstLine = (code: unknown) => String(code ?? "").split("\n").map((l) => l.trim()).find(Boolean) ?? "";
 
 /** The line a running step shows under its tool's name. */
 export function toolDetail(call: ToolCall, room: RoomMcp): string {

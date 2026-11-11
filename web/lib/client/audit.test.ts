@@ -29,7 +29,7 @@ describe("auditLine", () => {
 
 describe("auditMayHaveChanged", () => {
   const t = (o: Partial<ThreadSummary>): ThreadSummary => ({
-    roomId: "r", threadId: "t1", number: 1, name: "n", status: "running", rev: 1, steps: 0, costMicros: 0, createdBy: "u",
+    roomId: "r", threadId: "t1", number: 1, name: "n", agentId: "agent", status: "running", rev: 1, steps: 0, costMicros: 0, createdBy: "u",
     lastActivityAt: "2026-11-11T10:00:00Z", archived: false, taint: [], ...o,
   });
   it("is true when a run asks, settles, ends or finishes a tool", () => {

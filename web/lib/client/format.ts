@@ -22,6 +22,11 @@ export function formatUsd(micros: number): string {
   return `$${(Math.round(micros / 10_000) / 100).toFixed(2)}`;
 }
 
+/** One step's share of a run's cost, which is often well under a cent. */
+export const formatStepCost = (micros: number) => `$${(micros / 1_000_000).toFixed(3)}`;
+
+export const formatTokens = (n: number) => (n < 1000 ? String(n) : `${Number((n / 1000).toFixed(1))}k`);
+
 /** The day the room's budget resets, which is the 1st of a month in UTC. */
 export const resetsOn = (resetsAt: string) =>
   new Date(resetsAt).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });

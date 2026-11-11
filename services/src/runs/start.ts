@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { agentOrDefault } from "../agents/model.js";
+import { agentsRepo } from "../agents/repo.js";
 import { auditRepo } from "../audit/repo.js";
 import type { User } from "../lib/auth.js";
-import { docClient, failedAt, tableName, transactionConflict } from "../lib/db.js";
+import { docClient, failedAt, setFields, tableName, transactionConflict } from "../lib/db.js";
 import { NotFound } from "../lib/errors.js";
 import { roomKey } from "../lib/keys.js";
 import type { Message } from "../chat/model.js";
@@ -16,14 +18,14 @@ import { threadsRepo } from "../threads/repo.js";
 import { finishRun } from "./finish.js";
 import { DEAD_AFTER_MS, DEAD_REASON } from "./model.js";
 import { notifyRun } from "./notify.js";
-import { runsRepo, setFields, type Run, type TransactItem } from "./repo.js";
+import { runsRepo, type Run, type TransactItem } from "./repo.js";
 
 const CLAIM_ATTEMPTS = 5;
 
 let lambda: LambdaClient | undefined;
 
 /** A room that never set a default model uses Auto. Read consistently, so a default an admin just set applies. */
-async function roomDefaultModel(roomId: string): Promise<ModelPick> {
+export async function roomDefaultModel(roomId: string): Promise<ModelPick> {
   const { Item } = await docClient().send(new GetCommand({
     TableName: tableName(), Key: { pk: roomKey(roomId), sk: "META" }, ConsistentRead: true,
     ProjectionExpression: "#m", ExpressionAttributeNames: { "#m": "defaultModel" },
@@ -71,7 +73,8 @@ async function claimed(items: TransactItem[], replaced?: TransactItem): Promise<
  * A run past its `deadAt` can't still be alive, so it no longer counts as active, and the claim marks it failed as it
  * takes the thread.
  *
- * A new run takes the message's `pick`, else the room default; a default that may not see a private thread's content
+ * A new run is answered by the thread's agent, or by the built-in one once that agent is deleted. It takes the message's
+ * `pick`, else the agent's model, else the room default; a default that may not see a private thread's content
  * becomes Auto. A steer's pick is ignored: the run keeps the model it started with. Either way a message with an
  * attachment makes the thread private.
  */
@@ -84,15 +87,16 @@ export async function startOrSteer(
   const threads = threadsRepo();
   const [thread, roomDefault] = await Promise.all([threads.threadById(roomId, threadId), roomDefaultModel(roomId)]);
   if (!thread) throw new NotFound("Thread not found.");
+  const agent = agentOrDefault(await agentsRepo().byId(roomId, thread.agentId));
   const taint = messageTaint(message);
   const adds = threadAdds(taint);
-  const chosen = resolvePick(pick, roomDefault, mergeTaint(thread.taint, taint));
+  const chosen = resolvePick(pick, agent.model === "room" ? roomDefault : agent.model, mergeTaint(thread.taint, taint));
   const key = { pk: roomKey(roomId), sk: threadSk(thread.number) };
   const now = new Date();
   const startedAt = now.toISOString();
   const deadAt = new Date(now.getTime() + DEAD_AFTER_MS).toISOString();
   const run: Run = {
-    runId: randomUUID(), roomId, threadId, number: thread.number, status: "running", pick: chosen.pick, pickBy: chosen.by,
+    runId: randomUUID(), roomId, threadId, number: thread.number, agentId: agent.agentId, status: "running", pick: chosen.pick, pickBy: chosen.by,
     startedBy: user.username, startedAt, deadAt, firstSeq: message.seq, seenSeq: message.seq, steps: 0, costMicros: 0,
   };
   const start = setFields({
@@ -134,9 +138,10 @@ export async function startOrSteer(
 
   let first: RunEvent;
   try {
-    first = await (await runs.eventWriter(run.runId)).append({ type: "run.started", pick: run.pick, startedBy: run.startedBy });
+    first = await (await runs.eventWriter(run.runId)).append({ type: "run.started", pick: run.pick, startedBy: run.startedBy, agentName: agent.name });
     await auditRepo().record(roomId, {
       id: `${run.runId}#${first.seq}`, at: first.at, actor: user.username, kind: "asked", threadNumber: thread.number, detail: message.text,
+      agent: agent.name,
     });
     // The execution name is the run id, so a repeated start can't begin a second execution of the same run.
     await (lambda ??= new LambdaClient({})).send(new InvokeCommand({

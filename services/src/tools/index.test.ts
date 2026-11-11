@@ -12,26 +12,28 @@ const conn = (status: McpConnection["status"]): McpConnection => ({
 const noMcp = { roomId: "r1", mcp: [] };
 const names = (opts: { github: boolean; privateOk: boolean; mcp?: McpConnection[] }) =>
   roomTools({ roomId: "r1", mcp: [], ...opts }).map((t) => t.spec.name);
+const memory = ["memory_save", "memory_update", "memory_forget"];
 const github = { installationId: 1, account: "fake-org", repos: ["fake-org/playground"], addedBy: "aman", addedAt: "2026-11-11T00:00:00Z" };
 
 describe("roomTools", () => {
-  it("offers the web tools always and GitHub's only with a connection and a model that may see private content", () => {
-    expect(names({ github: false, privateOk: true })).toEqual(["web_search", "web_fetch"]);
-    expect(names({ github: true, privateOk: false })).toEqual(["web_search", "web_fetch"]);
+  it("offers the web and memory tools always and GitHub's only with a connection and a model that may see private content", () => {
+    expect(names({ github: false, privateOk: true })).toEqual(["web_search", "web_fetch", ...memory]);
+    expect(names({ github: true, privateOk: false })).toEqual(["web_search", "web_fetch", ...memory]);
     const all = names({ github: true, privateOk: true });
     expect(all.filter((n) => n.startsWith("github_"))).toHaveLength(9);
   });
 
   it("offers a signed-in MCP server's tools, only to a model that may see private content", () => {
     expect(names({ github: false, privateOk: true, mcp: [conn("connected")] })).toEqual([
-      "web_search", "web_fetch", "mcp__test__echo", "mcp__test__add_note",
+      "web_search", "web_fetch", "mcp__test__echo", "mcp__test__add_note", ...memory,
     ]);
     expect(names({ github: true, privateOk: false, mcp: [conn("connected")] }).some((n) => n.startsWith("mcp__"))).toBe(false);
     expect(names({ github: false, privateOk: true, mcp: [conn("needs_auth")] }).some((n) => n.startsWith("mcp__"))).toBe(false);
   });
 
-  it("finds a tool by name, a room's MCP tools included", () => {
+  it("finds a tool by name, the memory tools and a room's MCP tools included", () => {
     expect(findTool("github_comment", noMcp)?.write).toBe(true);
+    expect(findTool("memory_save", noMcp)).toMatchObject({ kind: "memory", write: false });
     expect(findTool("sandbox_run", noMcp)).toBeUndefined();
     expect(findTool("mcp__test__echo", noMcp)).toBeUndefined();
     const room = { roomId: "r1", mcp: [conn("needs_auth")] };
@@ -41,21 +43,22 @@ describe("roomTools", () => {
 });
 
 describe("toolEnv in fake mode", () => {
+  const room = { roomId: "r1", threadNumber: 1, agentName: "agent", tainted: false };
   it("answers web search with two sources", async () => {
-    const env = await toolEnv("fake");
+    const env = { ...await toolEnv("fake"), room };
     const result = await findTool("web_search", noMcp)!.run({ query: "q" }, env);
     expect(result.ok).toBe(true);
     expect(result.sources).toHaveLength(2);
   });
 
   it("runs the GitHub tools against the canned App, signed with its own key", async () => {
-    const env = await toolEnv("fake", github);
+    const env = { ...await toolEnv("fake", github), room };
     const result = await findTool("github_read_file", noMcp)!.run({ path: "README.md" }, env);
     expect(result).toMatchObject({ ok: true, output: expect.stringContaining("# Playground") });
   });
 
   it("fetches pages without the network, still refusing private addresses", async () => {
-    const env = await toolEnv("fake");
+    const env = { ...await toolEnv("fake"), room };
     expect((await findTool("web_fetch", noMcp)!.run({ url: "https://example.com/" }, env)).output).toContain("Fake page");
     expect((await findTool("web_fetch", noMcp)!.run({ url: "http://169.254.169.254/" }, env)).ok).toBe(false);
   });

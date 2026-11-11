@@ -1,7 +1,7 @@
 export type Role = "owner" | "admin" | "member";
 export type Action =
   | "read" | "createChat" | "manageInvite" | "removeMember" | "setRole" | "archive" | "setBudget" | "setModel" | "manageConnections" | "setSandbox"
-  | "leave";
+  | "manageAgents" | "setTimeZone" | "leave";
 
 const RANK: Record<Role, number> = { member: 0, admin: 1, owner: 2 };
 
@@ -14,6 +14,8 @@ const RANK: Record<Role, number> = { member: 0, admin: 1, owner: 2 };
  * - only the owner archives the room or sets its monthly agent budget
  * - admins and the owner set the room's default model, its GitHub connection, its approval timeout and whether its
  *   sandbox reaches the internet
+ * - admins and the owner change any of the room's agents and schedules, not only their own, copy agents into the
+ *   room, and set its time zone
  * - the owner is the one member who can't leave the room
  */
 export function can(action: Action, actor: Role, target?: Role): boolean {
@@ -25,6 +27,8 @@ export function can(action: Action, actor: Role, target?: Role): boolean {
     case "setModel":
     case "manageConnections":
     case "setSandbox":
+    case "manageAgents":
+    case "setTimeZone":
       return RANK[actor] >= RANK.admin;
     case "removeMember":
       return target !== undefined && target !== "owner" && RANK[actor] >= RANK.admin && RANK[actor] > RANK[target];

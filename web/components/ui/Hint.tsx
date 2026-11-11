@@ -1,19 +1,23 @@
+import type { ReactNode } from "react";
+
 /**
  * A "?" that explains something on hover or focus, keeping its row to one line of text. The mark is drawn small, but
  * the button around it is a full 24 px target. `below`: the tip opens under the row it sits in and spans it, for a row
  * at the top of a narrow scrolling panel, which would clip a tip above it or scroll sideways for one beside it. That
- * row must be positioned.
+ * row must be positioned. `mark`: an icon to show in place of the "?", for a hint that also marks a state.
  */
-export function Hint({ text, below = false }: { text: string; below?: boolean }) {
+export function Hint({ text, below = false, mark }: { text: string; below?: boolean; mark?: ReactNode }) {
   return (
     <span className={`group ml-0.5 flex ${below ? "" : "relative"}`}>
       <button type="button" aria-label={text} className="-mx-1 grid size-6 place-items-center rounded-full">
-        <span
-          aria-hidden="true"
-          className="grid size-4 place-items-center rounded-full border border-line-strong font-mono text-[10px] leading-none text-text-3 transition-colors group-hover:border-[#36403f] group-hover:text-text-2"
-        >
-          ?
-        </span>
+        {mark ?? (
+          <span
+            aria-hidden="true"
+            className="grid size-4 place-items-center rounded-full border border-line-strong font-mono text-[10px] leading-none text-text-3 transition-colors group-hover:border-[#36403f] group-hover:text-text-2"
+          >
+            ?
+          </span>
+        )}
       </button>
       <span
         role="tooltip"

@@ -50,7 +50,8 @@ export function isArchived(t: { status: ThreadStatus; lastActivityAt: string }, 
  * A stored thread as clients get it: the bookkeeping fields stay on the server, `archived` is worked out now, and the
  * taint, stored as a string set (which DynamoDB can only add to, and which has no order), becomes a sorted list. A
  * live run past its `deadAt` died without closing, so it shows as failed until the next message replaces it. That holds
- * for a waiting one too: its `deadAt` lies past the approval's expiry, which would have woken a live run.
+ * for a waiting one too: its `deadAt` lies past the approval's expiry, which would have woken a live run. A thread
+ * stored without an agent is answered by the built-in `@agent`.
  */
 export function summary(
   { pk: _pk, sk: _sk, activeRunId: _run, named: _named, from: _from, taint, ...rest }: Record<string, unknown>, nowMs: number,
@@ -60,7 +61,7 @@ export function summary(
     const { currentStep: _step, approval: _approval, ...dead } = thread;
     thread = { ...dead, status: "failed", summary: DEAD_REASON };
   }
-  return { ...thread, taint: [...((taint as Set<TaintSource> | undefined) ?? [])].sort(), archived: isArchived(thread, nowMs) };
+  return { ...thread, agentId: thread.agentId ?? "agent", taint: [...((taint as Set<TaintSource> | undefined) ?? [])].sort(), archived: isArchived(thread, nowMs) };
 }
 
 /** `#12` or `#name` at the very start of a message; a tag later in the text is just text. */

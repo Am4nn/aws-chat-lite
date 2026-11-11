@@ -1,16 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { MoreHorizontal } from "lucide-react";
 import { bff, errorText } from "@/lib/client/bff";
 import { timeAgo } from "@/lib/client/format";
-import { useClickOutside } from "@/lib/client/useClickOutside";
-import { useEscape } from "@/lib/client/useEscape";
 import { dur, easeOut, spring } from "@/lib/motion";
 import type { Member, Role } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
+import { MenuItem, RowMenu } from "@/components/ui/RowMenu";
 import { useToast } from "@/components/overlays/Toast";
 
 const ROLE_ORDER: Record<Role, number> = { owner: 0, admin: 1, member: 2 };
@@ -98,68 +96,16 @@ export function MemberList({ roomId, members, myRole, myUserId }: { roomId: stri
               </span>
               <span className="ml-auto"><RoleBadge role={m.role} /></span>
               {hasActions && (
-                <MemberMenu open={openFor === m.userId} onToggle={(o) => setOpenFor(o ? m.userId : null)} name={m.username}>
+                <RowMenu open={openFor === m.userId} onToggle={(o) => setOpenFor(o ? m.userId : null)} name={m.username}>
                   {can.promote && <MenuItem onClick={() => change(m, "promote")}>Make admin</MenuItem>}
                   {can.demote && <MenuItem onClick={() => change(m, "demote")}>Make member</MenuItem>}
                   {can.remove && <MenuItem danger onClick={() => change(m, "remove")}>Remove from room</MenuItem>}
-                </MemberMenu>
+                </RowMenu>
               )}
             </motion.li>
           );
         })}
       </AnimatePresence>
     </ul>
-  );
-}
-
-function MemberMenu({ open, onToggle, name, children }: { open: boolean; onToggle: (open: boolean) => void; name: string; children: ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const button = useRef<HTMLButtonElement>(null);
-  useClickOutside(ref, open, () => onToggle(false));
-  useEscape(open, () => {
-    onToggle(false);
-    button.current?.focus();
-  });
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        ref={button}
-        aria-label={`Actions for ${name}`}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => onToggle(!open)}
-        className="grid size-7 place-items-center rounded-md text-text-3 transition-colors hover:bg-surface-3 hover:text-text"
-      >
-        <MoreHorizontal aria-hidden="true" size={15} />
-      </button>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            role="menu"
-            initial={{ opacity: 0, scale: 0.95, y: -4 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, transition: { duration: dur.fast } }}
-            transition={{ duration: dur.fast, ease: easeOut }}
-            style={{ transformOrigin: "top right" }}
-            className="absolute right-0 top-8 z-20 w-44 rounded-xl border border-line-strong bg-surface-2 p-1 shadow-[0_16px_40px_rgba(0,0,0,.5)]"
-          >
-            {children}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-function MenuItem({ danger = false, onClick, children }: { danger?: boolean; onClick: () => void; children: ReactNode }) {
-  return (
-    <button
-      role="menuitem"
-      onClick={onClick}
-      className={`flex h-8 w-full items-center rounded-lg px-2.5 text-left text-[13px] transition-colors hover:bg-surface-3 ${danger ? "text-[#ff9b8f]" : "text-text-2 hover:text-text"}`}
-    >
-      {children}
-    </button>
   );
 }

@@ -53,3 +53,15 @@ export function statementsOf(fn: { props: any }, stage: Stage = "local"): any[] 
     .filter((p: any) => p.Properties.Roles.some((r: any) => r.Ref === role))
     .flatMap((p: any) => p.Properties.PolicyDocument.Statement);
 }
+
+/** The route keys whose integration targets the function with this logical id; every one must use the JWT authorizer. */
+export function jwtRoutesOf(logicalId: string): string[] {
+  const integrations = template().findResources("AWS::ApiGatewayV2::Integration");
+  return Object.values(template().findResources("AWS::ApiGatewayV2::Route"))
+    .map((r: any) => r.Properties)
+    .filter((p) => JSON.stringify(integrations[p.Target["Fn::Join"][1][1].Ref]).includes(logicalId))
+    .map((p) => {
+      expect(p.AuthorizationType, p.RouteKey).toBe("JWT");
+      return p.RouteKey;
+    });
+}

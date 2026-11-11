@@ -2,8 +2,8 @@
 
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { ArrowUp, CornerDownRight, Paperclip, Pencil, Reply, Square, Users, X } from "lucide-react";
-import { mentionQuery, type Mentionable } from "@/lib/client/mentions";
+import { ArrowUp, Bot, CornerDownRight, Paperclip, Pencil, Reply, Square, Users, X } from "lucide-react";
+import { mentionOptions, mentionQuery, type Mentionable } from "@/lib/client/mentions";
 import { useThreads } from "@/lib/client/ThreadsProvider";
 import { dur, easeOut, instant } from "@/lib/motion";
 import type { Message } from "@/lib/types";
@@ -18,21 +18,21 @@ const MAX_TEXT = 4000;
 const COUNTER_FROM = 3600;
 const TYPING_EVERY_MS = 3000;
 const MAX_HEIGHT_PX = 200;
-const MENTION_OPTIONS = 6;
 
 /**
+ * `agents`: the room's agents, offered first in the @ list where naming one starts a thread with it (a people chat).
  * `uploads`: absent where files can't be sent, which hides the paperclip. `steering`: an agent is running here, so a
  * message steers it, and Stop (`onStop`) sits beside Send. `pill`: the model choice, left of Send.
  */
 type Props = {
-  members: Mentionable[]; meId: string; mode: ComposerMode; uploads?: ReturnType<typeof useUploads>; placeholder?: string;
-  steering?: boolean; stopping?: boolean; pill?: ReactNode;
+  members: Mentionable[]; agents?: { name: string }[]; meId: string; mode: ComposerMode;
+  uploads?: ReturnType<typeof useUploads>; placeholder?: string; steering?: boolean; stopping?: boolean; pill?: ReactNode;
   onModeChange: (mode: ComposerMode) => void; onSend: (text: string) => void; onSaveEdit: (m: Message, text: string) => void;
   onEditLast: () => boolean; onTyping: () => void; onStop?: () => void;
 };
 
 export function Composer({
-  members, meId, mode, uploads, placeholder = "Message", steering = false, stopping = false, pill,
+  members, agents = [], meId, mode, uploads, placeholder = "Message", steering = false, stopping = false, pill,
   onModeChange, onSend, onSaveEdit, onEditLast, onTyping, onStop,
 }: Props) {
   const reduced = useReducedMotion();
@@ -78,11 +78,7 @@ export function Composer({
   }, [text]);
 
   const query = mentionQuery(text.slice(0, caret));
-  const options = query && query.start !== dismissedAt
-    ? ["everyone", ...members.filter((m) => m.userId !== meId).map((m) => m.username)]
-      .filter((name) => name.toLowerCase().startsWith(query.query.toLowerCase()))
-      .slice(0, MENTION_OPTIONS)
-    : [];
+  const options = query && query.start !== dismissedAt ? mentionOptions(query.query, { agents, members, meId }) : [];
 
   const editing = mode?.kind === "edit" ? mode.message : undefined;
   const trimmed = text.trim();
@@ -124,7 +120,7 @@ export function Composer({
       }
       if (e.key === "Enter" || e.key === "Tab") {
         e.preventDefault();
-        return insertMention(options[highlight]);
+        return insertMention(options[highlight].name);
       }
       if (e.key === "Escape") {
         e.preventDefault();
@@ -165,9 +161,9 @@ export function Composer({
             transition={motionFast}
             className="absolute bottom-full left-4 z-20 mb-2 w-64 rounded-xl border border-line-strong bg-surface-2 p-1 shadow-[0_16px_40px_rgba(0,0,0,.5)] sm:left-7"
           >
-            {options.map((name, i) => (
+            {options.map(({ name, kind }, i) => (
               <li
-                key={name}
+                key={`${kind}-${name}`}
                 id={`${listId}-${i}`}
                 role="option"
                 aria-selected={i === highlight}
@@ -175,11 +171,12 @@ export function Composer({
                 onMouseEnter={() => setHighlight(i)}
                 className={`flex h-9 cursor-pointer items-center gap-2.5 rounded-lg px-2 text-[13px] ${i === highlight ? "bg-surface-3 text-text" : "text-text-2"}`}
               >
-                {name === "everyone"
-                  ? <span className="grid size-[22px] place-items-center rounded-full bg-[#1c2225]"><Users aria-hidden="true" size={12} /></span>
-                  : <Avatar name={name} size={22} />}
+                {kind === "agent" && <span className="grid size-[22px] place-items-center rounded-full bg-[#172014] text-lime"><Bot aria-hidden="true" size={12} /></span>}
+                {kind === "everyone" && <span className="grid size-[22px] place-items-center rounded-full bg-[#1c2225]"><Users aria-hidden="true" size={12} /></span>}
+                {kind === "member" && <Avatar name={name} size={22} />}
                 {name}
-                {name === "everyone" && <span className="ml-auto text-[11.5px] text-text-3">whole room</span>}
+                {kind === "agent" && <span className="ml-auto text-[11.5px] text-text-3">agent</span>}
+                {kind === "everyone" && <span className="ml-auto text-[11.5px] text-text-3">whole room</span>}
               </li>
             ))}
           </motion.ul>

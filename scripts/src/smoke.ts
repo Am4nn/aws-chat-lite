@@ -2,7 +2,8 @@
  * End-to-end check of the running app (Floci + `npm run dev`): sign-up, the creators group, rooms, invites, roles,
  * the API's 403s, httpOnly cookies, the motion rules (no layout shift, no movement under reduced motion), then the
  * live chat between real browsers, then agent threads and the model picker on the fake model, then room files and the sandbox,
- * then tools and approvals on fake GitHub, then MCP both ways against the local test server.
+ * then tools and approvals on fake GitHub, then MCP both ways against the local test server, then room agents,
+ * helpers, memory and schedules.
  */
 import puppeteer, { type Page } from "puppeteer-core";
 import { useLocalEnv } from "./env.js";
@@ -14,6 +15,7 @@ import { threadChecks } from "./smoke-threads.js";
 import { fileChecks } from "./smoke-files.js";
 import { toolChecks } from "./smoke-tools.js";
 import { mcpChecks } from "./smoke-mcp.js";
+import { agentChecks } from "./smoke-agents.js";
 
 const CHROME = process.env.CHROME_PATH ?? "C:/Program Files/Google/Chrome/Application/chrome.exe";
 
@@ -137,6 +139,7 @@ async function main() {
     await fileChecks(stamp, { page: ownerPage, name: owner }, { page: guestPage, name: guest });
     await toolChecks(stamp, { page: ownerPage, name: owner }, { page: guestPage, name: guest });
     await mcpChecks(stamp, { page: ownerPage, name: owner }, { page: guestPage, name: guest });
+    await agentChecks(stamp, { page: ownerPage, name: owner }, { page: guestPage, name: guest });
     await emptyHomeCheck(browser, newcomer);
   } finally {
     await browser.close();

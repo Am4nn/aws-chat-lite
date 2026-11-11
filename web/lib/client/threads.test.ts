@@ -6,7 +6,7 @@ import {
 } from "./threads";
 
 const th = (o: Partial<ThreadSummary>): ThreadSummary => ({
-  roomId: "r", threadId: "t1", number: 1, name: "n", status: "idle", rev: 1, steps: 0, costMicros: 0,
+  roomId: "r", threadId: "t1", number: 1, name: "n", agentId: "agent", status: "idle", rev: 1, steps: 0, costMicros: 0,
   createdBy: "u", lastActivityAt: "2026-11-11T10:00:00Z", archived: false, taint: [], ...o,
 });
 

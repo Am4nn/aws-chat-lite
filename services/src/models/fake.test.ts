@@ -291,8 +291,46 @@ describe("fakeModel", () => {
     });
   });
 
+  it("answers recall with the memory lines of its system prompt, after its tool calls", async () => {
+    const system = "Base.\n\nRoom memory: notes.\n- [aaaa1111] We ship on Fridays.\n- [bbbb2222] Owners: aman.";
+    expect(toolCalls(await collect(request([user("recall tools:1")], { system })))).toHaveLength(1);
+    expect(textOf(await collect(request([user("recall tools:1"), toolResult(1)], { system })))).toBe(
+      "- [aaaa1111] We ship on Fridays.\n- [bbbb2222] Owners: aman.",
+    );
+    expect(textOf(await collect(request([user("recall tools:0")], { system: "Base." })))).toBe("Nothing in memory.");
+  });
+
+  it("leaves recall out of the query", async () => {
+    expect(toolCalls(await collect(request([user("look recall")])))[0].input).toMatchObject({ query: "look" });
+  });
+
   it("strips the new directives from the query", async () => {
     const chunks = await collect(request([user("look route:haiku cutoff")]));
     expect(toolCalls(chunks)[0].input).toMatchObject({ query: "look" });
+  });
+
+  describe("ask:<agent>", () => {
+    const delegate = { name: "delegate", description: "", inputSchema: { type: "object" } };
+    const lookup = { name: "fake.lookup", description: "", inputSchema: { type: "object" } };
+    const first = user("ask:researcher go slow ask:writer");
+
+    it("hands the prompt less its asks to each agent named, one delegate call per turn, then answers", async () => {
+      const tools = [lookup, delegate];
+      expect(toolCalls(await collect(request([first], { tools })))).toEqual([
+        { id: "call-1", name: "delegate", input: { agent: "researcher", task: "go slow" } },
+      ]);
+      expect(toolCalls(await collect(request([first, toolResult(1)], { tools })))).toEqual([
+        { id: "call-2", name: "delegate", input: { agent: "writer", task: "go slow" } },
+      ]);
+      const answer = await collect(request([first, toolResult(1), toolResult(2)], { tools }));
+      expect(toolCalls(answer)).toEqual([]);
+      expect(textOf(answer)).toMatch(/^Fake answer for "go"./);
+    });
+
+    it("is only words without a delegate tool, so a helper given the task does its own lookups", async () => {
+      expect(toolCalls(await collect(request([user("ask:researcher go")], { tools: [lookup] })))[0]).toMatchObject({
+        name: "fake.lookup", input: { query: "go" },
+      });
+    });
   });
 });

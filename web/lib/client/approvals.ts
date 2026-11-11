@@ -1,5 +1,5 @@
 import type { ApprovalStatus, ThreadSummary } from "../types";
-import { BffError, errorText } from "./bff";
+import { bff, BffError, errorText } from "./bff";
 import { formatWait } from "./format";
 
 /** How long an approval has left, for "expires in …". */
@@ -30,6 +30,12 @@ export function needsYouToast(
 }
 
 type Decision = "approve" | "deny";
+
+/** A member's answer to a waiting call. The run reports how it settled with its own `approval.settled`. */
+export async function sendDecision(runId: string, step: number, decision: Decision): Promise<void> {
+  await bff(`/bff/api/runs/${runId}/approvals/${step}`, { body: { decision } });
+}
+
 /** My decision while it's on its way, or why it lost (someone else decided first, the wait ran out, the run stopped). */
 export type LocalDecision = { decision: Decision } | { conflict: string } | null;
 

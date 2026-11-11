@@ -10,11 +10,13 @@ export type ToolEnv = {
   keys: ToolKeys;
   github?: GitHubConnection;
   mcpCall: (target: { roomId: string; name: string }, tool: string, input: Record<string, unknown>) => Promise<ToolResult>;
+  /** The thread the call is made for. `tainted`: it holds private content. */
+  room: { roomId: string; threadNumber: number; agentName: string; tainted: boolean };
 };
 
 export type Tool = {
   spec: ToolSpec;
-  kind: "github" | "mcp" | "web";
+  kind: "github" | "mcp" | "memory" | "web";
   write: boolean;
   /** The step row line. */
   detail(input: Record<string, unknown>): string;

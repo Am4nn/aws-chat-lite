@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { answerParagraphs, budgetFill, clockTime, dayKey, dayLabel, excerpt, fileSize, formatElapsed, formatStepTime, formatUsd, formatWait, matchSnippet, resetsOn, shortWhen, splitHeadline, streamWords, timeAgo, typingText } from "./format";
+import { answerParagraphs, budgetFill, clockTime, dayKey, dayLabel, excerpt, fileSize, formatElapsed, formatStepCost, formatStepTime, formatTokens, formatUsd, formatWait, matchSnippet, resetsOn, shortWhen, splitHeadline, streamWords, timeAgo, typingText } from "./format";
 
 describe("format", () => {
   it("formatElapsed", () => {
@@ -94,6 +94,11 @@ describe("matchSnippet", () => {
   });
   it("falls back to the plain excerpt when the text doesn't contain it", () =>
     expect(matchSnippet("hello", "zz")).toEqual({ before: "hello", match: "", after: "" }));
+});
+
+describe("a step's tokens and cost", () => {
+  it.each([[0, "0"], [940, "940"], [1100, "1.1k"], [6_800, "6.8k"], [12_000, "12k"]])("%i tokens → %s", (n, text) => expect(formatTokens(n)).toBe(text));
+  it("shows tenths of a cent", () => expect([formatStepCost(3000), formatStepCost(11_400)]).toEqual(["$0.003", "$0.011"]));
 });
 
 describe("formatStepTime", () => {

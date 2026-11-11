@@ -1,7 +1,7 @@
 import {
   GetCommand, PutCommand, QueryCommand, TransactWriteCommand, UpdateCommand, type TransactWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
-import { conditionFailed, docClient, failedAt, queryAll, tableName } from "../lib/db.js";
+import { conditionFailed, docClient, failedAt, queryAll, setFields, tableName } from "../lib/db.js";
 import { LAST_SEQ, forReaders, seqKey, type Message, type StoredMessage } from "../chat/model.js";
 import type { ModelPick } from "../models/catalog.js";
 import { summary, threadSk } from "../threads/model.js";
@@ -14,6 +14,8 @@ export type Run = {
   roomId: string;
   threadId: string;
   number: number;
+  /** The room agent that answers: the thread's, or the built-in one once the thread's was deleted. */
+  agentId: string;
   status: "running" | RunEndStatus;
   /** What the run was asked to use: the message's own pick, or the room default. */
   pick: ModelPick;
@@ -55,19 +57,6 @@ const callKey = (runId: string, call: string) => ({ pk: `RUN#${runId}`, sk: `CAL
  * presumed dead) must not overwrite the run that took its place.
  */
 const whileOwned = (run: Run) => ({ ConditionExpression: "activeRunId = :runId", values: { ":runId": run.runId } });
-
-/**
- * `SET #f = :f, …` for each defined field. Every attribute name goes through a placeholder: DynamoDB rejects reserved
- * words such as `status` and `steps` written bare in an expression.
- */
-export function setFields(fields: Record<string, unknown>) {
-  const keys = Object.keys(fields).filter((k) => fields[k] !== undefined);
-  return {
-    UpdateExpression: `SET ${keys.map((k) => `#${k} = :${k}`).join(", ")}`,
-    ExpressionAttributeNames: Object.fromEntries(keys.map((k) => [`#${k}`, k])),
-    ExpressionAttributeValues: Object.fromEntries(keys.map((k) => [`:${k}`, fields[k]])),
-  };
-}
 
 const withoutKeys = ({ pk: _pk, sk: _sk, ...rest }: Item) => rest;
 
@@ -131,14 +120,15 @@ export function runsRepo() {
     /**
      * Appends events after the newest stored one. Each put waits for the one before it, so events land in seq order
      * even when appends overlap, and the condition refuses to overwrite a seq that is already taken. Writes passed in
-     * `with` go in one transaction with the event, so they happen exactly when it does.
+     * `with` go in one transaction with the event, so they happen exactly when it does. Every event is in the writer's
+     * `lane`: a helper's events are in its own.
      */
-    async eventWriter(runId: string): Promise<{ append(b: RunEventBody, alongside?: TransactItem[]): Promise<RunEvent> }> {
+    async eventWriter(runId: string, lane = 0): Promise<{ append(b: RunEventBody, alongside?: TransactItem[]): Promise<RunEvent> }> {
       let seq = await lastEventSeq(runId);
       let tail: Promise<unknown> = Promise.resolve();
       return {
         append(body, alongside = []) {
-          const event = { ...body, seq: ++seq, at: new Date().toISOString() } as RunEvent;
+          const event = { ...body, ...(lane ? { lane } : {}), seq: ++seq, at: new Date().toISOString() } as RunEvent;
           const put = {
             TableName, Item: { pk: `RUN#${runId}`, sk: eventSk(event.seq), ...event }, ConditionExpression: "attribute_not_exists(sk)",
           };

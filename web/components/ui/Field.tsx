@@ -12,3 +12,7 @@ export function Field({ label, id, ...props }: InputHTMLAttributes<HTMLInputElem
     </label>
   );
 }
+
+/** A text field inside the room panel's forms. */
+export const panelInput =
+  "rounded-[10px] border border-line-strong bg-ink px-3 text-[13px] text-text outline-none transition-colors placeholder:text-text-3 hover:border-[#2c3437] focus:border-lime/60 disabled:opacity-60";

@@ -11,6 +11,8 @@ export type ThreadSummary = {
   threadId: string;
   number: number;
   name: string;
+  /** The room agent that answers the thread. */
+  agentId: string;
   status: ThreadStatus;
   /** Incremented on every write; clients keep the highest. */
   rev: number;
@@ -55,12 +57,43 @@ export type McpConnection = {
 };
 export type McpApp = { grantId: string; clientName: string; scopes: Scope[]; createdAt: string; lastUsedAt: string };
 export type AuditKind = "asked" | "tool" | "approved" | "denied" | "expired" | "cancelled" | "connected" | "disconnected" | "timeout";
-export type AuditEntry = { id: string; at: string; actor: string; kind: AuditKind; threadNumber?: number; tool?: string; detail: string };
+export type AuditEntry = {
+  id: string; at: string; actor: string; kind: AuditKind; threadNumber?: number; tool?: string; detail: string;
+  /** The agent that made the call or answered the ask. */
+  agent?: string;
+};
+
+/** What an agent may use: `mcp` stands for all of the room's MCP servers. */
+export type ToolKind = "sandbox" | "web" | "github" | "mcp";
+/** `room` follows the room's default model. */
+export type AgentModel = ModelPick | "room";
+export type Agent = {
+  agentId: string; name: string; instructions: string; tools: ToolKind[]; model: AgentModel;
+  builtIn: boolean; createdBy: string; createdByName: string; createdAt: string; updatedAt: string;
+};
+export type MemoryEntry = {
+  memoryId: string; text: string; private: boolean;
+  source: { kind: "agent"; agent: string; threadNumber: number } | { kind: "member"; username: string };
+  createdAt: string; updatedAt: string; updatedBy: string;
+};
+export type Weekday = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
+export type Cadence =
+  | { kind: "hours"; every: 1 | 2 | 3 | 4 | 6 | 8 | 12; minute: number }
+  | { kind: "daily" | "weekdays"; time: string }
+  | { kind: "weekly"; day: Weekday; time: string };
+export type Schedule = {
+  scheduleId: string; agentId: string; title: string; prompt: string; cadence: Cadence; chatId: string;
+  enabled: boolean; createdBy: string; createdByName: string; createdAt: string;
+  /** Derived on read, for an enabled schedule only. */
+  nextAt?: string;
+  lastRun?: { at: string; threadNumber?: number; skipped?: string };
+};
 
 export type Budget = { spentMicros: number; capMicros: number; month: string; resetsAt: string };
 
 export type RunEventBody =
-  | { type: "run.started"; pick: ModelPick; startedBy: string }
+  /** `agentName`: who answers, as named when the run started, so the run reads the same after a rename or a delete. */
+  | { type: "run.started"; pick: ModelPick; startedBy: string; agentName: string }
   /** Once per run, before its first model call: the model id that answers. */
   | { type: "routed"; model: string; by: "pick" | "default" | "auto" }
   /** The provider's own content for a model call that ended, replayed verbatim on the next call; never streamed. */
@@ -76,8 +109,12 @@ export type RunEventBody =
   | ({ type: "files.synced"; step: number } & FilesSynced)
   | { type: "approval.requested"; step: number; call: ToolCall; title: string; expiresAt: string }
   | { type: "approval.settled"; step: number; decision: Exclude<ApprovalStatus, "pending">; by?: string }
-  /** Sandbox time is billed as `model: "sandbox"` with no tokens. */
-  | ({ type: "usage"; model: string; job: "route" | "name" | "run" | "sandbox"; costMicros: number } & TokenUsage)
+  /** Sandbox time is billed as `model: "sandbox"` with no tokens. `ms` is how long the model call took. */
+  | ({ type: "usage"; model: string; job: "route" | "name" | "run" | "sandbox"; costMicros: number; ms?: number } & TokenUsage)
+  /** A helper agent took a delegated task, in its own lane; `step` is the main lane's delegate step. */
+  | { type: "helper.started"; step: number; agentId: string; agentName: string; task: string; model: string }
+  | { type: "helper.finished"; step: number; status: RunEndStatus; summary: string; steps: number; ms: number; costMicros: number }
   | { type: "run.finished"; status: RunEndStatus; reason?: string; ms: number; steps: number; costMicros: number };
 
-export type RunEvent = RunEventBody & { seq: number; at: string };
+/** `lane` is absent (0) for the thread's own agent and n for the nth helper it delegated to. */
+export type RunEvent = RunEventBody & { seq: number; at: string; lane?: number };
