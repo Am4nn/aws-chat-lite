@@ -7,6 +7,7 @@ import { Activity, Bot, CalendarClock, Folder, NotebookPen, Plug, Search, UserPl
 import { bff, bffOrNull, errorText } from "@/lib/client/bff";
 import { useLive, useLiveEvent, useLiveStatus } from "@/lib/client/LiveProvider";
 import { ModelsProvider } from "@/lib/client/ModelsProvider";
+import { signOut } from "@/lib/client/signOut";
 import { sidebarThreads } from "@/lib/client/threads";
 import { useThreads } from "@/lib/client/ThreadsProvider";
 import { useNow } from "@/lib/client/useNow";
@@ -49,6 +50,7 @@ import { Sidebar } from "./Sidebar";
 import { direction, navOrder } from "./nav";
 import { useBadges } from "./useBadges";
 import { usePresence } from "./usePresence";
+import { usePush } from "./usePush";
 import { useRoomExit } from "./useRoomExit";
 
 type Dialog = "chat" | "room" | "leave" | "archive" | null;
@@ -83,6 +85,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
   const activeThread = number ? threads.byNumber(Number(number)) : undefined;
   const members = usePresence(view.members, me.userId);
   const files = useRoomFiles(roomId);
+  const push = usePush();
   const exitRoom = useRoomExit({ roomId, rooms, onExited: () => setDialog(null) });
   const query = useSearchParams();
   const mcpName = query.get("mcp");
@@ -180,8 +183,8 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
     }
   }
 
-  async function signOut() {
-    await bff("/bff/auth/signout", { body: {} });
+  async function signOutToLogin() {
+    await signOut();
     router.replace("/login");
   }
 
@@ -225,7 +228,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
     ] : []),
     ...(me.isCreator ? [{ id: "new-room", group: "Actions", label: "New room…", icon: "+", run: () => setDialog("room") }] : []),
     { id: "panel", group: "Actions", label: "Toggle room panel", icon: "⇥", run: togglePanel },
-    { id: "signout", group: "Actions", label: "Sign out", icon: "↩", run: signOut },
+    { id: "signout", group: "Actions", label: "Sign out", icon: "↩", run: signOutToLogin },
     // Still reachable: a message sent in an archived thread reopens it.
     ...threads.threads.filter((t) => t.archived).sort((a, b) => b.number - a.number).map(threadItem("Archived")),
   ];
@@ -251,11 +254,11 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
             switcher={(
               <RoomSwitcher
                 current={room} rooms={rooms} hasMentions={badges.hasMentions}
-                canCreate={me.isCreator} canLeave={!isOwner} canArchive={isOwner && !room.archived}
+                canCreate={me.isCreator} canLeave={!isOwner} canArchive={isOwner && !room.archived} push={push}
                 onCreate={() => setDialog("room")} onLeave={() => setDialog("leave")} onArchive={() => setDialog("archive")}
               />
             )}
-            onPalette={() => setPaletteOpen(true)} onNewChat={() => setDialog("chat")} onMute={mute} onSignOut={signOut}
+            onPalette={() => setPaletteOpen(true)} onNewChat={() => setDialog("chat")} onMute={mute} onSignOut={signOutToLogin}
           />
         </MobileNav>
         <main inert={phone && overlay !== null} className="flex min-w-0 flex-1 flex-col">
