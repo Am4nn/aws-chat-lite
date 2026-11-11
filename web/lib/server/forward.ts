@@ -61,6 +61,12 @@ const ROUTES: [method: string, pattern: string][] = [
   ["PATCH", "/rooms/:x/schedules/:x"],
   ["DELETE", "/rooms/:x/schedules/:x"],
   ["PUT", "/rooms/:x/timezone"],
+  ["GET", "/push/key"],
+  ["PUT", "/me/push"],
+  ["DELETE", "/me/push/:x"],
+  ["POST", "/rooms/:x/voice/sessions"],
+  ["POST", "/rooms/:x/voice/sessions/:x/done"],
+  ["POST", "/rooms/:x/speech"],
 ];
 
 const SEGMENT = /^[A-Za-z0-9_-]+$/;

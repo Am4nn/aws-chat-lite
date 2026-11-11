@@ -5,8 +5,7 @@
   "ignoreIssues": {
     "services/src/threads/types.ts": ["types"],
     "services/src/models/gateway.ts": ["types"],
-    "services/src/push/types.ts": ["files"],
-    "web/lib/types.ts": ["types"]
+    "services/src/push/types.ts": ["files"]
   },
   "workspaces": {
     "infra": {

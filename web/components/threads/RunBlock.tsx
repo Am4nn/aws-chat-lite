@@ -17,9 +17,12 @@ import type { Message, RunEndStatus } from "@/lib/types";
 import { Spinner } from "@/components/ui/Spinner";
 import { AnswerText } from "./AnswerText";
 import { ApprovalCard } from "./ApprovalCard";
+import { GeneratedImage } from "./GeneratedImage";
+import { ReadAloudButton } from "./ReadAloudButton";
 import { RunningArc, StepRow } from "./StepRow";
 
 type Props = {
+  roomId: string;
   runId: string;
   /** The stored answer. Without one the run is shown from its live stream. */
   answer?: Message;
@@ -45,7 +48,7 @@ const ENDINGS: Record<Exclude<RunEndStatus, "done">, { label: string; icon: type
  * answer word by word. Once its answer is stored the rows fold into a "N steps" toggle (keyed by run, this is the
  * same component, so the fold animates), and opening it replays the run's events.
  */
-export function RunBlock({ runId, answer, steers, pending, active, meName, members, onRetry, onDiscard }: Props) {
+export function RunBlock({ roomId, runId, answer, steers, pending, active, meName, members, onRetry, onDiscard }: Props) {
   const reduced = useReducedMotion();
   const { models } = useModels();
   const pathname = usePathname();
@@ -64,6 +67,8 @@ export function RunBlock({ runId, answer, steers, pending, active, meName, membe
   const thinking = !stored && active && !unavailable && run.status === "running" && !busy && !run.text;
   const showRows = stored ? open && (loaded || unavailable) : rows.length > 0 || unavailable || thinking;
   const text = answer?.text ?? run.text;
+  // The stored list survives the steps folding away; a live run, or an answer stored without one, builds it from events.
+  const images = stored?.images ?? run.images;
   const fade = (on: boolean) => ({
     initial: on && wasLive ? { opacity: 0 } : false,
     animate: { opacity: 1 },
@@ -113,7 +118,7 @@ export function RunBlock({ runId, answer, steers, pending, active, meName, membe
                 stop every new row from entering. The rows' own presence keeps only the rows of the first paint still. */}
             <AnimatePresence initial={false}>
               {rows.map((row) => {
-                if (row.kind === "step") return <StepRow key={row.key} step={row.step} enter={!stored} />;
+                if (row.kind === "step") return <StepRow key={row.key} roomId={roomId} step={row.step} enter={!stored} />;
                 if (row.kind === "approval") return <ApprovalCard key={row.key} runId={runId} approval={row.approval} meName={meName} enter={!stored} />;
                 return (
                   <SteerBubble
@@ -135,10 +140,21 @@ export function RunBlock({ runId, answer, steers, pending, active, meName, membe
 
       {text && <AnswerText text={text} streaming={!stored && run.status === "running"} members={members} />}
 
+      {images.length > 0 && (
+        <div className="flex flex-wrap gap-3">
+          {images.map((image) => <GeneratedImage key={image.path} roomId={roomId} image={image} />)}
+        </div>
+      )}
+
       {status && status !== "done" && <Ending status={status} reason={stored?.reason ?? run.reason} />}
 
       {stored
-        ? <motion.p {...fade(true)} className="-mt-2 font-mono text-[11.5px] text-text-3">{footerText(stored, models)}{mapLink}</motion.p>
+        ? (
+          <motion.p {...fade(true)} className="-mt-2 font-mono text-[11.5px] text-text-3">
+            {footerText(stored, models)}{mapLink}
+            {answer?.text && <ReadAloudButton roomId={roomId} chatId={answer.chatId} seq={answer.seq} />}
+          </motion.p>
+        )
         : loaded && <p className="-mt-2 font-mono text-[11.5px] text-text-3">{liveFooter(run, models)}{mapLink}</p>}
     </div>
   );

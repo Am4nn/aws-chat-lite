@@ -6,6 +6,7 @@ import { ChevronRight } from "lucide-react";
 import { formatElapsed, formatStepTime } from "@/lib/client/format";
 import { splitSyncLines, type RunItem } from "@/lib/client/run";
 import { dur, easeOut, instant, spring } from "@/lib/motion";
+import { GeneratedImage } from "./GeneratedImage";
 
 type Step = Extract<RunItem, { kind: "step" }>;
 
@@ -38,7 +39,7 @@ export function RunningArc({ size = 15 }: { size?: number }) {
  * A step handed to a helper agent is one row in the helper's name, with what it found; it opens, even while the helper
  * works, onto the helper's own steps and then its answer.
  */
-export function StepRow({ step, enter }: { step: Step; enter: boolean }) {
+export function StepRow({ roomId, step, enter }: { roomId: string; step: Step; enter: boolean }) {
   const reduced = useReducedMotion();
   const outputId = useId();
   const running = step.status === "running";
@@ -110,7 +111,7 @@ export function StepRow({ step, enter }: { step: Step; enter: boolean }) {
           >
             {helper && (
               <div className="ml-[22px] border-l border-line pl-2">
-                {helper.items.map((i) => (i.kind === "step" ? <StepRow key={i.step} step={i} enter={enter} /> : null))}
+                {helper.items.map((i) => (i.kind === "step" ? <StepRow key={i.step} roomId={roomId} step={i} enter={enter} /> : null))}
               </div>
             )}
             {!running && (
@@ -118,6 +119,7 @@ export function StepRow({ step, enter }: { step: Step; enter: boolean }) {
                 {output || "No output."}
               </pre>
             )}
+            {step.image && <div className="mb-2 ml-10 mr-3"><GeneratedImage roomId={roomId} image={step.image} /></div>}
             {lines.map((line) => <p key={line} className="mb-1 ml-10 mr-3 break-words text-[12px] text-text-3">{line}</p>)}
           </motion.div>
         )}
