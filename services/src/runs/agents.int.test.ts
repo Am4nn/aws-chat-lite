@@ -123,6 +123,17 @@ describe("room agents and memory in the run loop on Floci", { timeout: 90_000 },
     expect(await answerOf(at.owner, at.roomId, recall.thread.threadId)).toContain(`[${saved!.memoryId}] ${saved!.text}`);
   });
 
+  it("a private entry reaches only threads that are already private, so a clean thread never holds it", async () => {
+    const at = await roomWithScout();
+    await scoutRun(at, "go call:memory_save", [file]);
+    const [secret] = await memoryRepo().entries(at.roomId);
+    expect(secret).toMatchObject({ private: true });
+    const clean = await scoutRun(at, "recall tools:0");
+    expect(await answerOf(at.owner, at.roomId, clean.thread.threadId)).not.toContain(`[${secret!.memoryId}]`);
+    const tainted = await scoutRun(at, "recall tools:0", [file]);
+    expect(await answerOf(at.owner, at.roomId, tainted.thread.threadId)).toContain(`[${secret!.memoryId}] ${secret!.text}`);
+  });
+
   it("a deleted agent's thread is answered by the built-in @agent from its next run", async () => {
     const at = await roomWithScout();
     const first = await scoutRun(at, "go tools:0");

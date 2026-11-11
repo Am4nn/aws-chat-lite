@@ -303,9 +303,12 @@ export async function modelTurn(run: RoutedRun, turn: number): Promise<Turn> {
     ...toolsFor(run.model, models().servedBy(run.model), { ...room, github: room.github !== null }, run.agent.tools),
     ...(delegate ? [delegate] : []),
   ];
-  // Memory is read every turn, so what this run or another one saved since is there for the next call.
+  // Memory is read every turn, so what this run or another one saved since is there for the next call. Private entries
+  // go only into threads that are already private: a clean thread holding one could pass it on, through a public save,
+  // a helper or its own answer, to a model that may not see it.
   const system = systemPrompt({
-    agent: run.agent, others: run.others, memory, privateOk: modelInfo(run.model).privateOk, helperOf: run.helper?.parent,
+    agent: run.agent, others: run.others, memory, privateOk: modelInfo(run.model).privateOk && taint.length > 0,
+    helperOf: run.helper?.parent,
   });
   const opening = run.helper ? [{ role: "user" as const, author: run.helper.parent, text: run.helper.task }] : threadMessages(prior);
   return stream(run, writer, buildContext(opening, events, lane), events, { turn, seenSeq, system, tools, tainted: taint.length > 0 });
