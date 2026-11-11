@@ -17,6 +17,7 @@ import { addThreads } from "./threads.js";
 import { addRuns } from "./runs.js";
 import { addStream } from "./stream.js";
 import { addConnections } from "./connections.js";
+import { addMcpConnections } from "./mcp-connections.js";
 import { addSandbox } from "./sandbox.js";
 
 /** Path to a handler file in services/src */
@@ -81,6 +82,7 @@ export class CoreStack extends Stack {
     this.allowRunStart(threadsFn);
     this.allowRunCallback(threadsFn);
     addConnections(this);
+    addMcpConnections(this);
     const { streamUrl } = addStream(this);
     threadsFn.addEnvironment("STREAM_URL", streamUrl);
 

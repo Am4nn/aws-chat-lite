@@ -10,5 +10,7 @@ export class NotFound extends UserError {}
 export class Conflict extends UserError {}
 /** The invite link expired or was revoked, or the room is archived → 410. */
 export class Gone extends UserError {}
+/** A server chat-lite talks to on the caller's behalf failed or refused → 502. */
+export class Upstream extends UserError {}
 /** The table is throttling us; trying again shortly will likely work → 503. */
 export class Unavailable extends UserError {}

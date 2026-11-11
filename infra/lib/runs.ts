@@ -30,6 +30,20 @@ export function addRuns(stack: CoreStack) {
     removalPolicy,
   });
   const toolEnvironment = { TOOL_MODE: toolMode, TOOL_KEYS_SECRET: toolKeysName };
+  // Remote MCP servers' OAuth tokens are sealed with a key derived from this. CloudFormation generates it, so no one
+  // ever sees or types it. Losing or changing it leaves every room's stored tokens unopenable (each connection then
+  // asks for a reconnect), so AWS keeps it past a stack delete, and its generator settings must stay as they are:
+  // changing them makes CloudFormation generate a new value.
+  const tokenKeyName = `${prefix}-token-key`;
+  const tokenKey = new secretsmanager.Secret(stack, "TokenKey", {
+    secretName: tokenKeyName,
+    description: "Seals the OAuth tokens of rooms' remote MCP servers",
+    generateSecretString: { passwordLength: 64, excludePunctuation: true },
+    removalPolicy,
+  });
+  // Locally, MCP servers on the developer's machine are reached over http at private addresses. On AWS those hosts
+  // would let an admin point a Lambda into AWS's own network, so the variable is never set there.
+  const mcpEnvironment = { TOKEN_KEY_SECRET: tokenKeyName, ...(isLocal && { MCP_LOCAL_HOSTS: "host.docker.internal,localhost,127.0.0.1" }) };
   const runFn = stack.addFunction("run", "runs/loop.ts", { tableAccess: true }, {
     timeout: Duration.minutes(15),
     // Room files pass through on their way in and out of the sandbox: a batch of up to 8 MB in, a 25 MB file out.
@@ -38,12 +52,14 @@ export function addRuns(stack: CoreStack) {
     // time costs nothing, so the execution itself may last a week.
     durableConfig: { executionTimeout: Duration.days(7), retentionPeriod: Duration.days(7) },
     environment: {
-      MODEL_GATEWAY: modelGateway, MODEL_KEYS_SECRET: keysName, ...toolEnvironment, ...(sandboxToken && { SANDBOX_TOKEN: sandboxToken }),
+      MODEL_GATEWAY: modelGateway, MODEL_KEYS_SECRET: keysName, ...toolEnvironment, ...mcpEnvironment,
+      ...(sandboxToken && { SANDBOX_TOKEN: sandboxToken }),
     },
   });
   modelKeys.grantRead(runFn);
   toolKeys.grantRead(runFn);
+  tokenKey.grantRead(runFn);
   stack.allowBroadcast(runFn);
   const alias = new lambda.Alias(stack, "RunLive", { aliasName: "live", version: runFn.currentVersion });
-  return { runFn, alias, toolKeys, toolEnvironment };
+  return { runFn, alias, toolKeys, toolEnvironment, tokenKey, mcpEnvironment };
 }
