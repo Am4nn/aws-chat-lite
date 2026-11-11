@@ -168,7 +168,8 @@ export async function threadChecks(stamp: number, owner: Person, guest: Person) 
     && !!document.querySelector(row)?.textContent?.includes("pr-review"), rowOf(1));
   await rename("general");
   const taken = await toastSays(A, "#general is taken.");
-  const kept = await until(A, () => document.querySelector("main header h1")?.textContent?.endsWith("pr-review"));
+  // The title ends with the thread agent's label, so the name is read from the name button.
+  const kept = await until(A, () => document.querySelector('button[title="Rename thread"]')?.textContent?.endsWith("pr-review"));
   check(renamed && taken && kept, "renaming to pr-review updates B's card and sidebar; renaming to general shows the 409 toast and keeps the name");
 
   // Tag delivery: a leading #tag in #general hands the message to the thread.
