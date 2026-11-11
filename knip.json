@@ -1,9 +1,12 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  // The shared agent, memory and schedule types are committed before the code that imports them. Drop a file's line
-  // once every one of its types has an importer.
+  // The shared agent, memory, schedule, media and push types are committed before the code that imports them. Drop a
+  // file's line once every one of its types has an importer, and the push file's once a module imports it.
   "ignoreIssues": {
-    "services/src/threads/types.ts": ["types"]
+    "services/src/threads/types.ts": ["types"],
+    "services/src/models/gateway.ts": ["types"],
+    "services/src/push/types.ts": ["files"],
+    "web/lib/types.ts": ["types"]
   },
   "workspaces": {
     "infra": {

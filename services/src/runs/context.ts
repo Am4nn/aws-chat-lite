@@ -49,7 +49,7 @@ export function buildContext(prior: Message[], events: RunEvent[]): ModelMessage
       messages.push({ role: "tool", toolCallId: calls.get(e.step)?.id ?? "", output: e.output, isError: !e.ok });
       current = undefined;
     } else if (e.type === "steer") {
-      messages.push({ role: "user", author: e.authorName, text: withAttachments(e.text, e.attachments) });
+      messages.push({ role: "user", author: e.authorName, text: withAttachments(e.text, e.attachments?.map((a) => a.name)) });
       current = undefined;
     }
   }

@@ -2,6 +2,7 @@ import type { ToolCall } from "../models/gateway.js";
 import type { ModelPick, TokenUsage } from "../models/catalog.js";
 import type { TaintSource } from "../models/privacy.js";
 import type { FilesSynced } from "../workspace/types.js";
+import type { Attachment } from "../chat/model.js";
 
 export type RunEndStatus = "done" | "stopped" | "failed" | "capped";
 export type ThreadStatus = "idle" | "running" | "waiting" | RunEndStatus;
@@ -64,7 +65,7 @@ export type AuditEntry = {
 };
 
 /** What an agent may use: `mcp` stands for all of the room's MCP servers. */
-export type ToolKind = "sandbox" | "web" | "github" | "mcp";
+export type ToolKind = "sandbox" | "web" | "github" | "mcp" | "images";
 /** `room` follows the room's default model. */
 export type AgentModel = ModelPick | "room";
 export type Agent = {
@@ -89,6 +90,10 @@ export type Schedule = {
   lastRun?: { at: string; threadNumber?: number; skipped?: string };
 };
 
+export type Aspect = "1:1" | "3:4" | "4:3" | "9:16" | "16:9";
+/** An image a run generated, saved at `path` in the room's files. */
+export type GeneratedImage = { path: string; aspect: Aspect };
+
 export type Budget = { spentMicros: number; capMicros: number; month: string; resetsAt: string };
 
 export type RunEventBody =
@@ -97,19 +102,23 @@ export type RunEventBody =
   | { type: "routed"; model: string; by: "pick" | "default" | "auto" }
   /** The provider's own content for a model call that ended, replayed verbatim on the next call; never streamed. */
   | { type: "model.turn"; model: string; content: unknown; turn: number }
-  | { type: "steer"; messageSeq: number; authorName: string; text: string; attachments?: string[] }
+  /** Attachments are stored without their urls, which expire. */
+  | { type: "steer"; messageSeq: number; authorName: string; text: string; attachments?: Attachment[] }
   /** `turn` is the model call that wrote it (the loop's `model-<turn>` step). */
   | { type: "text"; text: string; turn: number }
   /** An attempt at `turn` failed after writing, and the retry answers again: that turn's text and native turn are void. */
   | { type: "text.reset"; turn: number }
   | { type: "step.started"; step: number; call: { id: string; name: string; input: Record<string, unknown> }; detail: string }
-  | { type: "step.finished"; step: number; output: string; ms: number; ok: boolean; sources?: Source[] }
+  | { type: "step.finished"; step: number; output: string; ms: number; ok: boolean; sources?: Source[]; image?: GeneratedImage }
   /** What a sandbox step saved to or deleted from the room's files, and what it couldn't. */
   | ({ type: "files.synced"; step: number } & FilesSynced)
   | { type: "approval.requested"; step: number; call: ToolCall; title: string; expiresAt: string }
   | { type: "approval.settled"; step: number; decision: Exclude<ApprovalStatus, "pending">; by?: string }
-  /** Sandbox time is billed as `model: "sandbox"` with no tokens. `ms` is how long the model call took. */
-  | ({ type: "usage"; model: string; job: "route" | "name" | "run" | "sandbox"; costMicros: number; ms?: number } & TokenUsage)
+  /**
+   * Sandbox time is billed as `model: "sandbox"` with no tokens. `ms` is how long the model call took. `step` is set on
+   * image usage, so a retried image step can see it was already billed.
+   */
+  | ({ type: "usage"; model: string; job: "route" | "name" | "run" | "sandbox" | "image"; costMicros: number; ms?: number; step?: number } & TokenUsage)
   /** A helper agent took a delegated task, in its own lane; `step` is the main lane's delegate step. */
   | { type: "helper.started"; step: number; agentId: string; agentName: string; task: string; model: string }
   | { type: "helper.finished"; step: number; status: RunEndStatus; summary: string; steps: number; ms: number; costMicros: number }

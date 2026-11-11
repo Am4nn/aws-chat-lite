@@ -20,7 +20,9 @@ export type Run = {
   pickBy: "pick" | "default";
   /** The model id it routed to; unset until it has routed. */
   model?: string;
+  /** The starter's username; `startedById` is their user id, unset on runs from before it was stored. */
   startedBy: string;
+  startedById?: string;
   startedAt: string;
   /** Past this the run can't be alive: the claim plus the execution's own limit, moved past each approval's expiry. */
   deadAt: string;

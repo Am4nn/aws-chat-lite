@@ -216,7 +216,7 @@ async function readSteers(run: Run, events: RunEvent[], writer: Writer): Promise
         warnHoles(run.threadId, seenSeq + 1, m.seq - 1);
       }
       if (m.seq > steered) {
-        const attachments = m.attachments.length ? { attachments: m.attachments.map((a) => a.name) } : {};
+        const attachments = m.attachments.length ? { attachments: m.attachments.map(({ url: _url, ...a }) => a) } : {};
         events.push(await writer.append({ type: "steer", messageSeq: m.seq, authorName: m.authorName, text: m.text, ...attachments }));
       }
       seenSeq = m.seq;

@@ -74,7 +74,7 @@ describe("buildContext", () => {
   });
 
   it("a steer names its attachments the same way", () => {
-    const run = events({ type: "steer", messageSeq: 2, authorName: "ravi", text: "and this", attachments: ["log.txt"] });
+    const run = events({ type: "steer", messageSeq: 2, authorName: "ravi", text: "and this", attachments: [{ key: "k/log.txt", name: "log.txt", size: 1, type: "text/plain" }] });
     expect(buildContext([message(1, "u1", "aman", "go")], run)[1]).toEqual({ role: "user", author: "ravi", text: "and this\n[attached: log.txt]" });
   });
 
