@@ -171,11 +171,11 @@ export async function mcpChecks(stamp: number, owner: Person, guest: Person) {
   const stillNoAdd = await B.evaluate(() => ![...document.querySelectorAll("button")].some((b) => ["Add MCP server", "Reconnect", "Refresh tools", "Remove"].includes(b.textContent?.trim() ?? "")));
   check(labelled && seen && stillNoAdd, "both see test connected with echo, whoami and fail read-only and add_note asks first; B has no Add, Reconnect, Refresh or Remove");
 
-  // A read-only tool runs without asking, and its output makes the thread private.
+  // A read-only tool runs without asking, and its output makes the thread private, tainted by this server by name.
   const read = await ask("@agent go call:mcp__test__echo");
   const readDone = await ended(read.number);
-  check(readDone.status === "done" && readDone.steps === 1 && readDone.taint.includes("mcp"),
-    `call:mcp__test__echo runs without an approval (${readDone.status}, ${readDone.steps} step) and taints #${read.number} with mcp (${readDone.taint.join(", ")})`);
+  check(readDone.status === "done" && readDone.steps === 1 && readDone.taint.includes("mcp:test"),
+    `call:mcp__test__echo runs without an approval (${readDone.status}, ${readDone.steps} step) and taints #${read.number} with mcp:test (${readDone.taint.join(", ")})`);
 
   // A write waits for a member: B gets "needs you", opens the card and approves.
   const write = await ask("@agent go call:mcp__test__add_note");
@@ -237,8 +237,7 @@ export async function mcpChecks(stamp: number, owner: Person, guest: Person) {
   const phone = await A.browserContext().newPage();
   await phone.setViewport(PHONE);
   await phone.goto(generalUrl, { waitUntil: "domcontentloaded" });
-  await phone.waitForSelector('button[aria-label="Toggle room panel"]');
-  await phone.click('button[aria-label="Toggle room panel"]');
+  await phone.locator('button[aria-label="Toggle room panel"]').click();
   await openTab(phone, "Connections");
   const panelFits = await until(phone, () => {
     const row = document.querySelector('li[aria-label="test"]')?.getBoundingClientRect();

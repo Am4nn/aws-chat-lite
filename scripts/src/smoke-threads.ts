@@ -7,6 +7,7 @@ import type { Page } from "puppeteer-core";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { readOutputs } from "./deploy-local.js";
+import { flociHost } from "./env.js";
 import { clsFrom, gapless, streamedExactly } from "./smoke-helpers.js";
 import { WEB, bff, check, eventually, send, shows, socketOpen, toastSays, until } from "./smoke-page.js";
 
@@ -325,11 +326,21 @@ export async function threadChecks(stamp: number, owner: Person, guest: Person) 
   const cls = clsFrom(shifts);
   check(cls < 0.02, `switching threads doesn't shift the layout (CLS ${cls.toFixed(3)})`);
 
-  // Numbering: five threads created at once take distinct numbers with no hole.
+  // Numbering: five threads created at once take distinct numbers with no hole. Floci starts a fresh threads and run
+  // container for each concurrent call, so one call in a burst can outlast the BFF's 8 s deadline, which is a budget
+  // for a person waiting, not for the counter judged here. So these calls go straight to the API, with API Gateway's
+  // own 30 s integration ceiling as their deadline. A retry would be wrong: each POST makes a new thread.
   const before = Math.max(...(await threads()).map((t) => t.number));
-  const numbers = await A.evaluate((r) => Promise.all([1, 2, 3, 4, 5].map((i) => fetch(`/bff/api/rooms/${r}/threads`, {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: `count ${i} tools:0 words:1`, clientId: crypto.randomUUID() }),
-  }).then((res) => res.json()).then((b: { thread?: { number: number } }) => b.thread?.number ?? 0))), roomId);
+  const idToken = (await A.browserContext().cookies()).find((c) => c.name === "cl_id")!.value;
+  const api = `http://${flociHost(readOutputs("cl-local-core").ApiUrl)}`;
+  const numbers = await Promise.all([1, 2, 3, 4, 5].map(async (i) => {
+    const res = await fetch(`${api}/rooms/${roomId}/threads`, {
+      method: "POST", signal: AbortSignal.timeout(30_000),
+      headers: { authorization: `Bearer ${idToken}`, "content-type": "application/json" },
+      body: JSON.stringify({ text: `count ${i} tools:0 words:1`, clientId: crypto.randomUUID() }),
+    });
+    return ((await res.json()) as { thread?: { number: number } }).thread?.number ?? 0;
+  }));
   check(gapless(numbers) && Math.min(...numbers) === before + 1, `5 threads created at once get distinct, gapless numbers (${numbers.join(", ")})`);
   await eventually(threads, (ts) => ts.every((t) => t.status !== "running"));
 }

@@ -103,8 +103,9 @@ export async function clickButton(page: Page, text: string) {
 }
 
 export async function openTab(page: Page, label: string) {
-  await page.waitForSelector(`${PANEL} [role=tab][aria-label="${label}"]`);
-  await page.click(`${PANEL} [role=tab][aria-label="${label}"]`);
+  // On a phone the panel slides in, so its tabs exist while still off screen. A locator clicks once the tab is in view
+  // and has stopped moving.
+  await page.locator(`${PANEL} [role=tab][aria-label="${label}"]`).click();
 }
 
 /** Whether the room panel's text includes every one of `texts`. */
