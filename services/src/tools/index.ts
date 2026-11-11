@@ -1,4 +1,5 @@
-import { mcpTool } from "../mcp/client/tools.js";
+import { mcpRepo } from "../mcp/client/repo.js";
+import { mcpCaller, mcpTool } from "../mcp/client/tools.js";
 import type { GitHubConnection, McpConnection } from "../threads/types.js";
 import { fakeGitHubFetch, fakeKeys } from "./fake-github.js";
 import { fakePage, fakeWebFetch } from "./fake-web.js";
@@ -34,7 +35,8 @@ const fakeFetch: typeof fetch = (input, init) => {
   return url.startsWith("https://api.github.com/") ? fakeGitHubFetch(input, init) : fakeWebFetch(input, init);
 };
 
-const mcpCall: ToolEnv["mcpCall"] = () => Promise.reject(new Error("MCP calls aren't wired."));
+// Both modes call MCP servers for real: locally that is the test server on this machine.
+const mcpCall = mcpCaller(mcpRepo);
 
 /** Fake mode answers as GitHub and Tavily and serves canned pages, so every real code path runs without the network. */
 export async function toolEnv(mode = process.env.TOOL_MODE, github?: GitHubConnection): Promise<ToolEnv> {

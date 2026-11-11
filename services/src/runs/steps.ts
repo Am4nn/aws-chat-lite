@@ -12,7 +12,7 @@ import { modelIdOf, parseRoute, ROUTER_PROMPT, routerInput } from "../models/pic
 import { mergeTaint, messageTaint, runRefusal } from "../models/privacy.js";
 import { isNumberedName } from "../threads/model.js";
 import { threadsRepo } from "../threads/repo.js";
-import type { McpConnection, RunEndStatus, RunEvent, Source } from "../threads/types.js";
+import type { RunEndStatus, RunEvent, Source } from "../threads/types.js";
 import { findTool, toolEnv } from "../tools/index.js";
 import type { Tool, ToolResult } from "../tools/types.js";
 import { sandboxCostMicros } from "../workspace/limits.js";
@@ -53,7 +53,7 @@ let shared: ModelGateway | undefined;
 export const models = () => (shared ??= gateway());
 
 /** The room's connections, with its id, as the tool lookups take them. */
-export const roomConnections = async (roomId: string) => ({ roomId, mcp: [] as McpConnection[], ...await connectionsRepo().get(roomId) });
+export const roomConnections = async (roomId: string) => ({ roomId, ...await connectionsRepo().get(roomId) });
 
 /** Null when the run is already over (its start failed after the invoke was accepted). */
 export async function load(runId: string): Promise<{ run: Run; provisional: boolean } | null> {
