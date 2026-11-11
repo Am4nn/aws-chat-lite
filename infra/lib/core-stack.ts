@@ -21,6 +21,7 @@ import { addMcpConnections } from "./mcp-connections.js";
 import { addMcpServer } from "./mcp-server.js";
 import { addOAuth } from "./oauth.js";
 import { addSandbox } from "./sandbox.js";
+import { addMedia } from "./media.js";
 
 /** Path to a handler file in services/src */
 export const servicePath = (file: string) =>
@@ -38,6 +39,8 @@ export class CoreStack extends Stack {
   readonly auth: Auth;
   readonly live: ReturnType<typeof addLive>;
   readonly runs: ReturnType<typeof addRuns>;
+  /** The push worker, which every Lambda that has something to notify invokes. */
+  readonly push: NodejsFunction;
   /** Where browsers open the live socket. */
   readonly wsUrl: string;
   /** Where MCP clients reach the OAuth and MCP endpoints: the issuer, and the base of the resource `/mcp`. */
@@ -77,6 +80,10 @@ export class CoreStack extends Stack {
     this.runs = addRuns(this);
     addSandbox(this, this.runs.runFn);
     addFiles(this, files);
+    this.push = addMedia(this, files);
+    // Whatever posts a message (a mention), ends a run or asks for an approval queues a push.
+    this.allowPush(this.live.liveFn);
+    this.allowPush(this.runs.runFn);
     // A message sent in a thread over the socket starts or steers its run.
     this.allowRunStart(this.live.liveFn);
     // A stop wakes a run waiting on an approval, as does a decision through the API; a run that finds its approval
@@ -87,6 +94,7 @@ export class CoreStack extends Stack {
     this.allowBroadcast(threadsFn);
     this.allowRunStart(threadsFn);
     this.allowRunCallback(threadsFn);
+    this.allowPush(threadsFn);
     addConnections(this);
     addMcpConnections(this);
     addOAuth(this);
@@ -143,6 +151,12 @@ export class CoreStack extends Stack {
       service: "lambda", resource: "function", resourceName: `${this.stageConfig.prefix}-run`, arnFormat: ArnFormat.COLON_RESOURCE_NAME,
     });
     fn.addToRolePolicy(new iam.PolicyStatement({ actions: ["lambda:SendDurableExecutionCallbackSuccess"], resources: [arn, `${arn}:*`] }));
+  }
+
+  /** Lets `fn` queue a push: an asynchronous invoke of the push worker, so nothing waits on push services. */
+  allowPush(fn: NodejsFunction) {
+    this.push.grantInvoke(fn);
+    fn.addEnvironment("PUSH_FN_NAME", this.push.functionName);
   }
 
   /**

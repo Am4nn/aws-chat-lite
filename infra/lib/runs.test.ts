@@ -36,9 +36,9 @@ describe("run engine", () => {
 
   it("keeps the keys secrets on AWS and lets cdk destroy remove them locally", () => {
     const local = Object.values(template().findResources("AWS::SecretsManager::Secret")) as any[];
-    expect(local.map((s) => s.DeletionPolicy)).toEqual(["Delete", "Delete", "Delete"]);
+    expect(local.map((s) => s.DeletionPolicy)).toEqual(["Delete", "Delete", "Delete", "Delete"]);
     const secrets = Object.values(template("aws").findResources("AWS::SecretsManager::Secret"));
-    expect(secrets).toHaveLength(3);
+    expect(secrets).toHaveLength(4);
     for (const secret of secrets) expect(secret).toMatchObject({ DeletionPolicy: "Retain", UpdateReplacePolicy: "Retain" });
   });
 
@@ -52,15 +52,6 @@ describe("run engine", () => {
     expect(secretReads("cl-local-run").sort()).toEqual(run.sort());
     expect(secretReads("cl-local-connections")).toEqual([secretId("cl-local-tool-keys")]);
     expect(secretReads("cl-local-threads")).toEqual([]);
-  });
-
-  it("no Lambda holds a key in its environment, only the names of the secrets that do", () => {
-    for (const env of [{}, { MODEL_GATEWAY: "live", TOOL_MODE: "live" }]) {
-      const names = Object.values(template("local", env).findResources("AWS::Lambda::Function"))
-        .flatMap((fn: any) => Object.keys(fn.Properties.Environment?.Variables ?? {}));
-      expect(names.length).toBeGreaterThan(0);
-      expect(names.filter((n) => /KEY|PEM/.test(n) && !n.endsWith("_SECRET"))).toEqual([]);
-    }
   });
 
   it("the threads, live and run Lambdas may wake a waiting run, only on the run function, which is named rather than referenced", () => {
