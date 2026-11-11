@@ -74,7 +74,7 @@ async function agentLoop(start: RoutedRun, ctx: DurableContext, close: Close): P
     }
     for (const call of turn.toolCalls) {
       const result = run.others.length > 0 && call.name === DELEGATE
-        ? await delegate(run, call, i, ctx)
+        ? await delegate(run, call, i, turn.taint ?? [], ctx)
         : await toolCall(run, call, i, turn.taint ?? [], ctx);
       run = { ...run, steps: result.steps, costMicros: result.costMicros };
       if (result.end) {
@@ -111,9 +111,9 @@ async function toolCall(run: RoutedRun, call: ToolCall, i: number, taint: TaintS
  * closes nothing: it goes back to this lane as the step's result. A helper whose child context failed (one of its
  * steps failed every try) reads as an error to the agent that delegated, and the run goes on.
  */
-async function delegate(run: RoutedRun, call: ToolCall, i: number, ctx: DurableContext): Promise<StepResult> {
+async function delegate(run: RoutedRun, call: ToolCall, i: number, taint: TaintSource[], ctx: DurableContext): Promise<StepResult> {
   const step = laneStep(ctx, run);
-  const handover = await step(`delegate-${i}-${call.id}`, () => startHelper(run, call));
+  const handover = await step(`delegate-${i}-${call.id}`, () => startHelper(run, call, taint));
   if ("result" in handover) return handover.result;
   const { helper } = handover;
   let end: End | undefined;

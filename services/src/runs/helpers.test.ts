@@ -1,6 +1,22 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BUILT_IN } from "../agents/model.js";
-import { delegateResult, helperKinds, noSuchAgent } from "./helpers.js";
+import type { RunEvent } from "../threads/types.js";
+import { delegateResult, helperKinds, noSuchAgent, startHelper } from "./helpers.js";
+import type { RoutedRun } from "./steps.js";
+
+const runs = {
+  allEvents: vi.fn(async (): Promise<RunEvent[]> => []),
+  eventWriter: vi.fn(async () => ({ append: async (e: object) => ({ ...e, seq: 1, at: new Date().toISOString() }) })),
+  progress: vi.fn(async () => ({})),
+  stepDone: vi.fn(async () => ({})),
+  recorded: vi.fn(),
+};
+const threads = { threadById: vi.fn() };
+vi.mock("./repo.js", () => ({ runsRepo: () => runs }));
+vi.mock("./notify.js", () => ({ notifyRun: async () => {} }));
+vi.mock("./start.js", () => ({ roomDefaultModel: async () => "deepseek-flash" }));
+vi.mock("../threads/repo.js", () => ({ threadsRepo: () => threads }));
+vi.mock("./steps.js", async (importOriginal) => ({ ...await importOriginal<object>(), limitsReached: async () => null }));
 
 describe("delegateResult", () => {
   it("is the helper's whole answer when it finished", () => {
@@ -31,5 +47,31 @@ describe("helperKinds", () => {
 
   it("keeps only the web for a helper working for DeepSeek, so its results never make the thread private", () => {
     expect(helperKinds(["github", "mcp", "sandbox", "web"], "deepseek-flash")).toEqual(["web"]);
+  });
+});
+
+describe("startHelper", () => {
+  const researcher = { ...BUILT_IN, agentId: "a1", name: "researcher", builtIn: false, model: "room" as const, tools: [] };
+  const run = {
+    runId: "run1", roomId: "r1", threadId: "t1", number: 1, agentId: "agent", status: "running", pick: "sonnet", pickBy: "pick",
+    model: "claude-sonnet-5-5", startedBy: "aman", startedAt: "2026-11-12T00:00:00.000Z", deadAt: "2026-11-12T01:00:00.000Z",
+    firstSeq: 1, seenSeq: 1, steps: 1, costMicros: 0, agent: BUILT_IN, others: [researcher],
+  } satisfies RoutedRun;
+  const call = { id: "c1", name: "delegate", input: { agent: "researcher", task: "Look it up." } };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    threads.threadById.mockResolvedValue({ taint: [] });
+    runs.recorded.mockResolvedValue({ model: "claude-haiku-5-5", by: "auto", costMicros: 0 });
+  });
+
+  it("keeps a helper on the room's DeepSeek default in a clean thread", async () => {
+    const handover = await startHelper(run, call, []);
+    expect("helper" in handover && handover.helper.model).toBe("deepseek-flash");
+  });
+
+  it("moves a helper off DeepSeek when the turn saw private content the thread hasn't stored yet", async () => {
+    const handover = await startHelper(run, call, ["attachment"]);
+    expect("helper" in handover && handover.helper.model).toBe("claude-haiku-5-5");
   });
 });

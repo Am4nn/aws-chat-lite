@@ -1,6 +1,7 @@
 import { modelInfo } from "../models/catalog.js";
 import type { ToolCall } from "../models/gateway.js";
 import { resolvePick } from "../models/picks.js";
+import { mergeTaint, type TaintSource } from "../models/privacy.js";
 import { summaryLine } from "../threads/model.js";
 import { threadsRepo } from "../threads/repo.js";
 import type { Agent, RunEvent, ToolKind } from "../threads/types.js";
@@ -38,10 +39,13 @@ const stepEvent = (events: RunEvent[], type: RunEvent["type"], step: number) =>
  * The delegate step's start, which a retry repeats without logging anything twice. It logs the main lane's step, then
  * either refuses an agent the room doesn't have (the run's own agent is not among `others`) or hands the task to the
  * named one: the next lane, and the helper's model, picked as a new run's would be from the agent's own model, Auto
- * routing on the task. The handover is the helper's run, which starts at the delegate step's number, so its steps
- * follow on from it.
+ * routing on the task, kept off models that may not see the private content the thread or the delegating turn holds
+ * (`taint`, which the thread's stored one can lag behind). The handover is the helper's run, which starts at the
+ * delegate step's number, so its steps follow on from it.
  */
-export async function startHelper(run: RoutedRun, call: ToolCall): Promise<{ helper: RoutedRun } | { result: StepResult }> {
+export async function startHelper(
+  run: RoutedRun, call: ToolCall, taint: TaintSource[],
+): Promise<{ helper: RoutedRun } | { result: StepResult }> {
   const end = await limitsReached(run);
   if (end) return { result: { steps: run.steps, costMicros: run.costMicros, end } };
 
@@ -69,7 +73,7 @@ export async function startHelper(run: RoutedRun, call: ToolCall): Promise<{ hel
   const lane = helpers.find((e) => e.step === step)?.lane ?? helpers.length + 1;
   const helper: RoutedRun = { ...run, agent: { ...agent, tools: helperKinds(agent.tools, run.model) }, others: [], steps: step, helper: { lane, step, task, parent: run.agent.name } };
   const [thread, roomDefault] = await Promise.all([threadsRepo().threadById(run.roomId, run.threadId), roomDefaultModel(run.roomId)]);
-  const pick = resolvePick(undefined, agent.model === "room" ? roomDefault : agent.model, thread?.taint ?? []);
+  const pick = resolvePick(undefined, agent.model === "room" ? roomDefault : agent.model, mergeTaint(thread?.taint ?? [], taint));
   const writer = await runs.eventWriter(run.runId, lane);
   const choice = await chooseModel(helper, writer, {
     ...pick, step: laneName(helper, "route"), message: async () => ({ author: run.agent.name, text: task }),
