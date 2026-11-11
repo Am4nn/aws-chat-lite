@@ -68,23 +68,29 @@ describe("toolDetail", () => {
     expect(run("\nprint(1)\nprint(2)")).toBe("Running python: print(1)");
     expect(run("x".repeat(80))).toBe(`Running python: ${"x".repeat(60)}`);
   });
+
+  it("quotes the first 60 characters of an image prompt", () => {
+    const draw = (prompt: string) => toolDetail({ id: "c", name: "image_generate", input: { prompt } }, noMcp);
+    expect(draw("A red fox")).toBe("Drawing \"A red fox\"");
+    expect(draw("y".repeat(80))).toBe(`Drawing "${"y".repeat(60)}"`);
+  });
 });
 
 describe("toolsFor", () => {
   type Served = "anthropic" | "deepseek" | "fake";
   const names = (model: string, served: Served, connected = false) => toolsFor(model, served, { ...noMcp, github: connected }).map((t) => t.name);
-  const web = ["web_search", "web_fetch"];
+  const forAll = ["image_generate", "web_search", "web_fetch"];
 
-  it("offers the sandbox only to models that may see private content, the fake tools only to the fake, and the web to all", () => {
-    expect(names("deepseek-flash", "fake")).toEqual(["fake.lookup", ...web]);
-    expect(names("deepseek-flash", "deepseek")).toEqual(web);
-    expect(names("claude-sonnet-5-5", "anthropic")).toEqual(["sandbox_run", ...web]);
-    expect(names("fake", "fake")).toEqual(["fake.lookup", "sandbox_run", ...web]);
+  it("offers the sandbox only to models that may see private content, the fake tools only to the fake, and the rest to all", () => {
+    expect(names("deepseek-flash", "fake")).toEqual(["fake.lookup", ...forAll]);
+    expect(names("deepseek-flash", "deepseek")).toEqual(forAll);
+    expect(names("claude-sonnet-5-5", "anthropic")).toEqual(["sandbox_run", ...forAll]);
+    expect(names("fake", "fake")).toEqual(["fake.lookup", "sandbox_run", ...forAll]);
   });
 
   it("offers GitHub only when the room is connected, and never to a model kept from private content", () => {
     expect(names("claude-sonnet-5-5", "anthropic", true).filter((n) => n.startsWith("github_"))).toHaveLength(9);
-    expect(names("deepseek-flash", "deepseek", true)).toEqual(web);
+    expect(names("deepseek-flash", "deepseek", true)).toEqual(forAll);
   });
 
   it("lets a GitHub call run without a connection, so the tool itself says it isn't connected, but never for DeepSeek", () => {
@@ -92,13 +98,14 @@ describe("toolsFor", () => {
     expect(mayRun("deepseek-flash", "deepseek", "github_read_file", noMcp)).toBe(false);
     expect(mayRun("deepseek-flash", "deepseek", "web_fetch", noMcp)).toBe(true);
     expect(mayRun("deepseek-flash", "deepseek", "sandbox_run", noMcp)).toBe(false);
+    expect(mayRun("deepseek-flash", "deepseek", "image_generate", noMcp)).toBe(true);
     expect(mayRun("claude-sonnet-5-5", "anthropic", "fake.lookup", noMcp)).toBe(false);
   });
 
   it("offers a signed-in MCP server's tools to a model that may see private content, and never to DeepSeek", () => {
     const room = (status: McpConnection["status"]) => ({ roomId: "r1", github: false, mcp: [conn(status)] });
     expect(toolsFor("claude-sonnet-5-5", "anthropic", room("connected")).map((t) => t.name)).toContain("mcp__test__add_note");
-    expect(toolsFor("deepseek-flash", "deepseek", room("connected")).map((t) => t.name)).toEqual(web);
+    expect(toolsFor("deepseek-flash", "deepseek", room("connected")).map((t) => t.name)).toEqual(forAll);
     expect(toolsFor("claude-sonnet-5-5", "anthropic", room("needs_auth")).some((t) => t.name.startsWith("mcp__"))).toBe(false);
   });
 

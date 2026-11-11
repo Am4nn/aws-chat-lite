@@ -115,7 +115,7 @@ describe("a failed attempt's writes", () => {
     { type: "text", text: "\n\nWhole answer.", turn: 2 },
   );
   it("is left out of the answer", () => {
-    expect(answerOf(run)).toEqual({ text: "Let me look.\n\nWhole answer.", final: "Whole answer." });
+    expect(answerOf(run)).toEqual({ text: "Let me look.\n\nWhole answer.", final: "Whole answer.", images: [] });
   });
   it("is left out of what the model sees, while the steer read in that attempt stays", () => {
     expect(buildContext([], run).slice(2)).toEqual([
@@ -139,10 +139,18 @@ describe("answerOf", () => {
       { type: "steer", messageSeq: 2, authorName: "ravi", text: "more" },
       { type: "text", text: "\n\nSecond ", turn: 1 }, { type: "text", text: "answer.", turn: 1 },
     );
-    expect(answerOf(run)).toEqual({ text: "Let me look.\n\nFirst answer.\n\nSecond answer.", final: "Second answer." });
+    expect(answerOf(run)).toEqual({ text: "Let me look.\n\nFirst answer.\n\nSecond answer.", final: "Second answer.", images: [] });
   });
 
   it("a run that ends during a step has no final text", () => {
-    expect(answerOf(events({ type: "text", text: "Looking.", turn: 1 }, started(1)))).toEqual({ text: "Looking.", final: "" });
+    expect(answerOf(events({ type: "text", text: "Looking.", turn: 1 }, started(1)))).toEqual({ text: "Looking.", final: "", images: [] });
+  });
+
+  it("lists the images the run made, in step order", () => {
+    const drew = (n: number, path: string): RunEventBody => ({
+      type: "step.finished", step: n, output: "Saved", ms: 5, ok: true, image: { path, aspect: "1:1" },
+    });
+    const run = events(started(1), drew(1, "images/7-1-fox.png"), started(2), finished(2), started(3), drew(3, "images/7-3-owl.png"));
+    expect(answerOf(run).images).toEqual([{ path: "images/7-1-fox.png", aspect: "1:1" }, { path: "images/7-3-owl.png", aspect: "1:1" }]);
   });
 });

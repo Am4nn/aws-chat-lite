@@ -3,9 +3,11 @@ import type { Approval } from "../approvals/repo.js";
 import { auditRepo } from "../audit/repo.js";
 import { budgetRepo } from "../budget/repo.js";
 import { connectionsRepo } from "../connections/repo.js";
+import { generateImageStep, imageDeps } from "../images/step.js";
 import { sleep } from "../lib/sleep.js";
 import { mcpServerOf } from "../mcp/client/tools.js";
-import { JOBS, NAMING_MODEL, ROUTER_MODEL } from "../models/catalog.js";
+import { JOBS, NAMING_MODEL, ROUTER_MODEL, type TokenUsage } from "../models/catalog.js";
+import { IMAGE_MODEL } from "../models/images.js";
 import { gateway } from "../models/index.js";
 import {
   NAME_PROMPT, type ModelChunk, type ModelGateway, type ModelMessage, type ModelRequest, type ToolCall, type ToolSpec,
@@ -15,7 +17,7 @@ import { loadImages } from "../models/vision.js";
 import { mergeTaint, messageTaint, runRefusal } from "../models/privacy.js";
 import { isNumberedName } from "../threads/model.js";
 import { threadsRepo } from "../threads/repo.js";
-import type { RunEndStatus, RunEvent, Source } from "../threads/types.js";
+import type { GeneratedImage, RunEndStatus, RunEvent, Source } from "../threads/types.js";
 import { findTool, toolEnv } from "../tools/index.js";
 import type { Tool, ToolEnv, ToolResult } from "../tools/types.js";
 import { sandboxCostMicros } from "../workspace/limits.js";
@@ -26,7 +28,7 @@ import { finishRun } from "./finish.js";
 import { endReason, stoppedBy } from "./model.js";
 import { notifyRun } from "./notify.js";
 import { runsRepo, type Run } from "./repo.js";
-import { mayRun, runTool, SANDBOX_TOOL, toolDetail, toolsFor } from "./tools.js";
+import { IMAGE_TOOL, mayRun, runTool, SANDBOX_TOOL, toolDetail, toolsFor } from "./tools.js";
 
 /*
  * The bodies of the run loop's durable steps. A step that fails is run again with the same input, so each one reads
@@ -100,8 +102,11 @@ function watchStop(runId: string) {
   return { signal: abort.signal, abort: () => abort.abort(), stoppedBy: () => by, close: () => clearInterval(poller) };
 }
 
-/** Which call a usage event bills, and the step whose result that call settles, if it settles one. */
-type Meter = { model: string; job: "route" | "name" | "run" | "sandbox"; step?: string };
+/**
+ * Which call a usage event bills, and the step whose result that call settles, if it settles one. `toolStep` is the
+ * step an image was made in, logged on its usage so a retry of that step can see the image paid for.
+ */
+type Meter = { model: string; job: "route" | "name" | "run" | "sandbox" | "image"; step?: string; toolStep?: number };
 
 /**
  * Every model call is metered, once: its usage event and the room's monthly spend are one transaction. A call that
@@ -113,7 +118,7 @@ type Meter = { model: string; job: "route" | "name" | "run" | "sandbox"; step?: 
 async function recordCall<T extends { costMicros: number }>(run: Run, writer: Writer, meter: Meter, usage: Usage, result: T): Promise<T> {
   const runs = runsRepo();
   const marker = meter.step ? [runs.callMarker(run.runId, meter.step, result)] : [];
-  const event = await writer.append({ ...usage, model: meter.model, job: meter.job }, [
+  const event = await writer.append({ ...usage, model: meter.model, job: meter.job, step: meter.toolStep }, [
     ...marker, budgetRepo().spend(run.roomId, usage.costMicros, new Date()),
   ]);
   await notifyRun(run.roomId, await runs.progress(run, { costMicros: result.costMicros }), event.seq);
@@ -365,7 +370,7 @@ const billSandbox = (run: Run, writer: Writer, events: RunEvent[], step: number,
 
 const hasChanges = (s: FilesSynced) => s.written.length + s.deleted.length + s.notes.length > 0;
 
-type Outcome = { output: string; ok: boolean; synced?: FilesSynced; sources?: Source[]; ms?: number };
+type Outcome = { output: string; ok: boolean; synced?: FilesSynced; sources?: Source[]; ms?: number; image?: GeneratedImage };
 type Room = Awaited<ReturnType<typeof roomConnections>>;
 type RoomCall = { room: Room; settled?: Approval; started: RunEvent; rerun: boolean; envOf: typeof toolEnv };
 
@@ -428,7 +433,8 @@ async function runCall(run: RoutedRun, call: ToolCall, offered: boolean, step: n
 /**
  * One tool call: one step. The limits are checked first, so a stop never waits for another tool. A sandbox step taints
  * the thread before any code runs, since its output carries room files, and is billed after it finishes, once: a retry
- * that finds the step finished but unbilled only bills it. A write comes with its settled approval.
+ * that finds the step finished but unbilled only bills it. An image step is billed as Gemini answers, once, and its
+ * cost is the run's from then on. A write comes with its settled approval.
  */
 export async function toolStep(
   run: RoutedRun, call: ToolCall, settled?: Approval, envOf = toolEnv,
@@ -442,10 +448,14 @@ export async function toolStep(
   const logged = (type: string) => events.find((e) => (e.type === type) && "step" in e && e.step === step);
   const offered = mayRun(run.model, models().servedBy(run.model), call.name, room);
   const sandboxed = offered && call.name === SANDBOX_TOOL.name;
+  const imaging = offered && call.name === IMAGE_TOOL.name;
+  // The run's cost after an image step: its usage events, an earlier attempt's charge included, plus this attempt's.
+  let charged = 0;
+  const costAfter = () => (imaging ? costOf(events) + charged : run.costMicros);
   // An earlier attempt finished the tool and logged it, and only failed after: its result stands.
   const done = logged("step.finished");
   if (done?.type === "step.finished") {
-    if (!sandboxed) return { steps: step, costMicros: run.costMicros };
+    if (!sandboxed) return { steps: step, costMicros: costAfter() };
     return await runs.recorded<StepResult>(run.runId, `sandbox-${step}`) ?? billSandbox(run, writer, events, step, done.ms);
   }
 
@@ -454,11 +464,20 @@ export async function toolStep(
   const started = before ?? await writer.append({ type: "step.started", step, call, detail: toolDetail(call, room) });
   await notifyRun(run.roomId, await runs.progress(run, { steps: step, currentStep: call.name }), started.seq);
   const t0 = Date.now();
-  const result = await runCall(run, call, offered, step, { room, settled, started, rerun: !!before, envOf });
-  const { output, ok, synced, sources } = result;
+  const bill = ({ usage, costMicros }: { usage: TokenUsage; costMicros: number }) => {
+    charged = costMicros;
+    const meter = { model: IMAGE_MODEL, job: "image" as const, toolStep: step };
+    return recordCall(run, writer, meter, { type: "usage", ...usage, costMicros }, { costMicros: costAfter() });
+  };
+  const result: Outcome = imaging
+    ? await generateImageStep(run, step, call.input, events, imageDeps(bill))
+    : await runCall(run, call, offered, step, { room, settled, started, rerun: !!before, envOf });
+  const { output, ok, synced, sources, image } = result;
   const ms = result.ms ?? Date.now() - t0;
   if (synced && hasChanges(synced) && !logged("files.synced")) await writer.append({ type: "files.synced", step, ...synced });
-  const finished = await writer.append({ type: "step.finished", step, output, ms, ok, ...(sources && { sources }) });
+  const finished = await writer.append({
+    type: "step.finished", step, output, ms, ok, ...(sources && { sources }), ...(image && { image }),
+  });
   await notifyRun(run.roomId, await runs.stepDone(run), finished.seq);
-  return sandboxed ? billSandbox(run, writer, events, step, ms) : { steps: step, costMicros: run.costMicros };
+  return sandboxed ? billSandbox(run, writer, events, step, ms) : { steps: step, costMicros: costAfter() };
 }
