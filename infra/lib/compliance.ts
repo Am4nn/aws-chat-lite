@@ -18,11 +18,13 @@ const RUNTIME_WILDCARDS = [
   rule("IAM5", "CDK's table grants also cover the table's indexes (only gsi1), which it writes as index/*.",
     [/^Resource::<Main[0-9A-F]{8}\.Arn>\/index\/\*$/]),
   rule("IAM5", "Each function reaches only its own key prefix of the files bucket; the object names are made at run time.",
-    [/^Resource::<Files[0-9A-F]{8}\.Arn>\/(rooms|workspaces|staging)\/\*$/]),
+    [/^Resource::<Files[0-9A-F]{8}\.Arn>\/(rooms|workspaces|staging|generated|speech)\/\*$/]),
   rule("IAM5", "Socket connection ids exist only at run time, so the grant is POST on the one stage's @connections path.",
     [ownArn("execute-api", "<Ws[0-9A-F]{8}>/live/POST/@connections/\\*")]),
   rule("IAM5", "A durable execution's ARN is the run function's qualified ARN plus an id made at run time.",
     [ownArn("lambda", "function:cl-aws-run:\\*")]),
+  rule("IAM5", "Room schedules are named at run time, so the grant covers the schedules in the stack's own schedule group.",
+    [ownArn("scheduler", "schedule/cl-aws-agent-schedules/\\*")]),
 ];
 
 /** HTTP API routes without the JWT authorizer, and why each is safe without it. */
@@ -48,6 +50,9 @@ const BY_PATH: [string[], NagPackSuppression[]][] = [
   [["ModelKeys", "ToolKeys"], [
     rule("SMG4", "Third-party API keys are issued by their providers, so they are rotated by hand there, not by a Lambda."),
   ]],
+  [["PushKeys", "PushPublicKey"], [
+    rule("SMG4", "A new VAPID key pair would orphan every browser's push subscription, so the keys are changed by hand, with a resubscribe."),
+  ]],
   [["TokenKey"], [
     rule("SMG4", "Rotating the sealing key would leave every sealed MCP token unreadable until each one is sealed again."),
   ]],
@@ -62,6 +67,10 @@ const BY_PATH: [string[], NagPackSuppression[]][] = [
   ]],
   [["WsStage"], [
     rule("APIG1", "A WebSocket stage logs access only through the account-wide API Gateway role every stack would share; the live Lambda logs instead."),
+  ]],
+  [["Fn-voice/ServiceRole/DefaultPolicy"], [
+    rule("IAM5", "Transcribe streaming has no resource to scope to, and Polly's only one is lexicons, which chat-lite doesn't use.",
+      [/^Resource::\*$/]),
   ]],
   [["Fn-run/ServiceRole"], [
     rule("IAM4", "AWS's durable execution policy is the documented minimum for a function to checkpoint and resume.",
