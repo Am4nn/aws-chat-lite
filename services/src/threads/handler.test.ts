@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { Conflict, NotFound } from "../lib/errors.js";
+import { Conflict, NotFound, ValidationError } from "../lib/errors.js";
 import { makeHandler } from "./handler.js";
 
 const ev = (routeKey: string, o: { body?: unknown; params?: Record<string, string> } = {}) => ({
@@ -11,68 +11,39 @@ const ev = (routeKey: string, o: { body?: unknown; params?: Record<string, strin
 
 function setup() {
   const repos = {
-    threads: {
-      createThread: vi.fn(async () => ({ thread: { threadId: "t1", status: "idle" }, message: { seq: 1 } })),
-      rename: vi.fn(async () => ({})),
-      threadById: vi.fn(async () => ({ threadId: "t1", status: "running" })),
-    },
+    threads: { rename: vi.fn(async () => ({})) },
     budget: { setCap: vi.fn(async () => ({})) },
-    startRun: vi.fn(async () => ({ runId: "run1", started: true })),
+    start: vi.fn(async () => ({ thread: { threadId: "t1", status: "running" }, message: { seq: 1 } }) as any),
     issueTicket: vi.fn(async () => ({ ticket: "tk" })),
     decide: vi.fn(async () => ({ status: "approved" as const, by: "aman" })),
   };
-  return { ...repos, handle: makeHandler(repos.threads as any, repos.budget as any, repos.startRun, repos.issueTicket, repos.decide) };
+  return { ...repos, handle: makeHandler(repos.threads as any, repos.budget as any, repos.start, repos.issueTicket, repos.decide) };
 }
 
 const me = { userId: "u1", username: "aman" };
 
 describe("threads handler", () => {
-  it("POST /threads creates a thread, starts a run on its first message and returns the running thread: 201", async () => {
-    const { threads, startRun, handle } = setup();
-    const res = await handle(ev("POST /rooms/{roomId}/threads", { params: { roomId: "r" }, body: { text: "hi", clientId: "k1" } }));
+  it("POST /threads starts the thread from the body and answers it: 201", async () => {
+    const { start, handle } = setup();
+    const res = await handle(ev("POST /rooms/{roomId}/threads", { params: { roomId: "r" }, body: { text: "hi", clientId: "k1", model: "haiku" } }));
     expect(res.statusCode).toBe(201);
-    expect(threads.createThread).toHaveBeenCalledWith(me, "r", { text: "hi", clientId: "k1" });
-    expect(startRun).toHaveBeenCalledWith(me, "r", "t1", { seq: 1 }, undefined);
+    expect(start).toHaveBeenCalledWith(me, "r", { text: "hi", clientId: "k1", model: "haiku" });
     expect(JSON.parse(res.body as string)).toEqual({ thread: { threadId: "t1", status: "running" }, message: { seq: 1 } });
   });
 
-  it("POST /threads hands the run its model pick; DeepSeek is fine for text alone", async () => {
-    const { startRun, handle } = setup();
-    const body = { text: "hi", clientId: "k1", model: "deepseek-pro" };
-    const res = await handle(ev("POST /rooms/{roomId}/threads", { params: { roomId: "r" }, body }));
-    expect(res.statusCode).toBe(201);
-    expect(startRun).toHaveBeenCalledWith(me, "r", "t1", { seq: 1 }, "deepseek-pro");
-  });
-
-  it("POST /threads with an unknown model is a 400, and no thread is made", async () => {
-    const { threads, handle } = setup();
-    const res = await handle(ev("POST /rooms/{roomId}/threads", { params: { roomId: "r" }, body: { text: "hi", clientId: "k1", model: "gpt" } }));
-    expect(res.statusCode).toBe(400);
-    expect(threads.createThread).not.toHaveBeenCalled();
-  });
-
   it("POST /threads without a valid clientId is a 400", async () => {
-    const { threads, handle } = setup();
+    const { start, handle } = setup();
     const res = await handle(ev("POST /rooms/{roomId}/threads", { params: { roomId: "r" }, body: { text: "hi", clientId: "a b" } }));
     expect(res.statusCode).toBe(400);
-    expect(threads.createThread).not.toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
   });
 
-  it("POST /threads with no text is a 400 that asks for the first message (a new thread takes no attachments)", async () => {
-    const { threads, handle } = setup();
+  it("POST /threads that startThread refuses is a 400 with its message", async () => {
+    const { start, handle } = setup();
+    start.mockRejectedValueOnce(new ValidationError("A new thread needs a first message."));
     const res = await handle(ev("POST /rooms/{roomId}/threads", { params: { roomId: "r" }, body: { text: "  ", clientId: "k1" } }));
     expect(res.statusCode).toBe(400);
     expect(JSON.parse(res.body as string)).toEqual({ error: "A new thread needs a first message." });
-    expect(threads.createThread).not.toHaveBeenCalled();
-  });
-
-  it("POST /threads whose run fails to start still answers 201 with the thread, so a retry can't make a second one", async () => {
-    const { startRun, handle } = setup();
-    startRun.mockRejectedValueOnce(new Error("throttled"));
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    const res = await handle(ev("POST /rooms/{roomId}/threads", { params: { roomId: "r" }, body: { text: "hi", clientId: "k1" } }));
-    expect(res.statusCode).toBe(201);
-    expect(JSON.parse(res.body as string)).toMatchObject({ thread: { threadId: "t1" }, message: { seq: 1 } });
   });
 
   it("PATCH a thread's name: a bad name is a 400, a good one is passed on normalized", async () => {
