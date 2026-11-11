@@ -61,6 +61,11 @@ describe("GITHUB_TOOLS", () => {
     expect((await tool("github_merge_pr").run({ number: 2, method: "squash" }, merge.env)).ok).toBe(true);
     expect(minted(merge.calls)).toEqual({ repositories: ["playground"], permissions: { contents: "write", pull_requests: "write" } });
     expect(merge.calls.at(-1)).toMatchObject({ method: "PUT", path: "/repos/fake-org/playground/pulls/2/merge", body: { merge_method: "squash" } });
+
+    // GitHub refuses to open a PR ("not all refs are readable") with a token that can't read the branches.
+    const pr = setup();
+    expect((await tool("github_create_pr").run({ title: "t", head: "feature" }, pr.env)).ok).toBe(true);
+    expect(minted(pr.calls)).toEqual({ repositories: ["playground"], permissions: { contents: "read", pull_requests: "write" } });
   });
 
   it("asks with each write's exact title", () => {

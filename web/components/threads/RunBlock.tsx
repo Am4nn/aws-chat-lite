@@ -99,16 +99,20 @@ export function RunBlock({ runId, answer, steers, pending, active, meName, membe
             className="flex flex-col gap-0.5 overflow-hidden"
           >
             {unavailable && <p className="px-3 text-[13px] text-text-3">This run&apos;s steps couldn&apos;t be loaded.</p>}
-            {rows.map((row) => {
-              if (row.kind === "step") return <StepRow key={row.key} step={row.step} enter={!stored} />;
-              if (row.kind === "approval") return <ApprovalCard key={row.key} runId={runId} approval={row.approval} meName={meName} enter={!stored} />;
-              return (
-                <SteerBubble
-                  key={row.key} row={row} mine={!row.authorName || row.authorName === meName} startedAt={run.startedAt}
-                  enter={!stored} onRetry={onRetry} onDiscard={onDiscard}
-                />
-              );
-            })}
+            {/* Motion hands the outer presence's "no first animation" to everything mounted inside it later, which would
+                stop every new row from entering. The rows' own presence keeps only the rows of the first paint still. */}
+            <AnimatePresence initial={false}>
+              {rows.map((row) => {
+                if (row.kind === "step") return <StepRow key={row.key} step={row.step} enter={!stored} />;
+                if (row.kind === "approval") return <ApprovalCard key={row.key} runId={runId} approval={row.approval} meName={meName} enter={!stored} />;
+                return (
+                  <SteerBubble
+                    key={row.key} row={row} mine={!row.authorName || row.authorName === meName} startedAt={run.startedAt}
+                    enter={!stored} onRetry={onRetry} onDiscard={onDiscard}
+                  />
+                );
+              })}
+            </AnimatePresence>
             {thinking && (
               <div className="flex h-10 items-center gap-3 px-3">
                 <span className="grid size-4 place-items-center"><RunningArc /></span>

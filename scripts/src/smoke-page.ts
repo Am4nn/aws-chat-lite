@@ -78,8 +78,9 @@ export async function eventually<T>(read: () => Promise<T>, ok: (value: T) => bo
 export const socketOpen = (page: Page) => until(page, () => window.__live?.status === "open", undefined, 12_000);
 export const shows = (page: Page, text: string, timeout?: number) =>
   until(page, (t) => document.querySelector("main")?.innerText.includes(t), text, timeout);
+/** A toast in any of the page's live regions: the app's toasts and the needs-you toast each have one. */
 export const toastSays = (page: Page, text: string) =>
-  until(page, (t) => document.querySelector("[aria-live=polite]")?.textContent?.includes(t), text);
+  until(page, (t) => [...document.querySelectorAll("[aria-live=polite]")].some((r) => r.textContent?.includes(t)), text);
 
 export async function send(page: Page, text: string) {
   await page.click("textarea#composer");

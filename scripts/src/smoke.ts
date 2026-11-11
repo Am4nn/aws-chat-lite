@@ -1,16 +1,18 @@
 /**
  * End-to-end check of the running app (Floci + `npm run dev`): sign-up, the creators group, rooms, invites, roles,
  * the API's 403s, httpOnly cookies, the motion rules (no layout shift, no movement under reduced motion), then the
- * live chat between real browsers, then agent threads and the model picker on the fake model, then room files and the sandbox.
+ * live chat between real browsers, then agent threads and the model picker on the fake model, then room files and the sandbox,
+ * then tools and approvals on fake GitHub.
  */
 import puppeteer, { type Page } from "puppeteer-core";
 import { useLocalEnv } from "./env.js";
 import { clsFrom } from "./smoke-helpers.js";
-import { WEB, bff, check, grantCreator, person, results, signUp } from "./smoke-page.js";
+import { WEB, bff, check, grantCreator, person, results, signUp, toastSays } from "./smoke-page.js";
 import { emptyHomeCheck, liveChecks } from "./smoke-live.js";
 import { modelChecks } from "./smoke-models.js";
 import { threadChecks } from "./smoke-threads.js";
 import { fileChecks } from "./smoke-files.js";
+import { toolChecks } from "./smoke-tools.js";
 
 const CHROME = process.env.CHROME_PATH ?? "C:/Program Files/Google/Chrome/Application/chrome.exe";
 
@@ -117,8 +119,7 @@ async function main() {
     await ownerPage.click(`button[aria-label="Actions for ${guest}"]`);
     await ownerPage.waitForSelector("[role=menuitem]");
     await ownerPage.evaluate(() => ([...document.querySelectorAll("[role=menuitem]")] as HTMLElement[]).find((b) => b.textContent === "Make member")?.click());
-    const toasted = await ownerPage.waitForFunction(() => document.querySelector("[aria-live=polite]")?.textContent?.includes("Not a member of this room."), { timeout: 4000 })
-      .then(() => true, () => false);
+    const toasted = await toastSays(ownerPage, "Not a member of this room.");
     check(toasted, "a failed member action shows the server's reason instead of failing silently");
 
     // A token that looks fresh but the API rejects (as after a user pool reset) sends the user to sign in, then back here.
@@ -133,6 +134,7 @@ async function main() {
     await threadChecks(stamp, { page: ownerPage, name: owner }, { page: guestPage, name: guest });
     await modelChecks(stamp, { page: ownerPage, name: owner }, { page: guestPage, name: guest });
     await fileChecks(stamp, { page: ownerPage, name: owner }, { page: guestPage, name: guest });
+    await toolChecks(stamp, { page: ownerPage, name: owner }, { page: guestPage, name: guest });
     await emptyHomeCheck(browser, newcomer);
   } finally {
     await browser.close();

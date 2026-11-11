@@ -36,6 +36,8 @@ const OPEN_MENU_AND_COUNT_FRAMES = `new Promise((resolve) => {
   document.querySelector(${JSON.stringify(PILL)}).click();
 })`;
 
+/** The pill unlocks once the page hears the run ended, a moment after the API says so. */
+const pillReady = (page: Page) => until(page, (sel) => !document.querySelector(sel)?.hasAttribute("aria-disabled"), PILL);
 const pillSays = (page: Page, label: string) => until(page, ([sel, l]) => document.querySelector(sel)?.getAttribute("aria-label") === `Model: ${l}`, [PILL, label]);
 /** The footer under the newest answer. */
 const footer = (page: Page) => page.evaluate(() =>
@@ -82,6 +84,7 @@ export async function modelChecks(stamp: number, owner: Person, guest: Person) {
   await open(A, picked.number);
   await settled(picked.number);
   const startsAuto = await pillSays(A, "Auto");
+  await pillReady(A);
   await A.focus(PILL);
   await A.keyboard.press("Enter");
   await A.waitForSelector("[role=menu]");
@@ -105,14 +108,17 @@ export async function modelChecks(stamp: number, owner: Person, guest: Person) {
 
   // The room default: the owner makes Opus the default and the member's pill follows; members can't set it.
   await open(B, haikuRun.number);
+  await pillReady(A);
   await A.click(PILL);
   await A.waitForSelector("[role=menu]");
   await menuItem(A, "Opus 5.5");
+  await pillReady(A);
   await A.click(PILL);
   await A.waitForSelector("[role=menu]");
   await A.evaluate(() => ([...document.querySelectorAll("main [role=menu] button")] as HTMLElement[])
     .find((b) => b.textContent === "Make Opus 5.5 the room default")?.click());
   const followed = await pillSays(B, "Opus 5.5");
+  await pillReady(B);
   await B.click(PILL);
   await B.waitForSelector("[role=menu]");
   const noDefault = await B.evaluate(() => !document.querySelector("main [role=menu]")?.textContent?.includes("the room default"));
@@ -131,6 +137,7 @@ export async function modelChecks(stamp: number, owner: Person, guest: Person) {
   const locked = await until(B, (sel) => !!document.querySelector(sel), LOCK, 15_000);
   await settled(secret.number);
   await until(B, (sel) => document.querySelector(sel)?.getAttribute("aria-disabled") !== "true", PILL);
+  await pillReady(B);
   await B.click(PILL);
   await B.waitForSelector("[role=menu]");
   const dimmed = await B.evaluate(() => ([...document.querySelectorAll("[role=menuitemradio]")] as HTMLElement[])
@@ -155,6 +162,7 @@ export async function modelChecks(stamp: number, owner: Person, guest: Person) {
   // DeepSeek picked first, then a file and @agent in a people chat: the server refuses the pick before storing anything.
   await A.goto(`${WEB}/r/${roomId}/c/${general}`, { waitUntil: "networkidle0" });
   await socketOpen(A);
+  await pillReady(A);
   await A.click(PILL);
   await A.waitForSelector("[role=menu]");
   await menuItem(A, "DeepSeek Flash");
@@ -168,10 +176,12 @@ export async function modelChecks(stamp: number, owner: Person, guest: Person) {
   await P.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true });
   await P.goto(`${WEB}/r/${roomId}/c/${general}`, { waitUntil: "networkidle0" });
   await P.waitForSelector(PILL);
+  await pillReady(P);
   await P.click(PILL);
   await P.waitForSelector("[role=menu]");
   await menuItem(P, "DeepSeek Flash");
   const short = await pillSays(P, "DS Flash");
+  await pillReady(P);
   await P.click(PILL);
   await P.waitForSelector("[role=menu]");
   await sleep(400);

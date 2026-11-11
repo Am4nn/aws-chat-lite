@@ -21,8 +21,23 @@ export function appJwt(appId: string, pem: string, nowSec = Math.floor(Date.now(
   return `${unsigned}.${sign("RSA-SHA256", Buffer.from(unsigned), pem).toString("base64url")}`;
 }
 
+const CONNECT_TRIES = 3;
+// Failures from before the connection opened: GitHub received nothing, so even a write is safe to send again.
+const NEVER_CONNECTED = ["UND_ERR_CONNECT_TIMEOUT", "ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN"];
+
+async function send(env: GitHubEnv, url: string, init: RequestInit): Promise<Response> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await env.fetch(url, init);
+    } catch (e) {
+      const code = ((e as Error).cause as { code?: string } | undefined)?.code;
+      if (attempt === CONNECT_TRIES || !NEVER_CONNECTED.includes(code ?? "")) throw e;
+    }
+  }
+}
+
 export async function githubCall(env: GitHubEnv, auth: string, method: string, path: string, body?: unknown): Promise<any> {
-  const res = await env.fetch(`${API}${path}`, {
+  const res = await send(env, `${API}${path}`, {
     method,
     headers: { ...HEADERS, Authorization: `Bearer ${auth}`, ...(body !== undefined && { "Content-Type": "application/json" }) },
     body: body === undefined ? undefined : JSON.stringify(body),

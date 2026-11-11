@@ -266,7 +266,8 @@ export const GITHUB_TOOLS: Tool[] = [
     description: "Opens a pull request from head into base (default: the default branch). Waits for a room member's approval.",
     properties: { title: { type: "string" }, head: { type: "string" }, base: { type: "string" }, body: { type: "string" } },
     required: ["title", "head"],
-    permissions: { pull_requests: "write" },
+    // Opening a PR reads both branches, which takes contents:read on top of the PR write.
+    permissions: { contents: "read", pull_requests: "write" },
     detail: (input) => `Opening a PR from ${input.head}${inRepo(input)}`,
     ask: ({ head, base }, repo) => `Open a PR ${head} → ${base ?? "the default branch"} in ${repo}?`,
     async call(gh, { title, head, base, body }) {
