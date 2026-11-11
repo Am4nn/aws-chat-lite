@@ -1,4 +1,5 @@
 import { isFresh } from "./jwt";
+import { ORIGIN_HEADER, originVerified } from "./origin-verify";
 
 type GateResult =
   | { type: "next" }
@@ -29,12 +30,15 @@ export function checkMutation(r: {
 
 /**
  * The decision made for every request before it reaches a page or route handler:
- * writes to /bff/* must pass the CSRF check, and a page without a fresh ID token is sent to the refresh endpoint,
- * the only path that receives the refresh cookie, which swaps it for a new token and comes back (or goes to /login).
+ * a request that skipped CloudFront is refused, writes to /bff/* must pass the CSRF check, and a page without a fresh
+ * ID token is sent to the refresh endpoint, the only path that receives the refresh cookie, which swaps it for a new
+ * token and comes back (or goes to /login).
  */
 export function gate(r: {
-  method: string; pathname: string; search: string; headers: Headers; idToken?: string; extraOrigins: string[]; now?: number;
+  method: string; pathname: string; search: string; headers: Headers; idToken?: string; originSecret?: string;
+  extraOrigins: string[]; now?: number;
 }): GateResult {
+  if (!originVerified(r.headers.get(ORIGIN_HEADER), r.originSecret)) return { type: "error", status: 403, error: "Forbidden." };
   if (r.pathname.startsWith("/bff/")) {
     const host = r.headers.get("host");
     const proto = r.headers.get("x-forwarded-proto") ?? "http";

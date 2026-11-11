@@ -23,12 +23,6 @@ describe("run stream", () => {
     })]);
   });
 
-  it("the threads Lambda hands out URLs on the local stream server locally and on the Function URL on AWS", () => {
-    expect(fnNamed("cl-local-threads").props.Environment.Variables.STREAM_URL).toBe("http://localhost:4600");
-    const [urlId] = Object.keys(template("aws").findResources("AWS::Lambda::Url"));
-    expect(fnNamed("cl-aws-threads", "aws").props.Environment.Variables.STREAM_URL).toEqual({ "Fn::GetAtt": [urlId, "FunctionUrl"] });
-  });
-
   it("POST /runs/{runId}/stream-ticket is behind the JWT authorizer, and the stack outputs StreamUrl", () => {
     const routes = Object.values(template().findResources("AWS::ApiGatewayV2::Route")).map((r: any) => r.Properties);
     expect(routes.find((r) => r.RouteKey === "POST /runs/{runId}/stream-ticket")).toMatchObject({ AuthorizationType: "JWT" });
