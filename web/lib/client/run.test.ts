@@ -67,13 +67,26 @@ describe("applyRunEvent", () => {
     expect(v).toMatchObject({ status: "stopped", reason: "by ann", costMicros: 9 });
   });
 
-  it("sums usage cost and keeps the model", () => {
+  it("sums usage cost across every job", () => {
     const v = run(
-      ev(1, { type: "run.started", model: "fake", startedBy: "u" }),
-      ev(2, { type: "usage", model: "fake", inputTokens: 1, outputTokens: 1, costMicros: 5 }),
-      ev(3, { type: "usage", model: "fake", inputTokens: 1, outputTokens: 1, costMicros: 7 }),
+      ev(1, { type: "usage", model: "claude-haiku-5-5", job: "route", inputTokens: 1, outputTokens: 1, costMicros: 100 }),
+      ev(2, { type: "usage", model: "claude-sonnet-5-5", job: "run", inputTokens: 1, outputTokens: 1, costMicros: 900 }),
     );
-    expect(v).toMatchObject({ costMicros: 12, model: "fake", startedAt: "2026-11-11T10:00:00Z" });
+    expect(v.costMicros).toBe(1000);
+  });
+
+  it("keeps the pick and takes the model from routed", () => {
+    const v = run(
+      ev(1, { type: "run.started", pick: "auto", startedBy: "u" }),
+      ev(2, { type: "routed", model: "claude-haiku-5-5", by: "auto" }),
+    );
+    expect(v).toMatchObject({ pick: "auto", model: "claude-haiku-5-5", startedAt: "2026-11-11T10:00:00Z" });
+  });
+
+  it("ignores model.turn except for lastSeq", () => {
+    const before = run(ev(1, { type: "text", text: "a" }));
+    const after = applyRunEvent(before, ev(2, { type: "model.turn", model: "m", content: [] }));
+    expect(after).toEqual({ ...before, lastSeq: 2 });
   });
 });
 

@@ -58,6 +58,15 @@ describe("streamRun", () => {
     expect(out.endedAt).toBe(0);
   });
 
+  it("never sends model.turn events, though the cursor moves past them", async () => {
+    const turn: RunEventBody = { type: "model.turn", model: "m", content: [], turn: 1 };
+    const log = [event(1), event(2), event(3, turn), event(4, finished)].map((e) => ({ event: e }));
+    const { deps, now } = fakeRun(log);
+    const { out, sink } = recorder(now);
+    await streamRun({ runId: "run1", ticket: "good" }, sink, deps);
+    expect(ids(out.writes)).toEqual(["1", "2", "4"]);
+  });
+
   it("writes each event as one SSE frame: id, event name and the event as JSON", async () => {
     const e = event(4);
     const { deps, now } = fakeRun([{ event: e }, { event: event(5, finished) }]);

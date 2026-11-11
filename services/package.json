@@ -5,13 +5,17 @@
   "scripts": {
     "test": "vitest run",
     "test:int": "vitest run --config vitest.int.config.ts",
+    "test:live": "vitest run --config vitest.live.config.ts",
+    "test:load": "vitest run --config vitest.load.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
     "@aws-sdk/client-apigatewaymanagementapi": "^3.1163.0",
     "@aws-sdk/client-dynamodb": "^3.1163.0",
     "@aws-sdk/client-lambda": "^3.1166.0",
     "@aws-sdk/client-s3": "^3.1166.0",
+    "@aws-sdk/client-secrets-manager": "^3.1166.0",
     "@aws-sdk/lib-dynamodb": "^3.1163.0",
     "@aws-sdk/s3-presigned-post": "^3.1166.0",
     "@aws-sdk/s3-request-presigner": "^3.1166.0",

@@ -28,7 +28,7 @@ async function perform(connId: string, user: User, f: Frame): Promise<Outcome> {
       const { message, route } = await routeSend(user, {
         ...chatRef(f), clientId: idOf(f.clientId, "clientId"), text: f.text, attachments: f.attachments,
         replyToSeq: f.replyToSeq === undefined ? undefined : seqNumber(f.replyToSeq),
-        threadId: f.threadId === undefined ? undefined : idOf(f.threadId, "threadId"),
+        threadId: f.threadId === undefined ? undefined : idOf(f.threadId, "threadId"), model: f.model,
       });
       const notify = async () => {
         await broadcastToRoom(message.roomId, { type: "message.new", message });

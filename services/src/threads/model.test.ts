@@ -74,6 +74,12 @@ describe("summary", () => {
     for (const k of ["pk", "sk", "named", "activeRunId", "from"]) expect(t).not.toHaveProperty(k);
     expect(t).toMatchObject({ threadId: "t", number: 1, status: "done", rev: 4, archived: true });
   });
+
+  it("gives the taint as a sorted list, read from the stored string set, and [] when there is none", () => {
+    expect(summary(stored, now).taint).toEqual([]);
+    expect(summary({ ...stored, taint: new Set(["attachment"]) }, now).taint).toEqual(["attachment"]);
+  });
+
   it("shows a run past the execution timeout as failed, so its thread stops looking live and can archive", () => {
     const startedAt = new Date(now - DEAD_AFTER_MS - 1).toISOString();
     const dead = { ...stored, status: "running", startedAt, currentStep: "fake.lookup" };

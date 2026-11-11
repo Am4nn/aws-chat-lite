@@ -8,6 +8,8 @@ import { roomsRepo } from "../rooms/repo.js";
 import { chatRepo } from "../chat/repo.js";
 import { budgetRepo } from "../budget/repo.js";
 import { threadsRepo } from "../threads/repo.js";
+import { presignUpload } from "../chat/files.js";
+import { PICK_REFUSED } from "../models/privacy.js";
 import { issueTicket, consumeTicket } from "./tickets.js";
 import { isOnline } from "./presence.js";
 import { broadcastToRoom, sendToConnection, sendToUser } from "./broadcast.js";
@@ -57,6 +59,18 @@ async function signIn(u: { userId: string; username: string }) {
 }
 
 const send = (s: Socket, frame: Frame) => s.ws.send(JSON.stringify(frame));
+
+/** Uploads a small text file through the presigned form, as a browser would, and returns it as a send attaches it. */
+async function uploadFile(roomId: string, userId: string) {
+  const name = "notes.txt";
+  const form = await presignUpload(roomId, userId, { name, size: 5, type: "text/plain" });
+  const data = new FormData();
+  for (const [k, v] of Object.entries(form.fields)) data.append(k, v);
+  data.append("file", new Blob(["hello"], { type: "text/plain" }));
+  const res = await fetch(form.url, { method: "POST", body: data });
+  if (!res.ok) throw new Error(`upload failed: ${res.status}`);
+  return { key: form.key, name, size: 5, type: "text/plain" };
+}
 
 describe("tickets on Floci", () => {
   it("a ticket can be used once", async () => {
@@ -309,6 +323,39 @@ describe("agent threads over the socket", () => {
     send(sa, { action: "send", requestId: "s1", roomId, chatId: thread.threadId, clientId: "k1", text: "go tools:0" });
     await sb.next((f) => runUpdated(thread.threadId, "running")(f) && (f.thread as Frame).runFirstSeq === 2);
     await sb.next(runUpdated(thread.threadId, "done"), AGENT_MS);
+  }, AGENT_MS);
+
+  it("a file makes a thread private, and a DeepSeek pick there is refused before anything is stored", async () => {
+    const { a, roomId, sa, sb } = await pair("Private");
+    const { thread } = await threadsRepo().createThread(a, roomId, { text: "notes", clientId: "k0" });
+    const file = await uploadFile(roomId, a.userId);
+    send(sa, { action: "send", requestId: "p1", roomId, chatId: thread.threadId, clientId: "k1", text: "read this tools:0", attachments: [file] });
+    expect(await sa.next((f) => f.type === "ack" && f.requestId === "p1")).toMatchObject({ ok: true });
+    const done = await sb.next(runUpdated(thread.threadId, "done"), AGENT_MS);
+    expect((done.thread as Frame).taint).toEqual(["attachment"]);
+    const before = (await history(a, roomId, thread.threadId)).length;
+
+    send(sa, { action: "send", requestId: "p2", roomId, chatId: thread.threadId, clientId: "k2", text: "again", model: "deepseek-flash" });
+    expect(await sa.next((f) => f.type === "ack" && f.requestId === "p2")).toMatchObject({ ok: false, error: PICK_REFUSED });
+    expect(await history(a, roomId, thread.threadId)).toHaveLength(before);
+  }, AGENT_MS);
+
+  it("@agent with a file: DeepSeek is refused with no thread or message; Sonnet starts a private thread", async () => {
+    const { a, roomId, generalChatId, sa, sb } = await pair("Private start");
+    const file = await uploadFile(roomId, a.userId);
+    const ask = { action: "send", roomId, chatId: generalChatId, text: "@agent look tools:0", attachments: [file] };
+
+    send(sa, { ...ask, requestId: "q1", clientId: "k1", model: "deepseek-pro" });
+    expect(await sa.next((f) => f.type === "ack" && f.requestId === "q1")).toMatchObject({ ok: false, error: PICK_REFUSED });
+    expect(await history(a, roomId, generalChatId)).toHaveLength(0);
+    expect((await repo.getRoomView(roomId, a.userId)).threads).toEqual([]);
+
+    send(sa, { ...ask, requestId: "q2", clientId: "k2", model: "sonnet" });
+    expect(await sa.next((f) => f.type === "ack" && f.requestId === "q2")).toMatchObject({ ok: true });
+    const updated = await sb.next(messageUpdated(generalChatId, 1));
+    const threadId = String(((updated.message as Frame).threadRef as Frame).threadId);
+    await sb.next(runUpdated(threadId, "done"), AGENT_MS);
+    expect((await threadsRepo().threadById(roomId, threadId))!.taint).toEqual(["attachment"]);
   }, AGENT_MS);
 
   /** A slow run that A starts from #general; resolves with its thread id once the card is in place. */

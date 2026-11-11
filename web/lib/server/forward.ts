@@ -25,6 +25,7 @@ const ROUTES: [method: string, pattern: string][] = [
   ["POST", "/rooms/:x/threads"],
   ["PATCH", "/rooms/:x/threads/:x"],
   ["PUT", "/rooms/:x/budget"],
+  ["PUT", "/rooms/:x/model"],
   ["POST", "/runs/:x/stream-ticket"],
 ];
 

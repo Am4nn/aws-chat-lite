@@ -4,11 +4,14 @@ import type { RunEvent } from "../threads/types.js";
 
 type Assistant = Extract<ModelMessage, { role: "assistant" }>;
 
-/** The log without the text of failed attempts: a `text.reset` voids the text its turn wrote before it. */
-function withoutVoidText(events: RunEvent[]): RunEvent[] {
+/** The model can't open files, so a message names its attachments for it. */
+const withAttachments = (text: string, names: string[] = []) => [text, ...names.map((name) => `[attached: ${name}]`)].join("\n");
+
+/** The log without what failed attempts wrote: a `text.reset` voids the text and native turn its turn wrote before it. */
+function withoutVoided(events: RunEvent[]): RunEvent[] {
   let kept: RunEvent[] = [];
   for (const e of events) {
-    if (e.type === "text.reset") kept = kept.filter((k) => !(k.type === "text" && k.turn === e.turn));
+    if (e.type === "text.reset") kept = kept.filter((k) => !((k.type === "text" || k.type === "model.turn") && k.turn === e.turn));
     else kept.push(e);
   }
   return kept;
@@ -17,10 +20,13 @@ function withoutVoidText(events: RunEvent[]): RunEvent[] {
 /**
  * What the model sees: the thread before the run, then the run so far, rebuilt from its event log. The log is the
  * source of truth, so a model step that is retried sees exactly what members saw stream, less any attempt voided.
+ *
+ * The context starts at a member's message: providers reject one that opens with an assistant turn.
  */
 export function buildContext(prior: Message[], events: RunEvent[]): ModelMessage[] {
-  const messages: ModelMessage[] = prior.map((m) =>
-    m.authorId === "agent" ? { role: "assistant", text: m.text } : { role: "user", author: m.authorName, text: m.text },
+  const from = prior.findIndex((m) => m.authorId !== "agent");
+  const messages: ModelMessage[] = (from < 0 ? [] : prior.slice(from)).map((m) =>
+    m.authorId === "agent" ? { role: "assistant", text: m.text } : { role: "user", author: m.authorName, text: withAttachments(m.text, m.attachments.map((a) => a.name)) },
   );
   const calls = new Map<number, ToolCall>();
   // The assistant message this run is writing; a tool result or a steer ends it.
@@ -30,9 +36,11 @@ export function buildContext(prior: Message[], events: RunEvent[]): ModelMessage
     return current;
   };
 
-  for (const e of withoutVoidText(events)) {
+  for (const e of withoutVoided(events)) {
     if (e.type === "text") {
       assistant().text += e.text;
+    } else if (e.type === "model.turn") {
+      assistant().native = { model: e.model, content: e.content };
     } else if (e.type === "step.started") {
       const turn = assistant();
       turn.toolCalls = [...(turn.toolCalls ?? []), e.call];
@@ -41,7 +49,7 @@ export function buildContext(prior: Message[], events: RunEvent[]): ModelMessage
       messages.push({ role: "tool", toolCallId: calls.get(e.step)?.id ?? "", output: e.output, isError: !e.ok });
       current = undefined;
     } else if (e.type === "steer") {
-      messages.push({ role: "user", author: e.authorName, text: e.text });
+      messages.push({ role: "user", author: e.authorName, text: withAttachments(e.text, e.attachments) });
       current = undefined;
     }
   }
@@ -55,7 +63,7 @@ export function buildContext(prior: Message[], events: RunEvent[]): ModelMessage
 export function answerOf(events: RunEvent[]): { text: string; final: string } {
   let text = "";
   let final = "";
-  for (const e of withoutVoidText(events)) {
+  for (const e of withoutVoided(events)) {
     if (e.type === "text") {
       text += e.text;
       final += e.text;

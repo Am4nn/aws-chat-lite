@@ -1,4 +1,5 @@
 import { ValidationError } from "../lib/errors.js";
+import type { TaintSource } from "../models/privacy.js";
 import { DEAD_AFTER_MS, DEAD_REASON } from "../runs/model.js";
 import type { ThreadStatus, ThreadSummary } from "./types.js";
 
@@ -46,18 +47,19 @@ export function isArchived(t: { status: ThreadStatus; lastActivityAt: string }, 
 }
 
 /**
- * A stored thread as clients get it: the bookkeeping fields stay on the server, and `archived` is worked out now. A
+ * A stored thread as clients get it: the bookkeeping fields stay on the server, `archived` is worked out now, and the
+ * taint, stored as a string set (which DynamoDB can only add to, and which has no order), becomes a sorted list. A
  * run past its execution timeout died without closing, so it shows as failed until the next message replaces it.
  */
 export function summary(
-  { pk: _pk, sk: _sk, activeRunId: _run, named: _named, from: _from, ...rest }: Record<string, unknown>, nowMs: number,
+  { pk: _pk, sk: _sk, activeRunId: _run, named: _named, from: _from, taint, ...rest }: Record<string, unknown>, nowMs: number,
 ): ThreadSummary {
-  let thread = rest as Omit<ThreadSummary, "archived">;
+  let thread = rest as Omit<ThreadSummary, "archived" | "taint">;
   if (thread.status === "running" && nowMs - Date.parse(thread.startedAt ?? "") > DEAD_AFTER_MS) {
     const { currentStep: _step, ...dead } = thread;
     thread = { ...dead, status: "failed", summary: DEAD_REASON };
   }
-  return { ...thread, archived: isArchived(thread, nowMs) };
+  return { ...thread, taint: [...((taint as Set<TaintSource> | undefined) ?? [])].sort(), archived: isArchived(thread, nowMs) };
 }
 
 /** `#12` or `#name` at the very start of a message; a tag later in the text is just text. */

@@ -5,6 +5,7 @@ import { errorResponse, json, parseBody } from "../lib/http.js";
 import { budgetRepo, type BudgetRepo } from "../budget/repo.js";
 import { capFromUsd } from "../budget/model.js";
 import { idOf } from "../chat/model.js";
+import { parsePick } from "../models/picks.js";
 import { startOrSteer } from "../runs/start.js";
 import { issueStreamTicket } from "../runs/stream-tickets.js";
 import { claimableName, threadName } from "./model.js";
@@ -31,11 +32,13 @@ export function makeHandler(
           const user = callerFromEvent(event);
           const roomId = params.roomId!;
           if (typeof body.text !== "string" || !body.text.trim()) throw new ValidationError("A new thread needs a first message.");
+          // A new thread holds only this text (files come over the socket), so no pick is refused for privacy here.
+          const pick = parsePick(body.model, process.env.STAGE ?? "");
           const created = await threads.createThread(user, roomId, { text: body.text, clientId: idOf(body.clientId, "clientId") });
           // The thread and its message exist now, so a failed start is no reason to fail the request: a client that
           // retried would make a second thread. The next message in the thread starts the run.
           try {
-            await startRun(user, roomId, created.thread.threadId, created.message);
+            await startRun(user, roomId, created.thread.threadId, created.message, pick);
           } catch (e) {
             console.error("run start failed", roomId, created.thread.threadId, e);
           }

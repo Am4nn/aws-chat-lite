@@ -11,11 +11,16 @@ import { budgetRepo } from "../budget/repo.js";
 import { budgetText, monthKey } from "../budget/model.js";
 import { threadSk } from "../threads/model.js";
 import { threadsRepo } from "../threads/repo.js";
+import type { Attachment } from "../chat/model.js";
+import type { ModelPick } from "../models/catalog.js";
+import { RUN_REFUSED } from "../models/privacy.js";
 import type { RunEvent } from "../threads/types.js";
 import { issueTicket } from "../live/tickets.js";
 import { runsRepo } from "./repo.js";
 import { startOrSteer } from "./start.js";
 import { requestStop } from "./stop.js";
+import { streamRun } from "./stream.js";
+import { issueStreamTicket } from "./stream-tickets.js";
 
 // Runs against the deployed run function on Floci: npm run floci:up && npm run deploy:local, then npm -w services run test:int
 const outputs = JSON.parse(readFileSync(new URL("../../../infra/cdk.out/outputs-local.json", import.meta.url), "utf8"));
@@ -63,18 +68,27 @@ async function room() {
 }
 
 /** A new thread whose first message starts a run, the way a member's first message does. */
-async function startRun(text: string, at?: Awaited<ReturnType<typeof room>>) {
+async function startRun(text: string, at?: Awaited<ReturnType<typeof room>>, pick?: ModelPick) {
   const { owner, roomId } = at ?? await room();
   const { thread, message } = await threadsRepo().createThread(owner, roomId, { text, clientId: `k${++clients}` });
-  const started = await startOrSteer(owner, roomId, thread.threadId, message);
+  const started = await startOrSteer(owner, roomId, thread.threadId, message, pick);
   return { owner, roomId, thread, ...started };
 }
 
 /** A member's message in the thread, delivered to the run as a steer. */
-async function steer(owner: { userId: string; username: string }, roomId: string, threadId: string, text: string) {
-  const message = await chat.send(owner, { roomId, chatId: threadId, clientId: `k${++clients}`, text });
-  return startOrSteer(owner, roomId, threadId, message);
+async function steer(
+  owner: { userId: string; username: string }, roomId: string, threadId: string, text: string,
+  opts: { attachments?: Attachment[]; pick?: ModelPick } = {},
+) {
+  // Handing the send its attachments as already checked skips the S3 lookup a real upload passes.
+  const admitted = opts.attachments && { text, attachments: opts.attachments };
+  const message = await chat.send(owner, { roomId, chatId: threadId, clientId: `k${++clients}`, text }, admitted);
+  return startOrSteer(owner, roomId, threadId, message, opts.pick);
 }
+
+const file: Attachment = { key: "rooms/r/u/f/report.pdf", name: "report.pdf", size: 1, type: "application/pdf" };
+/** Each usage event as `job:model`, in order. */
+const usageOf = (events: RunEvent[]) => events.flatMap((e) => (e.type === "usage" ? [`${e.job}:${e.model}`] : []));
 
 type Frame = Record<string, any>;
 const sockets: WebSocket[] = [];
@@ -104,15 +118,18 @@ describe("the run loop on Floci", { timeout: 60_000 }, () => {
 
     const events = await runs.events(runId, 0, 1000);
     expect(events.map((e) => e.seq)).toEqual(events.map((_, i) => i + 1));
-    const shape = events.filter((e) => e.type !== "usage").map((e) => e.type);
-    expect(shape.slice(0, 5)).toEqual(["run.started", "step.started", "step.finished", "step.started", "step.finished"]);
-    expect(new Set(shape.slice(5, -1))).toEqual(new Set(["text"]));
-    expect(events.slice(-2).map((e) => e.type)).toEqual(["usage", "run.finished"]);
+    const shape = events.map((e) => (e.type === "usage" ? `usage:${e.job}` : e.type));
+    // The router and the naming call, then three model turns: two tool calls, then the answer.
+    expect(shape.filter((t) => t !== "text")).toEqual([
+      "run.started", "usage:route", "routed", "usage:name",
+      "model.turn", "usage:run", "step.started", "step.finished",
+      "model.turn", "usage:run", "step.started", "step.finished",
+      "model.turn", "usage:run", "run.finished",
+    ]);
+    expect(new Set(shape.slice(shape.lastIndexOf("step.finished") + 1, -3))).toEqual(new Set(["text"]));
 
     const usage = events.flatMap((e) => (e.type === "usage" ? [e.costMicros] : []));
     const cost = usage.reduce((a, b) => a + b, 0);
-    // The naming call and three model turns (two tool calls, then the answer).
-    expect(usage).toHaveLength(4);
     expect(events.at(-1)).toMatchObject({ type: "run.finished", status: "done", steps: 2, costMicros: cost });
 
     const [answer] = await answersIn(owner, roomId, thread.threadId);
@@ -148,8 +165,8 @@ describe("the run loop on Floci", { timeout: 60_000 }, () => {
     const { runId } = await startOrSteer(owner, roomId, thread.threadId, message);
     expect((await finished(runId)).status).toBe("done");
     const events = await runs.allEvents(runId);
-    // The naming call and one model turn: the hole never made the run go round again.
-    expect(events.filter((e) => e.type === "usage")).toHaveLength(2);
+    // One model turn: the hole never made the run go round again.
+    expect(usageOf(events).filter((u) => u.startsWith("run:"))).toHaveLength(1);
     expect((await answersIn(owner, roomId, thread.threadId))[0]).toMatchObject({ seq: 3 });
   });
 
@@ -213,7 +230,7 @@ describe("the run loop on Floci", { timeout: 60_000 }, () => {
     expect(answer!.agent).toMatchObject({ status: "stopped", reason: "Stopped by owner." });
   });
 
-  it("a room at its cap ends the run capped before any model call", async () => {
+  it("a room at its cap ends the run capped before any model call, the router's included", async () => {
     const at = await room();
     await useUpBudget(at.roomId);
     const { thread, runId } = await startRun("go tools:1", at);
@@ -222,6 +239,8 @@ describe("the run loop on Floci", { timeout: 60_000 }, () => {
 
     const events = await runs.events(runId, 0, 1000);
     expect(events.some((e) => e.type === "usage")).toBe(false);
+    // Auto at the cap takes Sonnet without asking the router.
+    expect(events.find((e) => e.type === "routed")).toMatchObject({ model: "claude-sonnet-5-5", by: "auto" });
     expect(events.at(-1)).toMatchObject({ type: "run.finished", status: "capped", reason: budgetText(3_000_000, monthKey(new Date())) });
     expect((await threadsRepo().threadById(at.roomId, thread.threadId))?.name).toBe(thread.name);
   });
@@ -276,5 +295,90 @@ describe("the run loop on Floci", { timeout: 60_000 }, () => {
     const { thread } = JSON.parse(reply.body);
     expect(thread).toMatchObject({ status: "running", runFirstSeq: 1 });
     expect((await finished(thread.runId)).status).toBe("done");
+  });
+});
+
+describe("routing, privacy and how a model call ends, on Floci", { timeout: 60_000 }, () => {
+  it("Auto asks the router on Haiku, then answers on Sonnet; naming runs on Haiku", async () => {
+    const { owner, roomId, thread, runId } = await startRun("go tools:0 words:5");
+    expect((await finished(runId)).status).toBe("done");
+    const events = await runs.events(runId, 0, 1000);
+    expect(events.filter((e) => e.type === "routed")).toEqual([expect.objectContaining({ model: "claude-sonnet-5-5", by: "auto" })]);
+    expect(usageOf(events)).toEqual(["route:claude-haiku-5-5", "name:claude-haiku-5-5", "run:claude-sonnet-5-5"]);
+    const [answer] = await answersIn(owner, roomId, thread.threadId);
+    expect(answer!.agent).toMatchObject({ pick: "auto", model: "claude-sonnet-5-5" });
+    expect((await threadsRepo().threadById(roomId, thread.threadId))?.model).toBe("claude-sonnet-5-5");
+  });
+
+  it("Auto takes Haiku when the router says haiku, and never escalates past Sonnet", async () => {
+    const haiku = await startRun("route:haiku hi tools:0");
+    const opus = await startRun("route:opus hi tools:0");
+    for (const [{ runId }, model] of [[haiku, "claude-haiku-5-5"], [opus, "claude-sonnet-5-5"]] as const) {
+      expect((await finished(runId)).status).toBe("done");
+      expect((await runs.events(runId, 0, 1000)).find((e) => e.type === "routed")).toMatchObject({ model, by: "auto" });
+    }
+  });
+
+  it("a manual pick routes straight to its model, with no router call", async () => {
+    const { runId } = await startRun("go tools:0 words:3", undefined, "opus");
+    expect((await finished(runId)).status).toBe("done");
+    const events = await runs.events(runId, 0, 1000);
+    expect(events.find((e) => e.type === "routed")).toMatchObject({ model: "claude-opus-5-5", by: "pick" });
+    expect(usageOf(events)).toEqual(["name:claude-haiku-5-5", "run:claude-opus-5-5"]);
+  });
+
+  it("each model call that ended logs its native turn, and the event stream never sends one", async () => {
+    const { owner, runId } = await startRun("go tools:2 words:3");
+    expect((await finished(runId)).status).toBe("done");
+    const turns = (await runs.events(runId, 0, 1000)).filter((e) => e.type === "model.turn");
+    expect(turns).toHaveLength(3);
+    expect(turns[0]).toMatchObject({ model: "claude-sonnet-5-5", content: { fake: true, calls: ["call-1"] } });
+
+    let body = "";
+    const sink = { status: () => {}, write: (chunk: string) => { body += chunk; }, end: () => {} };
+    await streamRun({ runId, ticket: (await issueStreamTicket(owner, runId)).ticket }, sink);
+    expect(body).toContain('"type":"run.finished"');
+    expect(body).not.toContain('"type":"model.turn"');
+  });
+
+  it("a file steered into a DeepSeek run stops it before its next model call", async () => {
+    const { owner, roomId, thread, runId } = await startRun("slow tools:2", undefined, "deepseek-flash");
+    await eventOf(runId, (e) => e.type === "step.started");
+    expect(await steer(owner, roomId, thread.threadId, "and this", { attachments: [file] })).toEqual({ runId, started: false });
+    expect(await finished(runId)).toMatchObject({ status: "failed", reason: RUN_REFUSED });
+    const events = await runs.events(runId, 0, 1000);
+    const steerSeq = events.find((e) => e.type === "steer")!.seq;
+    expect(events.some((e) => e.type === "usage" && e.job === "run" && e.seq > steerSeq)).toBe(false);
+  });
+
+  it("a file already in the thread stops a DeepSeek run, even when the thread never recorded its taint", async () => {
+    const { owner, roomId } = await room();
+    const { thread } = await threadsRepo().createThread(owner, roomId, { text: "first", clientId: `k${++clients}` });
+    // A plain send stores the file without telling any run, so the thread's taint stays unwritten.
+    await chat.send(owner, { roomId, chatId: thread.threadId, clientId: `k${++clients}`, text: "the file" }, { text: "the file", attachments: [file] });
+    expect((await threadsRepo().threadById(roomId, thread.threadId))!.taint).toEqual([]);
+    const { runId } = await steer(owner, roomId, thread.threadId, "go tools:0", { pick: "deepseek-flash" });
+    expect(await finished(runId)).toMatchObject({ status: "failed", reason: RUN_REFUSED });
+    expect(usageOf(await runs.events(runId, 0, 1000)).some((u) => u.startsWith("run:"))).toBe(false);
+  });
+
+  it("a call that drops mid-answer ends the run failed, keeping its text once", async () => {
+    const { owner, roomId, thread, runId } = await startRun("drop:5 words:20");
+    expect(await finished(runId)).toMatchObject({ status: "failed", reason: "The model's connection dropped mid-answer." });
+    const [answer] = await answersIn(owner, roomId, thread.threadId);
+    expect(answer!.text.match(/Fake answer for/g)).toHaveLength(1);
+  });
+
+  it("an answer cut off at the length limit runs no tools and ends done with a note", async () => {
+    const { owner, roomId, thread, runId } = await startRun("cutoff");
+    expect((await finished(runId)).status).toBe("done");
+    expect((await runs.events(runId, 0, 1000)).some((e) => e.type === "step.started")).toBe(false);
+    const [answer] = await answersIn(owner, roomId, thread.threadId);
+    expect(answer!.text.endsWith("\n\n(The answer was cut off at the length limit.)")).toBe(true);
+  });
+
+  it("a model that declines ends the run failed with the refusal copy", async () => {
+    const { runId } = await startRun("refuse");
+    expect(await finished(runId)).toMatchObject({ status: "failed", reason: "The model declined this request. Try another model." });
   });
 });

@@ -99,8 +99,10 @@ export async function streamRun(
   for (;;) {
     for (const e of events) {
       if (req.signal?.aborted) break;
-      sink.write(frame(e));
       cursor = e.seq;
+      // A native turn exists to be replayed to its model, and can hold content viewers never see, such as thinking.
+      if (e.type === "model.turn") continue;
+      sink.write(frame(e));
       if (e.type === "run.finished") return sink.end();
     }
     const now = deps.nowMs();

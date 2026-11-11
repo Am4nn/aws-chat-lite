@@ -9,12 +9,16 @@ import { threadSk } from "../threads/model.js";
 import { threadsRepo } from "../threads/repo.js";
 import { finishRun } from "./finish.js";
 import { runsRepo, type Run } from "./repo.js";
+import { startOrSteer } from "./start.js";
 import { requestStop } from "./stop.js";
 import { broadcastToRoom } from "../live/broadcast.js";
 
 vi.mock("../live/broadcast.js", () => ({ broadcastToRoom: vi.fn(async () => {}) }));
 
 // Runs against DynamoDB on Floci: npm run floci:up && npm run deploy:local, then npm -w services run test:int
+process.env.RUN_FN_NAME = "cl-local-run";
+process.env.RUN_FN_QUALIFIER = "live";
+
 const runs = runsRepo();
 const user = (name: string) => ({ userId: randomUUID(), username: name });
 let clients = 0;
@@ -29,7 +33,7 @@ async function runningThread(startedAt = new Date().toISOString()) {
   const { thread, message } = await threadsRepo().createThread(owner, roomId, { text: "go", clientId: `k${++clients}` });
   const run: Run = {
     runId: randomUUID(), roomId, threadId: thread.threadId, number: thread.number, status: "running", model: "fake",
-    startedBy: owner.username, startedAt, firstSeq: message.seq, seenSeq: message.seq, steps: 0, costMicros: 0,
+    pick: "auto", pickBy: "default", startedBy: owner.username, startedAt, firstSeq: message.seq, seenSeq: message.seq, steps: 0, costMicros: 0,
   };
   await docClient().send(new PutCommand({ TableName: tableName(), Item: { pk: `RUN#${run.runId}`, sk: "META", ...run } }));
   await docClient().send(new UpdateCommand({
@@ -86,7 +90,7 @@ describe("runs repo on Floci", () => {
     expect(messages.map((m) => m.seq)).toEqual([1, 2, 3]);
     expect(messages[2]).toMatchObject({
       authorId: "agent", authorName: "agent", text: "Fake answer.\n\nbody",
-      agent: { runId: run.runId, status: "done", steps: 0, costMicros: 0, model: "fake", firstSeq: 1 },
+      agent: { runId: run.runId, status: "done", steps: 0, costMicros: 0, model: "fake", pick: "auto", firstSeq: 1 },
     });
     const item = await threadItem(roomId, thread.number);
     expect(item).toMatchObject({ status: "done", summary: "Fake answer.", rev: thread.rev + 1 });
@@ -210,5 +214,63 @@ describe("runs repo on Floci", () => {
     expect(await finishRun(run, { status: "failed", reason: "The agent hit an error." }, { seenSeq: 1, force: true })).toBe("already");
     expect((await runs.allEvents(run.runId)).at(-1)).toMatchObject({ type: "run.finished", status: "done" });
     expect((await runs.allEvents(run.runId)).at(-1)).not.toHaveProperty("reason");
+  });
+});
+
+describe("startOrSteer: the model pick and the thread's taint, on Floci", () => {
+  // Only startOrSteer is told about this file; private content is anything with an attachment, uploaded or not.
+  const file = { key: "rooms/r/u/f/report.pdf", name: "report.pdf", size: 1, type: "application/pdf" };
+
+  async function idleThread() {
+    const owner = user("owner");
+    const { roomId } = await roomsRepo().createRoom(owner, "Picks");
+    const { thread, message } = await threadsRepo().createThread(owner, roomId, { text: "go tools:0", clientId: `k${++clients}` });
+    return { owner, roomId, thread, message };
+  }
+
+  const taintOf = async (roomId: string, threadId: string) => (await threadsRepo().threadById(roomId, threadId))!.taint;
+
+  it("a message with a file makes the thread private; with no pick the run takes the room default, Auto", async () => {
+    const { owner, roomId, thread, message } = await idleThread();
+    const { runId, started } = await startOrSteer(owner, roomId, thread.threadId, { ...message, attachments: [file] });
+    expect(started).toBe(true);
+    expect(await taintOf(roomId, thread.threadId)).toEqual(["attachment"]);
+    expect(await runs.getRun(runId)).toMatchObject({ pick: "auto", pickBy: "default" });
+    expect((await runs.allEvents(runId))[0]).toMatchObject({ type: "run.started", pick: "auto", startedBy: "owner" });
+  });
+
+  it("a pick sent with the message is the run's pick", async () => {
+    const { owner, roomId, thread, message } = await idleThread();
+    const { runId } = await startOrSteer(owner, roomId, thread.threadId, message, "opus");
+    expect(await runs.getRun(runId)).toMatchObject({ pick: "opus", pickBy: "pick" });
+    expect(await taintOf(roomId, thread.threadId)).toEqual([]);
+  });
+
+  it("a DeepSeek room default becomes Auto on a private thread, and stays DeepSeek on others", async () => {
+    const { owner, roomId, thread, message } = await idleThread();
+    await roomsRepo().setDefaultModel(owner, roomId, "deepseek-flash");
+    await docClient().send(new UpdateCommand({
+      TableName: tableName(), Key: { pk: `ROOM#${roomId}`, sk: threadSk(thread.number) },
+      UpdateExpression: "ADD #taint :t", ExpressionAttributeNames: { "#taint": "taint" }, ExpressionAttributeValues: { ":t": new Set(["attachment"]) },
+    }));
+    const { runId } = await startOrSteer(owner, roomId, thread.threadId, message);
+    expect(await runs.getRun(runId)).toMatchObject({ pick: "auto", pickBy: "default" });
+
+    const open = await threadsRepo().createThread(owner, roomId, { text: "go tools:0", clientId: `k${++clients}` });
+    const { runId: openRun } = await startOrSteer(owner, roomId, open.thread.threadId, open.message);
+    expect(await runs.getRun(openRun)).toMatchObject({ pick: "deepseek-flash", pickBy: "default" });
+
+    const withFile = await threadsRepo().createThread(owner, roomId, { text: "go tools:0", clientId: `k${++clients}` });
+    const { runId: fileRun } = await startOrSteer(owner, roomId, withFile.thread.threadId, { ...withFile.message, attachments: [file] });
+    expect(await runs.getRun(fileRun)).toMatchObject({ pick: "auto", pickBy: "default" });
+  });
+
+  it("a steer with a file makes the running thread private and leaves the run's pick as it was", async () => {
+    const { owner, roomId, thread, run } = await runningThread();
+    const steer = await chatRepo().send(owner, { roomId, chatId: thread.threadId, clientId: `k${++clients}`, text: "and this" });
+    const result = await startOrSteer(owner, roomId, thread.threadId, { ...steer, attachments: [file] }, "deepseek-flash");
+    expect(result).toEqual({ runId: run.runId, started: false });
+    expect(await taintOf(roomId, thread.threadId)).toEqual(["attachment"]);
+    expect(await runs.getRun(run.runId)).toMatchObject({ pick: "auto", pickBy: "default" });
   });
 });

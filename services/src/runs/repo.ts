@@ -3,6 +3,7 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import { conditionFailed, docClient, failedAt, queryAll, tableName } from "../lib/db.js";
 import { LAST_SEQ, forReaders, seqKey, type Message, type StoredMessage } from "../chat/model.js";
+import type { ModelPick } from "../models/catalog.js";
 import { summary, threadSk } from "../threads/model.js";
 import type { RunEndStatus, RunEvent, RunEventBody, ThreadSummary } from "../threads/types.js";
 import { eventSk } from "./model.js";
@@ -14,7 +15,11 @@ export type Run = {
   threadId: string;
   number: number;
   status: "running" | RunEndStatus;
-  model: string;
+  /** What the run was asked to use: the message's own pick, or the room default. */
+  pick: ModelPick;
+  pickBy: "pick" | "default";
+  /** The model id it routed to; unset until it has routed. */
+  model?: string;
   startedBy: string;
   startedAt: string;
   endedAt?: string;
@@ -189,8 +194,13 @@ export function runsRepo() {
       return { Put: { TableName, Item: { ...callKey(runId, call), result }, ConditionExpression: "attribute_not_exists(sk)" } };
     },
 
-    /** The run's live numbers, on the run and on its thread (where members see them). Null once the thread isn't its. */
-    async progress(run: Run, fields: { steps?: number; currentStep?: string; costMicros?: number }): Promise<ThreadSummary | null> {
+    /**
+     * The run's live numbers and the model it routed to, on the run and on its thread (where members see them). Null
+     * once the thread isn't its.
+     */
+    async progress(
+      run: Run, fields: { steps?: number; currentStep?: string; costMicros?: number; model?: string },
+    ): Promise<ThreadSummary | null> {
       const set = setFields(fields);
       const owned = whileOwned(run);
       const [, thread] = await Promise.all([
@@ -253,7 +263,7 @@ export function runsRepo() {
           attachments: [], reactions: {}, mentions: [], everyone: false,
           agent: {
             runId: run.runId, status, reason, steps: run.steps, costMicros: run.costMicros,
-            ms: Date.parse(now) - Date.parse(run.startedAt), model: run.model, firstSeq: run.firstSeq,
+            ms: Date.parse(now) - Date.parse(run.startedAt), model: run.model ?? "", pick: run.pick, firstSeq: run.firstSeq,
           },
         };
         const thread = setFields({

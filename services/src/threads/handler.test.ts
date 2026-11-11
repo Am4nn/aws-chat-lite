@@ -31,8 +31,23 @@ describe("threads handler", () => {
     const res = await handle(ev("POST /rooms/{roomId}/threads", { params: { roomId: "r" }, body: { text: "hi", clientId: "k1" } }));
     expect(res.statusCode).toBe(201);
     expect(threads.createThread).toHaveBeenCalledWith(me, "r", { text: "hi", clientId: "k1" });
-    expect(startRun).toHaveBeenCalledWith(me, "r", "t1", { seq: 1 });
+    expect(startRun).toHaveBeenCalledWith(me, "r", "t1", { seq: 1 }, undefined);
     expect(JSON.parse(res.body as string)).toEqual({ thread: { threadId: "t1", status: "running" }, message: { seq: 1 } });
+  });
+
+  it("POST /threads hands the run its model pick; DeepSeek is fine for text alone", async () => {
+    const { startRun, handle } = setup();
+    const body = { text: "hi", clientId: "k1", model: "deepseek-pro" };
+    const res = await handle(ev("POST /rooms/{roomId}/threads", { params: { roomId: "r" }, body }));
+    expect(res.statusCode).toBe(201);
+    expect(startRun).toHaveBeenCalledWith(me, "r", "t1", { seq: 1 }, "deepseek-pro");
+  });
+
+  it("POST /threads with an unknown model is a 400, and no thread is made", async () => {
+    const { threads, handle } = setup();
+    const res = await handle(ev("POST /rooms/{roomId}/threads", { params: { roomId: "r" }, body: { text: "hi", clientId: "k1", model: "gpt" } }));
+    expect(res.statusCode).toBe(400);
+    expect(threads.createThread).not.toHaveBeenCalled();
   });
 
   it("POST /threads without a valid clientId is a 400", async () => {

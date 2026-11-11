@@ -1,4 +1,4 @@
-import type { Message, RunEndStatus, RunEvent } from "../types";
+import type { Message, ModelPick, RunEndStatus, RunEvent } from "../types";
 import { keyOf, type PendingMessage } from "./timeline";
 
 export type RunItem =
@@ -14,6 +14,7 @@ export type RunView = {
   /** Where the newest model turn's text starts in `text`, so a reset of that turn can cut it back out. */
   turnStart?: { turn: number; at: number };
   costMicros: number;
+  pick?: ModelPick;
   model?: string;
   startedAt?: string;
   endedAt?: string;
@@ -26,7 +27,11 @@ export function applyRunEvent(v: RunView, e: RunEvent): RunView {
   const next = { ...v, lastSeq: e.seq };
   switch (e.type) {
     case "run.started":
-      return { ...next, model: e.model, startedAt: e.at };
+      return { ...next, pick: e.pick, startedAt: e.at };
+    case "routed":
+      return { ...next, model: e.model };
+    case "model.turn":
+      return next;
     case "steer":
       return { ...next, items: [...v.items, { kind: "steer", messageSeq: e.messageSeq, authorName: e.authorName, text: e.text, at: e.at }] };
     case "text": {
@@ -45,7 +50,7 @@ export function applyRunEvent(v: RunView, e: RunEvent): RunView {
         ),
       };
     case "usage":
-      return { ...next, model: e.model, costMicros: v.costMicros + e.costMicros };
+      return { ...next, costMicros: v.costMicros + e.costMicros };
     case "run.finished":
       return { ...next, status: e.status, reason: e.reason, costMicros: e.costMicros, endedAt: e.at };
   }
