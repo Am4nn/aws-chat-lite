@@ -148,6 +148,34 @@ describe("chat repo on Floci", () => {
     expect((await item(`CHAT#${at.chatId}`, seqKey(m.seq)))?.reactions).not.toHaveProperty("thumbs");
   });
 
+  it("every change bumps the version v, and history hands it out", async () => {
+    const { owner, members: [b], at } = await room("bee");
+    const m = await say(owner, at, "v0");
+    expect(m.v).toBeUndefined();
+    expect((await chat.react(b, { ...at, seq: m.seq, reaction: "eyes", on: true })).v).toBe(1);
+    expect((await chat.edit(owner, { ...at, seq: m.seq, text: "v2" })).v).toBe(2);
+    expect((await chat.remove(owner, { ...at, seq: m.seq })).v).toBe(3);
+    expect((await chat.history(owner, at.roomId, at.chatId, {})).messages[0].v).toBe(3);
+  });
+
+  it("an edit racing a reaction is a Conflict, so it never broadcasts the reactions it read", async () => {
+    const { owner, members: [b], at } = await room("bee");
+    const m = await say(owner, at, "first");
+    const db = docClient();
+    const send = db.send.bind(db);
+    // Lands the reaction right after the edit has read the message, before its transaction.
+    const spy = vi.spyOn(db, "send").mockImplementation((async (c: GetCommand) => {
+      const out = await send(c as never);
+      if (c instanceof GetCommand && c.input.Key?.sk === seqKey(m.seq)) {
+        spy.mockRestore();
+        await chat.react(b, { ...at, seq: m.seq, reaction: "tada", on: true });
+      }
+      return out;
+    }) as never);
+    await expect(chat.edit(owner, { ...at, seq: m.seq, text: "second" })).rejects.toBeInstanceOf(Conflict);
+    expect(await item(`CHAT#${at.chatId}`, seqKey(m.seq))).toMatchObject({ text: "first", v: 1 });
+  });
+
   it("a mention counts on the target's read state and membership; markRead clears both", async () => {
     const { owner, members: [b], roomId, chatId, at } = await room("bee");
     const m = await say(owner, at, "ping @bee");

@@ -19,6 +19,8 @@ export type Message = {
   reactions: Partial<Record<Reaction, string[]>>;
   mentions: string[];
   everyone: boolean;
+  /** How many times the message has changed (edit, delete, reaction); absent until the first change. */
+  v?: number;
 };
 /** `textLower` backs search; it never leaves the server. */
 export type StoredMessage = Message & { textLower: string };

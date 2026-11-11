@@ -175,13 +175,14 @@ export function chatRepo() {
             {
               Update: {
                 TableName, Key: messageKey(at, input.seq),
-                UpdateExpression: "SET #text = :text, textLower = :lower, editedAt = :at, mentions = :mentions, everyone = :everyone",
-                // The rules again, plus "the text is still what we saved as the version", so a delete or another edit
-                // landing between the read and this write can't be overwritten.
-                ConditionExpression: "authorId = :me AND attribute_not_exists(deleted) AND createdAt >= :cutoff AND #text = :old",
+                UpdateExpression: "SET #text = :text, textLower = :lower, editedAt = :at, mentions = :mentions, everyone = :everyone ADD v :one",
+                // The rules again, plus an optimistic lock on the version we read (`v` is never removed once set), so
+                // no change landing between the read and this write is overwritten, and what this edit returns and
+                // broadcasts (reactions included) is exactly what's stored.
+                ConditionExpression: "authorId = :me AND attribute_not_exists(deleted) AND createdAt >= :cutoff AND (attribute_not_exists(v) OR v = :v)",
                 ExpressionAttributeNames: { "#text": "text" },
                 ExpressionAttributeValues: {
-                  ":text": text, ":lower": text.toLowerCase(), ":at": editedAt, ":me": user.userId, ":old": old.text,
+                  ":text": text, ":lower": text.toLowerCase(), ":at": editedAt, ":me": user.userId, ":v": old.v ?? 0, ":one": 1,
                   ":mentions": mentions, ":everyone": everyone,
                   ":cutoff": new Date(now - EDIT_WINDOW_SEC * 1000).toISOString(),
                 },
@@ -195,7 +196,7 @@ export function chatRepo() {
       }
       const before = new Set(notified(old, members, user.userId));
       await countMentions(at, notified({ mentions, everyone }, members, user.userId).filter((id) => !before.has(id)));
-      return toMessage({ ...old, text, editedAt, mentions, everyone });
+      return toMessage({ ...old, text, editedAt, mentions, everyone, v: (old.v ?? 0) + 1 });
     },
 
     /** Marks the message deleted; the stored text stays, and readers get it blanked. */
@@ -208,14 +209,14 @@ export function chatRepo() {
       if (!deleted) throw new Forbidden("You can delete only your own messages, for 15 minutes.");
       try {
         await db.send(new UpdateCommand({
-          TableName, Key: messageKey(at, input.seq), UpdateExpression: "SET deleted = :d",
-          ConditionExpression: "attribute_not_exists(deleted)", ExpressionAttributeValues: { ":d": deleted },
+          TableName, Key: messageKey(at, input.seq), UpdateExpression: "SET deleted = :d ADD v :one",
+          ConditionExpression: "attribute_not_exists(deleted)", ExpressionAttributeValues: { ":d": deleted, ":one": 1 },
         }));
       } catch (e) {
         if (conditionFailed(e)) throw new Conflict("That message is already deleted.");
         throw e;
       }
-      return toMessage({ ...msg, deleted });
+      return toMessage({ ...msg, deleted, v: (msg.v ?? 0) + 1 });
     },
 
     /** Set ADD/DELETE make a double tap harmless: adding someone twice or removing someone absent changes nothing. */
@@ -224,9 +225,9 @@ export function chatRepo() {
       await requireMember(at.roomId, user.userId, { writing: true });
       try {
         const { Attributes } = await db.send(new UpdateCommand({
-          TableName, Key: messageKey(at, input.seq), UpdateExpression: `${input.on ? "ADD" : "DELETE"} reactions.#k :me`,
+          TableName, Key: messageKey(at, input.seq), UpdateExpression: input.on ? "ADD reactions.#k :me, v :one" : "DELETE reactions.#k :me ADD v :one",
           ConditionExpression: "roomId = :r AND attribute_not_exists(deleted)", ExpressionAttributeNames: { "#k": input.reaction },
-          ExpressionAttributeValues: { ":me": new Set([user.userId]), ":r": at.roomId }, ReturnValues: "ALL_NEW",
+          ExpressionAttributeValues: { ":me": new Set([user.userId]), ":r": at.roomId, ":one": 1 }, ReturnValues: "ALL_NEW",
         }));
         return toMessage(Attributes!);
       } catch (e) {

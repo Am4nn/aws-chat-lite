@@ -15,13 +15,15 @@ const PREFETCH_PX = 600;
 
 export type Jump = { to: number | "bottom"; n: number };
 
-function firstVisibleRow(scroller: HTMLElement) {
-  const rows = [...scroller.querySelectorAll<HTMLElement>("[data-key]")].map((row) => {
+function* measured(rows: Iterable<HTMLElement>) {
+  for (const row of rows) {
     const box = row.getBoundingClientRect();
-    return { key: row.dataset.key!, top: box.top, bottom: box.bottom };
-  });
-  return pickAnchor(rows, scroller.getBoundingClientRect().top);
+    yield { key: row.dataset.key!, top: box.top, bottom: box.bottom };
+  }
 }
+
+const firstVisibleRow = (scroller: HTMLElement) =>
+  pickAnchor(measured(scroller.querySelectorAll<HTMLElement>("[data-key]")), scroller.getBoundingClientRect().top);
 
 type Props = {
   rows: Row[]; ctx: RowContext; actions: RowActions; fresh: Set<string>; editingKey?: string;

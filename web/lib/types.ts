@@ -37,6 +37,8 @@ export type Message = {
   reactions: Partial<Record<Reaction, string[]>>;
   mentions: string[];
   everyone: boolean;
+  /** How many times the message has changed (edit, delete, reaction); absent until the first change. */
+  v?: number;
 };
 
 export type LiveEvent =

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "../types";
-import { addPending, applyMessages, dropPending, failPending, newestSeq, updateMessage, type Timeline } from "./timeline";
+import { addPending, applyMessages, dropPending, failPending, newestSeq, skipsAhead, updateMessage, type Timeline } from "./timeline";
 
 const msg = (seq: number, extra: Partial<Message> = {}): Message => ({
   roomId: "r", chatId: "c", seq, authorId: "u", authorName: "a", text: `m${seq}`, createdAt: "t",
@@ -24,6 +24,19 @@ describe("timeline", () => {
   it("replaces the text of an updated message with the same seq", () => {
     const t = applyMessages(applyMessages(empty, [msg(1)]), [msg(1, { text: "edited" })]);
     expect(t.messages[0].text).toBe("edited");
+  });
+  it("keeps the copy with the higher version, so a stale page can't overwrite a newer change", () => {
+    const live = applyMessages(empty, [msg(1, { text: "edited", v: 2 })]);
+    expect(applyMessages(live, [msg(1, { text: "old", v: 1 })]).messages[0].text).toBe("edited");
+    expect(applyMessages(live, [msg(1, { text: "old" })]).messages[0].text).toBe("edited");
+    expect(applyMessages(live, [msg(1, { text: "newer", v: 3 })]).messages[0].text).toBe("newer");
+  });
+  it("tells when a live message skips seqs the timeline never got", () => {
+    const t = applyMessages(empty, [msg(1), msg(2)]);
+    expect(skipsAhead(t, 3)).toBe(false);
+    expect(skipsAhead(t, 2)).toBe(false);
+    expect(skipsAhead(t, 5)).toBe(true);
+    expect(skipsAhead(empty, 2)).toBe(true);
   });
   it("marks a pending entry failed", () => {
     const t = failPending(addPending(empty, { clientId: "k", text: "x", createdAt: "t", attachments: [] }), "k");

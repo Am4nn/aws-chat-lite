@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { bff, errorText } from "@/lib/client/bff";
-import { useLiveEvent } from "@/lib/client/LiveProvider";
-import { applyMessages, newestSeq, type Timeline } from "@/lib/client/timeline";
+import { useLive, useLiveEvent } from "@/lib/client/LiveProvider";
+import { applyMessages, newestSeq, skipsAhead, type Timeline } from "@/lib/client/timeline";
 import type { Message } from "@/lib/types";
 import { useToast } from "@/components/overlays/Toast";
 import type { Jump } from "./MessageList";
@@ -22,6 +22,7 @@ const startsAtFirst = (messages: Message[]) => (messages[0]?.seq ?? 1) <= 1;
  */
 export function useChatTimeline({ roomId, chatId, meId, initial }: { roomId: string; chatId: string; meId: string; initial: Message[] }) {
   const toast = useToast();
+  const live = useLive();
   const api = `/bff/api/rooms/${roomId}/chats/${chatId}/messages`;
   const [timeline, setTimeline] = useState<Timeline>({ messages: initial, pending: [] });
   const [fresh, setFresh] = useState(() => new Set<string>());
@@ -53,10 +54,15 @@ export function useChatTimeline({ roomId, chatId, meId, initial }: { roomId: str
     }
   }, [apply, markFresh, page]);
 
+  const failed = useCallback((e: unknown) => toast(errorText(e), "error"), [toast]);
+
   useLiveEvent("message.new", ({ message: m }) => {
     if (m.chatId !== chatId) return;
     if (m.authorId !== meId && (!pinned || hasNewer)) setUnseen((n) => n + 1);
     if (hasNewer) return;
+    // A post to this socket that failed (throttled, timed out) or a chat opened between the server render and now
+    // leaves a hole; fetching from the newest seq held fills it, this message included.
+    if (skipsAhead(latest.current, m.seq)) return void catchUp(newestSeq(latest.current)).catch(failed);
     markFresh([keyOf(m)]);
     apply([m]);
   });
@@ -65,9 +71,19 @@ export function useChatTimeline({ roomId, chatId, meId, initial }: { roomId: str
     setTimeline((t) => (t.messages.some((x) => x.seq === m.seq) ? applyMessages(t, [m]) : t));
   });
   // Also fires on the first connect, which covers whatever arrived between the server render and the socket opening.
+  // Edits, deletes and reactions made while offline only show in a fresh copy, so the newest page comes again too.
   useLiveEvent("reconnected", () => {
-    if (!hasNewer) catchUp(newestSeq(timeline)).catch((e) => toast(errorText(e), "error"));
+    if (hasNewer) return;
+    catchUp(newestSeq(latest.current)).catch(failed);
+    page("").then(apply, failed);
   });
+  // A chat opened while the socket is already up gets no "reconnected", so it catches up from the server render once.
+  useEffect(() => {
+    if (live.status === "open") catchUp(newestSeq(latest.current)).catch(failed);
+  }, [live, catchUp, failed]);
+
+  /** Signed download links expire; a fresh copy of the messages around `seq` carries new ones. */
+  const refetchAround = useCallback((seq: number) => page(`?around=${seq}`).then(apply, failed), [page, apply, failed]);
 
   /** A failure stops automatic paging (which would retry in a loop on a short chat) until the user asks again. */
   const loadOlder = useCallback(async () => {
@@ -145,7 +161,7 @@ export function useChatTimeline({ roomId, chatId, meId, initial }: { roomId: str
   }, [hasNewer]);
 
   return {
-    timeline, setTimeline, latest, apply, fresh, markFresh,
+    timeline, setTimeline, latest, apply, fresh, markFresh, refetchAround,
     hasOlder, hasNewer, loadingOlder, olderFailed, loadOlder, loadNewer, showLatest,
     jump, jumpTo, scrollToBottom, pinned, onPinnedChange, unseen,
   };
