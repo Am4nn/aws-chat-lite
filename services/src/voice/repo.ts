@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { budgetText } from "../budget/model.js";
 import { budgetRepo } from "../budget/repo.js";
@@ -26,14 +25,13 @@ export function voiceRepo() {
   const budgets = budgetRepo();
 
   return {
-    async mint(user: User, roomId: string): Promise<{ sessionId: string; mintedAt: string }> {
+    async mint(user: User, roomId: string, sessionId: string): Promise<void> {
       await requireMember(roomId, user.userId, { writing: true });
       await countTowardsRate(`RATE#voice#${user.userId}`, { windowSec: 3600, max: 20, message: "Slow down: 20 dictations an hour." });
       const now = new Date();
       const reserve = transcribeMicros(MAX_DICTATION_SEC);
       const budget = await budgets.get(roomId, now);
       if (budget.spentMicros + reserve > budget.capMicros) throw new Conflict(budgetText(budget.capMicros, budget.month));
-      const sessionId = randomUUID();
       const mintedAt = now.toISOString();
       await db.send(new TransactWriteCommand({
         TransactItems: [
@@ -48,7 +46,6 @@ export function voiceRepo() {
           },
         ],
       }));
-      return { sessionId, mintedAt };
     },
 
     /**
