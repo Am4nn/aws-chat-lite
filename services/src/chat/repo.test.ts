@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { docClient } from "../lib/db.js";
 import { chatRepo } from "./repo.js";
 
@@ -23,6 +23,15 @@ function fakeTable(message: object, write: (c: unknown) => unknown = () => ({}))
 }
 
 const writes = (send: ReturnType<typeof fakeTable>) => send.mock.calls.map(([c]) => c).filter((c) => !(c instanceof GetCommand));
+
+describe("history", () => {
+  it("reads a smaller or larger page when asked, newest first from before", async () => {
+    const send = fakeTable({ roomId: at.roomId, lastSeq: 80 }, () => ({ Items: [] }));
+    await chatRepo().history(me, at.roomId, at.chatId, { before: 70, limit: 30 });
+    const query = writes(send).find((c) => c instanceof QueryCommand) as QueryCommand;
+    expect(query.input).toMatchObject({ Limit: 30, ScanIndexForward: false });
+  });
+});
 
 describe("message versions", () => {
   it("an edit locks on the version it read and bumps it", async () => {

@@ -14,7 +14,7 @@ import {
 
 /** Where a message lives: every chat belongs to exactly one room. */
 interface ChatRef { roomId: string; chatId: string }
-interface Cursor { before?: number; after?: number; around?: number }
+interface Cursor { before?: number; after?: number; around?: number; limit?: number }
 /** A send's content once `admit` has accepted it. */
 export interface Admitted { text: string; attachments: Attachment[] }
 
@@ -316,18 +316,18 @@ export function chatRepo() {
     },
 
     /**
-     * Oldest to newest, at most a page: the newest messages, or those before or after a seq, or half a page either
+     * Oldest to newest, at most a page (`limit`, 50 by default): the newest messages, or those before or after a seq, or half a page either
      * side of one (for jumping to a quoted message). The chat's counter item proves the chat is in this room.
      */
     async history(user: User, roomId: string, chatId: string, cursor: Cursor): Promise<{ messages: Message[] }> {
       await requireMember(roomId, user.userId);
       await chatInRoom({ roomId, chatId });
-      const { before, after, around } = cursor;
+      const { before, after, around, limit = PAGE } = cursor;
       const items = around !== undefined
         ? [...await page(chatId, 0, around - 1, true, PAGE / 2), ...await page(chatId, around, LAST_SEQ, false, PAGE / 2)]
         : after !== undefined
-          ? await page(chatId, after + 1, LAST_SEQ, false, PAGE)
-          : await page(chatId, 0, before === undefined ? LAST_SEQ : before - 1, true, PAGE);
+          ? await page(chatId, after + 1, LAST_SEQ, false, limit)
+          : await page(chatId, 0, before === undefined ? LAST_SEQ : before - 1, true, limit);
       return { messages: await Promise.all(items.map(toMessage)) };
     },
   };
