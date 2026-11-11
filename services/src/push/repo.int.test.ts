@@ -33,6 +33,15 @@ describe("push repo on Floci", () => {
     expect(await repo.forUsers([userId])).toEqual([expect.objectContaining({ id: first.id, userId, ...sub })]);
   });
 
+  it("a browser saved by another user moves to them", async () => {
+    const [before, after] = [user("aman"), user("bea")];
+    const sub = device(1);
+    const { id } = await repo.save(before.userId, sub);
+    await repo.save(after.userId, sub);
+    expect(await repo.forUsers([before.userId])).toEqual([]);
+    expect(await repo.forUsers([after.userId])).toEqual([expect.objectContaining({ id, userId: after.userId })]);
+  });
+
   it("an 11th device pushes out the one saved first", async () => {
     const { userId } = user("aman");
     const ids: string[] = [];
