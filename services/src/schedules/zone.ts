@@ -21,18 +21,17 @@ function formatIn(tz: string) {
 }
 
 /**
- * A zone name as Intl knows it, with its letter case fixed (`utc` → `UTC`). ICU reports some zones under their old
- * names (Asia/Kolkata as Asia/Calcutta), so when the resolved name is a different spelling, the name as given is kept.
+ * A zone name Intl knows, kept exactly as given: it is what Scheduler gets. ICU's resolved name would rewrite some
+ * zones to their old names (Asia/Kolkata as Asia/Calcutta), so it is never used.
  */
 export function roomTimeZone(raw: unknown): string {
   const name = typeof raw === "string" ? raw.trim() : "";
-  let resolved: string;
   try {
-    resolved = formatIn(name).resolvedOptions().timeZone;
+    formatIn(name);
   } catch {
     throw new ValidationError("Unknown time zone.");
   }
-  return resolved.toLowerCase() === name.toLowerCase() ? resolved : name;
+  return name;
 }
 
 export function zonedParts(ms: number, tz: string): WallClock {

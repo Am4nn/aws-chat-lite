@@ -287,7 +287,6 @@ export function schedulesRepo() {
       }
     },
 
-    /** Stored canonical, so the zone the schedules list shows is the one Scheduler is given. */
     async setTimeZone(user: User, roomId: string, raw: unknown): Promise<string> {
       const timeZone = roomTimeZone(raw);
       const role = await requireMember(roomId, user.userId, { writing: true });

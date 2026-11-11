@@ -124,13 +124,15 @@ describe("schedules repo on Floci", () => {
     expect(schedules[0].nextAt).toBeUndefined();
   });
 
-  it("only an admin sets the time zone, stored canonical; it defaults to Asia/Kolkata", async () => {
+  it("only an admin sets the time zone, stored as given; it defaults to Asia/Kolkata", async () => {
     const { member, admin, roomId } = await room();
     expect(await repo.timeZoneOf(roomId)).toBe("Asia/Kolkata");
     await expect(repo.setTimeZone(member, roomId, "Europe/London")).rejects.toBeInstanceOf(Forbidden);
     await expect(repo.setTimeZone(admin, roomId, "Mars/Base")).rejects.toThrow(new ValidationError("Unknown time zone."));
-    expect(await repo.setTimeZone(admin, roomId, "america/new_york")).toBe("America/New_York");
+    expect(await repo.setTimeZone(admin, roomId, "America/New_York")).toBe("America/New_York");
     expect(await repo.timeZoneOf(roomId)).toBe("America/New_York");
+    expect(await repo.setTimeZone(admin, roomId, "Asia/Kolkata")).toBe("Asia/Kolkata");
+    expect(await repo.timeZoneOf(roomId)).toBe("Asia/Kolkata");
   });
 
   it("a non-member sees no schedules", async () => {
