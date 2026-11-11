@@ -153,7 +153,8 @@ export function agentsRepo() {
       const renaming = patch.name !== undefined && patch.name !== agent.name;
       if (renaming && agent.builtIn) throw new ValidationError(BUILT_IN_REFUSAL);
       if (renaming && (await usernames(roomId)).has(patch.name!)) throw new Conflict(`@${patch.name} is someone's username in this room.`);
-      const fields = { ...patch, updatedAt: new Date().toISOString() };
+      // The built-in's first edit creates its item, and `toAgent` recognises it only by `agentId`.
+      const fields = { ...patch, updatedAt: new Date().toISOString(), ...(agent.builtIn && { agentId }) };
       const set = setFields(fields);
       // The built-in can't be deleted, and its item may not exist yet: the update writes it.
       const write = {
