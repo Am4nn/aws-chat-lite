@@ -104,6 +104,7 @@ export function ThreadView({ roomId, initialThread, me, members, archived, initi
     <UserBubble
       key={keyOf(m)} text={m.text} attachments={m.attachments} members={members}
       authorName={m.authorId === me.userId ? undefined : m.authorName} enter={chat.fresh.has(keyOf(m))}
+      onExpired={() => void chat.refetchAround(m.seq)}
     />
   );
   const runBlock = (runId: string, answer: Message | undefined, steers: Message[], isLast: boolean) => (

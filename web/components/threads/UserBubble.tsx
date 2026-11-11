@@ -13,11 +13,11 @@ type Props = {
   /** Shown above the bubble for someone else's message; my own carry no name. */
   authorName?: string;
   status?: "pending" | "failed"; enter: boolean;
-  onRetry?: () => void; onDiscard?: () => void;
+  onRetry?: () => void; onDiscard?: () => void; onExpired?: () => void;
 };
 
 /** What people say in a thread sits on the right, so the agent's work reads as the column's main text. */
-export function UserBubble({ text, attachments, members, authorName, status, enter, onRetry, onDiscard }: Props) {
+export function UserBubble({ text, attachments, members, authorName, status, enter, onRetry, onDiscard, onExpired }: Props) {
   const reduced = useReducedMotion();
   return (
     <motion.div
@@ -29,7 +29,7 @@ export function UserBubble({ text, attachments, members, authorName, status, ent
       {authorName && <span className="px-1 text-[11.5px] font-medium text-text-3">{authorName}</span>}
       <div className="break-words rounded-[16px_16px_6px_16px] bg-surface-3 px-4 py-[11px] text-[14.5px] leading-[1.55] [&_p+p]:mt-1.5 [&_pre]:my-1.5">
         <MessageText text={text} members={members} />
-        <MessageAttachments attachments={attachments} />
+        <MessageAttachments attachments={attachments} onExpired={onExpired} />
       </div>
       {status === "failed" && (
         <div className="flex items-center gap-2 px-1 text-[12px]">
