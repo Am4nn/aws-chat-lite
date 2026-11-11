@@ -38,6 +38,16 @@ async function userToken({ fetch, keys }: GitHubEnv, code: string, verifier: str
 
 type Repo = { full_name: string; permissions?: { admin?: boolean; push?: boolean } };
 
+/** GitHub sends at most 100 items a page; each reply's total_count says when the list is complete. */
+async function allPages<T>(env: GitHubEnv, token: string, path: string, key: string): Promise<T[]> {
+  const items: T[] = [];
+  for (let page = 1; ; page++) {
+    const data = await githubCall(env, token, "GET", `${path}?per_page=100&page=${page}`);
+    items.push(...data[key]);
+    if (!data[key].length || items.length >= data.total_count) return items;
+  }
+}
+
 /**
  * The App's installations the signed-in user can reach, each with only the repos that user can write to. GitHub
  * lists read-only repos too, but the agent writes with the App's own token, so a reader who connected one could have
@@ -45,11 +55,10 @@ type Repo = { full_name: string; permissions?: { admin?: boolean; push?: boolean
  */
 export async function userInstallations(env: GitHubEnv, code: string, verifier: string, redirectUri: string): Promise<Installation[]> {
   const token = await userToken(env, code, verifier, redirectUri);
-  const { installations }: { installations: { id: number; account: { login: string } }[] } =
-    await githubCall(env, token, "GET", "/user/installations?per_page=100");
+  const installations = await allPages<{ id: number; account: { login: string } }>(env, token, "/user/installations", "installations");
   const reachable = await Promise.all(
     installations.map(async ({ id, account }) => {
-      const { repositories }: { repositories: Repo[] } = await githubCall(env, token, "GET", `/user/installations/${id}/repositories?per_page=100`);
+      const repositories = await allPages<Repo>(env, token, `/user/installations/${id}/repositories`, "repositories");
       const writable = repositories.filter((r) => r.permissions?.push || r.permissions?.admin);
       return { id, account: account.login, repos: writable.map((r) => r.full_name) };
     }),

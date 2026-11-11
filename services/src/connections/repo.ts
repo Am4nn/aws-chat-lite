@@ -111,14 +111,18 @@ export function connectionsRepo() {
     /**
      * Only the admin who started a sign-in may finish it: otherwise a crafted callback link could hand an admin's
      * room the installations of whoever made it (OAuth CSRF). What that admin's GitHub account can reach is kept for
-     * fifteen minutes, long enough to pick repos; the user token itself is never stored.
+     * fifteen minutes, long enough to pick repos; the user token itself is never stored. The starter is checked before
+     * the state is used up, so someone else holding the link can't cancel the admin's sign-in.
      */
     async finishGitHubSignIn(user: User, { state, code, error }: { state?: unknown; code?: unknown; error?: unknown }, find: FindInstallations) {
       const expired = new Gone("This GitHub sign-in expired. Try again.");
       if (typeof state !== "string" || !STATE.test(state)) throw expired;
-      const flow = (await takeOnce(flowKey(state), expired)) as GitHubFlow;
+      const { Item } = await db.send(new GetCommand({ TableName, Key: flowKey(state), ConsistentRead: true }));
+      if (!Item) throw expired;
+      const flow = Item as GitHubFlow;
+      if (flow.userId !== user.userId) throw new FlowFailed(flow.roomId, new Forbidden("Finish signing in as the admin who started it."));
+      await takeOnce(flowKey(state), expired);
       try {
-        if (flow.userId !== user.userId) throw new Forbidden("Finish signing in as the admin who started it.");
         await requireManager(flow.roomId, user.userId, { writing: true });
         if (error || typeof code !== "string") {
           throw new Upstream(`GitHub didn't allow access (${typeof error === "string" ? cut(error, 100) : "no code"}).`);

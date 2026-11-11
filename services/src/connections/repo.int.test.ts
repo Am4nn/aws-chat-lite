@@ -66,11 +66,10 @@ describe("connections repo on Floci", () => {
     const { state } = await repo.startGitHubSignIn(owner, roomId, REDIRECT);
     const finish = (who: ReturnType<typeof user>) => repo.finishGitHubSignIn(who, { state, code: "c" }, async () => acme);
     await expect(finish(member)).rejects.toBeInstanceOf(FlowFailed);
-    // The member's attempt used the state up.
-    await expect(finish(owner)).rejects.toBeInstanceOf(Gone);
     await expect(repo.installations(roomId, owner.userId)).rejects.toBeInstanceOf(Gone);
-
-    expect(await signIn(owner, roomId)).toEqual({ roomId });
+    // The member's try left the state for its admin, who uses it up.
+    expect(await finish(owner)).toEqual({ roomId });
+    await expect(finish(owner)).rejects.toBeInstanceOf(Gone);
     expect(await repo.installations(roomId, owner.userId)).toEqual(acme);
     const { roomId: second } = await rooms.createRoom(owner, "Second");
     await expect(repo.setGitHub(owner, second, { installationId: 7, repos: ["acme/web"] })).rejects.toBeInstanceOf(Gone);

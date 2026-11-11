@@ -36,7 +36,7 @@ describe("userInstallations", () => {
     expect(await userInstallations({ fetch, keys: fakeKeys() }, codeFor(challenge), verifier, REDIRECT))
       .toEqual([{ id: 1, account: "fake-org", repos: ["fake-org/playground"] }]);
     expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
-      "POST /login/oauth/access_token", "GET /user/installations?per_page=100", "GET /user/installations/1/repositories?per_page=100",
+      "POST /login/oauth/access_token", "GET /user/installations?per_page=100&page=1", "GET /user/installations/1/repositories?per_page=100&page=1",
     ]);
     expect(calls[0]!.body).toEqual({
       client_id: "fake-client-id", client_secret: "fake-client-secret", code: codeFor(challenge), code_verifier: verifier, redirect_uri: REDIRECT,
@@ -57,6 +57,24 @@ describe("userInstallations", () => {
     });
     expect(await userInstallations({ fetch, keys: fakeKeys() }, codeFor(challenge), verifier, REDIRECT))
       .toEqual([{ id: 1, account: "fake-org", repos: ["fake-org/write", "fake-org/owned"] }]);
+  });
+
+  it("reads every page of installations and of each one's repos", async () => {
+    const { verifier, challenge } = pkce();
+    const page = (path: string) => new URLSearchParams(path.split("?")[1]).get("page");
+    const permissions = { admin: false, push: true, pull: true };
+    const { calls, fetch } = recordGitHub(({ path }) => {
+      if (path.startsWith("/user/installations?")) {
+        return Response.json({ total_count: 2, installations: [{ id: Number(page(path)), account: { login: `org${page(path)}` } }] });
+      }
+      const id = path.match(/^\/user\/installations\/(\d+)\//)?.[1];
+      if (id) return Response.json({ total_count: 2, repositories: [{ full_name: `org${id}/r${page(path)}`, permissions }] });
+    });
+    expect(await userInstallations({ fetch, keys: fakeKeys() }, codeFor(challenge), verifier, REDIRECT)).toEqual([
+      { id: 1, account: "org1", repos: ["org1/r1", "org1/r2"] },
+      { id: 2, account: "org2", repos: ["org2/r1", "org2/r2"] },
+    ]);
+    expect(calls.filter((c) => c.method === "GET")).toHaveLength(6);
   });
 
   it("names GitHub's refusal of a code, as for a verifier that doesn't match its challenge", async () => {

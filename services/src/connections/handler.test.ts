@@ -155,13 +155,15 @@ describe("signing in with GitHub", () => {
     for (const state of [undefined, "", "a/b", "x".repeat(101)]) expect((await t.answer({ state, code: t.code })).status).toBe(410);
   });
 
-  it("only the admin who started it may finish it, and the browser still goes back to the room", async () => {
+  it("only the admin who started it may finish it, and someone else's try neither uses it up nor leaves the room", async () => {
     const t = await signedIn({ u1: "admin", u2: "admin" });
     expect(await t.answer({ state: t.state, code: t.code }, "u2")).toEqual({
       status: 403, body: { error: "Finish signing in as the admin who started it.", roomId: "r" },
     });
     expect([...t.items.keys()].some((k) => k.startsWith("GHGRANT#"))).toBe(false);
     expect(t.fetch).not.toHaveBeenCalled();
+    expect(t.send.mock.calls.some(([c]) => c instanceof DeleteCommand)).toBe(false);
+    expect(await t.answer({ state: t.state, code: t.code })).toEqual({ status: 200, body: { roomId: "r" } });
   });
 
   it("a refusal on GitHub's page, or a code GitHub won't take, is a line for the admin", async () => {
