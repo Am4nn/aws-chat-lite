@@ -1,5 +1,6 @@
 import { Duration } from "aws-cdk-lib";
 import type { CoreStack } from "./core-stack.js";
+import { originSecret } from "./web.js";
 
 /** The issuer MCP clients see, which every OAuth and MCP URL is built on, and the site that holds the consent page. */
 export const issuerEnvironment = (stack: CoreStack) => ({ MCP_BASE_URL: stack.publicApiUrl, SITE_URL: stack.stageConfig.siteOrigins[0]! });
@@ -13,7 +14,8 @@ export const issuerEnvironment = (stack: CoreStack) => ({ MCP_BASE_URL: stack.pu
 export function addOAuth(stack: CoreStack) {
   const fn = stack.addFunction("oauth", "oauth/handler.ts", { tableAccess: true }, {
     timeout: Duration.seconds(15),
-    environment: issuerEnvironment(stack),
+    // Its rate limits count each viewer's address, which only requests carrying CloudFront's secret can vouch for.
+    environment: { ...issuerEnvironment(stack), ...(!stack.stageConfig.isLocal && { ORIGIN_VERIFY_SECRET: originSecret(stack) }) },
   });
   const open = { public: true };
   stack.route("GET", "/.well-known/oauth-authorization-server", fn, open);

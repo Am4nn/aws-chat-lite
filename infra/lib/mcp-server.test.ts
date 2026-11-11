@@ -2,8 +2,9 @@ import { describe, it, expect } from "vitest";
 import { fnNamed, statementsOf, template } from "./test-templates.js";
 
 const ROUTES = ["POST /mcp", "GET /mcp", "DELETE /mcp"];
-// Anyone who may read a function's configuration sees its environment, so no credential belongs there.
-const SECRET_NAME = /KEY|TOKEN(?!_KEY_SECRET)|SECRET$/;
+// Anyone who may read a function's configuration sees its environment, so no credential belongs there. CloudFront's
+// origin nonce is the exception: it only tells CloudFront's requests apart and opens nothing.
+const SECRET_NAME = /KEY|TOKEN(?!_KEY_SECRET)|(?<!^ORIGIN_VERIFY_)SECRET$/;
 
 describe("chat-lite's MCP server", () => {
   it("one Lambda serves /mcp with no authorizer: it checks its own bearer tokens", () => {

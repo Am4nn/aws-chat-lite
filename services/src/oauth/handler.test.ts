@@ -99,6 +99,18 @@ describe("the other public routes", () => {
     expect([bad.statusCode, JSON.parse(String(bad.body)).error]).toEqual([400, "invalid_client_metadata"]);
   });
 
+  it("behind CloudFront, registrations count against the viewer's address, not the edge server's", async () => {
+    vi.stubEnv("ORIGIN_VERIFY_SECRET", "s3cret");
+    const send = fakeTable();
+    await handle("POST /oauth/register", {
+      body: JSON.stringify({ redirect_uris: ["https://x.com/cb"] }),
+      headers: { "x-origin-verify": "s3cret", "cloudfront-viewer-address": "198.51.100.10:46532" },
+    });
+    vi.unstubAllEnvs();
+    const rateKeys = send.mock.calls.map(([c]) => c).filter((c) => c instanceof UpdateCommand).map((c) => c.input.Key?.pk);
+    expect(rateKeys).toContain("RATE#oauth#register#198.51.100.10");
+  });
+
   it("revoke always succeeds", async () => {
     fakeTable();
     expect((await handle("POST /oauth/revoke", { body: "token=nonsense" })).statusCode).toBe(200);

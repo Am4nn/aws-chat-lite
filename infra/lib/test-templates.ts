@@ -1,9 +1,13 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { App } from "aws-cdk-lib";
 import { Template } from "aws-cdk-lib/assertions";
 import { expect } from "vitest";
 import { loadConfig, type Stage } from "./config.js";
 import { CoreStack, type CoreStackProps } from "./core-stack.js";
 import { SpikeStack } from "./spike-stack.js";
+import type { WebBuild } from "./web.js";
 
 /**
  * An app that bundles no Lambda: no stack is listed in `aws:cdk:bundling-stacks`, so each function gets a placeholder
@@ -21,10 +25,24 @@ export const TEST_CONTEXT = {
 const configFor = (stage: Stage, env: NodeJS.ProcessEnv = {}) =>
   loadConfig(stage, { ...(stage === "local" && { AWS_ENDPOINT_URL: "http://localhost:4566" }), ...env }, TEST_CONTEXT);
 
+/** A stand-in for the OpenNext build: a server entry point plus a hashed bundle, a public file and a public directory. */
+function fakeWebBuild(): WebBuild {
+  const root = mkdtempSync(join(tmpdir(), "cl-web-build-"));
+  for (const file of ["server/index.mjs", "assets/_next/static/app.js", "assets/favicon.ico", "assets/icons/a.png"]) {
+    mkdirSync(dirname(join(root, file)), { recursive: true });
+    writeFileSync(join(root, file), "");
+  }
+  return { serverDir: join(root, "server"), assetsDir: join(root, "assets") };
+}
+
+let webBuild: WebBuild | undefined;
+
 /** A fresh core stack, for a test that changes it (or its props) instead of only reading the shared template. */
-function buildStack(stage: Stage, props: Partial<CoreStackProps> = {}): CoreStack {
+export function buildStack(stage: Stage, props: Partial<CoreStackProps> = {}): CoreStack {
   const config = props.config ?? configFor(stage);
-  return new CoreStack(app(), `cl-${stage}-core`, { config, env: { account: "000000000000", region: config.region }, ...props });
+  return new CoreStack(app(), `cl-${stage}-core`, {
+    config, env: { account: "000000000000", region: config.region }, webBuild: (webBuild ??= fakeWebBuild()), ...props,
+  });
 }
 
 const cache = new Map<string, Template>();

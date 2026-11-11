@@ -21,6 +21,7 @@ import { addMcpConnections } from "./mcp-connections.js";
 import { addMcpServer } from "./mcp-server.js";
 import { addOAuth } from "./oauth.js";
 import { addSandbox } from "./sandbox.js";
+import { addWeb, WEB_BUILD, type WebBuild } from "./web.js";
 
 /** Path to a handler file in services/src */
 export const servicePath = (file: string) =>
@@ -28,6 +29,8 @@ export const servicePath = (file: string) =>
 
 export interface CoreStackProps extends StackProps {
   config: StageConfig;
+  /** The OpenNext build the aws site ships. */
+  webBuild?: WebBuild;
 }
 
 /** The app's long-lived stack: the table, auth, the HTTP API and the Lambdas behind it. */
@@ -91,8 +94,9 @@ export class CoreStack extends Stack {
     addMcpConnections(this);
     addOAuth(this);
     addMcpServer(this, files);
-    const { streamUrl } = addStream(this);
+    const { streamUrl, functionUrl } = addStream(this);
     threadsFn.addEnvironment("STREAM_URL", streamUrl);
+    if (props.config.prod) addWeb(this, props.config.prod, props.webBuild ?? WEB_BUILD, functionUrl);
 
     new CfnOutput(this, "ApiUrl", { value: this.api.apiEndpoint });
     new CfnOutput(this, "WsUrl", { value: this.wsUrl });
