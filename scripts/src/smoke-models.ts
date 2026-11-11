@@ -138,6 +138,20 @@ export async function modelChecks(stamp: number, owner: Person, guest: Person) {
   await closeMenu(B);
   check(locked && dimmed === "true,true", `a file sent into a thread shows the member its lock, and both DeepSeek rows are disabled (${dimmed})`);
 
+  // A DeepSeek room default on that private thread: the member who never picked sees Auto, and a send runs on Auto.
+  await bff(A, `/bff/api/rooms/${roomId}/model`, "PUT", { model: "deepseek-flash" });
+  await sleep(1000);
+  const showsAuto = await pillSays(B, "Auto");
+  const answersBefore = await B.evaluate(() => [...document.querySelectorAll("main p.font-mono")].filter((p) => p.textContent?.includes(" · ")).length);
+  await send(B, "and now?");
+  const ranOnAuto = await until(B, ([n, source]) => {
+    const footers = [...document.querySelectorAll("main p.font-mono")].map((p) => p.textContent ?? "").filter((t) => t.includes(" · "));
+    return footers.length > n && new RegExp(source).test(footers.at(-1)!);
+  }, [answersBefore, /^Auto → Sonnet 5\.5 · \S+ · /.source] as const, RUN_MS);
+  await settled(secret.number);
+  await bff(A, `/bff/api/rooms/${roomId}/model`, "PUT", { model: "auto" });
+  check(showsAuto && ranOnAuto, `with DeepSeek the room default, the private thread's pill shows Auto and a member's send runs on Auto ("${await footer(B)}")`);
+
   // DeepSeek picked first, then a file and @agent in a people chat: the server refuses the pick before storing anything.
   await A.goto(`${WEB}/r/${roomId}/c/${general}`, { waitUntil: "networkidle0" });
   await socketOpen(A);
