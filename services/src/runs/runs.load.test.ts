@@ -2,7 +2,9 @@ import { describe, it, expect, afterAll } from "vitest";
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import WebSocket from "ws";
+import { BatchWriteCommand, QueryCommand, type BatchWriteCommandInput } from "@aws-sdk/lib-dynamodb";
 import { budgetRepo } from "../budget/repo.js";
+import { docClient, tableName } from "../lib/db.js";
 import { chatRepo } from "../chat/repo.js";
 import { issueTicket } from "../live/tickets.js";
 import { roomsRepo } from "../rooms/repo.js";
@@ -21,12 +23,51 @@ const SENDERS = 5;
 const SENDS_PER_SENDER = 5;
 const RUNS = SENDERS * SENDS_PER_SENDER;
 const WITHIN_MS = 300_000;
+const CALLS_PER_RUN = ["route", "name", "run", "run", "run"];
 
 type Frame = Record<string, any>;
 type Socket = { ws: WebSocket; frames: { frame: Frame; atMs: number }[] };
 
 const sockets: Socket[] = [];
-afterAll(() => sockets.forEach((s) => s.ws.terminate()));
+async function itemsOf(pk: string): Promise<Record<string, any>[]> {
+  const items: Record<string, any>[] = [];
+  let start: Record<string, unknown> | undefined;
+  do {
+    const page = await docClient().send(new QueryCommand({
+      TableName: tableName(), KeyConditionExpression: "pk = :p", ExpressionAttributeValues: { ":p": pk }, ExclusiveStartKey: start,
+    }));
+    items.push(...page.Items ?? []);
+    start = page.LastEvaluatedKey;
+  } while (start);
+  return items;
+}
+
+async function remove(items: Record<string, any>[]) {
+  for (let i = 0; i < items.length; i += 25) {
+    let requests: BatchWriteCommandInput["RequestItems"] = {
+      [tableName()]: items.slice(i, i + 25).map(({ pk, sk }) => ({ DeleteRequest: { Key: { pk, sk } } })),
+    };
+    while (requests && Object.keys(requests).length) requests = (await docClient().send(new BatchWriteCommand({ RequestItems: requests }))).UnprocessedItems;
+  }
+}
+
+/**
+ * Floci slows down as its table fills, so the test deletes what it wrote: the room's partition and those of the
+ * chats, threads and runs it lists, then the users' own.
+ */
+async function purge(roomId: string, users: { userId: string }[], inviteCode: string) {
+  const room = await itemsOf(`ROOM#${roomId}`);
+  const linked = room.flatMap((i) => [i.chatId && `CHAT#${i.chatId}`, i.threadId && `CHAT#${i.threadId}`, i.runId && `RUN#${i.runId}`]);
+  const own = users.flatMap((u) => [`USER#${u.userId}`, `RATE#${u.userId}`]);
+  for (const pk of new Set([...linked.filter(Boolean), ...own, `INVITE#${inviteCode}`])) await remove(await itemsOf(pk));
+  await remove(room);
+}
+let cleanup: (() => Promise<void>) | undefined;
+
+afterAll(async () => {
+  sockets.forEach((s) => s.ws.terminate());
+  await cleanup?.();
+});
 
 async function connect(user: { userId: string; username: string }): Promise<Socket> {
   const { ticket } = await issueTicket(user);
@@ -49,6 +90,7 @@ describe("load on Floci", () => {
     const rooms = roomsRepo();
     const { roomId, generalChatId } = await rooms.createRoom(users[0]!, "Load");
     const { code } = await rooms.rotateInvite(roomId, users[0]!.userId);
+    cleanup = () => purge(roomId, users, code);
     for (const u of users.slice(1)) await rooms.acceptInvite(code, u);
     // Far above what the runs spend, so no run is capped and every one reaches done.
     await budgetRepo().setCap(users[0]!, roomId, 50_000_000);
@@ -108,6 +150,14 @@ describe("load on Floci", () => {
     expect(runIds.size).toBe(RUNS);
     const costs = await Promise.all([...runIds].map(async (id) => (await runs.getRun(id))!));
     expect(costs.every((r) => r.status === "done")).toBe(true);
+    // The calls each run makes are known from its message: Auto's router, the thread's name, then three turns for two
+    // tools. One usage event per call, adding up to the run's cost, is what rules out a call charged twice; the spend
+    // matching the run costs alone would not, since both come from the same events.
+    for (const run of costs) {
+      const usage = (await runs.allEvents(run.runId)).flatMap((e) => (e.type === "usage" ? [e] : []));
+      expect(usage.map((u) => u.job), `run ${run.runId} is charged once per call`).toEqual(CALLS_PER_RUN);
+      expect(usage.reduce((sum, u) => sum + u.costMicros, 0)).toBe(run.costMicros);
+    }
     expect((await budgetRepo().get(roomId, new Date())).spentMicros).toBe(costs.reduce((sum, r) => sum + r.costMicros, 0));
 
     for (const s of all) {
