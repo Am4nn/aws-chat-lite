@@ -9,10 +9,9 @@ import { pathClash, workspacePath } from "./paths.js";
 import { roomFile, workspaceRepo, type WorkspaceRepo } from "./repo.js";
 import * as storage from "./storage.js";
 import { newObjectKey, stagingPrefix } from "./storage.js";
-import type { RoomFile } from "./types.js";
+import type { FilesUpdated, RoomFile } from "./types.js";
 
 type Event = APIGatewayProxyEventV2WithJWTAuthorizer;
-type FilesUpdated = { type: "files.updated"; roomId: string; files: RoomFile[]; deleted: string[] };
 
 export interface Deps {
   files: Pick<WorkspaceRepo, "list" | "get" | "usage" | "commit" | "remove">;

@@ -7,11 +7,14 @@ import { mergeTaint, messageTaint, runRefusal } from "../models/privacy.js";
 import { isNumberedName } from "../threads/model.js";
 import { threadsRepo } from "../threads/repo.js";
 import type { RunEndStatus, RunEvent } from "../threads/types.js";
+import { sandboxCostMicros } from "../workspace/limits.js";
+import { runSandbox } from "../workspace/session.js";
+import type { FilesSynced } from "../workspace/types.js";
 import { buildContext } from "./context.js";
 import { endReason, stoppedBy } from "./model.js";
 import { notifyRun } from "./notify.js";
 import { runsRepo, type Run } from "./repo.js";
-import { FAKE_TOOLS, runTool, toolDetail } from "./tools.js";
+import { runTool, SANDBOX_TOOL, toolDetail, toolsFor } from "./tools.js";
 
 /*
  * The bodies of the run loop's durable steps. A step that fails is run again with the same input, so each one reads
@@ -62,7 +65,7 @@ const budgetLeft = async (run: Run) => {
  * Every model call is metered: an event for the run's viewers, the room's monthly spend and the run's total, which the
  * room hears at once, so cost and budget move while a long answer streams.
  */
-async function recordUsage(run: Run, writer: Writer, usage: Usage, model: string, job: "route" | "name" | "run"): Promise<number> {
+async function recordUsage(run: Run, writer: Writer, usage: Usage, model: string, job: "route" | "name" | "run" | "sandbox"): Promise<number> {
   const runs = runsRepo();
   const event = await writer.append({ ...usage, model, job });
   await budgetRepo().record(run.roomId, usage.costMicros, new Date());
@@ -208,8 +211,7 @@ async function stream(run: RoutedRun, writer: Writer, messages: ReturnType<typeo
     }, (e) => console.error("stop poll failed", run.runId, e));
   }, STOP_POLL_MS);
 
-  // Real models get no tools yet, and the fake's tool names are ones only the fake accepts.
-  const tools = gateway().servedBy(run.model) === "fake" ? FAKE_TOOLS : [];
+  const tools = toolsFor(run.model, gateway().servedBy(run.model));
   let call: Call;
   try {
     call = await callModel(
@@ -241,23 +243,50 @@ async function stream(run: RoutedRun, writer: Writer, messages: ReturnType<typeo
   return { toolCalls: call.toolCalls, costMicros };
 }
 
-/** One tool call: one step. The limits are checked first, so a stop never waits for another tool. */
-export async function toolStep(run: Run, call: ToolCall): Promise<{ steps: number; end?: End }> {
+/** Sandbox time, billed like a model call so it counts towards the run's cost and the room's budget. */
+const billSandbox = (run: Run, writer: Writer, ms: number) => recordUsage(run, writer, {
+  type: "usage", inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costMicros: sandboxCostMicros(ms),
+}, "sandbox", "sandbox");
+
+const hasChanges = (s: FilesSynced) => s.written.length + s.deleted.length + s.notes.length > 0;
+
+/** Only a tool the model was offered runs, so a model kept from private content can't reach the sandbox by naming it. */
+async function runCall(run: RoutedRun, call: ToolCall, offered: boolean): Promise<{ output: string; ok: boolean; synced?: FilesSynced }> {
+  if (!offered) return { ok: false, output: `Unknown tool ${call.name}.` };
+  return call.name === SANDBOX_TOOL.name ? runSandbox(run, call.input) : runTool(call, { sleep });
+}
+
+/**
+ * One tool call: one step. The limits are checked first, so a stop never waits for another tool. A sandbox step taints the thread before any code runs, since its output carries room files,
+ * and is billed after it finishes, once: a retry that finds the step finished but unbilled only bills it.
+ */
+export async function toolStep(run: RoutedRun, call: ToolCall): Promise<{ steps: number; costMicros: number; end?: End }> {
   const end = await limitsReached(run);
-  if (end) return { steps: run.steps, end };
+  if (end) return { steps: run.steps, costMicros: run.costMicros, end };
 
   const runs = runsRepo();
   const step = run.steps + 1;
   const [events, writer] = await Promise.all([runs.allEvents(run.runId), runs.eventWriter(run.runId)]);
   const logged = (type: string) => events.find((e) => (e.type === type) && "step" in e && e.step === step);
+  const offered = toolsFor(run.model, gateway().servedBy(run.model)).some((t) => t.name === call.name);
+  const sandboxed = offered && call.name === SANDBOX_TOOL.name;
   // An earlier attempt finished the tool and logged it, and only failed after: its result stands.
-  if (logged("step.finished")) return { steps: step };
+  const done = logged("step.finished");
+  if (done?.type === "step.finished") {
+    if (!sandboxed) return { steps: step, costMicros: run.costMicros };
+    const billed = events.some((e) => e.type === "usage" && e.job === "sandbox" && e.seq > done.seq);
+    return { steps: step, costMicros: billed ? (await runs.getRun(run.runId))?.costMicros ?? run.costMicros : await billSandbox(run, writer, done.ms) };
+  }
+
+  if (sandboxed) await threadsRepo().addTaint(run.roomId, run.number, ["sandbox"]);
   const started = logged("step.started") ?? await writer.append({ type: "step.started", step, call, detail: toolDetail(call) });
   const thread = await runs.progress(run, { steps: step, currentStep: call.name });
   await notifyRun(run.roomId, thread, started.seq);
   const t0 = Date.now();
-  const { output, ok } = await runTool(call, { sleep });
-  const finished = await writer.append({ type: "step.finished", step, output, ms: Date.now() - t0, ok });
+  const { output, ok, synced } = await runCall(run, call, offered);
+  const ms = Date.now() - t0;
+  if (synced && hasChanges(synced) && !logged("files.synced")) await writer.append({ type: "files.synced", step, ...synced });
+  const finished = await writer.append({ type: "step.finished", step, output, ms, ok });
   await notifyRun(run.roomId, thread, finished.seq);
-  return { steps: step };
+  return { steps: step, costMicros: sandboxed ? await billSandbox(run, writer, ms) : run.costMicros };
 }

@@ -22,6 +22,8 @@ export function addRuns(stack: CoreStack) {
   });
   const runFn = stack.addFunction("run", "runs/loop.ts", { tableAccess: true }, {
     timeout: Duration.minutes(15),
+    // Room files pass through on their way in and out of the sandbox: a batch of up to 8 MB in, a 25 MB file out.
+    memorySize: 1024,
     durableConfig: { executionTimeout: Duration.minutes(130), retentionPeriod: Duration.days(7) },
     environment: { MODEL_GATEWAY: modelGateway, MODEL_KEYS_SECRET: keysName, ...(sandboxToken && { SANDBOX_TOKEN: sandboxToken }) },
   });

@@ -29,10 +29,11 @@ const statementsOf = (role: string) =>
     .flatMap((p: any) => p.Properties.PolicyDocument.Statement);
 
 describe("run engine", () => {
-  it("the run function is durable for 130 minutes, keeps executions 7 days and times out at 15 minutes", () => {
+  it("the run function is durable for 130 minutes, keeps executions 7 days, times out at 15 minutes and has 1 GB", () => {
     const { props } = fnNamed("cl-local-run");
     expect(props.DurableConfig).toEqual({ ExecutionTimeout: 7800, RetentionPeriodInDays: 7 });
     expect(props.Timeout).toBe(900);
+    expect(props.MemorySize).toBe(1024);
     expect(props.Environment.Variables).toMatchObject({ MODEL_GATEWAY: "fake" });
     expect(props.Environment.Variables.WS_CALLBACK_URL).toBeDefined();
   });

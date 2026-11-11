@@ -3,6 +3,7 @@ import { broadcastToRoom } from "../live/broadcast.js";
 import { summaryLine } from "../threads/model.js";
 import { threadsRepo } from "../threads/repo.js";
 import type { RunEndStatus } from "../threads/types.js";
+import { closeSandbox } from "../workspace/session.js";
 import { answerOf } from "./context.js";
 import { notifyRun } from "./notify.js";
 import { runsRepo, type Run } from "./repo.js";
@@ -20,7 +21,7 @@ async function announce(answer: Message) {
  * Ends a run: posts the answer (all the text it streamed), then writes `run.finished`, then tells the room. The event
  * comes after the close because a close can come back "unread", and then the run carries on; a stream that saw
  * `run.finished` would already have stopped reading. A close that finds the run already closed (a retried step)
- * reports the ending that is stored, whatever this attempt meant to write.
+ * reports the ending that is stored, whatever this attempt meant to write. Every ending also closes the run's sandbox.
  */
 export async function finishRun(
   run: Run, end: { status: RunEndStatus; reason?: string }, opts: { seenSeq: number; force: boolean },
@@ -30,6 +31,8 @@ export async function finishRun(
   const { text, final } = answerOf(events);
   const { result, answer } = await runs.closeRun(run, { ...end, text, summary: summaryLine(final) || end.reason || "", ...opts });
   if (result === "unread") return result;
+  // Before `run.finished`, so a run that reads as ended never still holds a sandbox session.
+  await closeSandbox(run.runId);
 
   let last = events.at(-1);
   if (last?.type !== "run.finished") {
