@@ -71,6 +71,23 @@ const answerFrames = (untilStopped: boolean) => `new Promise((resolve) => {
 })`;
 type Frames = { texts: string[]; seen: number; moving: number; shimmers: number; shimmering: number };
 
+/**
+ * Opens the first card's thread and reports the most composers on screen in any frame, sampled from before the click
+ * until the thread's page has been up for a second. More than one means a second copy of a view was mounted.
+ */
+const OPEN_CARD_AND_COUNT_VIEWS = `new Promise((resolve) => {
+  let most = 0, arrived = 0;
+  const start = performance.now();
+  const sample = (now) => {
+    most = Math.max(most, document.querySelectorAll("main textarea#composer").length);
+    if (location.pathname.includes("/t/")) arrived ||= now;
+    if ((arrived && now - arrived > 1000) || now - start > 15000) resolve(most);
+    else requestAnimationFrame(sample);
+  };
+  requestAnimationFrame(sample);
+  window.__cards()[0].querySelector("a").click();
+})`;
+
 /** Polls a read until its answer passes, for state that only the server can confirm. */
 async function eventually<T>(read: () => Promise<T>, ok: (value: T) => boolean, timeout = RUN_MS): Promise<T> {
   const end = Date.now() + timeout;
@@ -133,10 +150,9 @@ export async function threadChecks(stamp: number, owner: Person, guest: Person) 
 
   // The thread view, opened from the card.
   await A.bringToFront();
-  await A.evaluate(() => window.__cards()[0].querySelector("a")!.click());
+  const views = (await A.evaluate(OPEN_CARD_AND_COUNT_VIEWS)) as number;
   const titled = await until(A, (path) => location.pathname === path
     && /#1.*check-pr-41/.test(document.querySelector("main header h1")?.textContent ?? ""), `/r/${roomId}/t/1`);
-  // Right after the navigation two copies of the view can be on screen for a moment, so wait until one is left.
   const folded = await until(A, () => [...document.querySelectorAll("main button")].filter((b) => b.textContent === "2 steps")
     .map((b) => b.getAttribute("aria-expanded")).join() === "false" && !document.querySelector("main pre"));
   await A.evaluate(() => ([...document.querySelectorAll("main button")] as HTMLElement[]).find((b) => b.textContent === "2 steps")!.click());
@@ -144,8 +160,8 @@ export async function threadChecks(stamp: number, owner: Person, guest: Person) 
   await A.evaluate(() => window.__doneSteps()[0].click());
   const output = await until(A, () => document.querySelector("main pre")?.textContent?.includes("Found 3 notes"));
   const headline = await A.evaluate(() => [...document.querySelectorAll("main h2")].some((h) => h.textContent?.startsWith("Fake answer for")));
-  check(titled && folded && expanded && output && headline,
-    "the card opens #1 check-pr-41: its 2 steps fold into \"▸ 2 steps\", expanding shows \"Found 3 notes\", and the headline reads \"Fake answer for…\"");
+  check(views === 1 && titled && folded && expanded && output && headline,
+    `the card opens #1 check-pr-41 as one view (at most ${views} on screen): its 2 steps fold into "▸ 2 steps", expanding shows "Found 3 notes", and the headline reads "Fake answer for…"`);
 
   // Rename: A renames in the header while B watches #general.
   const rename = async (name: string) => {
