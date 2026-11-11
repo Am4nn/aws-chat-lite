@@ -116,12 +116,15 @@ describe("sandbox_run in the run loop, on Floci and Docker", { timeout: 120_000 
     expect((await threadsRepo().threadById(roomId, thread.threadId))!.taint).not.toContain("sandbox");
   });
 
-  it("a Stop during a long step leaves no session and no container", async () => {
-    const { owner, roomId, thread, runId } = await startRun("wait sh`sleep 20`");
+  it("a Stop during a long step cuts the code short and leaves no session and no container", async () => {
+    const { owner, roomId, thread, runId } = await startRun("wait sh`sleep 60`");
     await eventOf(runId, (e) => e.type === "step.started");
     await until("the container", async () => (await containersOf(runId)) || undefined);
+    const stoppedAt = Date.now();
     await requestStop(owner, roomId, thread.threadId);
     expect((await finished(runId, 90_000)).status).toBe("stopped");
+    expect(Date.now() - stoppedAt).toBeLessThan(30_000);
+    expect(output(await runs.allEvents(runId), 1)).toBe("Stopped while the code ran; its changes to the room files weren't saved.");
     expect(await sessionItem(runId)).toBeUndefined();
     expect(await containersOf(runId)).toBe("");
   });
