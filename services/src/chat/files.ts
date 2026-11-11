@@ -4,6 +4,7 @@ import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { ValidationError } from "../lib/errors.js";
 import { filesBucket, missingObject, objects, s3 } from "../lib/s3.js";
+import type { InlineImageType } from "../models/gateway.js";
 import { MAX_FILE_BYTES, validAttachment, type Attachment, type Message } from "./model.js";
 
 const UPLOAD_EXPIRY_SEC = 5 * 60;
@@ -19,7 +20,7 @@ export function attachmentKey(roomId: string, userId: string, name: string): str
   return `rooms/${roomId}/${userId}/${randomUUID()}/${safe}`;
 }
 
-export const inlineType = (type: string) => INLINE_TYPES.has(type);
+export const inlineType = (type: string): type is InlineImageType => INLINE_TYPES.has(type);
 
 /**
  * A presigned POST rather than a presigned PUT, because only a POST policy can make S3 itself enforce the size

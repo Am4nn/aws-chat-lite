@@ -37,7 +37,11 @@ export function toParams(req: ModelRequest, kind: Kind): Anthropic.MessageStream
 
 function toTurn(m: ModelMessage, model: string, kind: Kind): Turn {
   if (m.role === "user") {
-    return { role: "user", content: m.text.trim() ? [{ type: "text", text: `${m.author}: ${m.text}` }] : [] };
+    const images = (m.images ?? []).flatMap(({ mediaType, data }) =>
+      data === undefined ? [] : [{ type: "image" as const, source: { type: "base64" as const, media_type: mediaType, data } }]);
+    // The privacy rule's last line of defence: whatever decided the model, an image's bytes never go to DeepSeek.
+    if (images.length && kind === "deepseek") throw new Error("DeepSeek never sees attachments.");
+    return { role: "user", content: [...images, ...(m.text.trim() ? [{ type: "text" as const, text: `${m.author}: ${m.text}` }] : [])] };
   }
   if (m.role === "tool") {
     const content = m.isError && kind === "deepseek" ? `Tool error: ${m.output}` : m.output;
