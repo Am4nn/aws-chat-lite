@@ -39,6 +39,10 @@ describe("matchForward (/bff/api/* → HTTP API allowlist)", () => {
     ["GET", ["rooms", "r", "files", "download"], "/rooms/r/files/download"],
     ["DELETE", ["rooms", "r", "files"], "/rooms/r/files"],
     ["PUT", ["rooms", "r", "sandbox"], "/rooms/r/sandbox"],
+    ["GET", ["oauth", "requests", "q1"], "/oauth/requests/q1"],
+    ["POST", ["oauth", "requests", "q1", "decision"], "/oauth/requests/q1/decision"],
+    ["GET", ["me", "apps"], "/me/apps"],
+    ["DELETE", ["me", "apps", "g1"], "/me/apps/g1"],
   ])("%s %j → %s", (method, segs, path) => {
     expect(matchForward(method, segs)).toBe(path);
   });
@@ -61,6 +65,9 @@ describe("matchForward (/bff/api/* → HTTP API allowlist)", () => {
     ["DELETE", ["rooms", "r", "connections", "slack"]],
     ["GET", ["runs", "abc", "approvals", "2"]],
     ["DELETE", ["rooms", "r", "files", "x"]],
+    ["POST", ["me", "apps"]],
+    ["DELETE", ["oauth", "requests", "q1"]],
+    ["POST", ["oauth", "token"]],
   ])("refuses %s %j", (method, segs) => {
     expect(matchForward(method, segs)).toBeNull();
   });
