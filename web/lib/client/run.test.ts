@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Message, RunEvent } from "../types";
-import { applyRunEvent, emptyRun, runRows, stepsLabel } from "./run";
+import { applyRunEvent, emptyRun, runRows, splitSyncLines, stepsLabel } from "./run";
 
 type Body = Record<string, unknown>;
 const ev = (seq: number, body: Body) => ({ seq, at: "2026-11-11T10:00:00Z", ...body }) as RunEvent;
@@ -71,8 +71,18 @@ describe("applyRunEvent", () => {
     const v = run(
       ev(1, { type: "usage", model: "claude-haiku-5-5", job: "route", inputTokens: 1, outputTokens: 1, costMicros: 100 }),
       ev(2, { type: "usage", model: "claude-sonnet-5-5", job: "run", inputTokens: 1, outputTokens: 1, costMicros: 900 }),
+      ev(3, { type: "usage", model: "sandbox", job: "sandbox", inputTokens: 0, outputTokens: 0, costMicros: 61 }),
     );
-    expect(v.costMicros).toBe(1000);
+    expect(v.costMicros).toBe(1061);
+  });
+
+  it("puts the files a sandbox step saved on that step", () => {
+    const v = run(
+      ev(1, { type: "step.started", step: 1, call: { id: "a", name: "x", input: {} }, detail: "" }),
+      ev(2, { type: "step.started", step: 2, call: { id: "b", name: "sandbox_run", input: {} }, detail: "" }),
+      ev(3, { type: "files.synced", step: 2, written: ["a"], deleted: [], notes: [] }),
+    );
+    expect(v.items.map((i) => i.kind === "step" && i.files)).toEqual([undefined, { written: ["a"], deleted: [], notes: [] }]);
   });
 
   it("keeps the pick and takes the model from routed", () => {
@@ -120,6 +130,19 @@ describe("runRows", () => {
     const rows = runRows(emptyRun(), [], [{ clientId: "k", text: "t", createdAt: "", attachments: [], failed: true }]);
     expect(rows[0]).toMatchObject({ kind: "steer", state: "failed", clientId: "k" });
   });
+});
+
+describe("splitSyncLines", () => {
+  const files = { written: ["a.csv", "b.csv"], deleted: ["c"], notes: ["n.txt was changed by #12 after this run loaded it; this run's version replaced it."] };
+  it("takes the lines about room files off the end of a sandbox step's output", () => {
+    const output = ["exit 0 · 812 ms", "--- stdout", "hi", "Saved to room files: a.csv, b.csv", "Deleted from room files: c", files.notes[0]].join("\n");
+    expect(splitSyncLines(output, files)).toEqual({
+      output: "exit 0 · 812 ms\n--- stdout\nhi",
+      lines: ["Saved to room files: a.csv, b.csv", "Deleted from room files: c", files.notes[0]],
+    });
+  });
+  it("leaves the output whole when it doesn't end with them", () =>
+    expect(splitSyncLines("exit 1 · 5 ms", files)).toEqual({ output: "exit 1 · 5 ms", lines: [] }));
 });
 
 describe("stepsLabel", () => {

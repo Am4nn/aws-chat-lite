@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "../types";
-import { chatBadge, countMessage, countRead, lastSeenText } from "./badges";
+import { chatBadge, countMessage, countRead } from "./badges";
 
 describe("chatBadge", () => {
   it("shows the unread count", () => expect(chatBadge({ unread: 3, mentions: 0, muted: false })).toEqual({ count: 3, mention: null }));
@@ -8,17 +8,6 @@ describe("chatBadge", () => {
     expect(chatBadge({ unread: 3, mentions: 1, muted: true })).toEqual({ count: null, mention: 1 }));
   it("shows nothing when there's nothing new", () =>
     expect(chatBadge({ unread: 0, mentions: 0, muted: false })).toEqual({ count: null, mention: null }));
-});
-
-describe("lastSeenText", () => {
-  const now = Date.parse("2026-11-11T12:00:00Z");
-  const ago = (ms: number) => new Date(now - ms).toISOString();
-  it("counts minutes, hours, then days", () => {
-    expect(lastSeenText(ago(5 * 60_000), now)).toBe("last seen 5m ago");
-    expect(lastSeenText(ago(3 * 3_600_000), now)).toBe("last seen 3h ago");
-    expect(lastSeenText(ago(2 * 86_400_000), now)).toBe("last seen 2d ago");
-  });
-  it("says just now under a minute", () => expect(lastSeenText(ago(20_000), now)).toBe("last seen just now"));
 });
 
 describe("countMessage", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ModelOption } from "../types";
-import { footerText, modelLabel, nextEnabled, pickMenu, pillLabel } from "./models";
+import { footerText, modelLabel, nextEnabled, pickMenu, pillLabel, taintHint } from "./models";
 
 const o = (pick: ModelOption["pick"], label: string, short: string, id: string | undefined, privateOk = true): ModelOption => ({
   pick, id, label, short, price: id ? "$2 / $10" : "", privateOk,
@@ -74,5 +74,13 @@ describe("footerText", () => {
   });
   it("falls back to an unknown id", () => {
     expect(footerText({ ...a, pick: "opus", model: "x" }, models)).toBe("x · $0.04 · 0:12");
+  });
+});
+
+describe("taintHint", () => {
+  it("says what made the thread private", () => {
+    expect(taintHint(["attachment"])).toBe("Private: has attachments, so DeepSeek is off.");
+    expect(taintHint(["sandbox"])).toBe("Private: has sandbox files, so DeepSeek is off.");
+    expect(taintHint(["attachment", "sandbox"])).toBe("Private: has attachments and sandbox files, so DeepSeek is off.");
   });
 });

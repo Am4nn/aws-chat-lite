@@ -63,6 +63,18 @@ export function excerpt(text: string): string {
   return chars.length > 140 ? `${chars.slice(0, 140).join("")}…` : chars.join("");
 }
 
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
+
+export function timeAgo(iso: string, now: number): string {
+  const ago = now - Date.parse(iso);
+  if (ago < MINUTE) return "just now";
+  if (ago < HOUR) return `${Math.floor(ago / MINUTE)}m ago`;
+  if (ago < DAY) return `${Math.floor(ago / HOUR)}h ago`;
+  return `${Math.floor(ago / DAY)}d ago`;
+}
+
 export function fileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   const [value, unit] = bytes < 1024 ** 2 ? [bytes / 1024, "KB"] : [bytes / 1024 ** 2, "MB"];
