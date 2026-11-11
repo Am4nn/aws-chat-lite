@@ -36,6 +36,8 @@ describe("media: push and voice", () => {
   it("the push keys live in their own secret, kept on AWS, which only the push worker and routes may read", () => {
     const [local] = Object.values(template().findResources("AWS::SecretsManager::Secret", { Properties: { Name: "cl-local-push-keys" } })) as any[];
     expect(local.DeletionPolicy).toBe("Delete");
+    // CloudFormation would otherwise fill a new secret with a random password, which isn't JSON.
+    expect(local.Properties.GenerateSecretString).toEqual({ SecretStringTemplate: "{}", GenerateStringKey: "unset" });
     template("aws").hasResource("AWS::SecretsManager::Secret", { Properties: { Name: "cl-aws-push-keys" }, DeletionPolicy: "Retain" });
     for (const name of ["cl-local-push", "cl-local-push-routes"]) {
       expect(secretReads(name), name).toEqual([pushKeysId()]);

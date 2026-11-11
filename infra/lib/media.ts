@@ -15,11 +15,13 @@ export function addMedia(stack: CoreStack, files: s3.Bucket) {
 
   // JSON {VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT}, set outside CloudFormation like the model keys. Push
   // services tie each browser subscription to the public key, so on AWS the secret outlives a stack delete: new keys
-  // would silently orphan every subscribed device.
+  // would silently orphan every subscribed device. Until the keys are set it holds JSON without them, which reads as
+  // push being off; CloudFormation's default would be a random password, which isn't JSON.
   const keysName = `${prefix}-push-keys`;
   const pushKeys = new secretsmanager.Secret(stack, "PushKeys", {
     secretName: keysName,
     description: "VAPID keys that sign web push notifications",
+    generateSecretString: { secretStringTemplate: "{}", generateStringKey: "unset" },
     removalPolicy: isLocal ? RemovalPolicy.DESTROY : RemovalPolicy.RETAIN,
   });
   const pushFn = stack.addFunction("push", "push/delivery/handler.ts", {}, {
