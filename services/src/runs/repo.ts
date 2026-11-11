@@ -1,4 +1,6 @@
-import { GetCommand, PutCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import {
+  GetCommand, PutCommand, QueryCommand, TransactWriteCommand, UpdateCommand, type TransactWriteCommandInput,
+} from "@aws-sdk/lib-dynamodb";
 import { conditionFailed, docClient, failedAt, queryAll, tableName } from "../lib/db.js";
 import { LAST_SEQ, forReaders, seqKey, type Message, type StoredMessage } from "../chat/model.js";
 import { summary, threadSk } from "../threads/model.js";
@@ -28,6 +30,7 @@ export type Run = {
 };
 
 type Item = Record<string, unknown>;
+export type TransactItem = NonNullable<TransactWriteCommandInput["TransactItems"]>[number];
 
 const MODEL_CONTEXT = 50;
 const FORCED_CLOSE_ATTEMPTS = 5;
@@ -35,6 +38,12 @@ const FORCED_CLOSE_ATTEMPTS = 5;
 const runKey = (runId: string) => ({ pk: `RUN#${runId}`, sk: "META" });
 const chatMetaKey = (threadId: string) => ({ pk: `CHAT#${threadId}`, sk: "META" });
 const threadKey = (run: Run) => ({ pk: `ROOM#${run.roomId}`, sk: threadSk(run.number) });
+const callKey = (runId: string, call: string) => ({ pk: `RUN#${runId}`, sk: `CALL#${call}` });
+/**
+ * Every run write to its thread is conditioned on the run still being the thread's: a run that was replaced (it was
+ * presumed dead) must not overwrite the run that took its place.
+ */
+const whileOwned = (run: Run) => ({ ConditionExpression: "activeRunId = :runId", values: { ":runId": run.runId } });
 
 /**
  * `SET #f = :f, …` for each defined field. Every attribute name goes through a placeholder: DynamoDB rejects reserved
@@ -78,6 +87,17 @@ export function runsRepo() {
     return Number(Items[0]?.seq ?? 0);
   }
 
+  /** A conditional write to a run's thread: the thread as it now stands, or null when the run no longer owns it. */
+  async function threadUpdate(update: UpdateCommand): Promise<ThreadSummary | null> {
+    try {
+      const { Attributes } = await db.send(update);
+      return summary(Attributes!, Date.now());
+    } catch (e) {
+      if (conditionFailed(e)) return null;
+      throw e;
+    }
+  }
+
   async function chatLastSeq(threadId: string): Promise<number> {
     const { Item } = await db.send(new GetCommand({ TableName, Key: chatMetaKey(threadId), ConsistentRead: true }));
     return Number(Item?.lastSeq ?? 0);
@@ -99,19 +119,23 @@ export function runsRepo() {
 
     /**
      * Appends events after the newest stored one. Each put waits for the one before it, so events land in seq order
-     * even when appends overlap, and the condition refuses to overwrite a seq that is already taken.
+     * even when appends overlap, and the condition refuses to overwrite a seq that is already taken. Writes passed in
+     * `with` go in one transaction with the event, so they happen exactly when it does.
      */
-    async eventWriter(runId: string): Promise<{ append(b: RunEventBody): Promise<RunEvent> }> {
+    async eventWriter(runId: string): Promise<{ append(b: RunEventBody, alongside?: TransactItem[]): Promise<RunEvent> }> {
       let seq = await lastEventSeq(runId);
       let tail: Promise<unknown> = Promise.resolve();
       return {
-        append(body) {
+        append(body, alongside = []) {
           const event = { ...body, seq: ++seq, at: new Date().toISOString() } as RunEvent;
-          const put = tail.then(() => db.send(new PutCommand({
+          const put = {
             TableName, Item: { pk: `RUN#${runId}`, sk: eventSk(event.seq), ...event }, ConditionExpression: "attribute_not_exists(sk)",
-          })));
-          tail = put;
-          return put.then(() => event);
+          };
+          const write = tail.then((): Promise<unknown> => (alongside.length
+            ? db.send(new TransactWriteCommand({ TransactItems: [{ Put: put }, ...alongside] }))
+            : db.send(new PutCommand(put))));
+          tail = write;
+          return write.then(() => event);
         },
       };
     },
@@ -151,27 +175,42 @@ export function runsRepo() {
       return Items.reverse().map(asMessage);
     },
 
-    /** The run's live numbers, on the run and on its thread (where members see them). */
-    async progress(run: Run, fields: { steps?: number; currentStep?: string; costMicros?: number }): Promise<ThreadSummary> {
+    /**
+     * The step result a model call recorded with its usage (see `callMarker`), or undefined when the call hasn't
+     * finished yet.
+     */
+    async recorded<T>(runId: string, call: string): Promise<T | undefined> {
+      const { Item } = await db.send(new GetCommand({ TableName, Key: callKey(runId, call), ConsistentRead: true }));
+      return Item?.result as T | undefined;
+    },
+
+    /** Marks a model call as recorded, with its step's result; refused when an earlier attempt already did. */
+    callMarker(runId: string, call: string, result: unknown): TransactItem {
+      return { Put: { TableName, Item: { ...callKey(runId, call), result }, ConditionExpression: "attribute_not_exists(sk)" } };
+    },
+
+    /** The run's live numbers, on the run and on its thread (where members see them). Null once the thread isn't its. */
+    async progress(run: Run, fields: { steps?: number; currentStep?: string; costMicros?: number }): Promise<ThreadSummary | null> {
       const set = setFields(fields);
-      const [, { Attributes }] = await Promise.all([
+      const owned = whileOwned(run);
+      const [, thread] = await Promise.all([
         db.send(new UpdateCommand({ TableName, Key: runKey(run.runId), ...set })),
-        db.send(new UpdateCommand({
+        threadUpdate(new UpdateCommand({
           TableName, Key: threadKey(run), ...set, UpdateExpression: `${set.UpdateExpression} ADD #rev :one`,
-          ExpressionAttributeNames: { ...set.ExpressionAttributeNames, "#rev": "rev" },
-          ExpressionAttributeValues: { ...set.ExpressionAttributeValues, ":one": 1 }, ReturnValues: "ALL_NEW",
+          ConditionExpression: owned.ConditionExpression, ExpressionAttributeNames: { ...set.ExpressionAttributeNames, "#rev": "rev" },
+          ExpressionAttributeValues: { ...set.ExpressionAttributeValues, ...owned.values, ":one": 1 }, ReturnValues: "ALL_NEW",
         })),
       ]);
-      return summary(Attributes!, Date.now());
+      return thread;
     },
 
     /** A tool returned: the thread no longer names a current step until the next one starts. */
-    async stepDone(run: Run): Promise<ThreadSummary> {
-      const { Attributes } = await db.send(new UpdateCommand({
-        TableName, Key: threadKey(run), UpdateExpression: "REMOVE currentStep ADD #rev :one",
-        ExpressionAttributeNames: { "#rev": "rev" }, ExpressionAttributeValues: { ":one": 1 }, ReturnValues: "ALL_NEW",
+    async stepDone(run: Run): Promise<ThreadSummary | null> {
+      const owned = whileOwned(run);
+      return threadUpdate(new UpdateCommand({
+        TableName, Key: threadKey(run), UpdateExpression: "REMOVE currentStep ADD #rev :one", ConditionExpression: owned.ConditionExpression,
+        ExpressionAttributeNames: { "#rev": "rev" }, ExpressionAttributeValues: { ...owned.values, ":one": 1 }, ReturnValues: "ALL_NEW",
       }));
-      return summary(Attributes!, Date.now());
     },
 
     /** Asks a running run to stop; false when it is no longer running. */
@@ -192,18 +231,20 @@ export function runsRepo() {
      * Posts the answer and ends the run in one transaction:
      * 1. the thread chat's counter moves to the answer's seq, only if it is still `seenSeq`;
      * 2. the answer message goes in at that seq;
-     * 3. the thread drops its active run and shows how it ended;
-     * 4. the run records its answer, only if it has none yet.
+     * 3. the run records how it ended, only while it is still running;
+     * 4. the thread drops its active run and shows how it ended, only while the run is still the thread's.
      *
      * Item 1 failing means a member wrote after the run's last read: "unread", and the run stays open to read it.
-     * A forced close (stop, cap, limits, errors) instead lands after whatever is there. Item 4 failing means an
-     * earlier attempt already closed the run: "already", with the answer it stored.
+     * A forced close (stop, cap, limits, errors) instead lands after whatever is there. Item 3 failing means the run
+     * was already closed, by an earlier attempt or as dead when a new run replaced it: "already", with any answer it
+     * stored. Item 4 failing means a newer run has the thread, so the close goes ahead without touching it.
      */
     async closeRun(
       run: Run, opts: { status: RunEndStatus; reason?: string; text: string; summary: string; seenSeq: number; force: boolean },
-    ): Promise<{ result: "closed" | "unread" | "already"; answer?: Message }> {
+    ): Promise<{ result: "closed" | "unread" | "already"; answer?: Message; endedAt?: string }> {
       const { status, reason, text, force } = opts;
       let seen = opts.seenSeq;
+      let owns = true;
       for (let attempt = 1; ; attempt++) {
         const now = new Date().toISOString();
         const seq = seen + 1;
@@ -220,6 +261,7 @@ export function runsRepo() {
           costMicros: run.costMicros,
         });
         const closed = setFields({ status, reason, answerSeq: seq, seenSeq: seen, endedAt: now, steps: run.steps, costMicros: run.costMicros });
+        const ownership = whileOwned(run);
         try {
           await db.send(new TransactWriteCommand({
             TransactItems: [
@@ -232,18 +274,28 @@ export function runsRepo() {
               { Put: { TableName, Item: { pk: `CHAT#${run.threadId}`, sk: seqKey(seq), ...answer, textLower: text.toLowerCase() } } },
               {
                 Update: {
-                  TableName, Key: threadKey(run), ...thread,
-                  UpdateExpression: `${thread.UpdateExpression} REMOVE activeRunId, currentStep ADD #rev :one`,
-                  ExpressionAttributeNames: { ...thread.ExpressionAttributeNames, "#rev": "rev" },
-                  ExpressionAttributeValues: { ...thread.ExpressionAttributeValues, ":one": 1 },
+                  TableName, Key: runKey(run.runId), ...closed, ConditionExpression: "#status = :running",
+                  ExpressionAttributeValues: { ...closed.ExpressionAttributeValues, ":running": "running" },
                 },
               },
-              { Update: { TableName, Key: runKey(run.runId), ...closed, ConditionExpression: "attribute_not_exists(answerSeq)" } },
+              ...(owns ? [{
+                Update: {
+                  TableName, Key: threadKey(run), ...thread,
+                  UpdateExpression: `${thread.UpdateExpression} REMOVE activeRunId, currentStep ADD #rev :one`,
+                  ConditionExpression: ownership.ConditionExpression,
+                  ExpressionAttributeNames: { ...thread.ExpressionAttributeNames, "#rev": "rev" },
+                  ExpressionAttributeValues: { ...thread.ExpressionAttributeValues, ...ownership.values, ":one": 1 },
+                },
+              }] : []),
             ],
           }));
-          return { result: "closed", answer };
+          return { result: "closed", answer, endedAt: now };
         } catch (e) {
-          if (failedAt(e, 3)) return { result: "already", answer: await storedAnswer(run) };
+          if (failedAt(e, 2)) return { result: "already", answer: await storedAnswer(run) };
+          if (owns && failedAt(e, 3)) {
+            owns = false;
+            continue;
+          }
           if (!failedAt(e, 0)) throw e;
           if (!force) return { result: "unread" };
           if (attempt === FORCED_CLOSE_ATTEMPTS) throw e;

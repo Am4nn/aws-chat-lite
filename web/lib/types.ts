@@ -86,7 +86,8 @@ export type Budget = { spentMicros: number; capMicros: number; month: string; re
 type RunEventBody =
   | { type: "run.started"; model: string; startedBy: string }
   | { type: "steer"; messageSeq: number; authorName: string; text: string }
-  | { type: "text"; text: string }
+  | { type: "text"; text: string; turn: number }
+  | { type: "text.reset"; turn: number }
   | { type: "step.started"; step: number; call: { id: string; name: string; input: Record<string, unknown> }; detail: string }
   | { type: "step.finished"; step: number; output: string; ms: number; ok: boolean }
   | { type: "usage"; model: string; inputTokens: number; outputTokens: number; costMicros: number }

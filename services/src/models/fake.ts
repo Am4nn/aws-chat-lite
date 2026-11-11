@@ -1,5 +1,6 @@
 import type { ModelChunk, ModelGateway, ModelMessage, ModelRequest } from "./gateway.js";
 import { NAME_PROMPT } from "./gateway.js";
+import { sleep as wait } from "../lib/sleep.js";
 
 const BODY_WORDS =
   "the agent checked every note and found that results looked steady across runs while costs stayed small and clear".split(
@@ -14,9 +15,12 @@ const directive = (text: string, key: string, fallback: number, min: number, max
 const stripDirectives = (text: string) => text.replace(/\b(tools|words):\d+|\b(slow|fail)\b/g, " ");
 const firstWords = (text: string, n: number) => text.split(/\s+/).filter(Boolean).slice(0, n).join(" ");
 
-const charsOf = (m: ModelMessage) => (m.role === "tool" ? m.output.length : m.text.length);
+const charsOf = (m: ModelMessage) => {
+  if (m.role === "tool") return m.output.length;
+  return m.text.length + (m.role === "assistant" && m.toolCalls ? JSON.stringify(m.toolCalls).length : 0);
+};
 
-export function fakeModel({ sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms)) } = {}): ModelGateway {
+export function fakeModel({ sleep = wait } = {}): ModelGateway {
   return { stream: (req) => run(req, sleep) };
 }
 
@@ -63,7 +67,7 @@ async function* run(req: ModelRequest, sleep: (ms: number) => Promise<void>): As
   body[words - 1] += ".";
   const pieces = [`Fake answer for "${query}".\n\n`, ...body.map((w, i) => (i < words - 1 ? `${w} ` : w))];
   for (const text of pieces) {
-    if (req.signal?.aborted) break;
+    if (req.signal?.aborted || outputChars / 4 >= req.maxTokens) break;
     await sleep(slow ? 150 : 15);
     outputChars += text.length;
     yield { type: "text", text };

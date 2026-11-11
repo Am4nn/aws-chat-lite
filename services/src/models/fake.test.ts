@@ -9,6 +9,7 @@ const request = (messages: ModelMessage[], over: Partial<ModelRequest> = {}): Mo
   system: "",
   messages,
   tools: [],
+  maxTokens: 4096,
   ...over,
 });
 const user = (text: string): ModelMessage => ({ role: "user", author: "aman", text });
@@ -63,12 +64,27 @@ describe("fakeModel", () => {
     const chunks = await collect(
       request([
         user("x tools:0 words:1"),
-        { role: "assistant", text: "abcd", toolCalls: [{ id: "call-1", name: "fake.lookup", input: {} }] },
+        { role: "assistant", text: "abcd" },
         { role: "tool", toolCallId: "call-1", output: "wxyz" },
       ]),
     );
     // 17 + 4 + 4 = 25 chars; dropping either the assistant or the tool text would give 21 chars, 6 tokens.
     expect(chunks.at(-1)).toMatchObject({ type: "usage", inputTokens: 7 });
+  });
+
+  it("counts an assistant message's tool calls as input", async () => {
+    const calls = [{ id: "call-1", name: "fake.lookup", input: { query: "q" } }];
+    const without = await collect(request([user("x tools:0 words:1"), { role: "assistant", text: "" }]));
+    const withCalls = await collect(request([user("x tools:0 words:1"), { role: "assistant", text: "", toolCalls: calls }]));
+    const tokens = (chunks: ModelChunk[]) => (chunks.at(-1) as { inputTokens: number }).inputTokens;
+    expect(tokens(withCalls) - tokens(without)).toBeGreaterThanOrEqual(Math.floor(JSON.stringify(calls).length / 4));
+  });
+
+  it("stops the answer at maxTokens", async () => {
+    const chunks = await collect(request([user("go tools:0 words:400")], { maxTokens: 20 }));
+    expect(textOf(chunks).length).toBeLessThanOrEqual(20 * 4 + 20);
+    expect(chunks.at(-1)).toMatchObject({ type: "usage" });
+    expect((chunks.at(-1) as { outputTokens: number }).outputTokens).toBeLessThanOrEqual(25);
   });
 
   it("counts the call JSON as output on a tool-call turn", async () => {

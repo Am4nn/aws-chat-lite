@@ -29,6 +29,18 @@ describe("applyRunEvent", () => {
     expect(v.text).toBe("abc");
   });
 
+  it("drops a failed attempt's text when its turn is reset, keeping earlier turns", () => {
+    const v = run(
+      ev(1, { type: "text", text: "Looking.", turn: 1 }),
+      ev(2, { type: "text", text: " Half", turn: 2 }), ev(3, { type: "text", text: " an", turn: 2 }),
+      ev(4, { type: "text.reset", turn: 2 }),
+      ev(5, { type: "text", text: " Whole", turn: 2 }),
+      ev(6, { type: "text.reset", turn: 2 }),
+      ev(7, { type: "text", text: " Final.", turn: 2 }),
+    );
+    expect(v.text).toBe("Looking. Final.");
+  });
+
   it("ignores a repeated or older seq", () => {
     const e = ev(1, { type: "text", text: "a" });
     const once = run(e);

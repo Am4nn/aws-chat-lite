@@ -6,6 +6,7 @@ import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { docClient, tableName } from "../lib/db.js";
 import { roomsRepo } from "../rooms/repo.js";
 import { chatRepo } from "../chat/repo.js";
+import { budgetRepo } from "../budget/repo.js";
 import { threadsRepo } from "../threads/repo.js";
 import { issueTicket, consumeTicket } from "./tickets.js";
 import { isOnline } from "./presence.js";
@@ -233,6 +234,8 @@ describe("agent threads over the socket", () => {
 
     const isNew = (f: Frame) => f.type === "message.new" && (f.message as Frame).chatId === generalChatId;
     expect(sb.frames.findIndex(isNew)).toBeLessThan(sb.frames.indexOf(updated));
+    // The room knows the thread before the card that points at it.
+    expect(sb.frames.findIndex(runUpdated(threadId))).toBeLessThan(sb.frames.indexOf(updated));
     expect(sb.frames.filter(runUpdated(threadId)).at(-1)).toMatchObject({ thread: { status: "done", number: 1 } });
     expect(await history(a, roomId, generalChatId)).toHaveLength(1);
     const [first, answer] = await history(a, roomId, threadId);
@@ -309,6 +312,13 @@ describe("agent threads over the socket", () => {
     expect(ack).toMatchObject({ ok: true, data: { runId: expect.any(String) } });
     await at.sb.next(runUpdated(threadId, "stopped"), AGENT_MS);
   }, AGENT_MS);
+
+  it("the owner's budget change reaches the room at once", async () => {
+    const { a, roomId, sb } = await pair("Budget");
+    const budget = await budgetRepo().setCap(a, roomId, 5_000_000);
+    expect(await sb.next((f) => f.type === "budget.updated")).toEqual({ type: "budget.updated", roomId, budget });
+    expect(budget).toMatchObject({ capMicros: 5_000_000, spentMicros: 0 });
+  });
 
   it("a removed member can't stop a run", async () => {
     const at = await pair("Stop removed");

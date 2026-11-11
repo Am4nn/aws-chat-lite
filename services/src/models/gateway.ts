@@ -9,6 +9,8 @@ export type ModelRequest = {
   system: string;
   messages: ModelMessage[];
   tools: ToolSpec[];
+  /** The most output tokens the call may produce. */
+  maxTokens: number;
   signal?: AbortSignal;
 };
 export type ModelChunk =

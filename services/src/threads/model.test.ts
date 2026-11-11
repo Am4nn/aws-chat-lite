@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DEAD_AFTER_MS } from "../runs/model.js";
 import { ARCHIVE_AFTER_SEC, PROVISIONAL, claimableName, isArchived, isNumberedName, summary, leadingTag, summaryLine, threadName, threadSk, uniqueCandidates } from "./model.js";
 
 describe("threadName", () => {
@@ -29,6 +30,10 @@ describe("uniqueCandidates", () => {
   it("trims a long base so every candidate fits", () => {
     for (const c of uniqueCandidates("a".repeat(32))) expect(c.length).toBeLessThanOrEqual(32);
   });
+  it("leaves out a trimmed candidate that lost the only letter", () => {
+    const name = `${"1".repeat(31)}a`;
+    expect(uniqueCandidates(name)).toEqual([name]);
+  });
 });
 
 describe("isArchived", () => {
@@ -54,6 +59,7 @@ describe("leadingTag", () => {
 describe("summaryLine", () => {
   it("takes the first non-empty line", () => expect(summaryLine("\n\nShip it.\nmore")).toBe("Ship it."));
   it("cuts at 80 characters", () => expect(summaryLine("a".repeat(100))).toBe("a".repeat(80) + "…"));
+  it("never splits a character made of two UTF-16 units", () => expect(summaryLine("😀".repeat(81))).toBe("😀".repeat(80) + "…"));
 });
 
 describe("summary", () => {
@@ -67,5 +73,13 @@ describe("summary", () => {
     const t = summary(stored, now);
     for (const k of ["pk", "sk", "named", "activeRunId", "from"]) expect(t).not.toHaveProperty(k);
     expect(t).toMatchObject({ threadId: "t", number: 1, status: "done", rev: 4, archived: true });
+  });
+  it("shows a run past the execution timeout as failed, so its thread stops looking live and can archive", () => {
+    const startedAt = new Date(now - DEAD_AFTER_MS - 1).toISOString();
+    const dead = { ...stored, status: "running", startedAt, currentStep: "fake.lookup" };
+    const t = summary(dead, now);
+    expect(t).toMatchObject({ status: "failed", summary: "The run stopped responding.", archived: true });
+    expect(t).not.toHaveProperty("currentStep");
+    expect(summary({ ...dead, startedAt: new Date(now - DEAD_AFTER_MS + 1000).toISOString() }, now).status).toBe("running");
   });
 });

@@ -28,7 +28,10 @@ export type Budget = { spentMicros: number; capMicros: number; month: string; re
 export type RunEventBody =
   | { type: "run.started"; model: string; startedBy: string }
   | { type: "steer"; messageSeq: number; authorName: string; text: string }
-  | { type: "text"; text: string }
+  /** `turn` is the model call that wrote it (the loop's `model-<turn>` step). */
+  | { type: "text"; text: string; turn: number }
+  /** An attempt at `turn` failed after writing text, and the retry answers again: that turn's text so far is void. */
+  | { type: "text.reset"; turn: number }
   | { type: "step.started"; step: number; call: { id: string; name: string; input: Record<string, unknown> }; detail: string }
   | { type: "step.finished"; step: number; output: string; ms: number; ok: boolean }
   | { type: "usage"; model: string; inputTokens: number; outputTokens: number; costMicros: number }

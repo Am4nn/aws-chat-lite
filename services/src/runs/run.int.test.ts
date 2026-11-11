@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import WebSocket from "ws";
 import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
-import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { docClient, tableName } from "../lib/db.js";
 import { roomsRepo } from "../rooms/repo.js";
 import { chatRepo } from "../chat/repo.js";
@@ -28,6 +28,8 @@ const runs = runsRepo();
 const chat = chatRepo();
 const user = (name: string) => ({ userId: randomUUID(), username: name });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const useUpBudget = (roomId: string) =>
+  docClient().send(new TransactWriteCommand({ TransactItems: [budgetRepo().spend(roomId, 3_000_000, new Date())] }));
 let clients = 0;
 
 async function until<T>(what: string, probe: () => Promise<T | undefined>, ms = 20_000): Promise<T> {
@@ -153,7 +155,7 @@ describe("the run loop on Floci", { timeout: 60_000 }, () => {
 
   it("a thread its first run couldn't name is named by a later run", async () => {
     const at = await room();
-    await budgetRepo().record(at.roomId, 3_000_000, new Date());
+    await useUpBudget(at.roomId);
     const { thread, runId } = await startRun("go tools:0 words:3", at);
     expect((await finished(runId)).status).toBe("capped");
     await budgetRepo().setCap(at.owner, at.roomId, 5_000_000);
@@ -213,7 +215,7 @@ describe("the run loop on Floci", { timeout: 60_000 }, () => {
 
   it("a room at its cap ends the run capped before any model call", async () => {
     const at = await room();
-    await budgetRepo().record(at.roomId, 3_000_000, new Date());
+    await useUpBudget(at.roomId);
     const { thread, runId } = await startRun("go tools:1", at);
     const run = await finished(runId);
     expect(run.status).toBe("capped");
@@ -246,14 +248,14 @@ describe("the run loop on Floci", { timeout: 60_000 }, () => {
     }
   });
 
-  it("a thread whose run started over 130 minutes ago is not wedged: the next message starts a new run", async () => {
+  it("a thread whose run started over 135 minutes ago is not wedged: the next message starts a new run", async () => {
     const { owner, roomId } = await room();
     const { thread, message } = await threadsRepo().createThread(owner, roomId, { text: "go tools:0 words:3", clientId: `k${++clients}` });
     await docClient().send(new UpdateCommand({
       TableName: tableName(), Key: { pk: `ROOM#${roomId}`, sk: threadSk(thread.number) },
       UpdateExpression: "SET activeRunId = :dead, startedAt = :then, #status = :running",
       ExpressionAttributeNames: { "#status": "status" },
-      ExpressionAttributeValues: { ":dead": "dead-run", ":then": new Date(Date.now() - 131 * 60_000).toISOString(), ":running": "running" },
+      ExpressionAttributeValues: { ":dead": "dead-run", ":then": new Date(Date.now() - 136 * 60_000).toISOString(), ":running": "running" },
     }));
     const { runId, started } = await startOrSteer(owner, roomId, thread.threadId, message);
     expect(started).toBe(true);

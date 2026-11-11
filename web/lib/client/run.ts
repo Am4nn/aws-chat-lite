@@ -11,6 +11,8 @@ export type RunView = {
   reason?: string;
   items: RunItem[];
   text: string;
+  /** Where the newest model turn's text starts in `text`, so a reset of that turn can cut it back out. */
+  turnStart?: { turn: number; at: number };
   costMicros: number;
   model?: string;
   startedAt?: string;
@@ -27,8 +29,12 @@ export function applyRunEvent(v: RunView, e: RunEvent): RunView {
       return { ...next, model: e.model, startedAt: e.at };
     case "steer":
       return { ...next, items: [...v.items, { kind: "steer", messageSeq: e.messageSeq, authorName: e.authorName, text: e.text, at: e.at }] };
-    case "text":
-      return { ...next, text: v.text + e.text };
+    case "text": {
+      const turnStart = v.turnStart?.turn === e.turn ? v.turnStart : { turn: e.turn, at: v.text.length };
+      return { ...next, text: v.text + e.text, turnStart };
+    }
+    case "text.reset":
+      return v.turnStart?.turn === e.turn ? { ...next, text: v.text.slice(0, v.turnStart.at) } : next;
     case "step.started":
       return { ...next, items: [...v.items, { kind: "step", step: e.step, name: e.call.name, detail: e.detail, status: "running", startedAt: e.at }] };
     case "step.finished":

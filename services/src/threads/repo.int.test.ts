@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { randomUUID } from "node:crypto";
-import { GetCommand, PutCommand, ScanCommand, UpdateCommand, type ScanCommandOutput } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand, ScanCommand, TransactWriteCommand, UpdateCommand, type ScanCommandOutput } from "@aws-sdk/lib-dynamodb";
 import { docClient, tableName } from "../lib/db.js";
 import { Conflict, Forbidden, Gone, NotFound } from "../lib/errors.js";
 import { roomsRepo } from "../rooms/repo.js";
@@ -124,8 +124,10 @@ describe("threads repo on Floci", () => {
   it("budget: usage adds up under the UTC month; only the owner sets the cap", async () => {
     const { owner, roomId } = await room();
     const now = new Date();
-    await budget.record(roomId, 1_250, now);
-    expect(await budget.record(roomId, 3_000, now)).toMatchObject({ spentMicros: 4_250, capMicros: 3_000_000, month: monthKey(now) });
+    const spend = (costMicros: number) => docClient().send(new TransactWriteCommand({ TransactItems: [budget.spend(roomId, costMicros, now)] }));
+    await spend(1_250);
+    await spend(3_000);
+    expect(await budget.get(roomId, now)).toMatchObject({ spentMicros: 4_250, capMicros: 3_000_000, month: monthKey(now) });
     const { Item } = await docClient().send(new GetCommand({ TableName: tableName(), Key: { pk: `ROOM#${roomId}`, sk: `USAGE#${monthKey(now)}` }, ConsistentRead: true }));
     expect(Item).toMatchObject({ costMicros: 4_250, calls: 2 });
 

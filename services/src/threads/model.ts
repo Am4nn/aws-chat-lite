@@ -1,4 +1,5 @@
 import { ValidationError } from "../lib/errors.js";
+import { DEAD_AFTER_MS, DEAD_REASON } from "../runs/model.js";
 import type { ThreadStatus, ThreadSummary } from "./types.js";
 
 export const ARCHIVE_AFTER_SEC = 604_800;
@@ -30,10 +31,13 @@ export function threadName(raw: unknown): string {
   return name;
 }
 
-/** The name, then name-2 … name-9; the base is trimmed so the suffix still fits in 32 characters. */
+/**
+ * The name, then name-2 … name-9; the base is trimmed so the suffix still fits in 32 characters, and a trimmed
+ * candidate that lost the name's only letter is left out.
+ */
 export function uniqueCandidates(name: string): string[] {
   const rest = Array.from({ length: 8 }, (_, i) => `${name.slice(0, 30)}-${i + 2}`);
-  return [name, ...rest];
+  return [name, ...rest].filter((n) => NAME.test(n));
 }
 
 /** A running thread is never archived, however long it has been quiet. */
@@ -41,11 +45,18 @@ export function isArchived(t: { status: ThreadStatus; lastActivityAt: string }, 
   return t.status !== "running" && nowMs - Date.parse(t.lastActivityAt) > ARCHIVE_AFTER_SEC * 1000;
 }
 
-/** A stored thread as clients get it: the bookkeeping fields stay on the server, and `archived` is worked out now. */
+/**
+ * A stored thread as clients get it: the bookkeeping fields stay on the server, and `archived` is worked out now. A
+ * run past its execution timeout died without closing, so it shows as failed until the next message replaces it.
+ */
 export function summary(
   { pk: _pk, sk: _sk, activeRunId: _run, named: _named, from: _from, ...rest }: Record<string, unknown>, nowMs: number,
 ): ThreadSummary {
-  const thread = rest as Omit<ThreadSummary, "archived">;
+  let thread = rest as Omit<ThreadSummary, "archived">;
+  if (thread.status === "running" && nowMs - Date.parse(thread.startedAt ?? "") > DEAD_AFTER_MS) {
+    const { currentStep: _step, ...dead } = thread;
+    thread = { ...dead, status: "failed", summary: DEAD_REASON };
+  }
   return { ...thread, archived: isArchived(thread, nowMs) };
 }
 
@@ -59,5 +70,7 @@ export function leadingTag(text: string): { number: number } | { name: string } 
 
 export function summaryLine(text: string): string {
   const line = text.split("\n").map((l) => l.trim()).find(Boolean) ?? "";
-  return line.length > 80 ? `${line.slice(0, 80)}…` : line;
+  // By code point, so an emoji at the cut isn't split in half.
+  const chars = Array.from(line);
+  return chars.length > 80 ? `${chars.slice(0, 80).join("")}…` : line;
 }
