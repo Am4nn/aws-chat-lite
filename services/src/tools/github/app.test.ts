@@ -58,6 +58,26 @@ describe("githubCall", () => {
       "GitHub said 422: Validation Failed (No commits between main and b; head invalid)",
     );
   });
+
+  const failing = (code: string) => Object.assign(new TypeError("fetch failed"), { cause: { code } });
+
+  it("tries a call again when the connection never opened, since GitHub got nothing", async () => {
+    let calls = 0;
+    const env = { keys: {}, fetch: (async () => (++calls < 3 ? Promise.reject(failing("UND_ERR_CONNECT_TIMEOUT")) : Response.json({ id: 1 }))) as typeof fetch };
+    expect(await githubCall(env, "t", "POST", "/repos/o/r/issues/1/comments", { body: "b" })).toEqual({ id: 1 });
+    expect(calls).toBe(3);
+  });
+
+  it("doesn't try again after the connection opened, nor past three tries", async () => {
+    let calls = 0;
+    const reset = { keys: {}, fetch: (async () => { calls++; throw failing("ECONNRESET"); }) as typeof fetch };
+    await expect(githubCall(reset, "t", "POST", "/repos/o/r/issues/1/comments", {})).rejects.toThrow("fetch failed");
+    expect(calls).toBe(1);
+    calls = 0;
+    const down = { keys: {}, fetch: (async () => { calls++; throw failing("UND_ERR_CONNECT_TIMEOUT"); }) as typeof fetch };
+    await expect(githubCall(down, "t", "GET", "/repos/o/r", undefined)).rejects.toThrow("fetch failed");
+    expect(calls).toBe(3);
+  });
 });
 
 describe("listInstallations", () => {
