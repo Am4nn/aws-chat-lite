@@ -1,4 +1,5 @@
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
+import { roomMembers } from "../../chat/membership.js";
 import { docClient, queryAll, tableName } from "../../lib/db.js";
 import { counterKey, roomKey } from "../../lib/keys.js";
 import { threadSk } from "../../threads/model.js";
@@ -26,10 +27,7 @@ const get = async (Key: Record<string, string>) =>
 async function readRoom(roomId: string): Promise<Room | undefined> {
   const [meta, members] = await Promise.all([
     get({ pk: roomKey(roomId), sk: "META" }),
-    queryAll({
-      KeyConditionExpression: "pk = :p AND begins_with(sk, :m)", ConsistentRead: true, ProjectionExpression: "userId",
-      ExpressionAttributeValues: { ":p": roomKey(roomId), ":m": "MEMBER#" },
-    }),
+    roomMembers(roomId, { fields: ["userId"], consistent: true }),
   ]);
   return meta && { name: String(meta.name), archived: !!meta.archived, memberIds: members.map((m) => String(m.userId)) };
 }

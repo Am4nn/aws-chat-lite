@@ -6,7 +6,7 @@ import { counterKey, memberKey, roomKey } from "../lib/keys.js";
 import { countTowardsRate } from "../lib/rate.js";
 import { enqueuePush } from "../push/enqueue.js";
 import { storedAttachment, withUrls } from "./files.js";
-import { requireMember } from "./membership.js";
+import { requireMember, roomMembers } from "./membership.js";
 import { notified, parseMentions } from "./mentions.js";
 import {
   EDIT_WINDOW_SEC, LAST_SEQ, MAX_ATTACHMENTS, PAGE, RATE_PER_MIN, canEdit, deleteMode, excerpt, forReaders, messageText,
@@ -34,6 +34,9 @@ export function toMessage({ pk: _pk, sk: _sk, reactions, ...rest }: Record<strin
   const lists = Object.fromEntries(Object.entries(sets).map(([k, users]) => [k, [...users]]));
   return withUrls(forReaders({ ...rest, reactions: lists } as StoredMessage));
 }
+
+const mentionable = async (roomId: string): Promise<User[]> =>
+  (await roomMembers(roomId, { fields: ["userId", "username"] })).map((m) => ({ userId: String(m.userId), username: String(m.username) }));
 
 function attachmentList(raw: unknown, roomId: string, userId: string): Attachment[] {
   if (raw === undefined) return [];
@@ -69,14 +72,6 @@ export function chatRepo() {
     const { Item } = await db.send(new GetCommand({ TableName, Key: messageKey(at, seq), ConsistentRead: true }));
     if (!Item || Item.roomId !== at.roomId) throw new NotFound("Message not found.");
     return Item as StoredMessage;
-  }
-
-  async function roomMembers(roomId: string) {
-    const { Items = [] } = await db.send(new QueryCommand({
-      TableName, KeyConditionExpression: "pk = :p AND begins_with(sk, :m)", ProjectionExpression: "userId, username",
-      ExpressionAttributeValues: { ":p": roomKey(roomId), ":m": "MEMBER#" },
-    }));
-    return Items as User[];
   }
 
   /** Your own message counts as read. The condition stops a slower, older send from moving the marker back. */
@@ -153,7 +148,7 @@ export function chatRepo() {
       const at = { roomId: input.roomId, chatId: input.chatId };
       const { text, attachments } = admitted ?? await admit(user, input);
       const quoted = input.replyToSeq === undefined ? undefined : await storedMessage(at, input.replyToSeq);
-      const members = text.includes("@") ? await roomMembers(at.roomId) : [];
+      const members = text.includes("@") ? await mentionable(at.roomId) : [];
       const { mentions, everyone } = parseMentions(text, members);
 
       // Everything that can refuse the send runs before this, so a refusal never leaves a gap in the seqs.
@@ -198,7 +193,7 @@ export function chatRepo() {
       const now = Date.now();
       if (!canEdit(old, user.userId, now)) throw new Forbidden("You can edit only your own messages, for 15 minutes.");
       if (!text && !old.attachments.length) throw new ValidationError(NEEDS_CONTENT);
-      const members = text.includes("@") ? await roomMembers(at.roomId) : [];
+      const members = text.includes("@") ? await mentionable(at.roomId) : [];
       const { mentions, everyone } = parseMentions(text, members);
       const editedAt = new Date(now).toISOString();
       try {

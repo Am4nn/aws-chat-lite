@@ -38,12 +38,12 @@ function fakeTable(roles: Record<string, Role>, rows: Rows = {}) {
       if (pk.startsWith("ROOM#") && sk === "META") {
         return { Item: { name: "Room", ...(rows.approvalTimeoutSec && { approvalTimeoutSec: rows.approvalTimeoutSec }) } };
       }
-      if (sk === "CONN#github") return { Item: rows.github };
+      if (sk === "LINK#github") return { Item: rows.github };
       return { Item: items.get(keyOf(c.input.Key)) };
     }
     if (c instanceof QueryCommand) {
       const v = c.input.ExpressionAttributeValues!;
-      return { Items: v[":prefix"] === "CONN#mcp#" ? (rows.mcp ?? []).map((m) => ({ pk: v[":pk"], sk: `CONN#mcp#${(m as { name: string }).name}`, ...m })) : [] };
+      return { Items: v[":prefix"] === "LINK#mcp#" ? (rows.mcp ?? []).map((m) => ({ pk: v[":pk"], sk: `LINK#mcp#${(m as { name: string }).name}`, ...m })) : [] };
     }
     if (c instanceof PutCommand) items.set(keyOf(c.input.Item), c.input.Item!);
     if (c instanceof DeleteCommand) {
@@ -231,7 +231,7 @@ describe("GitHub connection", () => {
     expect(res.status).toBe(200);
     expect(res.body.github).toMatchObject({ installationId: 1, account: "fake-org", repos: ["fake-org/playground"], addedBy: "aman" });
     const [conn, audit] = writes(res.send)[0]!.input.TransactItems!;
-    expect(conn!.Put?.Item).toMatchObject({ pk: "ROOM#r", sk: "CONN#github", installationId: 1 });
+    expect(conn!.Put?.Item).toMatchObject({ pk: "ROOM#r", sk: "LINK#github", installationId: 1 });
     expect(audit!.Put?.Item).toMatchObject({ kind: "connected", actor: "aman", detail: "fake-org/playground" });
     expect(res.notify).toHaveBeenCalledWith("r");
     expect(res.fetch).not.toHaveBeenCalled();
@@ -247,7 +247,7 @@ describe("GitHub connection", () => {
     const res = await call("owner", "DELETE /rooms/{roomId}/connections/github", undefined, { github: connection });
     expect(res.status).toBe(204);
     const [conn, audit] = writes(res.send)[0]!.input.TransactItems!;
-    expect(conn!.Delete).toMatchObject({ Key: { pk: "ROOM#r", sk: "CONN#github" }, ConditionExpression: "attribute_exists(sk)" });
+    expect(conn!.Delete).toMatchObject({ Key: { pk: "ROOM#r", sk: "LINK#github" }, ConditionExpression: "attribute_exists(sk)" });
     expect(audit!.Put?.Item).toMatchObject({ kind: "disconnected", actor: "aman" });
     expect(res.notify).toHaveBeenCalledWith("r");
   });
@@ -273,7 +273,7 @@ describe("GET connections", () => {
     const res = await call("member", "GET /rooms/{roomId}/connections", undefined, { mcp: [mcp] });
     expect(res.body.mcp).toEqual([mcp]);
     const query = res.send.mock.calls.map(([c]) => c).find((c) => c instanceof QueryCommand) as QueryCommand;
-    expect(query.input).toMatchObject({ ConsistentRead: true, ExpressionAttributeValues: { ":pk": "ROOM#r", ":prefix": "CONN#mcp#" } });
+    expect(query.input).toMatchObject({ ConsistentRead: true, ExpressionAttributeValues: { ":pk": "ROOM#r", ":prefix": "LINK#mcp#" } });
   });
 
   it("has no install link without App keys", async () => {

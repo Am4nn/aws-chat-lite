@@ -115,7 +115,7 @@ describe("room MCP connections on Floci", () => {
     const fetch = vi.fn(guardedFetch({ localHosts: HOSTS }));
     await repoWith(fetch).remove(owner, roomId, "test");
     expect(fetch.mock.calls.map(([url]) => String(url))).toContain(`${oauth.origin}/revoke`);
-    expect(await rawItem(roomId, "CONN#mcp#test")).toBeUndefined();
+    expect(await rawItem(roomId, "LINK#mcp#test")).toBeUndefined();
     expect(await rawItem(roomId, "MCPAUTH#test")).toBeUndefined();
     const [entry] = (await auditRepo().list(roomId)).entries;
     expect(entry).toMatchObject({ kind: "disconnected", actor: "owner", detail: "MCP test" });

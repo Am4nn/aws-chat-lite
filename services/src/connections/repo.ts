@@ -26,13 +26,14 @@ const GRANT_TTL_SEC = 900;
 const STATE = /^[A-Za-z0-9_-]{1,100}$/;
 const CALLBACK_PATH = "/bff/github/callback";
 
-const githubKey = (roomId: string) => ({ pk: roomKey(roomId), sk: "CONN#github" });
+/** Integrations are `LINK#` items, apart from the room's `CONN#` socket subscriptions that every broadcast reads. */
+const githubKey = (roomId: string) => ({ pk: roomKey(roomId), sk: "LINK#github" });
 const metaKey = (roomId: string) => ({ pk: roomKey(roomId), sk: "META" });
 const flowKey = (state: string) => ({ pk: `GHFLOW#${state}`, sk: "META" });
 /** What one admin's GitHub account can reach, for picking repos in one room. */
 const grantKey = (roomId: string, userId: string) => ({ pk: `GHGRANT#${roomId}#${userId}`, sk: "META" });
 const nowSec = () => Math.floor(Date.now() / 1000);
-const MCP_PREFIX = "CONN#mcp#";
+const MCP_PREFIX = "LINK#mcp#";
 export const mcpConnKey = (roomId: string, name: string) => ({ pk: roomKey(roomId), sk: `${MCP_PREFIX}${name}` });
 
 export const withoutKeys = ({ pk: _pk, sk: _sk, ...rest }: Record<string, unknown>) => rest;

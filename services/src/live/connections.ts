@@ -1,4 +1,5 @@
-import { DeleteCommand, GetCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { liveMemberships } from "../chat/membership.js";
 import type { User } from "../lib/auth.js";
 import { conditionFailed, docClient, tableName } from "../lib/db.js";
 
@@ -22,11 +23,7 @@ const roomConnKey = (roomId: string, connId: string) => ({ pk: `ROOM#${roomId}`,
 
 /** The rooms whose events this user should get: their memberships, from gsi1, minus archived rooms. */
 export async function liveRoomIds(userId: string): Promise<string[]> {
-  const { Items = [] } = await docClient().send(new QueryCommand({
-    TableName: tableName(), IndexName: "gsi1", KeyConditionExpression: "gsi1pk = :u",
-    ExpressionAttributeValues: { ":u": `USER#${userId}` },
-  }));
-  return Items.filter((i) => !i.archived).map((i) => String(i.roomId));
+  return (await liveMemberships(userId)).map((i) => String(i.roomId));
 }
 
 export async function getConnection(connId: string): Promise<Connection | undefined> {

@@ -6,7 +6,7 @@ import type { User } from "../lib/auth.js";
 import { batchGet, conditionFailed, docClient, failedAt, queryAll, tableName, transactionConflict } from "../lib/db.js";
 import { Conflict, Forbidden, Gone, NotFound, ValidationError } from "../lib/errors.js";
 import { counterKey, memberKey, roomKey } from "../lib/keys.js";
-import { findMember, requireMember } from "../chat/membership.js";
+import { findMember, liveMemberships, requireMember, roomMembers } from "../chat/membership.js";
 import { isOnline, type Presence } from "../live/presence.js";
 import { budgetOf, monthKey } from "../budget/model.js";
 import { modelOptions, type ModelOption, type ModelPick } from "../models/catalog.js";
@@ -157,10 +157,7 @@ export function roomsRepo() {
 
     /** Archived rooms drop out of the list. The member item's mention total feeds the list's dot. */
     async listMyRooms(userId: string) {
-      const items = await queryAll({
-        IndexName: "gsi1", KeyConditionExpression: "gsi1pk = :u", ExpressionAttributeValues: { ":u": `USER#${userId}` },
-      });
-      return items.filter((i) => !i.archived).map((i) => ({
+      return (await liveMemberships(userId)).map((i) => ({
         roomId: String(i.roomId), name: String(i.roomName), role: i.role as Role, mentions: Number(i.mentions ?? 0),
       }));
     },
@@ -180,7 +177,7 @@ export function roomsRepo() {
       const month = monthKey(new Date());
       const [{ Item: meta }, chats, threads, members, myReads, [usage], agents] = await Promise.all([
         db.send(new GetCommand({ TableName, Key: { pk: roomKey(roomId), sk: "META" }, ConsistentRead: true })),
-        inRoom("CHAT#"), inRoom("THREAD#"), inRoom("MEMBER#"), inRoom(`READ#${userId}#`), inRoom(`USAGE#${month}`),
+        inRoom("CHAT#"), inRoom("THREAD#"), roomMembers(roomId, { consistent: true }), inRoom(`READ#${userId}#`), inRoom(`USAGE#${month}`),
         agentsRepo().list(roomId),
       ]);
       const me = members.find((m) => m.userId === userId);
@@ -354,10 +351,7 @@ export function roomsRepo() {
     async archiveRoom(roomId: string, userId: string) {
       await requireRole(roomId, userId, "archive");
       const { Item: meta } = await db.send(new GetCommand({ TableName, Key: { pk: roomKey(roomId), sk: "META" }, ConsistentRead: true }));
-      const members = await queryAll({
-        KeyConditionExpression: "pk = :p AND begins_with(sk, :m)", ProjectionExpression: "sk", ConsistentRead: true,
-        ExpressionAttributeValues: { ":p": roomKey(roomId), ":m": "MEMBER#" },
-      });
+      const members = await roomMembers(roomId, { fields: ["sk"], consistent: true });
       if (members.length > MAX_ARCHIVE_MEMBERS) {
         throw new ValidationError(`Rooms over ${MAX_ARCHIVE_MEMBERS} members can't be archived yet.`);
       }
@@ -417,10 +411,7 @@ export function roomsRepo() {
     /** Public: what a link leads to, before you sign in. */
     async previewInvite(code: string) {
       const inv = await liveInvite(code);
-      const members = await queryAll({
-        KeyConditionExpression: "pk = :p AND begins_with(sk, :m)", ProjectionExpression: "sk",
-        ExpressionAttributeValues: { ":p": roomKey(inv.roomId), ":m": "MEMBER#" },
-      });
+      const members = await roomMembers(inv.roomId, { fields: ["sk"] });
       return { roomName: inv.roomName, memberCount: members.length, expiresAt: inv.expiresAt };
     },
 

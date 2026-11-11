@@ -65,7 +65,7 @@ async function room({ connected = true, approvalTimeoutSec }: { connected?: bool
     await db.send(new PutCommand({
       TableName: tableName(),
       Item: {
-        pk: `ROOM#${roomId}`, sk: "CONN#github", installationId: 1, account: "fake-org", repos: ["fake-org/playground"],
+        pk: `ROOM#${roomId}`, sk: "LINK#github", installationId: 1, account: "fake-org", repos: ["fake-org/playground"],
         addedBy: "aman", addedAt: new Date().toISOString(),
       },
     }));
@@ -232,7 +232,7 @@ describe("approvals in the run loop, on Floci", { timeout: 60_000 }, () => {
     const gate = await gateOf(run, call, []);
     expect(gate).toMatchObject({ asks: true, title: COMMENT_TITLE, input: { number: 1, body: "b", repo: "fake-org/playground" } });
     await docClient().send(new UpdateCommand({
-      TableName: tableName(), Key: { pk: `ROOM#${at.roomId}`, sk: "CONN#github" }, UpdateExpression: "SET repos = :r",
+      TableName: tableName(), Key: { pk: `ROOM#${at.roomId}`, sk: "LINK#github" }, UpdateExpression: "SET repos = :r",
       ExpressionAttributeValues: { ":r": ["fake-org/other"] },
     }));
     const github = recordGitHub();

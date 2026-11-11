@@ -1,6 +1,6 @@
-import { QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { ApiGatewayManagementApiClient, PostToConnectionCommand } from "@aws-sdk/client-apigatewaymanagementapi";
-import { docClient, tableName } from "../lib/db.js";
+import { roomMembers } from "../chat/membership.js";
+import { queryAll } from "../lib/db.js";
 import { forgetConnection } from "./connections.js";
 import { isOnline, markDisconnected, type Presence } from "./presence.js";
 
@@ -13,13 +13,8 @@ function managementApi() {
 }
 
 /** The `CONN#<connId>` items under one partition: a user's sockets, or a room's subscriptions (which name the owner). */
-async function connItems(pk: string) {
-  const { Items = [] } = await docClient().send(new QueryCommand({
-    TableName: tableName(), KeyConditionExpression: "pk = :p AND begins_with(sk, :c)",
-    ExpressionAttributeValues: { ":p": pk, ":c": "CONN#" },
-  }));
-  return Items;
-}
+const connItems = (pk: string) =>
+  queryAll({ KeyConditionExpression: "pk = :p AND begins_with(sk, :c)", ExpressionAttributeValues: { ":p": pk, ":c": "CONN#" } });
 
 const connIdOf = (item: Record<string, unknown>) => String(item.sk).slice("CONN#".length);
 
@@ -67,12 +62,9 @@ export const roomUpdated = (roomId: string) => broadcastToRoom(roomId, { type: "
 export async function broadcastToRoom(roomId: string, event: object, opts: { exceptConnId?: string } = {}): Promise<void> {
   const [subs, members] = await Promise.all([
     connItems(`ROOM#${roomId}`),
-    docClient().send(new QueryCommand({
-      TableName: tableName(), KeyConditionExpression: "pk = :p AND begins_with(sk, :m)", ConsistentRead: true,
-      ExpressionAttributeValues: { ":p": `ROOM#${roomId}`, ":m": "MEMBER#" }, ProjectionExpression: "userId",
-    })),
+    roomMembers(roomId, { fields: ["userId"], consistent: true }),
   ]);
-  const memberIds = new Set((members.Items ?? []).map((m) => String(m.userId)));
+  const memberIds = new Set(members.map((m) => String(m.userId)));
   await Promise.all(subs
     .filter((s) => memberIds.has(String(s.userId)) && connIdOf(s) !== opts.exceptConnId)
     .map((s) => sendToConnection(connIdOf(s), event)));

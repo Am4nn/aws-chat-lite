@@ -67,7 +67,7 @@ async function room() {
   await docClient().send(new PutCommand({
     TableName: tableName(),
     Item: {
-      pk: `ROOM#${roomId}`, sk: "CONN#github", installationId: 1, account: "fake-org", repos: ["fake-org/playground"],
+      pk: `ROOM#${roomId}`, sk: "LINK#github", installationId: 1, account: "fake-org", repos: ["fake-org/playground"],
       addedBy: "aman", addedAt: new Date().toISOString(),
     },
   }));

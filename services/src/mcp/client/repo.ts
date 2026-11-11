@@ -141,7 +141,6 @@ export function mcpRepo(deps: Deps = liveDeps()) {
     const { name } = server;
     if (!opts.reconnect) await requireRoomFor(roomId, name);
     const now = new Date().toISOString();
-    // No `userId` attribute: the room's socket subscriptions share the CONN# prefix and are told apart by having one.
     const connection: McpConnection = { ...server, status: "connected", toolsAt: now, addedBy: user.username, addedAt: now };
     const sealed = opts.auth && seal(await deps.key(), JSON.stringify(opts.auth), authAad(roomId, name));
     try {

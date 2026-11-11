@@ -5,7 +5,7 @@ import { bestEffort } from "../lib/best-effort.js";
 import { conditionFailed, docClient, failedAt, queryAll, setFields, tableName, transactionConflict } from "../lib/db.js";
 import { Conflict, Forbidden, NotFound, ValidationError } from "../lib/errors.js";
 import { roomKey } from "../lib/keys.js";
-import { requireMember } from "../chat/membership.js";
+import { requireMember, roomMembers } from "../chat/membership.js";
 import { broadcastToRoom } from "../live/broadcast.js";
 import { uniqueCandidates } from "../threads/model.js";
 import type { Agent } from "../threads/types.js";
@@ -46,10 +46,7 @@ export function agentsRepo() {
 
   /** Lowercased, as mentions match names in any case. */
   async function usernames(roomId: string) {
-    const members = await queryAll({
-      KeyConditionExpression: "pk = :p AND begins_with(sk, :m)", ProjectionExpression: "username",
-      ExpressionAttributeValues: { ":p": roomKey(roomId), ":m": "MEMBER#" },
-    });
+    const members = await roomMembers(roomId, { fields: ["username"] });
     return new Set(members.map((m) => String(m.username).toLowerCase()));
   }
 

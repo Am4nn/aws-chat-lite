@@ -66,7 +66,7 @@ async function room({ researcherTools = ["web"], researcherModel = "room", githu
     await docClient().send(new PutCommand({
       TableName: tableName(),
       Item: {
-        pk: `ROOM#${roomId}`, sk: "CONN#github", installationId: 1, account: "fake-org", repos: ["fake-org/playground"],
+        pk: `ROOM#${roomId}`, sk: "LINK#github", installationId: 1, account: "fake-org", repos: ["fake-org/playground"],
         addedBy: "owner", addedAt: new Date().toISOString(),
       },
     }));

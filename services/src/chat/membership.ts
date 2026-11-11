@@ -1,7 +1,7 @@
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
-import { docClient, tableName } from "../lib/db.js";
+import { docClient, queryAll, tableName } from "../lib/db.js";
 import { Gone, NotFound } from "../lib/errors.js";
-import { memberKey } from "../lib/keys.js";
+import { memberKey, roomKey } from "../lib/keys.js";
 import type { Role } from "../rooms/access.js";
 
 /**
@@ -20,4 +20,26 @@ export async function requireMember(roomId: string, userId: string, opts: { writ
   if (!member) throw new NotFound("Room not found.");
   if (opts.writing && member.archived) throw new Gone("This room is archived.");
   return member.role;
+}
+
+/**
+ * Every member item of the room, across pages, with only `fields` when given. Consistent reads see a join or a removal
+ * at once.
+ */
+export function roomMembers(roomId: string, opts: { fields?: string[]; consistent?: boolean } = {}) {
+  const { fields, consistent } = opts;
+  return queryAll({
+    KeyConditionExpression: "pk = :p AND begins_with(sk, :m)", ConsistentRead: consistent,
+    ExpressionAttributeValues: { ":p": roomKey(roomId), ":m": "MEMBER#" },
+    ...(fields && {
+      ProjectionExpression: fields.map((f) => `#${f}`).join(", "),
+      ExpressionAttributeNames: Object.fromEntries(fields.map((f) => [`#${f}`, f])),
+    }),
+  });
+}
+
+/** The user's member items in rooms that aren't archived, from gsi1 (eventually consistent), in join order. */
+export async function liveMemberships(userId: string) {
+  const items = await queryAll({ IndexName: "gsi1", KeyConditionExpression: "gsi1pk = :u", ExpressionAttributeValues: { ":u": `USER#${userId}` } });
+  return items.filter((i) => !i.archived);
 }

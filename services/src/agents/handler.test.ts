@@ -22,7 +22,7 @@ function fakeTable(role: Role, rows: { github?: boolean } = {}) {
       const sk = String(c.input.Key?.sk);
       if (sk.startsWith("MEMBER#")) return { Item: { role } };
       if (sk === "AGENT#a1") return { Item: { pk: "ROOM#r", sk, ...scout } };
-      if (sk === "CONN#github" && rows.github) return { Item: { installationId: 1, repos: ["o/r"] } };
+      if (sk === "LINK#github" && rows.github) return { Item: { installationId: 1, repos: ["o/r"] } };
       return {};
     }
     if (c instanceof QueryCommand) {

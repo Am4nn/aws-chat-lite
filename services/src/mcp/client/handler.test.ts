@@ -90,7 +90,7 @@ function setup(roles: Record<string, Role> = { u1: "admin" }, rows?: Record<stri
 }
 
 const connect = (body: Record<string, unknown>) => ["POST /rooms/{roomId}/connections/mcp", { name: "test", redirectUri: REDIRECT, ...body }] as const;
-const mcpRow = (name: string) => ({ pk: "ROOM#r", sk: `CONN#mcp#${name}`, name, url: "https://x.example/mcp", auth: "none", status: "connected" });
+const mcpRow = (name: string) => ({ pk: "ROOM#r", sk: `LINK#mcp#${name}`, name, url: "https://x.example/mcp", auth: "none", status: "connected" });
 
 describe("who may change a room's MCP servers", () => {
   it("a member gets 403 on every change, and nothing is written or sent", async () => {
@@ -159,9 +159,7 @@ describe("adding a server", () => {
     ]);
     const [write] = t.commands(TransactWriteCommand);
     const [conn, audit] = write!.input.TransactItems!;
-    expect(conn!.Put?.Item).toMatchObject({ pk: "ROOM#r", sk: "CONN#mcp#test", status: "connected" });
-    // Room subscriptions share the CONN# prefix and are matched by userId, so a connection must never carry one.
-    expect(conn!.Put?.Item).not.toHaveProperty("userId");
+    expect(conn!.Put?.Item).toMatchObject({ pk: "ROOM#r", sk: "LINK#mcp#test", status: "connected" });
     expect(audit!.Put?.Item).toMatchObject({ kind: "connected", actor: "aman", detail: "MCP test (127.0.0.1)" });
     expect(write!.input.TransactItems).toHaveLength(2);
     expect(t.notify).toHaveBeenCalledWith("r");
@@ -221,7 +219,7 @@ describe("finishing a sign-in", () => {
     expect(res.body).toMatchObject({ roomId: "r", connection: { name: "test", auth: "oauth", status: "connected", toolCount: 4 } });
     const [write] = t.commands(TransactWriteCommand);
     const [conn, auth, audit] = write!.input.TransactItems!;
-    expect(conn!.Put?.Item).toMatchObject({ sk: "CONN#mcp#test", auth: "oauth" });
+    expect(conn!.Put?.Item).toMatchObject({ sk: "LINK#mcp#test", auth: "oauth" });
     expect(auth!.Update).toMatchObject({ Key: { pk: "ROOM#r", sk: "MCPAUTH#test" }, UpdateExpression: "SET sealed = :sealed ADD #version :one" });
     const sealed = String(auth!.Update!.ExpressionAttributeValues![":sealed"]);
     const stored = JSON.parse(unseal(KEY, sealed, "r#test"));
@@ -266,7 +264,7 @@ describe("a connected server", () => {
     const removed = await t.call("DELETE /rooms/{roomId}/connections/mcp/{name}");
     expect(removed.status).toBe(204);
     const [conn, auth, audit] = t.commands(TransactWriteCommand)[0]!.input.TransactItems!;
-    expect(conn!.Delete?.Key).toEqual({ pk: "ROOM#r", sk: "CONN#mcp#test" });
+    expect(conn!.Delete?.Key).toEqual({ pk: "ROOM#r", sk: "LINK#mcp#test" });
     expect(auth!.Delete?.Key).toEqual({ pk: "ROOM#r", sk: "MCPAUTH#test" });
     expect(audit!.Put?.Item).toMatchObject({ kind: "disconnected", detail: "MCP test" });
     expect(t.notify).toHaveBeenCalledTimes(2);

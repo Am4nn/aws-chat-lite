@@ -76,7 +76,7 @@ describe("getRoomView", () => {
     fakeTable((c) => {
       if (c instanceof GetCommand) return { Item: { name: "Room", ownerId: "u1", ...meta } };
       if (c instanceof QueryCommand) {
-        const prefix = c.input.ExpressionAttributeValues?.[":s"] ?? c.input.ExpressionAttributeValues?.[":a"];
+        const prefix = c.input.ExpressionAttributeValues?.[":s"] ?? c.input.ExpressionAttributeValues?.[":m"] ?? c.input.ExpressionAttributeValues?.[":a"];
         if (prefix === "MEMBER#") return { Items: [{ userId: "u1", username: "aman", role: "owner" }] };
         if (prefix === "AGENT#") return { Items: [{ pk: "ROOM#r1", sk: "AGENT#a1", agentId: "a1", name: "scout", builtIn: false }] };
       }
