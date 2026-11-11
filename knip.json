@@ -23,7 +23,8 @@
         "src/auth/presignup.ts",
         "src/runs/loop.ts",
         "src/runs/stream-handler.ts",
-        "src/spike/*.ts"
+        "src/spike/*.ts",
+        "src/**/*.live.test.ts"
       ],
       "project": [
         "src/**/*.ts"

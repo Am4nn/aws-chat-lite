@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { priceMicros } from "./catalog.js";
 import type { ModelChunk, ModelProvider, ModelRequest, ProviderChunk } from "./gateway.js";
-import { gateway } from "./index.js";
+import { gateway, liveProviders } from "./index.js";
 
 const request = (model: string, text: string): ModelRequest => ({
   model,
@@ -11,8 +11,8 @@ const request = (model: string, text: string): ModelRequest => ({
   maxTokens: 1000,
 });
 
-async function collect(chunks: AsyncIterable<ModelChunk>): Promise<ModelChunk[]> {
-  const out: ModelChunk[] = [];
+async function collect<T>(chunks: AsyncIterable<T>): Promise<T[]> {
+  const out: T[] = [];
   for await (const chunk of chunks) out.push(chunk);
   return out;
 }
@@ -78,9 +78,13 @@ describe("gateway", () => {
     expect(usageOf(chunks)).toMatchObject({ costMicros: expect.any(Number) });
   });
 
-  it("refuses a live model when no providers are wired", async () => {
-    await expect(collect(gateway({ MODEL_GATEWAY: "live" }).stream(request("claude-haiku-5-5", "hi")))).rejects.toThrow(
-      "Live models aren't wired here.",
+  it("builds the live providers from the model keys, and says which key is missing", async () => {
+    const live = gateway({ MODEL_GATEWAY: "live" });
+    await expect(collect(live.stream(request("claude-haiku-5-5", "hi")))).rejects.toThrow(
+      "Claude isn't set up here (no ANTHROPIC_API_KEY).",
+    );
+    await expect(collect(live.stream(request("deepseek-flash", "hi")))).rejects.toThrow(
+      "DeepSeek isn't set up here (no DEEPSEEK_API_KEY).",
     );
   });
 
@@ -94,5 +98,13 @@ describe("gateway", () => {
 
   it("rejects an unknown gateway", () => {
     expect(() => gateway({ MODEL_GATEWAY: "openai" })).toThrow("Unknown model gateway");
+  });
+});
+
+describe("liveProviders", () => {
+  it("refuses to stream a provider whose key is missing", async () => {
+    await expect(collect(liveProviders({}).anthropic.stream(request("claude-haiku-5-5", "hi")))).rejects.toThrow(
+      "Claude isn't set up here (no ANTHROPIC_API_KEY).",
+    );
   });
 });
