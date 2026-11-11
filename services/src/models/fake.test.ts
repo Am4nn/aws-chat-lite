@@ -135,15 +135,36 @@ describe("fakeModel", () => {
     await expect(collect(request([user("boom fail")]))).rejects.toThrow("fake model failure");
   });
 
-  it("drops the connection after N answer words with drop:N", async () => {
+  /** Streams until the fake throws, keeping what arrived before. */
+  async function untilDrop(req: ModelRequest) {
     const chunks: ProviderChunk[] = [];
     const drop = async () => {
-      for await (const chunk of model.stream(request([user("go tools:0 drop:3 words:10")]))) chunks.push(chunk);
+      for await (const chunk of model.stream(req)) chunks.push(chunk);
     };
     await expect(drop()).rejects.toThrow("fake connection dropped");
+    return chunks;
+  }
+
+  it("drops the connection after N answer chunks with drop:N, the headline first, reporting usage before it drops", async () => {
+    const chunks = await untilDrop(request([user("go tools:0 drop:3 words:10")]));
     const [headline, ...words] = texts(chunks);
     expect(headline).toBe('Fake answer for "go".\n\n');
-    expect(words).toHaveLength(3);
+    expect(words).toHaveLength(2);
+    expect(chunks.at(-1)).toMatchObject({ type: "usage", outputTokens: Math.ceil(textOf(chunks).length / 4) });
+  });
+
+  it("drops before any text with drop:0, still reporting the input it was sent", async () => {
+    const chunks = await untilDrop(request([user("go tools:0 drop:0")]));
+    expect(types(chunks)).toEqual(["usage"]);
+    expect(chunks[0]).toMatchObject({ outputTokens: 0, inputTokens: Math.ceil("go tools:0 drop:0".length / 4) });
+  });
+
+  it("ends aborted, not dropped, when the abort lands during the last chunk before a drop", async () => {
+    const controller = new AbortController();
+    const slowModel = fakeModel({ sleep: async () => { controller.abort(); } });
+    const chunks: ProviderChunk[] = [];
+    for await (const chunk of slowModel.stream(request([user("go tools:0 drop:1")], { signal: controller.signal }))) chunks.push(chunk);
+    expect(chunks.at(-1)).toEqual({ type: "end", stop: "aborted" });
   });
 
   it("cuts off a tool call at the length limit with cutoff", async () => {

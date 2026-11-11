@@ -142,6 +142,33 @@ describe("run steps and starts under injected failures", () => {
     expect(await spent(roomId)).toBe(turn.costMicros);
   });
 
+  it("a call that drops before any text is billed, then tried again, its cost counting both calls", async () => {
+    const { roomId, run } = await runningThread("go tools:0 drop:0");
+    await expect(modelTurn(run, 1)).rejects.toThrow("fake connection dropped");
+    expect(await count(run.runId, "usage")).toBe(1);
+    expect(await spent(roomId)).toBeGreaterThan(0);
+    // The connection comes back: the retried call reads the same first message, minus the drop.
+    await docClient().send(new UpdateCommand({
+      TableName: tableName(), Key: { pk: `CHAT#${run.threadId}`, sk: seqKey(run.firstSeq) },
+      UpdateExpression: "SET #text = :t", ExpressionAttributeNames: { "#text": "text" }, ExpressionAttributeValues: { ":t": "go tools:0 words:3" },
+    }));
+    const turn = await modelTurn(run, 1);
+    expect(turn.end).toBeUndefined();
+    expect(answers(answerOf(await runs.allEvents(run.runId)).text)).toBe(1);
+    expect(await count(run.runId, "usage")).toBe(2);
+    expect(await spent(roomId)).toBe(turn.costMicros);
+  });
+
+  it("a call that drops after its text is billed once and ends the run failed, and a retry doesn't call again", async () => {
+    const { roomId, run } = await runningThread("go tools:0 drop:5 words:20");
+    const turn = await modelTurn(run, 1);
+    expect(turn.end).toEqual({ status: "failed", reason: "The model's connection dropped mid-answer." });
+    expect(turn.costMicros).toBeGreaterThan(0);
+    expect(await modelTurn(run, 1)).toEqual(turn);
+    expect(await count(run.runId, "usage")).toBe(1);
+    expect(await spent(roomId)).toBe(turn.costMicros);
+  });
+
   it("a tool turn retried after its usage failed to record voids the first attempt's native turn", async () => {
     const { run } = await runningThread("go tools:1");
     fail(usageWrite);

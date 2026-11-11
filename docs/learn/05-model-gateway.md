@@ -25,7 +25,7 @@ The fake model gained directives (still read from the thread's first message):
 | Directive | Effect |
 |---|---|
 | `route:<word>` | the router's reply, so `route:haiku` makes Auto pick Haiku (and `route:opus` still gives Sonnet) |
-| `drop:N` | the connection drops after N answer words |
+| `drop:N` | the connection drops after N answer chunks (the headline is the first, so `drop:0` drops before any text), reporting usage first as a real provider does |
 | `cutoff` | the turn stops at the length limit inside a tool call |
 | `refuse` | the model declines, with no text |
 
