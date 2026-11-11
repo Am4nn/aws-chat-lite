@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { Message, ThreadSummary } from "../types";
-import { applyThreadUpdate, groupThread, liveCount, runLabel, runMeta, sidebarThreads, slugName, threadMeta } from "./threads";
+import type { Message, ThreadStatus, ThreadSummary } from "../types";
+import {
+  applyThreadUpdate, groupThread, liveCount, mergeBudget, nextRunDeadline, runLabel, runMeta, settleDeadRuns, sidebarThreads, slugName,
+  stateText, threadMeta,
+} from "./threads";
 
 const th = (o: Partial<ThreadSummary>): ThreadSummary => ({
   roomId: "r", threadId: "t1", number: 1, name: "n", status: "idle", rev: 1, steps: 0, costMicros: 0,
@@ -31,6 +34,56 @@ describe("thread list", () => {
 
   it("counts running threads", () => {
     expect(liveCount([th({ status: "running" }), th({ status: "done" })])).toBe(1);
+  });
+});
+
+describe("dead runs", () => {
+  const now = Date.parse("2026-11-11T15:00:00Z");
+  const ago = (min: number) => new Date(now - min * 60_000).toISOString();
+
+  it("reads a run still running past the server's cutoff as failed", () => {
+    const [dead, alive] = settleDeadRuns([
+      th({ threadId: "a", status: "running", startedAt: ago(136) }),
+      th({ threadId: "b", status: "running", startedAt: ago(134) }),
+    ], now);
+    expect([dead.status, alive.status]).toEqual(["failed", "running"]);
+    expect(runLabel(dead)).toBe("Failed");
+    expect(threadMeta(dead, now).text).toBe("failed");
+  });
+
+  it("lets a dead run leave the live count and archive", () => {
+    const list = settleDeadRuns([th({ status: "running", startedAt: ago(136), lastActivityAt: ago(8 * 24 * 60) })], now);
+    expect(liveCount(list)).toBe(0);
+    expect(sidebarThreads(list, now)).toEqual([]);
+  });
+
+  it("knows when the next live run reaches the cutoff", () => {
+    const list = [
+      th({ threadId: "a", status: "running", startedAt: ago(136) }),
+      th({ threadId: "b", status: "running", startedAt: ago(130) }),
+      th({ threadId: "c", status: "running", startedAt: ago(10) }),
+    ];
+    expect(nextRunDeadline(list, now)).toBe(now + 5 * 60_000);
+    expect(nextRunDeadline([th({ status: "done" })], now)).toBe(Infinity);
+  });
+});
+
+describe("mergeBudget", () => {
+  const b = (month: string, spentMicros: number, capMicros = 3_000_000) => ({ month, spentMicros, capMicros, resetsAt: "" });
+  it("never rolls spend back within a month, but takes the newest cap", () => {
+    expect(mergeBudget(b("2026-11", 500), b("2026-11", 300, 5_000_000))).toEqual(b("2026-11", 500, 5_000_000));
+    expect(mergeBudget(b("2026-11", 300), b("2026-11", 500))).toEqual(b("2026-11", 500));
+  });
+  it("starts over in a new month and ignores a late frame from the last one", () => {
+    expect(mergeBudget(b("2026-11", 500), b("2026-12", 0))).toEqual(b("2026-12", 0));
+    expect(mergeBudget(b("2026-12", 0), b("2026-11", 500))).toEqual(b("2026-12", 0));
+  });
+});
+
+describe("stateText (a thread's state for screen readers)", () => {
+  it("says the state in words, and nothing for a thread that never ran", () => {
+    expect(["running", "done", "stopped", "failed", "capped", "idle"].map((s) => stateText(s as ThreadStatus)))
+      .toEqual(["running", "done", "stopped", "failed", "budget reached", ""]);
   });
 });
 

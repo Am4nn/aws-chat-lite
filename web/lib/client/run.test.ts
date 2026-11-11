@@ -90,6 +90,11 @@ describe("runRows", () => {
     ]);
   });
 
+  it("marks a steer the run ended without reading as not read, not queued", () => {
+    const ended = run(step(1, 1), ev(2, { type: "run.finished", status: "done", ms: 1, steps: 1, costMicros: 0 }));
+    expect(runRows(ended, [m(5)], []).map((r) => r.kind === "steer" && r.state)).toEqual([false, "unread"]);
+  });
+
   it("keeps a steer the same row from sending to queued to read", () => {
     const pending = [{ clientId: "k", text: "t", createdAt: "", attachments: [] }];
     const sending = runRows(emptyRun(), [], pending)[0];

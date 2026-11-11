@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useParams, usePathname, useRouter } from "next/navigation";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { Bot, Search } from "lucide-react";
 import { bff, bffOrNull, errorText } from "@/lib/client/bff";
 import { useLive, useLiveStatus } from "@/lib/client/LiveProvider";
@@ -87,8 +87,10 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
 
   // Following a link out of the drawer or panel closes it, and opening a thread shows its run in the panel.
   const [shownPath, setShownPath] = useState(pathname);
+  const [navigated, setNavigated] = useState(false);
   if (shownPath !== pathname) {
     setShownPath(pathname);
+    setNavigated(true);
     setOverlay(null);
     if (number) setPanelTab("context");
   }
@@ -183,6 +185,9 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
     ...threads.threads.filter((t) => t.archived).sort((a, b) => b.number - a.number).map(threadItem("Archived")),
   ];
 
+  // Only the page that arrives animates. An exiting copy would re-render with the new route (the App Router doesn't
+  // freeze a leaving segment), mounting the next page twice; and the page the room opened on is already in place.
+  const enter = enterFrom(dir, reducedMotion);
   const activeChat = view.chats.find((c) => c.chatId === chatId);
   const isOwner = view.me.role === "owner";
 
@@ -218,11 +223,9 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
             onMenu={() => setOverlay("nav")} onSearch={openSearch} onTogglePanel={togglePanel}
           />
           <div className="relative min-h-0 flex-1 overflow-hidden">
-            <AnimatePresence mode="popLayout" initial={false}>
-              <motion.div key={pathname} {...enterFrom(dir, reducedMotion)} exit={{ opacity: 0 }} className="absolute inset-0">
-                {children}
-              </motion.div>
-            </AnimatePresence>
+            <motion.div key={pathname} {...enter} initial={navigated ? enter.initial : false} className="absolute inset-0">
+              {children}
+            </motion.div>
           </div>
         </main>
         <Panel

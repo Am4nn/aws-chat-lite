@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ChevronRight, Reply } from "lucide-react";
-import { runLabel, runMeta } from "@/lib/client/threads";
+import { runLabel, runMeta, stateText } from "@/lib/client/threads";
 import { useThreads } from "@/lib/client/ThreadsProvider";
 import { useNow } from "@/lib/client/useNow";
 import { dur, easeOut, instant } from "@/lib/motion";
@@ -58,6 +58,7 @@ function ThreadCard({ thread: t, href, readOnly, onReply }: { thread: ThreadSumm
         <ThreadStatusIcon status={t.status} />
         <span className="min-w-0 truncate text-[13.5px] font-medium">
           <span className="font-mono text-[12.5px] font-normal text-text-3">#{t.number}</span> {t.name}
+          {t.status !== "idle" && <span className="sr-only">, {stateText(t.status)}</span>}
         </span>
         <span className="ml-auto flex shrink-0 items-center">
           {!readOnly && (

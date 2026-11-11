@@ -73,7 +73,7 @@ export function BudgetCard({ roomId, isOwner }: { roomId: string; isOwner: boole
             onClick={() => setDraft((budget.capMicros / 1_000_000).toFixed(2))}
             aria-label="Change the monthly cap"
             title="Change the monthly cap"
-            className="-mr-1 grid size-5 place-items-center rounded-md text-text-3 transition-[background-color,color,transform] hover:bg-surface-3 hover:text-text active:scale-90"
+            className="-mr-1.5 grid size-6 place-items-center rounded-md text-text-3 transition-[background-color,color,transform] hover:bg-surface-3 hover:text-text active:scale-90"
           >
             <Pencil aria-hidden="true" size={12} />
           </button>
@@ -89,16 +89,21 @@ export function BudgetCard({ roomId, isOwner }: { roomId: string; isOwner: boole
   );
 }
 
-/** A "?" that explains the reset on hover or focus, keeping the card to one line of text. */
+/**
+ * A "?" that explains the reset on hover or focus, keeping the card to one line of text. The mark is drawn small, but
+ * the button around it is a full 24 px target.
+ */
 function ResetHint({ resetsAt }: { resetsAt: string }) {
   const text = `Resets on ${resetsOn(resetsAt)} (00:00 UTC)`;
   return (
     <span className="group relative ml-0.5 flex">
-      <button
-        aria-label={text}
-        className="grid size-4 place-items-center rounded-full border border-line-strong font-mono text-[10px] leading-none text-text-3 transition-colors hover:border-[#36403f] hover:text-text-2"
-      >
-        ?
+      <button aria-label={text} className="-mx-1 grid size-6 place-items-center rounded-full">
+        <span
+          aria-hidden="true"
+          className="grid size-4 place-items-center rounded-full border border-line-strong font-mono text-[10px] leading-none text-text-3 transition-colors group-hover:border-[#36403f] group-hover:text-text-2"
+        >
+          ?
+        </span>
       </button>
       <span
         role="tooltip"

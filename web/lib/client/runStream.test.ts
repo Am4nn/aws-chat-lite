@@ -113,7 +113,52 @@ describe("openRunStream", () => {
     openRunStream({ getUrl: async () => "u", onEvent: () => {}, onError, fetchImpl: fetchImpl as never });
     await vi.advanceTimersByTimeAsync(60_000);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(onError).toHaveBeenCalledWith(404);
+    expect(onError).toHaveBeenCalledOnce();
+  });
+
+  it("stops and reports when the stream's url is refused, as when I'm no longer in the room", async () => {
+    vi.useFakeTimers();
+    const getUrl = vi.fn(async () => { throw Object.assign(new Error("Not found"), { status: 404 }); });
+    const onError = vi.fn();
+    openRunStream({ getUrl, onEvent: () => {}, onError, fetchImpl: vi.fn() as never });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(getUrl).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledOnce();
+  });
+
+  it("keeps asking for a url after a failure that may pass", async () => {
+    vi.useFakeTimers();
+    const getUrl = vi.fn()
+      .mockRejectedValueOnce(Object.assign(new Error("busy"), { status: 503 }))
+      .mockResolvedValueOnce("u");
+    const fetchImpl = vi.fn(async () => body(frame(1, { type: "run.finished", status: "done", ms: 1, steps: 0, costMicros: 0 })));
+    openRunStream({ getUrl, onEvent: () => {}, fetchImpl: fetchImpl as never, random: () => 0.5 });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives up and reports when the same event keeps failing to apply", async () => {
+    vi.useFakeTimers();
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fetchImpl = vi.fn(async () => body(frame(1, { type: "text", text: "a" })));
+    const onError = vi.fn();
+    openRunStream({ getUrl: async () => "u", onEvent: () => { throw new Error("bad"); }, onError, fetchImpl: fetchImpl as never, random: () => 0.5 });
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(onError).toHaveBeenCalledOnce();
+    expect(error).toHaveBeenCalledOnce();
+    error.mockRestore();
+  });
+
+  it("reassembles a CRLF line ending split across chunks", async () => {
+    vi.useFakeTimers();
+    const full = frame(1, { type: "text", text: "hi" }).replace(/\n/g, "\r\n");
+    const cut = full.indexOf("\r\n") + 1;
+    const fetchImpl = vi.fn(async () => body(full.slice(0, cut), full.slice(cut, -1), full.slice(-1)));
+    const seen: number[] = [];
+    openRunStream({ getUrl: async () => "u", onEvent: (e) => seen.push(e.seq), fetchImpl: fetchImpl as never });
+    await flush();
+    expect(seen).toEqual([1]);
   });
 
   it("retries a 429 with backoff", async () => {
