@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { startLocalMcpTestServer } from "./mcp-test-local.js";
 import { startLocalSandboxServer } from "./sandbox-local.js";
 import { startLocalStreamServer } from "./stream-local.js";
+import { startLocalTranscribeServer } from "./transcribe-local.js";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 
@@ -13,17 +14,18 @@ if (!npmCli) throw new Error("Run this through npm: npm run dev");
 const sandbox = await startLocalSandboxServer();
 const mcp = await startLocalMcpTestServer();
 const stream = startLocalStreamServer();
+const transcribe = startLocalTranscribeServer();
 const web = spawn(process.execPath, [npmCli, "-w", "web", "run", "dev"], { cwd: root, stdio: "inherit" });
 
 function stopServers() {
-  for (const server of [stream, sandbox]) {
+  for (const server of [stream, sandbox, transcribe]) {
     server.closeAllConnections();
     server.close();
   }
   void mcp.close();
 }
 
-// Ctrl+C reaches both processes; once the web server has gone, open streams, sandbox and MCP calls are cut and this process exits too.
+// Ctrl+C reaches both processes; once the web server has gone, open streams, dictations, sandbox and MCP calls are cut and this process exits too.
 web.on("exit", (code) => {
   stopServers();
   process.exit(code ?? 0);
