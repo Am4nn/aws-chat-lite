@@ -26,6 +26,8 @@ interface RoomView {
   defaultModel: ModelPick;
   /** The model picker, as this stage offers it. */
   models: ModelOption[];
+  /** Whether the room's sandbox reaches the internet; off until an admin turns it on. */
+  sandboxInternet: boolean;
 }
 
 const nowSec = () => Math.floor(Date.now() / 1000);
@@ -208,6 +210,7 @@ export function roomsRepo() {
         budget: budgetOf(month, meta, usage),
         defaultModel: (meta.defaultModel as ModelPick | undefined) ?? "auto",
         models: modelOptions(process.env.STAGE ?? ""),
+        sandboxInternet: !!meta.sandboxInternet,
       };
     },
 
@@ -220,6 +223,16 @@ export function roomsRepo() {
         ExpressionAttributeValues: { ":m": pick },
       }));
       return pick;
+    },
+
+    /** Read when a run opens its sandbox, so a change applies to the next sandbox, not to one already open. */
+    async setSandboxInternet(user: User, roomId: string, on: boolean): Promise<boolean> {
+      await requireRole(roomId, user.userId, "setSandbox", { writing: true });
+      await db.send(new UpdateCommand({
+        TableName, Key: { pk: roomKey(roomId), sk: "META" }, UpdateExpression: "SET sandboxInternet = :on",
+        ConditionExpression: "attribute_exists(pk)", ExpressionAttributeValues: { ":on": on },
+      }));
+      return on;
     },
 
     /**

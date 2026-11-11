@@ -1,6 +1,11 @@
 export const ROOM_FILES_BYTES = 104_857_600;
 export const MAX_ROOM_FILE_BYTES = 26_214_400;
 export const MAX_ROOM_FILES = 1000;
+
+export const TOO_BIG = "Room files are 25 MB at most.";
+export const OVER_QUOTA = "The room's files would pass 100 MB.";
+export const TOO_MANY = "A room keeps 1,000 files at most.";
+
 /** Folders the sandbox may create but that are never synced to the room. */
 export const SKIPPED_DIRS = [".git", "node_modules", ".venv", "venv", "__pycache__", ".cache"];
 

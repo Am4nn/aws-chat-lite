@@ -1,4 +1,4 @@
-import { RemovalPolicy } from "aws-cdk-lib";
+import { Duration, RemovalPolicy } from "aws-cdk-lib";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import type { CoreStack } from "./core-stack.js";
@@ -6,7 +6,7 @@ import type { CoreStack } from "./core-stack.js";
 /**
  * Socket tickets, message history, search and file uploads: one Lambda behind the HTTP API's JWT authorizer. Files go
  * straight between the browser and a private bucket on presigned URLs: the chat Lambda signs uploads and downloads,
- * and the live Lambda signs downloads for the messages it sends out.
+ * and the live Lambda signs downloads for the messages it sends out. The same bucket holds the room's files.
  */
 export function addChat(stack: CoreStack) {
   const { prefix, isLocal, siteOrigins, s3PublicEndpoint } = stack.stageConfig;
@@ -16,6 +16,9 @@ export function addChat(stack: CoreStack) {
     blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
     encryption: s3.BucketEncryption.S3_MANAGED,
     enforceSSL: !isLocal, // Floci serves plain http.
+    // A room file is uploaded to staging and copied into the room when its commit is accepted, so anything left in
+    // staging was abandoned or refused.
+    lifecycleRules: [{ prefix: "staging/", expiration: Duration.days(1) }],
     cors: [{ allowedMethods: [s3.HttpMethods.POST, s3.HttpMethods.GET], allowedOrigins: siteOrigins, allowedHeaders: ["*"] }],
     // Uploads are user data, so on AWS the bucket outlives a `cdk destroy`; locally Floci's data is disposable. CDK's
     // autoDeleteObjects can't empty it first on Floci: its custom-resource Lambda calls S3 on port 443, which Floci
@@ -42,4 +45,5 @@ export function addChat(stack: CoreStack) {
   stack.route("GET", "/rooms/{roomId}/chats/{chatId}/messages", fn);
   stack.route("GET", "/rooms/{roomId}/search", fn);
   stack.route("POST", "/rooms/{roomId}/attachments", fn);
+  return files;
 }
