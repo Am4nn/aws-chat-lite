@@ -1,3 +1,5 @@
+import "server-only";
+
 /** Server-only settings, read at request time so they never end up in the browser bundle. */
 export function serverEnv() {
   const e = process.env;
