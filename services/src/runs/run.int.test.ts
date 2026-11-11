@@ -307,6 +307,7 @@ describe("routing, privacy and how a model call ends, on Floci", { timeout: 60_0
     expect(usageOf(events)).toEqual(["route:claude-haiku-5-5", "name:claude-haiku-5-5", "run:claude-sonnet-5-5"]);
     const [answer] = await answersIn(owner, roomId, thread.threadId);
     expect(answer!.agent).toMatchObject({ pick: "auto", model: "claude-sonnet-5-5" });
+    expect((await threadsRepo().threadById(roomId, thread.threadId))?.model).toBe("claude-sonnet-5-5");
   });
 
   it("Auto takes Haiku when the router says haiku, and never escalates past Sonnet", async () => {

@@ -55,9 +55,10 @@ export async function putBytes(key: string, bytes: Uint8Array, type: string) {
   await objects().send(new PutObjectCommand({ Bucket: filesBucket(), Key: key, Body: bytes, ContentType: type }));
 }
 
-/** Server side: the bytes never pass through the Lambda. */
+/** Server side: the bytes never pass through the Lambda. S3 reads the source as a URL path, so each segment is encoded. */
 export async function copyObject(from: string, to: string) {
-  await objects().send(new CopyObjectCommand({ Bucket: filesBucket(), CopySource: `${filesBucket()}/${encodeURI(from)}`, Key: to }));
+  const source = from.split("/").map(encodeURIComponent).join("/");
+  await objects().send(new CopyObjectCommand({ Bucket: filesBucket(), CopySource: `${filesBucket()}/${source}`, Key: to }));
 }
 
 /**

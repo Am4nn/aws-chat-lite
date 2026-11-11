@@ -1,8 +1,8 @@
-import type { ApprovalStatus, Message, ModelPick, RunEndStatus, RunEvent, Source } from "../types";
+import type { ApprovalStatus, FilesSynced, Message, ModelPick, RunEndStatus, RunEvent, Source } from "../types";
 import { keyOf, type PendingMessage } from "./timeline";
 
 export type RunItem =
-  | { kind: "step"; step: number; name: string; detail: string; status: "running" | "done" | "failed"; output?: string; ms?: number; startedAt: string }
+  | { kind: "step"; step: number; name: string; detail: string; status: "running" | "done" | "failed"; output?: string; ms?: number; startedAt: string; files?: FilesSynced }
   | { kind: "steer"; messageSeq: number; authorName: string; text: string; at: string }
   | {
     kind: "approval"; step: number; title: string; call: { id: string; name: string; input: Record<string, unknown> }; expiresAt: string;
@@ -74,7 +74,12 @@ export function applyRunEvent(v: RunView, e: RunEvent): RunView {
         items: v.items.map((i) => (i.kind === "approval" && i.step === e.step ? { ...i, status: e.decision, by: e.by } : i)),
       };
     case "files.synced":
-      return next;
+      return {
+        ...next,
+        items: v.items.map((i) =>
+          i.kind === "step" && i.step === e.step ? { ...i, files: { written: e.written, deleted: e.deleted, notes: e.notes } } : i,
+        ),
+      };
     case "usage":
       return { ...next, costMicros: v.costMicros + e.costMicros };
     case "run.finished": {
@@ -117,6 +122,20 @@ export function runRows(v: RunView, steers: Message[], pending: PendingMessage[]
     rows.push({ kind: "steer", key: keyOf(p), text: p.text, clientId: p.clientId, state: p.failed ? "failed" : "sending" });
   }
   return rows;
+}
+
+/**
+ * A sandbox step's output ends with what it did to the room's files, the lines the model read. Split off, the run view
+ * can show them apart from what the code printed.
+ */
+export function splitSyncLines(output: string, files: FilesSynced): { output: string; lines: string[] } {
+  const lines = [
+    ...(files.written.length ? [`Saved to room files: ${files.written.join(", ")}`] : []),
+    ...(files.deleted.length ? [`Deleted from room files: ${files.deleted.join(", ")}`] : []),
+    ...files.notes,
+  ];
+  const tail = `\n${lines.join("\n")}`;
+  return lines.length && output.endsWith(tail) ? { output: output.slice(0, -tail.length), lines } : { output, lines: [] };
 }
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;

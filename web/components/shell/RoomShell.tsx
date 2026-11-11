@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { motion, useReducedMotion } from "motion/react";
-import { Bot, Plug, Search, UserPlus, Users } from "lucide-react";
+import { Bot, Folder, Plug, Search, UserPlus, Users } from "lucide-react";
 import { bff, bffOrNull, errorText } from "@/lib/client/bff";
 import { useLive, useLiveStatus } from "@/lib/client/LiveProvider";
+import { ModelsProvider } from "@/lib/client/ModelsProvider";
 import { sidebarThreads } from "@/lib/client/threads";
 import { useThreads } from "@/lib/client/ThreadsProvider";
 import { useNow } from "@/lib/client/useNow";
@@ -25,6 +26,8 @@ import { MemberList } from "@/components/rooms/MemberList";
 import { InvitePanel } from "@/components/rooms/InvitePanel";
 import { inviteUrl } from "@/components/rooms/invite";
 import { MentionSound } from "@/components/chat/MentionSound";
+import { FilesPanel } from "@/components/files/FilesPanel";
+import { useRoomFiles } from "@/components/files/useRoomFiles";
 import { SearchPanel } from "@/components/chat/SearchPanel";
 import { RunCapsule } from "@/components/threads/RunCapsule";
 import { RunPanel } from "@/components/threads/RunPanel";
@@ -72,6 +75,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
   const timeZone = useTimeZone(serverTimeZone);
   const activeThread = number ? threads.byNumber(Number(number)) : undefined;
   const members = usePresence(view.members, me.userId);
+  const files = useRoomFiles(roomId);
   const exitRoom = useRoomExit({ roomId, rooms, onExited: () => setDialog(null) });
 
   // The socket outlives room switches and subscribes only to the rooms the user was in when it connected, so each
@@ -194,7 +198,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
   const isOwner = view.me.role === "owner";
 
   return (
-    <>
+    <ModelsProvider view={view}>
       <MentionSound meId={me.userId} />
       <NeedsYouToast roomId={roomId} openThreadId={activeThread?.threadId} panelOpen={panelOpen} />
       <div className="flex h-dvh overflow-hidden bg-ink">
@@ -223,6 +227,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
                 {activeThread.runId && <RunCapsule key={activeThread.threadId} thread={activeThread} />}
               </>
             )}
+            taint={activeThread?.taint}
             onMenu={() => setOverlay("nav")} onSearch={openSearch} onTogglePanel={togglePanel}
           />
           <div className="relative min-h-0 flex-1 overflow-hidden">
@@ -237,7 +242,16 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
           active={panelTab}
           onActiveChange={setPanelTab}
           tabs={[
-            ...(activeThread ? [{ id: "context", label: "Context", icon: Bot, content: <RunPanel thread={activeThread} /> }] : []),
+            ...(activeThread ? [{ id: "context", label: "Context", icon: Bot, content: <RunPanel thread={activeThread} files={files.files} /> }] : []),
+            {
+              id: "files", label: `Files · ${files.files.length}`, icon: Folder,
+              content: (
+                <FilesPanel
+                  roomId={roomId} store={files} threads={threads.threads} internet={view.sandboxInternet}
+                  canSwitch={isAdmin(view.me.role) && !room.archived} canWrite={!room.archived}
+                />
+              ),
+            },
             { id: "members", label: `Members · ${members.length}`, icon: Users, content: <MemberList roomId={roomId} members={members} myRole={view.me.role} myUserId={me.userId} /> },
             ...(isAdmin(view.me.role) && !room.archived ? [{ id: "invite", label: "Invite", icon: UserPlus, content: <InvitePanel roomId={roomId} /> }] : []),
             { id: "connections", label: "Connections", icon: Plug, content: <ConnectionsPanel roomId={roomId} archived={room.archived} /> },
@@ -265,6 +279,6 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
           invite link stops working.
         </Confirm>
       </Modal>
-    </>
+    </ModelsProvider>
   );
 }

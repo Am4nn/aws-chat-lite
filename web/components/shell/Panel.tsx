@@ -11,7 +11,7 @@ type PanelTab = { id: string; label: string; icon: LucideIcon; content: ReactNod
 /**
  * The right-hand room panel. It slides its width rather than popping in and out, and the active tab is marked by a
  * pill that slides between tabs. The inner column keeps a fixed width so content never reflows while the panel moves.
- * Five labelled tabs don't fit in 320 px, so the others shrink to their icons and only the active tab spells its name.
+ * Six labelled tabs don't fit in 320 px, so the others shrink to their icons and only the active tab spells its name.
  * On a phone it is an overlay instead, sliding in from the right edge (`overlayOpen`), and CSS decides which form
  * shows, so the first paint is right before any script runs.
  * Closed, it is inert: hidden from screen readers and out of the tab order, so focus never lands on invisible buttons.

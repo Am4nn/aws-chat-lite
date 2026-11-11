@@ -1,6 +1,7 @@
 import type { ModelMessage, ModelProvider, ModelRequest, ProviderChunk, StopReason, ToolCall } from "./gateway.js";
 import { NAME_PROMPT } from "./gateway.js";
 import { sleep as wait } from "../lib/sleep.js";
+import type { Language } from "../sandbox/sandbox.js";
 import { ROUTER_PROMPT } from "./picks.js";
 
 const BODY_WORDS =
@@ -39,7 +40,7 @@ function sampleInput(schema: Schema): unknown {
 
 /** Each sh`…`, py`…` or js`…` span in the prompt is one sandbox_run call. */
 const SPAN = /\b(sh|py|js)`([^`]*)`/g;
-const LANGUAGES: Record<string, string> = { sh: "shell", py: "python", js: "javascript" };
+const SPAN_LANGUAGES: Record<string, Language> = { sh: "shell", py: "python", js: "javascript" };
 
 const charsOf = (m: ModelMessage) => {
   if (m.role === "tool") return m.output.length;
@@ -56,14 +57,15 @@ async function* run(req: ModelRequest, sleep: (ms: number) => Promise<void>): As
   const inputChars = req.system.length + req.messages.reduce((sum, m) => sum + charsOf(m), 0);
   let outputChars = 0;
   const calls: string[] = [];
+  const usage = (): ProviderChunk => ({
+    type: "usage",
+    inputTokens: Math.ceil(inputChars / 4),
+    outputTokens: Math.ceil(outputChars / 4),
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+  });
   const finish = (stop: StopReason): ProviderChunk[] => [
-    {
-      type: "usage",
-      inputTokens: Math.ceil(inputChars / 4),
-      outputTokens: Math.ceil(outputChars / 4),
-      cacheReadTokens: 0,
-      cacheWriteTokens: 0,
-    },
+    usage(),
     stop === "aborted" ? { type: "end", stop } : { type: "end", stop, native: { model: req.model, content: { fake: true, calls } } },
   ];
   const reply = (text: string): ProviderChunk[] => {
@@ -81,7 +83,7 @@ async function* run(req: ModelRequest, sleep: (ms: number) => Promise<void>): As
     return;
   }
 
-  const spans = [...prompt.matchAll(SPAN)].map(([, lang, code]) => ({ language: LANGUAGES[lang!]!, code: code! }));
+  const spans = [...prompt.matchAll(SPAN)].map(([, lang, code]) => ({ language: SPAN_LANGUAGES[lang!]!, code: code! }));
   const sandboxOffered = req.tools.some((t) => t.name === "sandbox_run");
   const sandboxCalls = sandboxOffered ? spans : [];
   // Directives are read outside the spans, so code that says "fail" or "slow" is only code.
@@ -134,19 +136,23 @@ async function* run(req: ModelRequest, sleep: (ms: number) => Promise<void>): As
   body[words - 1] += ".";
   const noSandbox = spans.length && !sandboxOffered ? "(no sandbox here) " : "";
   const pieces = [`${noSandbox}Fake answer for "${query}".\n\n`, ...body.map((w, i) => (i < words - 1 ? `${w} ` : w))];
-  for (const text of drop === undefined ? pieces : pieces.slice(0, drop + 1)) {
-    if (req.signal?.aborted) {
-      yield* finish("aborted");
-      return;
-    }
+  for (const text of drop === undefined ? pieces : pieces.slice(0, drop)) {
     if (outputChars / 4 >= req.maxTokens) {
       yield* finish("max_tokens");
       return;
     }
     await sleep(slow ? 150 : 15);
+    if (req.signal?.aborted) {
+      yield* finish("aborted");
+      return;
+    }
     outputChars += text.length;
     yield { type: "text", text };
   }
-  if (drop !== undefined) throw new Error("fake connection dropped");
+  if (drop !== undefined) {
+    // As the real adapter does, a dropped stream reports what it has used before the error.
+    yield usage();
+    throw new Error("fake connection dropped");
+  }
   yield* finish("end_turn");
 }

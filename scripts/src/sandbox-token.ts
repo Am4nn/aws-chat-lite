@@ -7,10 +7,12 @@ const TOKEN_PATH = fileURLToPath(new URL("../../.secrets/sandbox-token", import.
 
 /**
  * The secret the local run Lambda sends to the sandbox server. It is made once and kept in .secrets/ (ignored by git),
- * because the deploy bakes it into the Lambda's environment and the server must still match it after a restart.
+ * because the deploy bakes it into the Lambda's environment and the server must still match it after a restart. An
+ * empty file gets a new token: an empty one would leave the server refusing to start and the Lambda without one.
  */
 export function localSandboxToken(path = TOKEN_PATH): string {
-  if (existsSync(path)) return readFileSync(path, "utf8").trim();
+  const kept = existsSync(path) ? readFileSync(path, "utf8").trim() : "";
+  if (kept) return kept;
   const token = randomBytes(32).toString("hex");
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, token, { mode: 0o600 });

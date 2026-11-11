@@ -3,7 +3,6 @@ import { approvalsRepo, type Approval } from "../approvals/repo.js";
 import { auditRepo } from "../audit/repo.js";
 import { connectionsRepo } from "../connections/repo.js";
 import type { ToolCall } from "../models/gateway.js";
-import { gateway } from "../models/index.js";
 import { findTool, toolEnv } from "../tools/index.js";
 import { repoOf } from "../tools/github/repo.js";
 import { threadsRepo } from "../threads/repo.js";
@@ -11,7 +10,7 @@ import type { ApprovalStatus } from "../threads/types.js";
 import { DEAD_AFTER_MS } from "./model.js";
 import { notifyRun } from "./notify.js";
 import { runsRepo, type Run } from "./repo.js";
-import { limitsReached } from "./steps.js";
+import { limitsReached, models } from "./steps.js";
 import { mayRun } from "./tools.js";
 
 /*
@@ -31,7 +30,7 @@ type Gate = { asks: false } | { asks: true; timeoutSec: number; title: string; i
  */
 export async function gateOf(run: Run & { model: string }, call: ToolCall, tainted: boolean): Promise<Gate> {
   const tool = findTool(call.name);
-  if (!tool || !mayRun(run.model, gateway().servedBy(run.model), call.name)) return { asks: false };
+  if (!tool || !mayRun(run.model, models().servedBy(run.model), call.name)) return { asks: false };
   const privateThread = async () => tainted || !!(await threadsRepo().threadById(run.roomId, run.threadId))?.taint.length;
   if (!(tool.write || (tool.kind === "web" && await privateThread())) || await limitsReached(run)) return { asks: false };
   const { github, approvalTimeoutSec } = await connectionsRepo().get(run.roomId);

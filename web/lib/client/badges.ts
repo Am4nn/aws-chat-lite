@@ -1,5 +1,4 @@
 import type { Chat, Message } from "../types";
-import { timeAgo } from "./format";
 
 type ChatCounts = Pick<Chat, "lastSeq" | "unread" | "mentions" | "muted">;
 
@@ -7,8 +6,6 @@ type ChatCounts = Pick<Chat, "lastSeq" | "unread" | "mentions" | "muted">;
 export function chatBadge({ unread, mentions, muted }: Pick<Chat, "unread" | "mentions" | "muted">) {
   return { count: unread > 0 && !muted ? unread : null, mention: mentions > 0 ? mentions : null };
 }
-
-export const lastSeenText = (iso: string, now: number) => `last seen ${timeAgo(iso, now)}`;
 
 /**
  * A live message in a chat I'm not looking at. Unread is everything past my read marker (lastSeq − unread), the way the

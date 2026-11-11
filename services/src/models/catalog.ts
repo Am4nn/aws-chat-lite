@@ -72,7 +72,6 @@ const MODELS: Record<string, ModelInfo> = Object.fromEntries(
         price: { input: 4000, output: 20_000, cacheRead: 200, cacheWrite: 5000 },
       },
       {
-        // Checked 2026-11-11 on the pricing page; it is not in every model table, so re-check before relying on it.
         id: "claude-fable-5-2",
         pick: "fable",
         label: "Fable 5.2",

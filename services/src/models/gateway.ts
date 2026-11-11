@@ -24,7 +24,7 @@ export type ProviderChunk =
   | { type: "text"; text: string }
   | { type: "tool_call"; call: ToolCall }
   | ({ type: "usage" } & TokenUsage)
-  /** Always the last chunk. */
+  /** The last chunk of a call that ends. A call that drops throws instead, after a usage chunk for what it used. */
   | { type: "end"; stop: StopReason; native?: NativeTurn };
 export type ModelChunk =
   | Exclude<ProviderChunk, { type: "usage" }>

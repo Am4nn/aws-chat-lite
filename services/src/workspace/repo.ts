@@ -2,6 +2,7 @@ import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { docClient, failedAt, queryAll, tableName, transactionConflict } from "../lib/db.js";
 import { Conflict, ValidationError } from "../lib/errors.js";
 import { roomKey } from "../lib/keys.js";
+import { countTowardsRate } from "../lib/rate.js";
 import { MAX_ROOM_FILES, OVER_QUOTA, ROOM_FILES_BYTES, TOO_MANY } from "./limits.js";
 import type { FileAuthor, RoomFile, StoredFile } from "./types.js";
 
@@ -9,6 +10,7 @@ import type { FileAuthor, RoomFile, StoredFile } from "./types.js";
 export class QuotaError extends ValidationError {}
 
 const ATTEMPTS = 3;
+const UPLOADS_PER_HOUR = 100;
 const fileKey = (roomId: string, path: string) => ({ pk: roomKey(roomId), sk: `FILE#${path}` });
 const metaKey = (roomId: string) => ({ pk: roomKey(roomId), sk: "META" });
 
@@ -54,6 +56,9 @@ export function workspaceRepo() {
   return {
     get,
     usage,
+    countUpload: (userId: string) => countTowardsRate(`UPLOADS#${userId}`, {
+      windowSec: 3600, max: UPLOADS_PER_HOUR, message: `Slow down: ${UPLOADS_PER_HOUR} uploads an hour.`,
+    }),
 
     /** Sorted by path, because the sort key is the path. */
     async list(roomId: string): Promise<StoredFile[]> {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { Gone } from "../lib/errors.js";
+import { Conflict, Gone } from "../lib/errors.js";
 import { makeHandler, type Deps } from "./handler.js";
 import { OVER_QUOTA, ROOM_FILES_BYTES, TOO_BIG } from "./limits.js";
 import { BAD_PATH } from "./paths.js";
@@ -23,6 +23,7 @@ function fakes(files: StoredFile[] = []) {
         return { file: { ...rest, v: (prev?.v ?? 0) + 1, updatedAt: "now", updatedBy: by }, ...(prev && { replaced: prev }) };
       }),
       remove: vi.fn(async (_r: string, path: string) => ({ removed: files.find((f) => f.path === path) })),
+      countUpload: vi.fn(async () => {}),
     },
     storage: {
       presignFileUpload: vi.fn(async () => ({ url: "http://s3/b", fields: {}, uploadKey: "staging/r/u1/k" })),
@@ -64,6 +65,16 @@ describe("files handler", () => {
     });
     expect(deps.storage.presignFileUpload).toHaveBeenCalledWith("r", "u1", { path: "a.txt", size: 8, type: "text/plain" });
     expect(result(await handle(upload({ path: "a.txt", size: 9, type: "text/plain" })))).toEqual({ status: 400, body: { error: OVER_QUOTA } });
+  });
+
+  it("counts every upload it signs against the member's hourly limit, and signs none past it", async () => {
+    const { deps, handle } = fakes();
+    await handle(upload({ path: "a.txt", size: 1, type: "text/plain" }));
+    expect(deps.files.countUpload).toHaveBeenCalledWith("u1");
+    deps.files.countUpload.mockRejectedValueOnce(new Conflict("Slow down: 100 uploads an hour."));
+    expect(result(await handle(upload({ path: "b.txt", size: 1, type: "text/plain" }))))
+      .toEqual({ status: 409, body: { error: "Slow down: 100 uploads an hour." } });
+    expect(deps.storage.presignFileUpload).toHaveBeenCalledTimes(1);
   });
 
   it("an archived room takes no uploads", async () => {

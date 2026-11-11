@@ -23,6 +23,8 @@ export type ThreadSummary = {
   steps: number;
   currentStep?: string;
   costMicros: number;
+  /** The model the latest run answers on, once it has routed. */
+  model?: string;
   /** Why the thread is private, sorted; [] while it has no private content. */
   taint: TaintSource[];
   summary?: string;
@@ -48,7 +50,7 @@ export type RunEventBody =
   | { type: "routed"; model: string; by: "pick" | "default" | "auto" }
   /** The provider's own content for a model call that ended, replayed verbatim on the next call; never streamed. */
   | { type: "model.turn"; model: string; content: unknown; turn: number }
-  | { type: "steer"; messageSeq: number; authorName: string; text: string }
+  | { type: "steer"; messageSeq: number; authorName: string; text: string; attachments?: string[] }
   /** `turn` is the model call that wrote it (the loop's `model-<turn>` step). */
   | { type: "text"; text: string; turn: number }
   /** An attempt at `turn` failed after writing, and the retry answers again: that turn's text and native turn are void. */

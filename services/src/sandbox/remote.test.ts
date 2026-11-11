@@ -15,11 +15,10 @@ function memorySandbox() {
   const files = new Map<string, Uint8Array>();
   const calls: string[] = [];
   const sandbox: Sandbox = {
-    start: async () => HANDLE,
+    start: async (o) => ({ handle: HANDLE, internet: o.internet }),
     exec: async () => execResult,
     writeFiles: async (_h, list) => { calls.push("writeFiles"); for (const f of list) files.set(f.path, f.bytes); },
     readFiles: async (_h, paths) => { calls.push("readFiles"); return paths.map((path) => ({ path, bytes: files.get(path)! })); },
-    removeFiles: async () => {},
     stop: async () => { throw new SandboxGone("gone"); },
   };
   return { sandbox, calls };
@@ -64,11 +63,15 @@ describe("remoteSandbox through startSandboxServer", () => {
   });
 
   it("round-trips bytes through writeFiles and readFiles", async () => {
-    const handle = await remote.start({ runId: "r1", internet: false });
+    const { handle } = await remote.start({ runId: "r1", internet: false, lifetimeSec: 60 });
     await remote.writeFiles(handle, [{ path: "a/b.bin", bytes: new Uint8Array([0, 255, 10]) }]);
     const [file] = await remote.readFiles(handle, ["a/b.bin"]);
     expect(file.path).toBe("a/b.bin");
     expect([...file.bytes]).toEqual([0, 255, 10]);
+  });
+
+  it("says whether the session it started has internet", async () => {
+    expect(await remote.start({ runId: "r1", internet: true, lifetimeSec: 60 })).toEqual({ handle: HANDLE, internet: true });
   });
 
   it("passes an exec result through unchanged", async () => {
@@ -80,7 +83,7 @@ describe("remoteSandbox through startSandboxServer", () => {
   });
 
   it("refuses a wrong or missing token", async () => {
-    await expect(remoteSandbox(url, "wrong").start({ runId: "r1", internet: false })).rejects.toThrow(/token/);
+    await expect(remoteSandbox(url, "wrong").start({ runId: "r1", internet: false, lifetimeSec: 60 })).rejects.toThrow(/token/);
     expect((await raw("start", { headers: { "x-sandbox-token": "" } })).status).toBe(401);
   });
 
@@ -92,7 +95,8 @@ describe("remoteSandbox through startSandboxServer", () => {
 
   it("answers 400 to invalid JSON or a field of the wrong type", async () => {
     expect((await raw("start", { body: "{nope" })).status).toBe(400);
-    expect((await raw("start", { body: '{"runId":"r1","internet":"yes"}' })).status).toBe(400);
+    expect((await raw("start", { body: '{"runId":"r1","internet":"yes","lifetimeSec":60}' })).status).toBe(400);
+    expect((await raw("start", { body: '{"runId":"r1","internet":true,"lifetimeSec":0}' })).status).toBe(400);
     expect((await raw("exec", { body: `{"handle":"${HANDLE}","language":"ruby","code":"x","timeoutSec":5}` })).status).toBe(400);
     expect((await raw("exec", { body: `{"handle":"${HANDLE}","language":"shell","code":"x","timeoutSec":301}` })).status).toBe(400);
     expect((await raw("stop", { body: '{"handle":"floci"}' })).status).toBe(400);

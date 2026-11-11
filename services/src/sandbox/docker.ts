@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { SandboxGone, type Language, type Sandbox } from "./sandbox.js";
+import { MAX_ROOM_FILE_BYTES } from "../workspace/limits.js";
+import { execOutcome, SandboxGone, type Language, type Sandbox } from "./sandbox.js";
 
 export const SANDBOX_IMAGE = "cl-sandbox:1";
 export const SANDBOX_NETWORK = "cl-sandbox-net";
@@ -90,9 +91,10 @@ const INTERPRETERS: Record<Language, string[]> = { shell: ["sh", "-s"], python: 
 
 /**
  * Each session is a container that sleeps for the session lifetime. It gets no env, no mounts and no capabilities,
- * runs as an unprivileged user with CPU, memory and process limits, and has no network unless the room allows it.
+ * runs as an unprivileged user with CPU, memory and process limits, and has no network unless the room allows it and
+ * this machine opted in with `allowInternet`: an online container can still reach this machine's own services.
  */
-export function dockerSandbox(run: RunDocker = runDocker): Sandbox {
+export function dockerSandbox({ run = runDocker, allowInternet = false }: { run?: RunDocker; allowInternet?: boolean } = {}): Sandbox {
   async function ok(args: string[], stdin?: Uint8Array) {
     const result = await run(args, { stdin });
     if (result.code === 0) return result;
@@ -113,9 +115,10 @@ export function dockerSandbox(run: RunDocker = runDocker): Sandbox {
   }
 
   return {
-    async start({ runId, internet }) {
+    async start({ runId, internet: wanted, lifetimeSec }) {
+      const internet = wanted && allowInternet;
       // Pointing the host's names at loopback keeps casual calls off this machine's services (Floci, this server).
-      // The gateway's raw IP still reaches them locally; closing that needs an egress proxy. On AWS, sessions run in
+      // The gateway's raw IP still reaches them; closing that needs an egress proxy. On AWS, sessions run in
       // AgentCore instead.
       const network = internet
         ? ["--network", SANDBOX_NETWORK, "--add-host", "host.docker.internal:127.0.0.1", "--add-host", "gateway.docker.internal:127.0.0.1"]
@@ -123,9 +126,9 @@ export function dockerSandbox(run: RunDocker = runDocker): Sandbox {
       const { stdout } = await ok([
         "run", "-d", "--rm", "--label", LABEL, "--label", `cl-run=${runId}`, ...network,
         "--memory", "1g", "--memory-swap", "1g", "--cpus", "1", "--pids-limit", "256", "--cap-drop", "ALL",
-        "--security-opt", "no-new-privileges", "--user", "1000:1000", "-w", "/workspace", SANDBOX_IMAGE, "sleep", "7800",
+        "--security-opt", "no-new-privileges", "--user", "1000:1000", "-w", "/workspace", SANDBOX_IMAGE, "sleep", String(lifetimeSec),
       ]);
-      return stdout.toString().trim();
+      return { handle: stdout.toString().trim(), internet };
     },
 
     async exec(handle, { language, code, timeoutSec }) {
@@ -134,32 +137,26 @@ export function dockerSandbox(run: RunDocker = runDocker): Sandbox {
       const args = ["exec", "-i", handle, "timeout", "-k", "5", String(timeoutSec), ...INTERPRETERS[language]];
       const started = Date.now();
       const r = await run(args, { stdin: new TextEncoder().encode(code), timeoutMs: (timeoutSec + 15) * 1000, maxOutput: OUTPUT_LIMIT });
-      // A SIGKILL (137) after the time limit is `timeout -k` or the host-side kill; before it, most likely the memory limit.
-      const timedOut = r.code === 124 || (r.code === 137 && Date.now() - started >= timeoutSec * 1000);
-      const stderr = r.code === 137 && !timedOut ? `${r.stderr}\nkilled (likely out of memory)` : r.stderr;
-      return { stdout: r.stdout.toString(), stderr, exitCode: r.code, timedOut };
+      return { stdout: r.stdout.toString(), exitCode: r.code, ...execOutcome(r.code, r.stderr, Date.now() - started, timeoutSec) };
     },
 
     async writeFiles(handle, files) {
       await running(handle);
       for (const { path, bytes } of files) {
-        await ok(["exec", "-i", handle, "sh", "-c", 'mkdir -p "$(dirname "$1")" && cat > "$1"', "sh", path], bytes);
+        await ok(["exec", "-i", handle, "sh", "-c", 'mkdir -p -- "$(dirname -- "$1")" && cat > "$1"', "sh", path], bytes);
       }
     },
 
+    // A file that grew past the room's limit after it was listed comes back one byte over it, never whole, so a
+    // runaway file can't fill this server's memory.
     async readFiles(handle, paths) {
       await running(handle);
       const files = [];
       for (const path of paths) {
-        const { stdout } = await ok(["exec", handle, "cat", "--", path]);
+        const { stdout } = await ok(["exec", handle, "head", "-c", String(MAX_ROOM_FILE_BYTES + 1), "--", path]);
         files.push({ path, bytes: new Uint8Array(stdout) });
       }
       return files;
-    },
-
-    async removeFiles(handle, paths) {
-      await running(handle);
-      if (paths.length) await ok(["exec", handle, "rm", "-f", "--", ...paths]);
     },
 
     async stop(handle) {

@@ -3,24 +3,25 @@ import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { isHandle } from "./docker.js";
 import { BODY_LIMIT, fromWire, toWire } from "./remote.js";
-import { SandboxGone, type Sandbox } from "./sandbox.js";
+import { LANGUAGES, MAX_TIMEOUT_SEC, SandboxGone, type Sandbox } from "./sandbox.js";
 
 type Body = Record<string, any>;
 type Route = { valid: (b: Body) => boolean; run: (b: Body) => Promise<unknown> };
 
 const isText = (v: unknown): v is string => typeof v === "string";
 const isTexts = (v: unknown) => Array.isArray(v) && v.every(isText);
-const LANGUAGES = ["shell", "python", "javascript"];
+const isCount = (v: unknown, max: number) => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= max;
+// A day is far past any run; the cap only stops a caller from keeping containers forever.
+const MAX_LIFETIME_SEC = 86_400;
 
 function routes(sandbox: Sandbox): Record<string, Route> {
   return {
     start: {
-      valid: (b) => isText(b.runId) && b.runId.length > 0 && typeof b.internet === "boolean",
-      run: async (b) => ({ handle: await sandbox.start({ runId: b.runId, internet: b.internet === true }) }),
+      valid: (b) => isText(b.runId) && b.runId.length > 0 && typeof b.internet === "boolean" && isCount(b.lifetimeSec, MAX_LIFETIME_SEC),
+      run: (b) => sandbox.start({ runId: b.runId, internet: b.internet === true, lifetimeSec: b.lifetimeSec }),
     },
     exec: {
-      valid: (b) => isHandle(b.handle) && LANGUAGES.includes(b.language) && isText(b.code)
-        && Number.isInteger(b.timeoutSec) && b.timeoutSec >= 1 && b.timeoutSec <= 300,
+      valid: (b) => isHandle(b.handle) && LANGUAGES.includes(b.language) && isText(b.code) && isCount(b.timeoutSec, MAX_TIMEOUT_SEC),
       run: (b) => sandbox.exec(b.handle, { language: b.language, code: b.code, timeoutSec: b.timeoutSec }),
     },
     writeFiles: {
@@ -30,10 +31,6 @@ function routes(sandbox: Sandbox): Record<string, Route> {
     readFiles: {
       valid: (b) => isHandle(b.handle) && isTexts(b.paths),
       run: async (b) => ({ files: toWire(await sandbox.readFiles(b.handle, b.paths)) }),
-    },
-    removeFiles: {
-      valid: (b) => isHandle(b.handle) && isTexts(b.paths),
-      run: async (b) => { await sandbox.removeFiles(b.handle, b.paths); return {}; },
     },
     stop: {
       valid: (b) => isHandle(b.handle),

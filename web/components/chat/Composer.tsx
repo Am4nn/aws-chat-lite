@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ArrowUp, CornerDownRight, Paperclip, Pencil, Reply, Square, Users, X } from "lucide-react";
 import { mentionQuery, type Mentionable } from "@/lib/client/mentions";
@@ -22,17 +22,17 @@ const MENTION_OPTIONS = 6;
 
 /**
  * `uploads`: absent where files can't be sent, which hides the paperclip. `steering`: an agent is running here, so a
- * message steers it, and Stop (`onStop`) sits beside Send.
+ * message steers it, and Stop (`onStop`) sits beside Send. `pill`: the model choice, left of Send.
  */
 type Props = {
   members: Mentionable[]; meId: string; mode: ComposerMode; uploads?: ReturnType<typeof useUploads>; placeholder?: string;
-  steering?: boolean; stopping?: boolean;
+  steering?: boolean; stopping?: boolean; pill?: ReactNode;
   onModeChange: (mode: ComposerMode) => void; onSend: (text: string) => void; onSaveEdit: (m: Message, text: string) => void;
   onEditLast: () => boolean; onTyping: () => void; onStop?: () => void;
 };
 
 export function Composer({
-  members, meId, mode, uploads, placeholder = "Message", steering = false, stopping = false,
+  members, meId, mode, uploads, placeholder = "Message", steering = false, stopping = false, pill,
   onModeChange, onSend, onSaveEdit, onEditLast, onTyping, onStop,
 }: Props) {
   const reduced = useReducedMotion();
@@ -264,6 +264,7 @@ export function Composer({
               {trimmed.length}/{MAX_TEXT}
             </span>
           )}
+          {pill}
           <AnimatePresence initial={false}>
             {steering && onStop && (
               <motion.button

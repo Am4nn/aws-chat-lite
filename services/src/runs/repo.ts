@@ -200,8 +200,13 @@ export function runsRepo() {
       return { Put: { TableName, Item: { ...callKey(runId, call), result }, ConditionExpression: "attribute_not_exists(sk)" } };
     },
 
-    /** The run's live numbers, on the run and on its thread (where members see them). Null once the thread isn't its. */
-    async progress(run: Run, fields: { steps?: number; currentStep?: string; costMicros?: number }): Promise<ThreadSummary | null> {
+    /**
+     * The run's live numbers and the model it routed to, on the run and on its thread (where members see them). Null
+     * once the thread isn't its.
+     */
+    async progress(
+      run: Run, fields: { steps?: number; currentStep?: string; costMicros?: number; model?: string },
+    ): Promise<ThreadSummary | null> {
       const set = setFields(fields);
       const owned = whileOwned(run);
       const [, thread] = await Promise.all([
@@ -222,11 +227,6 @@ export function runsRepo() {
         TableName, Key: threadKey(run), UpdateExpression: "REMOVE currentStep ADD #rev :one", ConditionExpression: owned.ConditionExpression,
         ExpressionAttributeNames: { "#rev": "rev" }, ExpressionAttributeValues: { ...owned.values, ":one": 1 }, ReturnValues: "ALL_NEW",
       }));
-    },
-
-    /** The model the run routed to, which its answer names. */
-    async setModel(runId: string, model: string): Promise<void> {
-      await db.send(new UpdateCommand({ TableName, Key: runKey(runId), ...setFields({ model }) }));
     },
 
     /** Asks a running run to stop. Returns the run as flagged, or undefined when it is no longer running. */

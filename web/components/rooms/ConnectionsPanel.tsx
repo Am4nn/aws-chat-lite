@@ -56,9 +56,9 @@ export function ConnectionsPanel({ roomId, archived }: { roomId: string; archive
       </section>
       <section className="flex flex-col gap-2">
         {/* The hint sits beside the heading, not in it, so the heading's accessible name is just "Approvals". */}
-        <div className="flex items-center">
+        <div className="relative flex items-center">
           <h2 className="text-[11.5px] font-semibold text-text-3">Approvals</h2>
-          <Hint place="below" text="After this, the action is skipped and the run finishes with a note." />
+          <Hint below text="After this, the action is skipped and the run finishes with a note." />
         </div>
         {data && <ApprovalTimeout roomId={roomId} minutes={data.approvalTimeoutMin} manage={manage} onChange={(approvalTimeoutMin) => changed({ approvalTimeoutMin })} />}
       </section>

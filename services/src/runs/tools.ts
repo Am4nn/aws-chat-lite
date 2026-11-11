@@ -1,5 +1,6 @@
 import { modelInfo, type Provider } from "../models/catalog.js";
 import type { ToolCall, ToolSpec } from "../models/gateway.js";
+import { LANGUAGES, MAX_TIMEOUT_SEC } from "../sandbox/sandbox.js";
 import { findTool, roomTools } from "../tools/index.js";
 
 export const FAKE_TOOLS: ToolSpec[] = [
@@ -17,9 +18,9 @@ export const SANDBOX_TOOL: ToolSpec = {
   inputSchema: {
     type: "object",
     properties: {
-      language: { enum: ["shell", "python", "javascript"] },
+      language: { enum: [...LANGUAGES] },
       code: { type: "string" },
-      timeoutSec: { type: "integer", minimum: 1, maximum: 300 },
+      timeoutSec: { type: "integer", minimum: 1, maximum: MAX_TIMEOUT_SEC },
     },
     required: ["language", "code"],
   },

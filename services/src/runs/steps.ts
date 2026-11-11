@@ -6,7 +6,7 @@ import { connectionsRepo } from "../connections/repo.js";
 import { sleep } from "../lib/sleep.js";
 import { JOBS, NAMING_MODEL, ROUTER_MODEL } from "../models/catalog.js";
 import { gateway } from "../models/index.js";
-import { NAME_PROMPT, type ModelChunk, type ModelRequest, type ToolCall, type ToolSpec } from "../models/gateway.js";
+import { NAME_PROMPT, type ModelChunk, type ModelGateway, type ModelRequest, type ToolCall, type ToolSpec } from "../models/gateway.js";
 import { modelIdOf, parseRoute, ROUTER_PROMPT, routerInput } from "../models/picks.js";
 import { mergeTaint, messageTaint, runRefusal } from "../models/privacy.js";
 import { isNumberedName } from "../threads/model.js";
@@ -18,6 +18,7 @@ import { sandboxCostMicros } from "../workspace/limits.js";
 import { runSandbox } from "../workspace/session.js";
 import type { FilesSynced } from "../workspace/types.js";
 import { answerOf, buildContext } from "./context.js";
+import { finishRun } from "./finish.js";
 import { endReason, stoppedBy } from "./model.js";
 import { notifyRun } from "./notify.js";
 import { runsRepo, type Run } from "./repo.js";
@@ -45,6 +46,10 @@ type Writer = Awaited<ReturnType<ReturnType<typeof runsRepo>["eventWriter"]>>;
 type Usage = Extract<ModelChunk, { type: "usage" }>;
 /** A run once its model is settled. */
 type RoutedRun = Run & { model: string };
+
+let shared: ModelGateway | undefined;
+/** One gateway per container, so its SDK clients keep their connections alive from one call to the next. */
+export const models = () => (shared ??= gateway());
 
 /** Null when the run is already over (its start failed after the invoke was accepted). */
 export async function load(runId: string): Promise<{ run: Run; provisional: boolean } | null> {
@@ -110,7 +115,7 @@ type Call = { text: string; toolCalls: ToolCall[]; usage?: Usage; end?: Extract<
 async function callModel(request: ModelRequest, onText?: (text: string) => void): Promise<Call> {
   const call: Call = { text: "", toolCalls: [], failed: false };
   try {
-    for await (const chunk of gateway().stream(request)) {
+    for await (const chunk of models().stream(request)) {
       if (chunk.type === "text") {
         call.text += chunk.text;
         onText?.(chunk.text);
@@ -157,11 +162,8 @@ export async function routeRun(run: Run): Promise<{ model: string; costMicros: n
   const choice = await runs.recorded<Choice>(run.runId, "route") ?? await chooseModel(run, writer);
   const logged = events.find((e) => e.type === "routed");
   const routed = logged ?? await writer.append({ type: "routed", model: choice.model, by: choice.by });
-  await runs.setModel(run.runId, choice.model);
-  if (!logged) {
-    const thread = await threadsRepo().threadById(run.roomId, run.threadId);
-    if (thread) await notifyRun(run.roomId, thread, routed.seq);
-  }
+  const thread = await runs.progress(run, { model: choice.model });
+  if (!logged && thread) await notifyRun(run.roomId, thread, routed.seq);
   return { model: choice.model, costMicros: choice.costMicros };
 }
 
@@ -205,7 +207,10 @@ async function readSteers(run: Run, events: RunEvent[], writer: Writer): Promise
         if (!overHoles) return;
         warnHoles(run.threadId, seenSeq + 1, m.seq - 1);
       }
-      if (m.seq > steered) events.push(await writer.append({ type: "steer", messageSeq: m.seq, authorName: m.authorName, text: m.text }));
+      if (m.seq > steered) {
+        const attachments = m.attachments.length ? { attachments: m.attachments.map((a) => a.name) } : {};
+        events.push(await writer.append({ type: "steer", messageSeq: m.seq, authorName: m.authorName, text: m.text, ...attachments }));
+      }
       seenSeq = m.seq;
     }
   };
@@ -251,7 +256,7 @@ export async function modelTurn(run: RoutedRun, turn: number): Promise<Turn> {
   if (events.some((e) => (e.type === "text" || e.type === "model.turn") && e.turn === turn)) {
     events.push(await writer.append({ type: "text.reset", turn }));
   }
-  const tools = toolsFor(run.model, gateway().servedBy(run.model), github !== null);
+  const tools = toolsFor(run.model, models().servedBy(run.model), github !== null);
   return stream(run, writer, buildContext(prior, events), events, { turn, seenSeq, tools, tainted: taint.length > 0 });
 }
 
@@ -289,19 +294,27 @@ async function stream(
   await flush().catch((e) => { failure ??= e; });
   const stopper = stop.stoppedBy();
   const spent = costOf(events);
+  // The provider billed the attempt, dropped or not, so it is charged before the step is retried. A writer refuses
+  // every append after one fails, so then the charge goes through a fresh one, which starts after the last event that
+  // landed.
+  const chargeAndRetry = async (error: unknown, logFailed: boolean): Promise<never> => {
+    if (call.usage) {
+      const charger = logFailed ? await runsRepo().eventWriter(run.runId) : writer;
+      await recordCall(run, charger, { model: run.model, job: "run" }, call.usage, { costMicros: spent + call.usage.costMicros });
+    }
+    throw error;
+  };
   // A model may reject its stream once aborted; a stop is not an error. A call that dropped before showing anything
   // is tried again, as is one whose text didn't all reach the log; a drop after text ends the run instead, since a
   // fresh answer would replace the one members were already reading.
-  if (failure || (call.failed && !wrote && !stopper)) {
-    // The provider billed the attempt, dropped or not, so it is charged before the retry. A writer refuses every append
-    // after one fails, so the charge goes through a fresh one, which starts after the last event that landed.
-    if (call.usage) {
-      const fresh = failure ? await runsRepo().eventWriter(run.runId) : writer;
-      await recordCall(run, fresh, { model: run.model, job: "run" }, call.usage, { costMicros: spent + call.usage.costMicros });
-    }
-    throw failure ?? call.error;
+  if (failure || (call.failed && !wrote && !stopper)) return chargeAndRetry(failure ?? call.error, !!failure);
+  const cutOff = !stopper && !call.failed && call.end?.stop === "max_tokens";
+  try {
+    if (call.end?.native) await writer.append({ type: "model.turn", ...call.end.native, turn });
+    if (cutOff) await writer.append({ type: "text", text: LENGTH_NOTE, turn });
+  } catch (e) {
+    return chargeAndRetry(e, true);
   }
-  if (call.end?.native) await writer.append({ type: "model.turn", ...call.end.native, turn });
   const settle = (result: Pick<Turn, "toolCalls" | "end">) => {
     const turnResult = { ...result, seenSeq, costMicros: spent + (call.usage?.costMicros ?? 0), tainted };
     if (!call.usage) return turnResult;
@@ -310,15 +323,23 @@ async function stream(
   if (stopper) return settle({ toolCalls: [], end: stoppedBy(stopper) });
   if (call.failed) return settle({ toolCalls: [], end: { status: "failed", reason: DROPPED } });
   if (call.end?.stop === "refusal") return settle({ toolCalls: [], end: { status: "failed", reason: REFUSED } });
-  if (call.end?.stop === "max_tokens") {
-    // The tool calls of a cut-off turn may be cut off too, so none of them runs.
-    await writer.append({ type: "text", text: LENGTH_NOTE, turn });
-    return settle({ toolCalls: [], end: { status: "done" } });
-  }
+  // The tool calls of a cut-off turn may be cut off too, so none of them runs.
+  if (cutOff) return settle({ toolCalls: [], end: { status: "done" } });
   return settle({ toolCalls: call.toolCalls });
 }
 
 type StepResult = { steps: number; costMicros: number; end?: End };
+
+/**
+ * Ends a run that hit an error it couldn't get past. Its cost is summed from its usage events: the total stored on
+ * the run is written after each charge commits, so a failure in between leaves it short of what the room paid.
+ */
+export async function failRun(runId: string) {
+  const runs = runsRepo();
+  const [run, events] = await Promise.all([runs.getRun(runId), runs.allEvents(runId)]);
+  if (!run) return null;
+  return finishRun({ ...run, costMicros: costOf(events) }, { status: "failed", reason: "The agent hit an error." }, { seenSeq: run.seenSeq, force: true });
+}
 
 /**
  * Sandbox time, billed like a model call so it counts towards the run's cost and the room's budget. Its marker holds
@@ -332,7 +353,7 @@ const billSandbox = (run: Run, writer: Writer, events: RunEvent[], step: number,
 
 const hasChanges = (s: FilesSynced) => s.written.length + s.deleted.length + s.notes.length > 0;
 
-type Outcome = { output: string; ok: boolean; synced?: FilesSynced; sources?: Source[] };
+type Outcome = { output: string; ok: boolean; synced?: FilesSynced; sources?: Source[]; ms?: number };
 type RoomCall = { settled?: Approval; started: RunEvent; rerun: boolean; envOf: typeof toolEnv };
 
 /** What the model is told in place of a write's result when it wasn't approved. */
@@ -372,15 +393,21 @@ async function runRoomTool(run: RoutedRun, tool: Tool, call: ToolCall, { settled
 
 /**
  * Only a tool the model could be offered runs, so a model kept from private content can't reach it by naming it. A stop
- * requested while the fake lookup works cuts it short.
+ * requested while the sandbox or the fake lookup works cuts it short. A sandbox step reports its own time, since a
+ * retry of it reuses what an earlier attempt ran.
  */
-async function runCall(run: RoutedRun, call: ToolCall, offered: boolean, room: RoomCall): Promise<Outcome> {
+async function runCall(run: RoutedRun, call: ToolCall, offered: boolean, step: number, room: RoomCall): Promise<Outcome> {
   if (!offered) return { ok: false, output: `Unknown tool ${call.name}.` };
-  if (call.name === SANDBOX_TOOL.name) return runSandbox(run, call.input);
   const tool = findTool(call.name);
   if (tool) return runRoomTool(run, tool, call, room);
+  const sandboxed = call.name === SANDBOX_TOOL.name;
+  // Each approval the run waited on moved its dead time, which only the stored run knows; a session lives until then.
+  const deadAt = sandboxed ? (await runsRepo().getRun(run.runId))?.deadAt ?? run.deadAt : run.deadAt;
   const stop = watchStop(run.runId);
-  return runTool(call, { sleep, signal: stop.signal }).finally(stop.close);
+  const work = sandboxed
+    ? runSandbox({ ...run, deadAt }, step, call.input, { signal: stop.signal })
+    : runTool(call, { sleep, signal: stop.signal });
+  return work.finally(stop.close);
 }
 
 /**
@@ -398,7 +425,7 @@ export async function toolStep(
   const step = run.steps + 1;
   const [events, writer] = await Promise.all([runs.allEvents(run.runId), runs.eventWriter(run.runId)]);
   const logged = (type: string) => events.find((e) => (e.type === type) && "step" in e && e.step === step);
-  const offered = mayRun(run.model, gateway().servedBy(run.model), call.name);
+  const offered = mayRun(run.model, models().servedBy(run.model), call.name);
   const sandboxed = offered && call.name === SANDBOX_TOOL.name;
   // An earlier attempt finished the tool and logged it, and only failed after: its result stands.
   const done = logged("step.finished");
@@ -412,8 +439,9 @@ export async function toolStep(
   const started = before ?? await writer.append({ type: "step.started", step, call, detail: toolDetail(call) });
   await notifyRun(run.roomId, await runs.progress(run, { steps: step, currentStep: call.name }), started.seq);
   const t0 = Date.now();
-  const { output, ok, synced, sources } = await runCall(run, call, offered, { settled, started, rerun: !!before, envOf });
-  const ms = Date.now() - t0;
+  const result = await runCall(run, call, offered, step, { settled, started, rerun: !!before, envOf });
+  const { output, ok, synced, sources } = result;
+  const ms = result.ms ?? Date.now() - t0;
   if (synced && hasChanges(synced) && !logged("files.synced")) await writer.append({ type: "files.synced", step, ...synced });
   const finished = await writer.append({ type: "step.finished", step, output, ms, ok, ...(sources && { sources }) });
   await notifyRun(run.roomId, await runs.stepDone(run), finished.seq);

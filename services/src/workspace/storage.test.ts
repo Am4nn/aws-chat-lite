@@ -1,5 +1,11 @@
-import { describe, it, expect } from "vitest";
-import { newObjectKey, presignFileDownload, presignFileUpload, stagingPrefix } from "./storage.js";
+import { describe, it, expect, vi } from "vitest";
+import { copyObject, newObjectKey, presignFileDownload, presignFileUpload, stagingPrefix } from "./storage.js";
+
+const sent = vi.hoisted(() => [] as { input: Record<string, unknown> }[]);
+vi.mock("../lib/s3.js", async (real) => ({
+  ...await real<typeof import("../lib/s3.js")>(),
+  objects: () => ({ send: async (command: { input: Record<string, unknown> }) => void sent.push(command) }),
+}));
 
 // Presigning is local computation; it needs credentials to sign with, never a network call.
 Object.assign(process.env, {
@@ -29,5 +35,10 @@ describe("room file storage", () => {
     });
     const disposition = new URL(url).searchParams.get("response-content-disposition");
     expect(disposition).toBe('attachment; filename="it\'s _x_ _.html"');
+  });
+
+  it("encodes each segment of a copy's source key, since S3 reads it as a URL path", async () => {
+    await copyObject("staging/r/u/a?b#c d", "workspaces/r/k");
+    expect(sent.at(-1)!.input).toMatchObject({ CopySource: "cl-test-files/staging/r/u/a%3Fb%23c%20d", Key: "workspaces/r/k" });
   });
 });

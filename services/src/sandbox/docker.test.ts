@@ -12,30 +12,48 @@ function fakeDocker(reply: (args: string[]) => Partial<DockerResult> | Promise<P
     const fallback = args[1] === "inspect" ? { stdout: Buffer.from("1 true\n") } : {};
     return { code: 0, stdout: Buffer.alloc(0), stderr: "", ...fallback, ...(await reply(args)) };
   };
-  return { calls, sandbox: dockerSandbox(run) };
+  return { calls, sandbox: dockerSandbox({ run, allowInternet: true }) };
 }
 
 const LIMITS = [
   "--memory", "1g", "--memory-swap", "1g", "--cpus", "1", "--pids-limit", "256", "--cap-drop", "ALL",
-  "--security-opt", "no-new-privileges", "--user", "1000:1000", "-w", "/workspace", "cl-sandbox:1", "sleep", "7800",
+  "--security-opt", "no-new-privileges", "--user", "1000:1000", "-w", "/workspace", "cl-sandbox:1", "sleep", "900",
 ];
 const exec = { language: "shell" as const, code: "true", timeoutSec: 1 };
+const start = { runId: "r1", lifetimeSec: 900 };
 
 describe("dockerSandbox", () => {
   it("starts an offline session with no network, env, mounts or privileges", async () => {
     const { calls, sandbox } = fakeDocker(() => ({ stdout: Buffer.from(`${ID}\n`) }));
-    expect(await sandbox.start({ runId: "r1", internet: false })).toBe(ID);
+    expect(await sandbox.start({ ...start, internet: false })).toEqual({ handle: ID, internet: false });
     expect(calls).toEqual([["run", "-d", "--rm", "--label", "cl-sandbox=1", "--label", "cl-run=r1", "--network", "none", ...LIMITS]]);
   });
 
   it("puts an online session on the sandbox network, with the host's names pointed at loopback", async () => {
     const { calls, sandbox } = fakeDocker(() => ({ stdout: Buffer.from(ID) }));
-    await sandbox.start({ runId: "r1", internet: true });
+    expect(await sandbox.start({ ...start, internet: true })).toEqual({ handle: ID, internet: true });
     expect(calls[0]).toEqual([
       "run", "-d", "--rm", "--label", "cl-sandbox=1", "--label", "cl-run=r1", "--network", "cl-sandbox-net",
       "--add-host", "host.docker.internal:127.0.0.1", "--add-host", "gateway.docker.internal:127.0.0.1", ...LIMITS,
     ]);
     expect(calls[0].filter((a) => ["-e", "--env", "-v", "--volume", "--mount", "--privileged"].includes(a))).toEqual([]);
+  });
+
+  it("starts every session offline on a machine that hasn't opted in to internet", async () => {
+    const calls: string[][] = [];
+    const sandbox = dockerSandbox({ run: async (args) => { calls.push(args); return { code: 0, stdout: Buffer.from(ID), stderr: "" }; } });
+    expect(await sandbox.start({ ...start, internet: true })).toEqual({ handle: ID, internet: false });
+    expect(calls[0]).toContain("none");
+    expect(calls[0]).not.toContain("cl-sandbox-net");
+  });
+
+  it("passes -- before every path, so a name starting with a dash is never an option", async () => {
+    const { calls, sandbox } = fakeDocker();
+    await sandbox.writeFiles(ID, [{ path: "-n/x", bytes: new Uint8Array() }]);
+    await sandbox.readFiles(ID, ["-notes.txt"]);
+    const [write, read] = calls.filter((a) => a[0] === "exec");
+    expect(write!.slice(3)).toEqual(["sh", "-c", 'mkdir -p -- "$(dirname -- "$1")" && cat > "$1"', "sh", "-n/x"]);
+    expect(read!.slice(2)).toEqual(["head", "-c", "26214401", "--", "-notes.txt"]);
   });
 
   it("refuses a handle that isn't a full container id, without calling docker", async () => {
@@ -78,8 +96,8 @@ describe("dockerSandbox", () => {
     expect(result.stderr).toBe("x\nkilled (likely out of memory)");
     const late = fakeDocker(async (args) => {
       if (args[0] !== "exec") return {};
-      // Well past the 1 s limit: a timer can fire a millisecond early by the wall clock the sandbox reads.
-      await new Promise((r) => setTimeout(r, 1_100));
+      // Past the 1 s limit with room to spare: a timer can fire a millisecond early against Date.now().
+      await new Promise((r) => setTimeout(r, 1100));
       return { code: 137 };
     });
     expect(await late.sandbox.exec(ID, exec)).toMatchObject({ exitCode: 137, timedOut: true });

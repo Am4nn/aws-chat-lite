@@ -1,30 +1,54 @@
 "use client";
 
 import { ArrowUpRight } from "lucide-react";
+import { runFiles } from "@/lib/client/files";
 import { formatUsd } from "@/lib/client/format";
+import { modelLabel } from "@/lib/client/models";
+import { useModels } from "@/lib/client/ModelsProvider";
 import { isLive, runElapsed } from "@/lib/client/threads";
 import { useNow } from "@/lib/client/useNow";
 import { useRunStream } from "@/lib/client/useRunStream";
-import type { Source, ThreadSummary } from "@/lib/types";
+import type { RoomFile, Source, ThreadSummary } from "@/lib/types";
 
-/** The room panel's view of this thread's latest run: how many steps, how long and what it cost so far, and what it read. */
-export function RunPanel({ thread: t }: { thread: ThreadSummary }) {
+/**
+ * The room panel's view of this thread's latest run: how many steps, how long and what it cost so far, the room files
+ * it wrote and what it read on the web.
+ */
+export function RunPanel({ thread: t, files }: { thread: ThreadSummary; files: RoomFile[] }) {
   const live = isLive(t.status);
   const now = useNow(live);
   const { run } = useRunStream(t.runId, live);
+  const written = t.runId ? runFiles(files, t) : [];
+  const { models } = useModels();
   return (
     <div className="flex flex-col gap-5">
       <section className="flex flex-col gap-2">
         <h2 className="text-[11.5px] font-semibold text-text-3">This run</h2>
         {t.runId
           ? (
-            <dl className="grid grid-cols-3 gap-2">
-              <Tile label="steps" value={String(t.steps)} />
-              <Tile label="elapsed" value={runElapsed(t, now)} />
-              <Tile label="cost" value={formatUsd(t.costMicros)} />
-            </dl>
+            <>
+              <dl className="grid grid-cols-3 gap-2">
+                <Tile label="steps" value={String(t.steps)} />
+                <Tile label="elapsed" value={runElapsed(t, now)} />
+                <Tile label="cost" value={formatUsd(t.costMicros)} />
+              </dl>
+              {t.model && (
+                <dl className="flex items-baseline justify-between rounded-[10px] bg-surface-2 px-2.5 py-2">
+                  <dt className="text-[11px] text-text-3">Model</dt>
+                  <dd className="font-mono text-[12.5px]">{modelLabel(models, t.model)}</dd>
+                </dl>
+              )}
+            </>
           )
           : <p className="text-[12.5px] text-text-3">Nothing has run here yet.</p>}
+        {written.length > 0 && (
+          <>
+            <h2 className="mt-2 text-[11.5px] font-semibold text-text-3">Files</h2>
+            <ul className="flex flex-col gap-1">
+              {written.map((path) => <li key={path} title={path} className="truncate font-mono text-[12px] text-text-2">{path}</li>)}
+            </ul>
+          </>
+        )}
       </section>
       {run.sources.length > 0 && (
         <section className="flex flex-col gap-1">

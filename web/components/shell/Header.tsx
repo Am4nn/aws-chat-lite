@@ -1,13 +1,15 @@
 import type { ReactNode } from "react";
-import { ChevronRight, Hash, Menu, PanelRight, Search } from "lucide-react";
+import { ChevronRight, Hash, Lock, Menu, PanelRight, Search } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
-import type { Member } from "@/lib/types";
+import { taintHint } from "@/lib/client/models";
+import type { Member, TaintSource } from "@/lib/types";
 
 const STACK = 4;
 
-/** `thread`: on a thread page, its title and run status in place of a chat's name. */
-export function Header({ roomName, chatName, thread, members, onMenu, onSearch, onTogglePanel }: {
-  roomName: string; chatName?: string; thread?: ReactNode; members: Member[]; onMenu: () => void; onSearch: () => void; onTogglePanel: () => void;
+/** `thread`: on a thread page, its title and run status in place of a chat's name. `taint`: what made that thread private. */
+export function Header({ roomName, chatName, thread, taint = [], members, onMenu, onSearch, onTogglePanel }: {
+  roomName: string; chatName?: string; thread?: ReactNode; taint?: TaintSource[]; members: Member[];
+  onMenu: () => void; onSearch: () => void; onTogglePanel: () => void;
 }) {
   // Whoever is online leads the stack, so presence is visible even in a big room.
   const stack = [...members].sort((a, b) => Number(b.online) - Number(a.online)).slice(0, STACK);
@@ -25,6 +27,11 @@ export function Header({ roomName, chatName, thread, members, onMenu, onSearch, 
         </h1>
       )}
       {thread}
+      {taint.length > 0 && (
+        <span role="img" aria-label={taintHint(taint)} title={taintHint(taint)} className="shrink-0 text-text-3">
+          <Lock aria-hidden="true" size={14} />
+        </span>
+      )}
       <div className="ml-auto flex shrink-0 items-center gap-2">
         <span role="img" className="mr-1 flex -space-x-2 max-sm:hidden" aria-label={`${members.length} members, ${online} online`}>
           {/* Each avatar sits above the next, so the online dot in its corner is never covered. */}

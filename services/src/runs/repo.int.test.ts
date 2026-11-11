@@ -261,6 +261,10 @@ describe("startOrSteer: the model pick and the thread's taint, on Floci", () => 
     const open = await threadsRepo().createThread(owner, roomId, { text: "go tools:0", clientId: `k${++clients}` });
     const { runId: openRun } = await startOrSteer(owner, roomId, open.thread.threadId, open.message);
     expect(await runs.getRun(openRun)).toMatchObject({ pick: "deepseek-flash", pickBy: "default" });
+
+    const withFile = await threadsRepo().createThread(owner, roomId, { text: "go tools:0", clientId: `k${++clients}` });
+    const { runId: fileRun } = await startOrSteer(owner, roomId, withFile.thread.threadId, { ...withFile.message, attachments: [file] });
+    expect(await runs.getRun(fileRun)).toMatchObject({ pick: "auto", pickBy: "default" });
   });
 
   it("a steer with a file makes the running thread private and leaves the run's pick as it was", async () => {

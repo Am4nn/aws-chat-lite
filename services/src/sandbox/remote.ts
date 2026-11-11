@@ -1,4 +1,5 @@
 import { Agent, fetch } from "undici";
+import { bySize } from "../lib/batches.js";
 import { SandboxGone, type ExecResult, type Sandbox, type WorkspaceFile } from "./sandbox.js";
 
 /** File bytes travel as base64 inside JSON. */
@@ -14,20 +15,6 @@ const dispatcher = new Agent({ headersTimeout: 330_000, bodyTimeout: 330_000 });
 export const BODY_LIMIT = 64 * 1024 * 1024;
 // 40 MB of bytes is about 53 MB as base64, under the body limit.
 const BATCH_BYTES = 40 * 1024 * 1024;
-
-function batches(files: WorkspaceFile[]): WorkspaceFile[][] {
-  const out: WorkspaceFile[][] = [];
-  let size = Infinity;
-  for (const file of files) {
-    if (size + file.bytes.length > BATCH_BYTES) {
-      out.push([]);
-      size = 0;
-    }
-    out[out.length - 1].push(file);
-    size += file.bytes.length;
-  }
-  return out;
-}
 
 /** A sandbox served by `startSandboxServer` at `url`, which takes `token`; a 410 means the session is gone. */
 export function remoteSandbox(url: string, token: string): Sandbox {
@@ -49,10 +36,10 @@ export function remoteSandbox(url: string, token: string): Sandbox {
   }
 
   return {
-    start: async (o) => (await call<{ handle: string }>("start", o)).handle,
+    start: (o) => call<{ handle: string; internet: boolean }>("start", o),
     exec: (handle, o) => call<ExecResult>("exec", { handle, ...o }),
     writeFiles: async (handle, files) => {
-      for (const batch of batches(files)) await call("writeFiles", { handle, files: toWire(batch) });
+      for (const batch of bySize(files, (f) => f.bytes.length, BATCH_BYTES)) await call("writeFiles", { handle, files: toWire(batch) });
     },
     // One file per response: sizes aren't known up front, and a single file can be 25 MB.
     readFiles: async (handle, paths) => {
@@ -60,7 +47,6 @@ export function remoteSandbox(url: string, token: string): Sandbox {
       for (const path of paths) files.push(...fromWire((await call<{ files: WireFile[] }>("readFiles", { handle, paths: [path] })).files));
       return files;
     },
-    removeFiles: async (handle, paths) => { await call("removeFiles", { handle, paths }); },
     stop: async (handle) => { await call("stop", { handle }); },
   };
 }
