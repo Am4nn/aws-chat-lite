@@ -55,7 +55,13 @@ describe("live WebSocket API", () => {
     const vars = liveFunction().Properties.Environment.Variables;
     expect(vars).toMatchObject({ RUN_FN_QUALIFIER: "live" });
     expect(vars.RUN_FN_NAME).toBeDefined();
-    expect(liveStatements()).toContainEqual(expect.objectContaining({ Action: "lambda:InvokeFunction", Effect: "Allow" }));
+    const alias = Object.keys(template().findResources("AWS::Lambda::Alias", { Properties: { Name: "live" } }));
+    expect(alias).toHaveLength(1);
+    expect(liveStatements()).toContainEqual(expect.objectContaining({ Action: "lambda:InvokeFunction", Effect: "Allow", Resource: { Ref: alias[0] } }));
+  });
+
+  it("the live Lambda has 29 s, since a send hands its message to the agent after the ack", () => {
+    expect(liveFunction().Properties.Timeout).toBe(29);
   });
 
   it("the live Lambda posts back through the API's own Floci host locally", () => {

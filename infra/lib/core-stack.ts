@@ -13,6 +13,7 @@ import { addLive } from "./live.js";
 import { addChat } from "./chat.js";
 import { addThreads } from "./threads.js";
 import { addRuns } from "./runs.js";
+import { addStream } from "./stream.js";
 
 /** Path to a handler file in services/src */
 export const servicePath = (file: string) =>
@@ -68,10 +69,13 @@ export class CoreStack extends Stack {
     const threadsFn = addThreads(this);
     this.allowBroadcast(threadsFn);
     this.allowRunStart(threadsFn);
+    const { streamUrl } = addStream(this);
+    threadsFn.addEnvironment("STREAM_URL", streamUrl);
 
     new CfnOutput(this, "ApiUrl", { value: this.api.apiEndpoint });
     new CfnOutput(this, "WsUrl", { value: this.wsUrl });
     new CfnOutput(this, "TableName", { value: this.table.tableName });
+    new CfnOutput(this, "StreamUrl", { value: streamUrl });
   }
 
   /** Adds a route; JWT-protected unless `public`. */

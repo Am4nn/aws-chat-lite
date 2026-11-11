@@ -22,6 +22,10 @@ const ROUTES: [method: string, pattern: string][] = [
   ["PATCH", "/rooms/:x/chats/:x/prefs"],
   ["POST", "/rooms/:x/leave"],
   ["POST", "/rooms/:x/archive"],
+  ["POST", "/rooms/:x/threads"],
+  ["PATCH", "/rooms/:x/threads/:x"],
+  ["PUT", "/rooms/:x/budget"],
+  ["POST", "/runs/:x/stream-ticket"],
 ];
 
 const SEGMENT = /^[A-Za-z0-9_-]+$/;

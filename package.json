@@ -15,7 +15,8 @@
     "spike": "npm -w scripts run spike",
     "spike:aws": "npm -w scripts run spike-aws",
     "grant": "npm -w scripts run grant --",
-    "dev": "npm -w web run dev",
+    "dev": "npm -w scripts run dev",
+    "stream:local": "npm -w scripts run stream-local",
     "smoke": "npm -w scripts run smoke",
     "check": "knip && npm run typecheck --workspaces --if-present"
   },

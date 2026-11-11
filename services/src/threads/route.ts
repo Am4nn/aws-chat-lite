@@ -92,7 +92,7 @@ export async function routeSend(user: User, input: SendInput): Promise<{ message
       if (ownThread) {
         await startOrSteer(user, roomId, ownThread.threadId, message);
       } else if (target) {
-        const copy = await chat.send(user, { roomId, chatId: target.threadId, clientId: copyId, text: ready.text }, ready);
+        const copy = await chat.send(user, { roomId, chatId: target.threadId, clientId: copyId, text: ready.text }, ready, { copy: true });
         await broadcastToRoom(roomId, { type: "message.new", message: copy });
         await startOrSteer(user, roomId, target.threadId, copy);
         await link(target.threadId, "delivered");

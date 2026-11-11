@@ -1,3 +1,4 @@
+import { Duration } from "aws-cdk-lib";
 import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
 import { WebSocketLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import type { CoreStack } from "./core-stack.js";
@@ -7,7 +8,9 @@ const ACTIONS = ["send", "edit", "delete", "react", "typing", "read", "subscribe
 
 /** The live socket: one WebSocket API whose every route goes to one Lambda, which routes again on the frame's action. */
 export function addLive(stack: CoreStack) {
-  const liveFn = stack.addFunction("live", "live/handler.ts", { tableAccess: true });
+  // API Gateway waits at most 29 s for an integration, and a send keeps working after its ack (handing the message to
+  // the agent), so the function gets all of that rather than the default 10 s.
+  const liveFn = stack.addFunction("live", "live/handler.ts", { tableAccess: true }, { timeout: Duration.seconds(29) });
   const integration = new WebSocketLambdaIntegration("LiveIntegration", liveFn);
   const wsApi = new apigwv2.WebSocketApi(stack, "Ws", {
     apiName: `${stack.stageConfig.prefix}-ws`,

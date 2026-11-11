@@ -231,6 +231,22 @@ describe("agent threads over the socket", () => {
     expect(copies.filter((m) => m.authorId === a.userId).map((m) => m.text)).toEqual(["notes", "#1 and this", "and more"]);
   }, AGENT_MS);
 
+  it("a mention counts once: the copy in the thread doesn't badge the member again", async () => {
+    const { a, b, roomId, generalChatId, sa } = await pair("Mentions");
+    send(sa, { action: "send", requestId: "m1", roomId, chatId: generalChatId, clientId: "k1", text: "@agent ask @b tools:0" });
+    const started = await sa.next(messageUpdated(generalChatId, 1));
+    const threadId = String(((started.message as Frame).threadRef as Frame).threadId);
+    send(sa, { action: "send", requestId: "m2", roomId, chatId: generalChatId, clientId: "k2", text: "#1 and @b again" });
+    await sa.next(messageUpdated(generalChatId, 2));
+
+    const item = async (sk: string) =>
+      (await docClient().send(new GetCommand({ TableName: tableName(), Key: { pk: `ROOM#${roomId}`, sk }, ConsistentRead: true }))).Item;
+    expect(await item(`MEMBER#${b.userId}`)).toMatchObject({ mentions: 2 });
+    expect((await item(`READ#${b.userId}#${threadId}`))?.mentions).toBeUndefined();
+    expect((await history(a, roomId, threadId)).filter((m) => m.authorId === a.userId).map((m) => m.mentions))
+      .toEqual([[b.userId], [b.userId]]);
+  }, AGENT_MS);
+
   it("a thread's #name is sent as its #number; a tag later in the text delivers nothing", async () => {
     const { a, roomId, generalChatId, sa } = await pair("Tags");
     const { thread } = await threadsRepo().createThread(a, roomId, { text: "notes", clientId: "k0" });

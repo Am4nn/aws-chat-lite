@@ -86,7 +86,8 @@ export function threadsRepo() {
      * anything is written, so a refused message leaves no empty thread behind. The thread, its chat and its name guard
      * are then written together, and the message is sent into the new chat. Numbers have no gaps as long as creates
      * succeed: one refused after the counter moved (its name held by a chat) skips its number. A thread started from
-     * a people-chat message takes that message's admission, so the message counts once towards the rate limit.
+     * a people-chat message (`from`) takes that message's admission and is a copy of it, so the message counts once
+     * towards the rate limit and its mentions once.
      */
     async createThread(
       user: User, roomId: string,
@@ -118,7 +119,9 @@ export function threadsRepo() {
         if (failedAt(e, 2)) throw new Conflict(`#${name} is already a chat's name; try again.`);
         throw e;
       }
-      const message = await chat.send(user, { roomId, chatId: threadId, clientId: input.clientId, text: input.text }, admitted);
+      const message = await chat.send(
+        user, { roomId, chatId: threadId, clientId: input.clientId, text: input.text }, admitted, { copy: !!input.from },
+      );
       const thread = summary(item, Date.now());
       await announce(thread);
       return { thread, message };

@@ -5,15 +5,19 @@ import { budgetRepo, type BudgetRepo } from "../budget/repo.js";
 import { capFromUsd } from "../budget/model.js";
 import { idOf } from "../chat/model.js";
 import { startOrSteer } from "../runs/start.js";
+import { issueStreamTicket } from "../runs/stream-tickets.js";
 import { claimableName, threadName } from "./model.js";
 import { threadsRepo, type ThreadsRepo } from "./repo.js";
 
 type Event = APIGatewayProxyEventV2WithJWTAuthorizer;
 
-/** Threads over HTTP: start one, rename one, and the room's agent budget. No route deletes a thread. */
+/**
+ * Threads over HTTP: start one, rename one, the room's agent budget, and the one-time URL that opens a run's event
+ * stream. No route deletes a thread.
+ */
 export function makeHandler(
   threads: Pick<ThreadsRepo, "createThread" | "rename" | "threadById">, budget: Pick<BudgetRepo, "setCap">,
-  startRun: typeof startOrSteer,
+  startRun: typeof startOrSteer, issueTicket: typeof issueStreamTicket,
 ) {
   return async (event: Event): Promise<APIGatewayProxyStructuredResultV2> => {
     const params = event.pathParameters ?? {};
@@ -37,6 +41,13 @@ export function makeHandler(
         }
         case "PUT /rooms/{roomId}/budget":
           return json(200, { budget: await budget.setCap(callerFromEvent(event), params.roomId!, capFromUsd(body.capUsd)) });
+        case "POST /runs/{runId}/stream-ticket": {
+          const runId = params.runId!;
+          const { ticket } = await issueTicket(callerFromEvent(event), runId);
+          // A Function URL ends in a slash.
+          const base = (process.env.STREAM_URL ?? "").replace(/\/$/, "");
+          return json(200, { url: `${base}/runs/${runId}/stream?ticket=${ticket}` });
+        }
         default:
           return json(404, { error: "No such route." });
       }
@@ -48,4 +59,4 @@ export function makeHandler(
 
 // Built on first use, so tests can import makeHandler without a table configured.
 let liveHandler: ReturnType<typeof makeHandler> | undefined;
-export const handler = (event: Event) => (liveHandler ??= makeHandler(threadsRepo(), budgetRepo(), startOrSteer))(event);
+export const handler = (event: Event) => (liveHandler ??= makeHandler(threadsRepo(), budgetRepo(), startOrSteer, issueStreamTicket))(event);

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { Conflict } from "../lib/errors.js";
+import { Conflict, NotFound } from "../lib/errors.js";
 import { makeHandler } from "./handler.js";
 
 const ev = (routeKey: string, o: { body?: unknown; params?: Record<string, string> } = {}) => ({
@@ -18,8 +18,9 @@ function setup() {
     },
     budget: { setCap: vi.fn(async () => ({})) },
     startRun: vi.fn(async () => ({ runId: "run1", started: true })),
+    issueTicket: vi.fn(async () => ({ ticket: "tk" })),
   };
-  return { ...repos, handle: makeHandler(repos.threads as any, repos.budget as any, repos.startRun) };
+  return { ...repos, handle: makeHandler(repos.threads as any, repos.budget as any, repos.startRun, repos.issueTicket) };
 }
 
 const me = { userId: "u1", username: "aman" };
@@ -65,6 +66,21 @@ describe("threads handler", () => {
     expect(budget.setCap).not.toHaveBeenCalled();
     expect((await put(5)).statusCode).toBe(200);
     expect(budget.setCap).toHaveBeenCalledWith(me, "r", 5_000_000);
+  });
+
+  it("POST /runs/{runId}/stream-ticket answers the stream URL with a fresh ticket", async () => {
+    process.env.STREAM_URL = "https://abc.lambda-url.ap-southeast-2.on.aws/";
+    const { issueTicket, handle } = setup();
+    const res = await handle(ev("POST /runs/{runId}/stream-ticket", { params: { runId: "run1" }, body: {} }));
+    expect(res.statusCode).toBe(200);
+    expect(issueTicket).toHaveBeenCalledWith(me, "run1");
+    expect(JSON.parse(res.body as string)).toEqual({ url: "https://abc.lambda-url.ap-southeast-2.on.aws/runs/run1/stream?ticket=tk" });
+  });
+
+  it("a stream ticket for a run outside your rooms is a 404", async () => {
+    const { issueTicket, handle } = setup();
+    issueTicket.mockRejectedValueOnce(new NotFound("Room not found."));
+    expect((await handle(ev("POST /runs/{runId}/stream-ticket", { params: { runId: "run1" } }))).statusCode).toBe(404);
   });
 
   it("an unknown route is a 404", async () => {

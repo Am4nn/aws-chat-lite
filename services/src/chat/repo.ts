@@ -143,8 +143,13 @@ export function chatRepo() {
   return {
     admit,
 
+    /**
+     * A `copy` is the server's copy of a message already sent elsewhere (into the thread it was delivered to or
+     * started); the original counted its mentions, so the copy doesn't count them again.
+     */
     async send(
       user: User, input: ChatRef & { clientId: string; text: unknown; replyToSeq?: number; attachments?: unknown }, admitted?: Admitted,
+      opts: { copy?: boolean } = {},
     ): Promise<Message> {
       const at = { roomId: input.roomId, chatId: input.chatId };
       const { text, attachments } = admitted ?? await admit(user, input);
@@ -165,7 +170,7 @@ export function chatRepo() {
       }));
       await Promise.all([
         readOwnMessage(at, user.userId, seq),
-        countMentions(at, notified(message, members, user.userId)),
+        opts.copy ? undefined : countMentions(at, notified(message, members, user.userId)),
       ]);
       return withUrls(message);
     },
