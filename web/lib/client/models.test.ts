@@ -109,6 +109,7 @@ describe("taintHint", () => {
   it("says what made the thread private", () => {
     expect(taintHint(["attachment"])).toBe("Private: has attachments, so DeepSeek is off.");
     expect(taintHint(["sandbox"])).toBe("Private: has sandbox files, so DeepSeek is off.");
+    expect(taintHint(["github"])).toBe("Private: has GitHub data, so DeepSeek is off.");
     expect(taintHint(["attachment", "sandbox"])).toBe("Private: has attachments and sandbox files, so DeepSeek is off.");
   });
 });
