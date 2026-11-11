@@ -58,6 +58,23 @@ describe("threads handler", () => {
     expect(threads.createThread).not.toHaveBeenCalled();
   });
 
+  it("POST /threads with no text is a 400 that asks for the first message (a new thread takes no attachments)", async () => {
+    const { threads, handle } = setup();
+    const res = await handle(ev("POST /rooms/{roomId}/threads", { params: { roomId: "r" }, body: { text: "  ", clientId: "k1" } }));
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body as string)).toEqual({ error: "A new thread needs a first message." });
+    expect(threads.createThread).not.toHaveBeenCalled();
+  });
+
+  it("POST /threads whose run fails to start still answers 201 with the thread, so a retry can't make a second one", async () => {
+    const { startRun, handle } = setup();
+    startRun.mockRejectedValueOnce(new Error("throttled"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await handle(ev("POST /rooms/{roomId}/threads", { params: { roomId: "r" }, body: { text: "hi", clientId: "k1" } }));
+    expect(res.statusCode).toBe(201);
+    expect(JSON.parse(res.body as string)).toMatchObject({ thread: { threadId: "t1" }, message: { seq: 1 } });
+  });
+
   it("PATCH a thread's name: a bad name is a 400, a good one is passed on normalized", async () => {
     const { threads, handle } = setup();
     const patch = (name: unknown) => handle(ev("PATCH /rooms/{roomId}/threads/{threadId}", { params: { roomId: "r", threadId: "t" }, body: { name } }));

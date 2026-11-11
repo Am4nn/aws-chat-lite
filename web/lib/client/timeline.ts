@@ -5,9 +5,14 @@ export type PendingMessage = {
   text: string;
   createdAt: string;
   replyTo?: Message["replyTo"];
+  /** Sent from a chat into this agent thread. */
+  threadId?: string;
   attachments: Message["attachments"];
   failed?: boolean;
 };
+
+/** Rows keep one identity from pending to stored, so a sent message doesn't re-enter when its ack lands. */
+export const keyOf = (m: { clientId?: string; seq?: number }) => (m.clientId ? `c:${m.clientId}` : `s:${m.seq}`);
 
 export type Timeline = { messages: Message[]; pending: PendingMessage[] };
 

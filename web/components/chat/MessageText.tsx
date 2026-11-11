@@ -1,24 +1,45 @@
 "use client";
 
-import { Children, useMemo, type ReactNode } from "react";
+import { Children, useContext, useMemo, type ReactNode } from "react";
+import Link from "next/link";
 import Markdown, { type Components } from "react-markdown";
-import { findMentions, type Mentionable } from "../../lib/client/mentions";
+import { findMentions, type Mentionable } from "@/lib/client/mentions";
+import { findTags, RoomTagsContext, type RoomTags } from "@/lib/client/roomTags";
 
 const ALLOWED = ["p", "strong", "em", "code", "pre", "a", "br", "del"];
 const SAFE_URL = /^https?:/i;
 
-function withMentions(children: ReactNode, members: Mentionable[]): ReactNode {
+/** Mentions and `#tags` in the plain text between markdown's elements; code and links never get here. */
+function decorate(children: ReactNode, members: Mentionable[], tags: RoomTags | null): ReactNode {
   return Children.map(children, (child) => {
     if (typeof child !== "string") return child;
+    const found = [
+      ...findMentions(child, members).map((m) => ({ ...m, node: <span key={m.start} className="mention text-lime">{child.slice(m.start, m.end)}</span> })),
+      ...(tags ? findTags(child, tags) : []).map((t) => ({ ...t, node: <TagLink key={t.start} {...t} /> })),
+    ].sort((a, b) => a.start - b.start);
     const parts: ReactNode[] = [];
     let at = 0;
-    for (const { start, end } of findMentions(child, members)) {
-      parts.push(child.slice(at, start), <span key={start} className="mention text-lime">{child.slice(start, end)}</span>);
+    for (const { start, end, node } of found) {
+      if (start < at) continue;
+      parts.push(child.slice(at, start), node);
       at = end;
     }
     parts.push(child.slice(at));
     return parts;
   });
+}
+
+function TagLink({ href, label, kind }: { href: string; label: string; kind: "thread" | "chat" }) {
+  return (
+    <Link
+      href={href}
+      className={kind === "thread"
+        ? "rounded-md border border-line-strong bg-surface-2 px-1.5 py-px font-mono text-[0.86em] text-text transition-colors hover:border-[#36403f] hover:bg-surface-3"
+        : "text-sky underline-offset-2 hover:underline"}
+    >
+      {label}
+    </Link>
+  );
 }
 
 const staticComponents: Components = {
@@ -36,7 +57,9 @@ export function MessageText({ text, members }: { text: string; members: Mentiona
   const components = useMemo<Components>(() => {
     const prose = (Tag: "p" | "strong" | "em" | "del") =>
       function Prose({ children }: { children?: ReactNode }) {
-        return <Tag>{withMentions(children, members)}</Tag>;
+        // Read here, not in MessageText, so a renamed thread re-renders the paragraphs without parsing the markdown again.
+        const tags = useContext(RoomTagsContext);
+        return <Tag>{decorate(children, members, tags)}</Tag>;
       };
     return { ...staticComponents, p: prose("p"), strong: prose("strong"), em: prose("em"), del: prose("del") };
   }, [members]);

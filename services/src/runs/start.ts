@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { auditRepo } from "../audit/repo.js";
+import type { User } from "../lib/auth.js";
 import { docClient, failedAt, tableName, transactionConflict } from "../lib/db.js";
 import { NotFound } from "../lib/errors.js";
 import type { Message } from "../chat/model.js";
@@ -12,11 +13,11 @@ import { summary, threadSk } from "../threads/model.js";
 import type { RunEvent } from "../threads/types.js";
 import { threadsRepo } from "../threads/repo.js";
 import { finishRun } from "./finish.js";
-import { DEAD_AFTER_MS } from "./model.js";
+import { DEAD_AFTER_MS, DEAD_REASON } from "./model.js";
 import { notifyRun } from "./notify.js";
-import { runsRepo, setFields, type Run } from "./repo.js";
+import { runsRepo, setFields, type Run, type TransactItem } from "./repo.js";
 
-interface User { userId: string; username: string }
+const CLAIM_ATTEMPTS = 5;
 
 let lambda: LambdaClient | undefined;
 
@@ -44,18 +45,19 @@ function threadAdds(taint: TaintSource[]) {
 
 /**
  * True when the claim went through; false when the thread already has a live run, which makes the message a steer.
- * A claim that clashes with another write to the thread is tried once more, then also treated as a steer: the
- * message is stored either way, and the clash was most likely another message starting the run.
+ * A claim that clashes with another write to the thread is tried again: if the clash was another message starting
+ * the run, the retry finds that run and the message becomes its steer. `replaced` (item 3, a dead run being marked
+ * failed) failing means that run closed itself meanwhile, so the claim goes ahead without it.
  */
-async function claimed(claim: TransactWriteCommand): Promise<boolean> {
+async function claimed(items: TransactItem[], replaced?: TransactItem): Promise<boolean> {
   for (let attempt = 1; ; attempt++) {
     try {
-      await docClient().send(claim);
+      await docClient().send(new TransactWriteCommand({ TransactItems: replaced ? [...items, replaced] : items }));
       return true;
     } catch (e) {
       if (failedAt(e, 1)) return false;
-      if (!transactionConflict(e)) throw e;
-      if (attempt === 2) return false;
+      if (replaced && failedAt(e, 2)) replaced = undefined;
+      else if (!transactionConflict(e) || attempt === CLAIM_ATTEMPTS) throw e;
     }
   }
 }
@@ -65,7 +67,8 @@ async function claimed(claim: TransactWriteCommand): Promise<boolean> {
  * thread's active run, then the run's durable execution is started. With a run active, the message is a steer: it is
  * already in the thread, past the run's cursor, and the run reads it before its next model call.
  *
- * A run past its `deadAt` can't still be alive, so it no longer counts as active.
+ * A run past its `deadAt` can't still be alive, so it no longer counts as active, and the claim marks it failed as it
+ * takes the thread.
  *
  * A new run takes the message's `pick`, else the room default; a default that may not see a private thread's content
  * becomes Auto. A steer's pick is ignored: the run keeps the model it started with. Either way a message with an
@@ -96,20 +99,28 @@ export async function startOrSteer(
     lastActivityAt: startedAt,
   });
 
-  const claim = new TransactWriteCommand({
-    TransactItems: [
-      { Put: { TableName, Item: { pk: `RUN#${run.runId}`, sk: "META", ...run }, ConditionExpression: "attribute_not_exists(pk)" } },
-      {
-        Update: {
-          TableName, Key: key, UpdateExpression: `${start.UpdateExpression} REMOVE endedAt, currentStep ${adds.clause}`,
-          ConditionExpression: "attribute_not_exists(activeRunId) OR #deadAt < :now",
-          ExpressionAttributeNames: { ...start.ExpressionAttributeNames, ...adds.names },
-          ExpressionAttributeValues: { ...start.ExpressionAttributeValues, ...adds.values, ":now": startedAt },
-        },
+  const claim: TransactItem[] = [
+    { Put: { TableName, Item: { pk: `RUN#${run.runId}`, sk: "META", ...run }, ConditionExpression: "attribute_not_exists(pk)" } },
+    {
+      Update: {
+        TableName, Key: key, UpdateExpression: `${start.UpdateExpression} REMOVE endedAt, currentStep ${adds.clause}`,
+        ConditionExpression: "attribute_not_exists(activeRunId) OR #deadAt < :now",
+        ExpressionAttributeNames: { ...start.ExpressionAttributeNames, ...adds.names },
+        ExpressionAttributeValues: { ...start.ExpressionAttributeValues, ...adds.values, ":now": startedAt },
       },
-    ],
-  });
-  if (!await claimed(claim)) {
+    },
+  ];
+  // An approval only ever moves a run's `deadAt` later, so only a run that started this long ago can be dead.
+  const deadLine = new Date(now.getTime() - DEAD_AFTER_MS).toISOString();
+  const last = thread.runId && (thread.startedAt ?? "") < deadLine ? await runs.getRun(thread.runId) : undefined;
+  const failed = setFields({ status: "failed", reason: DEAD_REASON, endedAt: startedAt });
+  const replaced: TransactItem | undefined = last?.status === "running" && last.deadAt < startedAt ? {
+    Update: {
+      TableName, Key: { pk: `RUN#${last.runId}`, sk: "META" }, ...failed, ConditionExpression: "#status = :running",
+      ExpressionAttributeValues: { ...failed.ExpressionAttributeValues, ":running": "running" },
+    },
+  } : undefined;
+  if (!await claimed(claim, replaced)) {
     const { Attributes } = await db.send(new UpdateCommand({
       TableName, Key: key, UpdateExpression: `SET lastActivityAt = :now ${adds.clause}`, ExpressionAttributeNames: adds.names,
       ExpressionAttributeValues: { ":now": startedAt, ...adds.values }, ReturnValues: "ALL_NEW",

@@ -64,3 +64,20 @@ export async function until<A>(page: Page, condition: (arg: A) => unknown, arg?:
 }
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+export const socketOpen = (page: Page) => until(page, () => window.__live?.status === "open", undefined, 12_000);
+export const shows = (page: Page, text: string, timeout?: number) =>
+  until(page, (t) => document.querySelector("main")?.innerText.includes(t), text, timeout);
+export const toastSays = (page: Page, text: string) =>
+  until(page, (t) => document.querySelector("[aria-live=polite]")?.textContent?.includes(t), text);
+
+export async function send(page: Page, text: string) {
+  await page.click("textarea#composer");
+  await page.keyboard.type(text);
+  await page.keyboard.press("Enter");
+}
+
+/** A send straight over the socket, for messages whose composing isn't what the check is about. */
+export const say = (page: Page, roomId: string, chatId: string, text: string) =>
+  page.evaluate((r, c, t) => window.__live.request("send", { roomId: r, chatId: c, clientId: crypto.randomUUID(), text: t })
+    .then(() => "ok", (e: Error) => e.message), roomId, chatId, text);

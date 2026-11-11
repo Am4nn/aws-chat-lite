@@ -1,36 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { App } from "aws-cdk-lib";
-import { Template } from "aws-cdk-lib/assertions";
-import { CoreStack } from "./core-stack.js";
-import { loadConfig } from "./config.js";
-
-let cached: Template | undefined;
-const template = () => {
-  if (cached) return cached;
-  const config = loadConfig("local", { AWS_ENDPOINT_URL: "http://localhost:4566" });
-  const stack = new CoreStack(new App(), "cl-local-core", { config, env: { account: "000000000000", region: "us-east-1" } });
-  return (cached = Template.fromStack(stack));
-};
+import { fnNamed, statementsOf, template } from "./test-templates.js";
 
 const ROUTES = [
   "GET /rooms/{roomId}/files", "POST /rooms/{roomId}/files/uploads", "PUT /rooms/{roomId}/files",
   "GET /rooms/{roomId}/files/download", "DELETE /rooms/{roomId}/files",
 ];
 
-const fn = (name: string) => {
-  const fns = Object.values(template().findResources("AWS::Lambda::Function", { Properties: { FunctionName: name } }));
-  expect(fns).toHaveLength(1);
-  return fns[0] as any;
-};
-
 /** The S3 statements in the policies attached to the function's execution role. */
-const s3Statements = (name: string) => {
-  const role = fn(name).Properties.Role["Fn::GetAtt"][0];
-  return Object.values(template().findResources("AWS::IAM::Policy"))
-    .filter((p: any) => p.Properties.Roles.some((r: any) => r.Ref === role))
-    .flatMap((p: any) => p.Properties.PolicyDocument.Statement)
-    .filter((s: any) => JSON.stringify(s.Resource).includes("Files"));
-};
+const s3Statements = (name: string) => statementsOf(fnNamed(name)).filter((s: any) => JSON.stringify(s.Resource).includes("Files"));
 /** Each resource's object pattern, e.g. "/staging/*". */
 const objectPatterns = (name: string) => s3Statements(name)
   .flatMap((s: any) => [s.Resource].flat())
@@ -50,7 +27,7 @@ describe("files API", () => {
     expect(objectPatterns("cl-local-files").sort()).toEqual(["/staging/*", "/workspaces/*"]);
     expect(s3Statements("cl-local-files").flatMap((s: any) => [s.Action].flat()).sort())
       .toEqual(["s3:DeleteObject", "s3:GetObject", "s3:PutObject"]);
-    const env = fn("cl-local-files").Properties.Environment.Variables;
+    const env = fnNamed("cl-local-files").props.Environment.Variables;
     expect(env.FILES_BUCKET).toBeDefined();
     expect(env.S3_PUBLIC_ENDPOINT).toBe("http://localhost:4566");
     expect(env.WS_CALLBACK_URL).toBeDefined();
@@ -60,7 +37,7 @@ describe("files API", () => {
     expect(objectPatterns("cl-local-run")).toEqual(["/workspaces/*"]);
     expect(s3Statements("cl-local-run").flatMap((s: any) => [s.Action].flat()).sort())
       .toEqual(["s3:DeleteObject", "s3:GetObject", "s3:PutObject"]);
-    expect(fn("cl-local-run").Properties.Environment.Variables.FILES_BUCKET).toBeDefined();
+    expect(fnNamed("cl-local-run").props.Environment.Variables.FILES_BUCKET).toBeDefined();
   });
 
   it("uploads nobody committed expire after a day", () => {

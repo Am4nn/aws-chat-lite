@@ -5,8 +5,9 @@ import type { Member } from "@/lib/types";
 
 const STACK = 4;
 
-export function Header({ roomName, chatName, members, onMenu, onSearch, onTogglePanel }: {
-  roomName: string; chatName?: string; members: Member[]; onMenu: () => void; onSearch: () => void; onTogglePanel: () => void;
+/** `thread`: on a thread page, its title and run status in place of a chat's name. */
+export function Header({ roomName, chatName, thread, members, onMenu, onSearch, onTogglePanel }: {
+  roomName: string; chatName?: string; thread?: ReactNode; members: Member[]; onMenu: () => void; onSearch: () => void; onTogglePanel: () => void;
 }) {
   // Whoever is online leads the stack, so presence is visible even in a big room.
   const stack = [...members].sort((a, b) => Number(b.online) - Number(a.online)).slice(0, STACK);
@@ -16,15 +17,14 @@ export function Header({ roomName, chatName, members, onMenu, onSearch, onToggle
     <header className="flex h-16 shrink-0 items-center gap-3 border-b border-line px-3 md:px-5">
       <HeaderButton label="Open sidebar" onClick={onMenu} className="md:hidden"><Menu aria-hidden="true" size={16} /></HeaderButton>
       <span className="truncate text-[13px] text-text-3 max-md:hidden">{roomName}</span>
+      {(chatName || thread) && <ChevronRight aria-hidden="true" size={13} className="shrink-0 text-[#3e4749] max-md:hidden" />}
       {chatName && (
-        <>
-          <ChevronRight aria-hidden="true" size={13} className="shrink-0 text-[#3e4749] max-md:hidden" />
-          <h1 className="flex min-w-0 items-center gap-1 font-display text-lg font-bold">
-            <Hash aria-hidden="true" size={16} className="shrink-0 text-text-3" />
-            <span className="truncate">{chatName}</span>
-          </h1>
-        </>
+        <h1 className="flex min-w-0 items-center gap-1 font-display text-lg font-bold">
+          <Hash aria-hidden="true" size={16} className="shrink-0 text-text-3" />
+          <span className="truncate">{chatName}</span>
+        </h1>
       )}
+      {thread}
       <div className="ml-auto flex shrink-0 items-center gap-2">
         <span role="img" className="mr-1 flex -space-x-2 max-sm:hidden" aria-label={`${members.length} members, ${online} online`}>
           {/* Each avatar sits above the next, so the online dot in its corner is never covered. */}

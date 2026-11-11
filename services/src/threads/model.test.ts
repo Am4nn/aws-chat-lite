@@ -29,6 +29,10 @@ describe("uniqueCandidates", () => {
   it("trims a long base so every candidate fits", () => {
     for (const c of uniqueCandidates("a".repeat(32))) expect(c.length).toBeLessThanOrEqual(32);
   });
+  it("leaves out a trimmed candidate that lost the only letter", () => {
+    const name = `${"1".repeat(31)}a`;
+    expect(uniqueCandidates(name)).toEqual([name]);
+  });
 });
 
 describe("isArchived", () => {
@@ -55,6 +59,7 @@ describe("leadingTag", () => {
 describe("summaryLine", () => {
   it("takes the first non-empty line", () => expect(summaryLine("\n\nShip it.\nmore")).toBe("Ship it."));
   it("cuts at 80 characters", () => expect(summaryLine("a".repeat(100))).toBe("a".repeat(80) + "…"));
+  it("never splits a character made of two UTF-16 units", () => expect(summaryLine("😀".repeat(81))).toBe("😀".repeat(80) + "…"));
 });
 
 describe("summary", () => {
@@ -73,5 +78,18 @@ describe("summary", () => {
   it("gives the taint as a sorted list, read from the stored string set, and [] when there is none", () => {
     expect(summary(stored, now).taint).toEqual([]);
     expect(summary({ ...stored, taint: new Set(["attachment"]) }, now).taint).toEqual(["attachment"]);
+  });
+
+  it("shows a running run past its deadAt as failed, so its thread stops looking live and can archive", () => {
+    const dead = { ...stored, status: "running", startedAt: "2026-11-10T00:00:00Z", deadAt: new Date(now - 1).toISOString(), currentStep: "fake.lookup" };
+    const t = summary(dead, now);
+    expect(t).toMatchObject({ status: "failed", summary: "The run stopped responding.", archived: true });
+    expect(t).not.toHaveProperty("currentStep");
+  });
+
+  it("goes by deadAt, not the start, so a run that waited on an approval still reads live, and a waiting one always does", () => {
+    const later = new Date(now + 60_000).toISOString();
+    expect(summary({ ...stored, status: "running", startedAt: "2026-11-10T00:00:00Z", deadAt: later }, now).status).toBe("running");
+    expect(summary({ ...stored, status: "waiting", deadAt: new Date(now - 1).toISOString() }, now).status).toBe("waiting");
   });
 });

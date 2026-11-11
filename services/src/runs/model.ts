@@ -3,8 +3,12 @@ import type { RunEndStatus } from "../threads/types.js";
 
 const RUN_MAX_MS = 7_200_000;
 const RUN_MAX_STEPS = 200;
-/** Slightly over the execution timeout: a run this old can no longer be alive. */
-export const DEAD_AFTER_MS = 7_800_000;
+/**
+ * How long after its claim, or after an approval's expiry, a run can still be alive: its 2 h time limit plus a margin for
+ * the step running as it hits. Past that it is presumed dead, and a new run may take its thread.
+ */
+export const DEAD_AFTER_MS = 8_100_000;
+export const DEAD_REASON = "The run stopped responding.";
 
 export const eventSk = (seq: number) => `EV#${String(seq).padStart(10, "0")}`;
 
@@ -26,6 +30,6 @@ export function endReason(s: RunState, nowMs: number): { status: RunEndStatus; r
   if (s.stopRequestedBy) return stoppedBy(s.stopRequestedBy);
   if (s.spentMicros >= s.capMicros) return { status: "capped", reason: budgetText(s.capMicros, s.month) };
   if (s.steps >= RUN_MAX_STEPS) return { status: "failed", reason: `Step limit reached (${RUN_MAX_STEPS} steps).` };
-  if (nowMs - s.startedAtMs - (s.pausedMs ?? 0) > RUN_MAX_MS) return { status: "failed", reason: "Time limit reached (2 hours)." };
+  if (nowMs - s.startedAtMs - (s.pausedMs ?? 0) > RUN_MAX_MS) return { status: "failed", reason: `Time limit reached (${RUN_MAX_MS / 3_600_000} hours).` };
   return null;
 }

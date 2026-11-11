@@ -37,7 +37,7 @@ export function Panel({ open, overlayOpen, active, onActiveChange, tabs }: {
               role="tab"
               aria-selected={t.id === current.id}
               onClick={() => onActiveChange(t.id)}
-              className={`relative isolate h-8 flex-1 rounded-lg text-[12.5px] font-medium transition-[color,transform] active:scale-[0.97] ${t.id === current.id ? "text-text" : "text-text-2 hover:text-text"}`}
+              className={`relative isolate h-8 flex-auto whitespace-nowrap rounded-lg px-2 text-[12.5px] font-medium transition-[color,transform] active:scale-[0.97] ${t.id === current.id ? "text-text" : "text-text-2 hover:text-text"}`}
             >
               {t.id === current.id && <motion.span layoutId="panel-tab" transition={spring.glide} className="absolute inset-0 -z-10 rounded-lg bg-[#1c2225]" />}
               {t.label}

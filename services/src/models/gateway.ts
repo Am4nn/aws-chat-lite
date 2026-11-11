@@ -13,6 +13,7 @@ export type ModelRequest = {
   system: string;
   messages: ModelMessage[];
   tools: ToolSpec[];
+  /** The most output tokens the call may produce. */
   maxTokens: number;
   effort?: "low" | "medium";
   cache?: boolean;

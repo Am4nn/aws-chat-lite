@@ -32,7 +32,7 @@ export async function runLoop({ runId }: { runId: string }, ctx: DurableContext)
 
     if (loaded.provisional) run = { ...run, costMicros: await step("name", () => nameThread(run)) };
     for (let i = 1; ; i++) {
-      const turn = await step(`model-${i}`, () => modelTurn(run));
+      const turn = await step(`model-${i}`, () => modelTurn(run, i));
       run = { ...run, seenSeq: turn.seenSeq, costMicros: turn.costMicros };
       if (turn.end) {
         await close(`close-${i}`, turn.end, true);

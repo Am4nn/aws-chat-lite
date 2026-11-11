@@ -1,5 +1,6 @@
 import type { ModelMessage, ModelProvider, ModelRequest, ProviderChunk, StopReason, ToolCall } from "./gateway.js";
 import { NAME_PROMPT } from "./gateway.js";
+import { sleep as wait } from "../lib/sleep.js";
 import { ROUTER_PROMPT } from "./picks.js";
 
 const BODY_WORDS =
@@ -40,9 +41,12 @@ function sampleInput(schema: Schema): unknown {
 const SPAN = /\b(sh|py|js)`([^`]*)`/g;
 const LANGUAGES: Record<string, string> = { sh: "shell", py: "python", js: "javascript" };
 
-const charsOf = (m: ModelMessage) => (m.role === "tool" ? m.output.length : m.text.length);
+const charsOf = (m: ModelMessage) => {
+  if (m.role === "tool") return m.output.length;
+  return m.text.length + (m.role === "assistant" && m.toolCalls ? JSON.stringify(m.toolCalls).length : 0);
+};
 
-export function fakeModel({ sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms)) } = {}): ModelProvider {
+export function fakeModel({ sleep = wait } = {}): ModelProvider {
   return { stream: (req) => run(req, sleep) };
 }
 
@@ -133,6 +137,10 @@ async function* run(req: ModelRequest, sleep: (ms: number) => Promise<void>): As
   for (const text of drop === undefined ? pieces : pieces.slice(0, drop + 1)) {
     if (req.signal?.aborted) {
       yield* finish("aborted");
+      return;
+    }
+    if (outputChars / 4 >= req.maxTokens) {
+      yield* finish("max_tokens");
       return;
     }
     await sleep(slow ? 150 : 15);

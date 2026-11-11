@@ -5,7 +5,7 @@ import { streamRun, type StreamDeps } from "./stream.js";
 
 const at = "2026-11-11T00:00:00.000Z";
 const finished: RunEventBody = { type: "run.finished", status: "done", ms: 10, steps: 0, costMicros: 0 };
-const event = (seq: number, body: RunEventBody = { type: "text", text: `w${seq} ` }) => ({ ...body, seq, at }) as RunEvent;
+const event = (seq: number, body: RunEventBody = { type: "text", text: `w${seq} `, turn: 1 }) => ({ ...body, seq, at }) as RunEvent;
 
 const iso = (ms: number) => new Date(ms).toISOString();
 const MIN = 60_000;
@@ -59,7 +59,7 @@ describe("streamRun", () => {
   });
 
   it("never sends model.turn events, though the cursor moves past them", async () => {
-    const turn: RunEventBody = { type: "model.turn", model: "m", content: [] };
+    const turn: RunEventBody = { type: "model.turn", model: "m", content: [], turn: 1 };
     const log = [event(1), event(2), event(3, turn), event(4, finished)].map((e) => ({ event: e }));
     const { deps, now } = fakeRun(log);
     const { out, sink } = recorder(now);
@@ -140,7 +140,7 @@ describe("streamRun", () => {
   });
 
   it("a run that died without run.finished, with nothing past the cursor, is a 410 at connect", async () => {
-    const { deps, now } = fakeRun([{ event: event(1) }], { run: { status: "running", startedAt: iso(-131 * MIN), deadAt: iso(-MIN) } });
+    const { deps, now } = fakeRun([{ event: event(1) }], { run: { status: "running", startedAt: iso(-136 * MIN), deadAt: iso(-MIN) } });
     const { out, sink } = recorder(now);
     await streamRun({ runId: "run1", ticket: "good", lastEventId: "1" }, sink, deps);
     expect(out.status).toBe(410);
@@ -148,7 +148,7 @@ describe("streamRun", () => {
   });
 
   it("a dead run's stream sends what is left, then ends at the next 30 s check", async () => {
-    const { deps, now } = fakeRun([{ event: event(1) }], { run: { status: "running", startedAt: iso(-131 * MIN), deadAt: iso(-MIN) } });
+    const { deps, now } = fakeRun([{ event: event(1) }], { run: { status: "running", startedAt: iso(-136 * MIN), deadAt: iso(-MIN) } });
     const { out, sink } = recorder(now);
     await streamRun({ runId: "run1", ticket: "good" }, sink, deps);
     expect(out.status).toBe(200);
@@ -176,7 +176,7 @@ describe("streamRun", () => {
 
   it("a drop mid-answer and a resume with Last-Event-ID show the answer exactly once", async () => {
     const words = ["The ", "answer ", "is ", "forty", "-two", "."];
-    const log = words.map((text, i) => ({ event: event(i + 1, { type: "text", text }), visibleAt: i * 300 }))
+    const log = words.map((text, i) => ({ event: event(i + 1, { type: "text", text, turn: 1 }), visibleAt: i * 300 }))
       .concat({ event: event(words.length + 1, finished), visibleAt: 2000 });
     const { deps, now } = fakeRun(log);
     const seen: RunEvent[] = [];
