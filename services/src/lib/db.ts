@@ -3,6 +3,7 @@ import {
   BatchGetCommand, DynamoDBDocumentClient, QueryCommand,
   type BatchGetCommandInput, type BatchGetCommandOutput, type QueryCommandInput, type QueryCommandOutput,
 } from "@aws-sdk/lib-dynamodb";
+import { Unavailable } from "./errors.js";
 
 let cached: DynamoDBDocumentClient | undefined;
 
@@ -30,6 +31,11 @@ export function conditionFailed(e: unknown): boolean {
 /** True when a transaction was cancelled because item `index` (in TransactItems order) failed its condition. */
 export function failedAt(e: unknown, index: number): boolean {
   return (e as { CancellationReasons?: { Code?: string }[] }).CancellationReasons?.[index]?.Code === "ConditionalCheckFailed";
+}
+
+/** True when a transaction was cancelled because another transaction was writing one of its items at the same time. */
+export function transactionConflict(e: unknown): boolean {
+  return !!(e as { CancellationReasons?: { Code?: string }[] }).CancellationReasons?.some((r) => r.Code === "TransactionConflict");
 }
 
 /** Every item a query matches. One Query call returns at most 1 MB, so this follows LastEvaluatedKey to the end. */
@@ -60,7 +66,7 @@ export async function batchGet(keys: Record<string, string>[], opts: { consisten
       [TableName]: { Keys: keys.slice(i, i + BATCH_GET_MAX), ConsistentRead: opts.consistent },
     };
     for (let attempt = 0; request && Object.keys(request).length; attempt++) {
-      if (attempt === BATCH_GET_ATTEMPTS) throw new Error(`BatchGet left keys unprocessed after ${BATCH_GET_ATTEMPTS} attempts`);
+      if (attempt === BATCH_GET_ATTEMPTS) throw new Unavailable("The server is busy right now; try again in a moment.");
       if (attempt) await new Promise((r) => setTimeout(r, 50 * 2 ** attempt));
       const { Responses, UnprocessedKeys }: BatchGetCommandOutput = await docClient().send(new BatchGetCommand({ RequestItems: request }));
       items.push(...(Responses?.[TableName] ?? []));

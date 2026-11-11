@@ -279,7 +279,9 @@ describe("chat repo on Floci", () => {
     expect(await upload(form, new Blob(["hello"], { type: "text/plain" }))).toBeLessThan(300);
 
     const file = { key: form.key, name: "notes.txt", size: 5, type: "text/plain" };
-    const sent = await chat.send(owner, { ...at, clientId: "f1", text: "", attachments: [file] });
+    // The declared size is a claim; what S3 stored wins.
+    const sent = await chat.send(owner, { ...at, clientId: "f1", text: "", attachments: [{ ...file, size: 9_999 }] });
+    expect(sent.attachments[0]).toMatchObject({ size: 5, type: "text/plain" });
     expect(sent.attachments[0].url).toMatch(/^http:\/\/localhost:4566\//);
     const { messages: [stored] } = await chat.history(owner, at.roomId, at.chatId, {});
     const download = await fetch(stored.attachments[0].url!);
@@ -287,6 +289,8 @@ describe("chat repo on Floci", () => {
     expect(await download.text()).toBe("hello");
     const foreign = { ...file, key: `rooms/${at.roomId}/someone-else/x/notes.txt` };
     await expect(chat.send(owner, { ...at, clientId: "f2", text: "", attachments: [foreign] })).rejects.toBeInstanceOf(ValidationError);
+    const neverUploaded = { ...file, key: `rooms/${at.roomId}/${owner.userId}/missing/notes.txt` };
+    await expect(chat.send(owner, { ...at, clientId: "f3", text: "", attachments: [neverUploaded] })).rejects.toBeInstanceOf(ValidationError);
   });
 
   it("S3 refuses an 11 MB upload on the presigned form", async () => {

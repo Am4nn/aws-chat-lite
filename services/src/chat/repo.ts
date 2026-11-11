@@ -1,9 +1,9 @@
 import { GetCommand, PutCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { User } from "../lib/auth.js";
-import { conditionFailed, docClient, failedAt, tableName } from "../lib/db.js";
+import { conditionFailed, docClient, failedAt, tableName, transactionConflict } from "../lib/db.js";
 import { Conflict, Forbidden, NotFound, ValidationError } from "../lib/errors.js";
 import { counterKey, memberKey, roomKey } from "../lib/keys.js";
-import { withUrls } from "./files.js";
+import { storedAttachment, withUrls } from "./files.js";
 import { requireMember } from "./membership.js";
 import { notified, parseMentions } from "./mentions.js";
 import {
@@ -126,10 +126,11 @@ export function chatRepo() {
     async send(user: User, input: ChatRef & { clientId: string; text: unknown; replyToSeq?: number; attachments?: unknown }): Promise<Message> {
       const at = { roomId: input.roomId, chatId: input.chatId };
       const text = messageText(input.text);
-      const attachments = attachmentList(input.attachments, at.roomId, user.userId);
-      if (!text && !attachments.length) throw new ValidationError(NEEDS_CONTENT);
+      const declared = attachmentList(input.attachments, at.roomId, user.userId);
+      if (!text && !declared.length) throw new ValidationError(NEEDS_CONTENT);
       await requireMember(at.roomId, user.userId, { writing: true });
       await countTowardsRate(user.userId);
+      const attachments = await Promise.all(declared.map(storedAttachment));
       const quoted = input.replyToSeq === undefined ? undefined : await storedMessage(at, input.replyToSeq);
       const members = text.includes("@") ? await roomMembers(at.roomId) : [];
       const { mentions, everyone } = parseMentions(text, members);
@@ -191,7 +192,7 @@ export function chatRepo() {
           ],
         }));
       } catch (e) {
-        if (conditionFailed(e)) throw new Conflict("That message just changed; try again.");
+        if (conditionFailed(e) || transactionConflict(e)) throw new Conflict("That message just changed; try again.");
         throw e;
       }
       const before = new Set(notified(old, members, user.userId));
@@ -245,7 +246,8 @@ export function chatRepo() {
     /**
      * Moves the read marker forward, clears the chat's mentions and takes the same number off the member's room total,
      * in one transaction. Optimistic: the write only applies if the mentions are still the count we read, so a mention
-     * arriving meanwhile is never wiped without being subtracted; on a clash it reads again and retries. The chat's
+     * arriving meanwhile is never wiped without being subtracted; on a clash (that, or another transaction writing the
+   * same items at the same moment, which DynamoDB cancels as a TransactionConflict) it reads again and retries. The chat's
      * counter, checked in the same transaction, proves the chat is in this room and the seq has been sent.
      */
     async markRead(user: User, input: ChatRef & { seq: number }): Promise<{ lastReadSeq: number }> {
@@ -283,8 +285,8 @@ export function chatRepo() {
           }));
           return { lastReadSeq };
         } catch (e) {
-          if (!conditionFailed(e)) throw e;
           if (failedAt(e, 0)) throw new NotFound("Chat not found.");
+          if (!conditionFailed(e) && !transactionConflict(e)) throw e;
         }
       }
       throw new Conflict("Your read state kept changing; try again.");

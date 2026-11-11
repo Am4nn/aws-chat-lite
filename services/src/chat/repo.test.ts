@@ -51,3 +51,24 @@ describe("message versions", () => {
     expect(react.input.UpdateExpression).toContain("v :one");
   });
 });
+
+const conflict = () => Object.assign(new Error("clash"), {
+  name: "TransactionCanceledException", CancellationReasons: [{ Code: "None" }, { Code: "TransactionConflict" }],
+});
+
+describe("transaction conflicts", () => {
+  it("markRead tries again after another transaction held its items", async () => {
+    let calls = 0;
+    const send = fakeTable({ lastReadSeq: 0, mentions: 1 }, (c) => {
+      if (c instanceof TransactWriteCommand && calls++ === 0) throw conflict();
+      return {};
+    });
+    expect(await chatRepo().markRead(me, { ...at, seq: 1 })).toEqual({ lastReadSeq: 1 });
+    expect(writes(send)).toHaveLength(2);
+  });
+
+  it("an edit that clashes with another transaction asks to try again", async () => {
+    fakeTable(stored(), () => { throw conflict(); });
+    await expect(chatRepo().edit(me, { ...at, seq: 1, text: "hello" })).rejects.toThrow("That message just changed; try again.");
+  });
+});
