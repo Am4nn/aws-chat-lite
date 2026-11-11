@@ -1,26 +1,65 @@
 "use client";
 
+import { ArrowUpRight } from "lucide-react";
 import { formatUsd } from "@/lib/client/format";
-import { runElapsed } from "@/lib/client/threads";
+import { isLive, runElapsed } from "@/lib/client/threads";
 import { useNow } from "@/lib/client/useNow";
-import type { ThreadSummary } from "@/lib/types";
+import { useRunStream } from "@/lib/client/useRunStream";
+import type { Source, ThreadSummary } from "@/lib/types";
 
-/** The room panel's view of this thread's latest run: how many steps, how long and what it cost so far. */
+/** The room panel's view of this thread's latest run: how many steps, how long and what it cost so far, and what it read. */
 export function RunPanel({ thread: t }: { thread: ThreadSummary }) {
-  const now = useNow(t.status === "running");
+  const live = isLive(t.status);
+  const now = useNow(live);
+  const { run } = useRunStream(t.runId, live);
   return (
-    <section className="flex flex-col gap-2">
-      <h2 className="text-[11.5px] font-semibold text-text-3">This run</h2>
-      {t.runId
-        ? (
-          <dl className="grid grid-cols-3 gap-2">
-            <Tile label="steps" value={String(t.steps)} />
-            <Tile label="elapsed" value={runElapsed(t, now)} />
-            <Tile label="cost" value={formatUsd(t.costMicros)} />
-          </dl>
-        )
-        : <p className="text-[12.5px] text-text-3">Nothing has run here yet.</p>}
-    </section>
+    <div className="flex flex-col gap-5">
+      <section className="flex flex-col gap-2">
+        <h2 className="text-[11.5px] font-semibold text-text-3">This run</h2>
+        {t.runId
+          ? (
+            <dl className="grid grid-cols-3 gap-2">
+              <Tile label="steps" value={String(t.steps)} />
+              <Tile label="elapsed" value={runElapsed(t, now)} />
+              <Tile label="cost" value={formatUsd(t.costMicros)} />
+            </dl>
+          )
+          : <p className="text-[12.5px] text-text-3">Nothing has run here yet.</p>}
+      </section>
+      {run.sources.length > 0 && (
+        <section className="flex flex-col gap-1">
+          <h2 className="pb-1 text-[11.5px] font-semibold text-text-3">Sources</h2>
+          <ul className="flex flex-col gap-0.5">
+            {run.sources.map((s) => <SourceRow key={s.url} source={s} />)}
+          </ul>
+        </section>
+      )}
+    </div>
+  );
+}
+
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+};
+
+function SourceRow({ source }: { source: Source }) {
+  return (
+    <li className="animate-[row-in_.45s_cubic-bezier(.2,.9,.2,1)_both] motion-reduce:animate-none">
+      <a
+        href={source.url} target="_blank" rel="noopener noreferrer"
+        className="group flex items-start gap-2 rounded-[10px] px-2.5 py-2 transition-colors hover:bg-surface-2 active:bg-surface-3"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13px] text-text">{source.title || hostOf(source.url)}</span>
+          <span className="block truncate font-mono text-[11px] text-text-3">{hostOf(source.url)}</span>
+        </span>
+        <ArrowUpRight aria-hidden="true" size={14} className="mt-0.5 shrink-0 text-text-3 transition-colors group-hover:text-text" />
+      </a>
+    </li>
   );
 }
 

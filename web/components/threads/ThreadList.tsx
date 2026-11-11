@@ -86,7 +86,7 @@ function ThreadRow({ thread: t, href, active, fresh, meta }: {
         <span className="truncate">{t.name}</span>
         <span
           suppressHydrationWarning
-          className={`ml-auto shrink-0 font-mono text-[11px] font-normal tabular-nums ${meta.tone === "live" ? "text-lime" : "text-text-3"}`}
+          className={`ml-auto shrink-0 font-mono text-[11px] font-normal tabular-nums ${meta.tone === "live" ? "text-lime" : meta.tone === "waiting" ? "text-amber" : "text-text-3"}`}
         >
           {meta.text}
         </span>

@@ -39,32 +39,52 @@ describe("thread list", () => {
 
 describe("dead runs", () => {
   const now = Date.parse("2026-11-11T15:00:00Z");
-  const ago = (min: number) => new Date(now - min * 60_000).toISOString();
+  const at = (min: number) => new Date(now + min * 60_000).toISOString();
 
-  it("reads a run still running past the server's cutoff as failed", () => {
+  it("reads a run still running past the server's deadAt as failed, however long ago it started", () => {
     const [dead, alive] = settleDeadRuns([
-      th({ threadId: "a", status: "running", startedAt: ago(136) }),
-      th({ threadId: "b", status: "running", startedAt: ago(134) }),
+      th({ threadId: "a", status: "running", startedAt: at(-30), deadAt: at(-1) }),
+      th({ threadId: "b", status: "running", startedAt: at(-300), deadAt: at(1) }),
     ], now);
     expect([dead.status, alive.status]).toEqual(["failed", "running"]);
     expect(runLabel(dead)).toBe("Failed");
     expect(threadMeta(dead, now).text).toBe("failed");
   });
 
+  it("never reads a waiting run as dead", () => {
+    expect(settleDeadRuns([th({ status: "waiting", deadAt: at(-1) })], now)[0].status).toBe("waiting");
+  });
+
   it("lets a dead run leave the live count and archive", () => {
-    const list = settleDeadRuns([th({ status: "running", startedAt: ago(136), lastActivityAt: ago(8 * 24 * 60) })], now);
+    const list = settleDeadRuns([th({ status: "running", deadAt: at(-1), lastActivityAt: at(-8 * 24 * 60) })], now);
     expect(liveCount(list)).toBe(0);
     expect(sidebarThreads(list, now)).toEqual([]);
   });
 
-  it("knows when the next live run reaches the cutoff", () => {
+  it("knows when the next live run reaches its deadAt", () => {
     const list = [
-      th({ threadId: "a", status: "running", startedAt: ago(136) }),
-      th({ threadId: "b", status: "running", startedAt: ago(130) }),
-      th({ threadId: "c", status: "running", startedAt: ago(10) }),
+      th({ threadId: "a", status: "running", deadAt: at(-1) }),
+      th({ threadId: "b", status: "running", deadAt: at(5) }),
+      th({ threadId: "c", status: "running", deadAt: at(100) }),
+      th({ threadId: "d", status: "running" }),
     ];
     expect(nextRunDeadline(list, now)).toBe(now + 5 * 60_000);
     expect(nextRunDeadline([th({ status: "done" })], now)).toBe(Infinity);
+  });
+});
+
+describe("waiting on an approval", () => {
+  const now = Date.parse("2026-11-11T15:00:00Z");
+  const waiting = th({ status: "waiting", steps: 2, startedAt: new Date(now - 64_000).toISOString(), lastActivityAt: "2026-11-01T00:00:00Z" });
+  it("counts as live: in the live count, and listed however long it has been idle", () => {
+    expect(liveCount([waiting])).toBe(1);
+    expect(sidebarThreads([waiting], now)).toHaveLength(1);
+  });
+  it("reads needs you in the sidebar, Needs approval in the capsule, and keeps counting time", () => {
+    expect(threadMeta(waiting, now)).toEqual({ text: "needs you", tone: "waiting" });
+    expect(runLabel(waiting)).toBe("Needs approval");
+    expect(stateText("waiting")).toBe("needs approval");
+    expect(runMeta(waiting, now)).toBe("step 2 · 1:04");
   });
 });
 

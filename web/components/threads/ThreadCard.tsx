@@ -50,7 +50,7 @@ function ThreadCard({ thread: t, href, readOnly, onReply }: { thread: ThreadSumm
   const reduced = useReducedMotion();
   const running = t.status === "running";
   const now = useNow(running);
-  const kind = running ? "running" : t.status === "done" ? "done" : "ended";
+  const kind = running || t.status === "waiting" || t.status === "done" ? t.status : "ended";
 
   return (
     <div className="flex max-w-[480px] flex-col gap-1 rounded-[14px] border border-line-strong bg-surface-1 py-2.5 pl-3.5 pr-2">
@@ -88,14 +88,19 @@ function ThreadCard({ thread: t, href, readOnly, onReply }: { thread: ThreadSumm
           transition={reduced ? instant : { duration: dur.fast }}
           className="flex min-w-0 items-baseline gap-2 pl-[24px] text-[12.5px]"
         >
-          {running
-            ? (
-              <>
-                <span className="min-w-0 truncate font-mono shimmer">{runLabel(t)}</span>
-                <span suppressHydrationWarning className="shrink-0 font-mono text-[11.5px] tabular-nums text-lime">{runMeta(t, now)}</span>
-              </>
-            )
-            : <span className="min-w-0 truncate text-text-2">{t.summary || runLabel(t) || "Starting…"}</span>}
+          {running && (
+            <>
+              <span className="min-w-0 truncate font-mono shimmer">{runLabel(t)}</span>
+              <span suppressHydrationWarning className="shrink-0 font-mono text-[11.5px] tabular-nums text-lime">{runMeta(t, now)}</span>
+            </>
+          )}
+          {t.status === "waiting" && (
+            <>
+              <span className="shrink-0 font-medium text-amber">needs approval</span>
+              <span className="min-w-0 truncate text-text-2">{t.approval?.title}</span>
+            </>
+          )}
+          {!running && t.status !== "waiting" && <span className="min-w-0 truncate text-text-2">{t.summary || runLabel(t) || "Starting…"}</span>}
         </motion.p>
       </AnimatePresence>
     </div>

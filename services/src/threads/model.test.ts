@@ -71,8 +71,9 @@ describe("summary", () => {
   };
   it("keeps the bookkeeping on the server and works out archived", () => {
     const t = summary(stored, now);
-    for (const k of ["pk", "sk", "named", "activeRunId", "deadAt", "from"]) expect(t).not.toHaveProperty(k);
-    expect(t).toMatchObject({ threadId: "t", number: 1, status: "done", rev: 4, archived: true });
+    for (const k of ["pk", "sk", "named", "activeRunId", "from"]) expect(t).not.toHaveProperty(k);
+    // Clients read deadAt to retire a dead run at the same moment the server does.
+    expect(t).toMatchObject({ threadId: "t", number: 1, status: "done", rev: 4, archived: true, deadAt: "2026-11-11T02:10:00Z" });
   });
 
   it("gives the taint as a sorted list, read from the stored string set, and [] when there is none", () => {
