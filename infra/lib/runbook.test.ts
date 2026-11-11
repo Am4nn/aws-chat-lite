@@ -28,6 +28,18 @@ describe("the AWS runbook", () => {
     for (const name of secrets) expect(runbook).toContain(`\`${name}\``);
   });
 
+  it("checks for leftover function log groups without CDK's helpers, whose groups the stack never owns", () => {
+    const checks = runbook.split("\n").filter((line) => line.includes("--log-group-name-prefix /aws/lambda/cl-aws- "));
+    expect(checks.length).toBeGreaterThan(0);
+    for (const line of checks) expect(line).toContain(`--query "logGroups[?!starts_with(logGroupName, '/aws/lambda/cl-aws-core')].logGroupName"`);
+  });
+
+  it("sets $account in every command block that uses it, since a new shell has none", () => {
+    const blocks = [...runbook.matchAll(/```powershell\n([\s\S]*?)```/g)].map((m) => m[1]!).filter((b) => b.includes("$account"));
+    expect(blocks.length).toBeGreaterThan(0);
+    for (const block of blocks) expect(block).toMatch(/^\s*\$account = aws sts get-caller-identity/m);
+  });
+
   it("has the heading every alarm links to", () => {
     expect(runbook).toMatch(/^## When an alarm fires$/m);
   });

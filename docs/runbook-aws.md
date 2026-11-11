@@ -50,9 +50,9 @@ Make these before step 2. Each line gives the recommendation first.
    aws service-quotas request-service-quota-increase --service-code lambda --quota-code L-B99A9384 --desired-value 1000 --profile ig --region ap-southeast-2
    aws service-quotas list-requested-service-quota-change-history --service-code lambda --query "RequestedQuotas[].[QuotaCode,DesiredValue,Status]" --output text --profile ig --region ap-southeast-2
    ```
-4. Make sure no log group from an earlier attempt is in the way. The stack creates `/aws/lambda/<function>` and `/aws/apigateway/cl-aws-api` itself, so a deploy fails if any of them already exists.
+4. Make sure no log group from an earlier attempt is in the way. The stack creates `/aws/lambda/<function>` and `/aws/apigateway/cl-aws-api` itself, so a deploy fails if any of them already exists. CDK's own helper Lambdas (the asset copy and the bucket auto-delete) are named after the stack, `cl-aws-core` plus a generated suffix, and Lambda makes their groups itself. Those never collide, so the first command leaves them out:
    ```powershell
-   aws logs describe-log-groups --log-group-name-prefix /aws/lambda/cl-aws- --query "logGroups[].logGroupName" --profile ig --region ap-southeast-2
+   aws logs describe-log-groups --log-group-name-prefix /aws/lambda/cl-aws- --query "logGroups[?!starts_with(logGroupName, '/aws/lambda/cl-aws-core')].logGroupName" --profile ig --region ap-southeast-2
    aws logs describe-log-groups --log-group-name-prefix /aws/apigateway/cl-aws- --query "logGroups[].logGroupName" --profile ig --region ap-southeast-2
    ```
 
@@ -118,6 +118,7 @@ cd ..
 npm -w web run build:open-next
 cd infra
 # Only if step 1 found no CDKToolkit:
+$account = aws sts get-caller-identity --query Account --output text --profile ig --region ap-southeast-2
 npx cdk bootstrap aws://$account/ap-southeast-2 -c stage=aws --profile ig
 npx cdk diff cl-aws-core -c stage=aws --profile ig
 npx cdk deploy cl-aws-core -c stage=aws --profile ig --outputs-file cdk.out/outputs-aws.json
@@ -172,7 +173,7 @@ function Set-ChatSecret([string]$SecretId, [string]$Build) {
 
 Nothing else needs filling:
 - **No sandbox token on AWS:** that token only guards the local Docker sandbox server, and AWS uses AgentCore.
-- **The origin secret** (the `x-origin-verify` header between CloudFront and its origins) is derived from the stack's own ID and isn't in Secrets Manager.
+- **The origin secret** (the `x-origin-verify` header between CloudFront and its origins) is derived from the stack's own ID and isn't in Secrets Manager. Anyone who can read the account can see it, and it can't be rotated short of recreating the stack. If it leaks, ask for a fix.
 
 **Check**, for each secret you filled:
 - `aws secretsmanager describe-secret --secret-id cl-aws-model-keys --query VersionIdsToStages --profile ig --region ap-southeast-2` shows two versions, one `AWSCURRENT` and one `AWSPREVIOUS` (the placeholder);
@@ -185,6 +186,8 @@ Nothing else needs filling:
 
 ## 6. Alarm email
 After the first deploy, AWS mails a confirmation link to the alert address. Click it. Nothing arrives until you do.
+
+Each alarm mails on its way into `ALARM` and again back to `OK`. A new alarm also mails `OK` once, a few minutes after the deploy that creates it, as it leaves its starting state. So after a deploy that adds functions, expect one `OK` mail per new alarm (up to all 17 if you confirm within minutes of the first deploy). They need nothing.
 
 **Check:**
 - `aws sns list-subscriptions-by-topic --topic-arn $out.OpsTopicArn --query "Subscriptions[].SubscriptionArn" --output text --profile ig --region ap-southeast-2` prints an ARN, not `PendingConfirmation`;
@@ -252,7 +255,7 @@ Floci passed all of these locally or couldn't run them at all. Check each row on
 | Transaction conflicts | Both accounts click Approve on the same GitHub write at the same moment | One wins, the other sees `Already approved by <u>.`, and GitHub shows one write |
 | IAM on every route (Floci enforces none) and real DynamoDB validation (reserved words) | After walking every feature once, open CloudWatch Logs Insights, select every `/aws/lambda/cl-aws-*` group and run the query below | Zero rows |
 | Attachments on the real origin | Upload a 9 MB file, then an 11 MB one | The 9 MB file uploads and downloads, the 11 MB one is refused, and images preview |
-| Room files expire from staging | A day after uploading room files: `aws s3 ls "s3://cl-aws-files-$account/staging/" --recursive --profile ig --region ap-southeast-2` | Nothing older than about a day |
+| Room files expire from staging | A day after uploading room files, with `$account` set as in Conventions: `aws s3 ls "s3://cl-aws-files-$account/staging/" --recursive --profile ig --region ap-southeast-2` | Nothing older than about a day |
 | Agent runs with a real model | A Haiku thread: stream, steer, stop | All three work, and the cost shows |
 | GitHub sign-in on the real GitHub (no automated test reaches it) | In a room you own: **Connections → Connect GitHub**. The first time, GitHub asks you to authorize the App. Then revoke the App under your GitHub **Settings → Applications → Authorized GitHub Apps**, click **Change repos** and press **Cancel** | You land back in the room with the picker open, listing only `Am4nn` and `Am4nn/chat-lite-playground`; saving shows the chip and an Activity line. The cancel gives the toast `GitHub didn't allow access (access_denied).` (the full check is "Checking the GitHub sign-in by hand" in `docs/learn/07-tools-approvals.md`) |
 | Durable callback on approval | With the playground connected (the row above), ask for a comment on the playground repo (`Am4nn/chat-lite-playground`), then Approve | The run resumes at once and the comment appears; delete it afterwards |
@@ -346,7 +349,7 @@ Each alarm mail says what users feel and links here. When it clears, the `OK` ma
 | `cl-aws-presignup-errors` | Sign-ups are refused | Check the logs |
 | `cl-aws-health-errors` | Nothing (it's the runbook's test alarm) | Set it back: `aws cloudwatch set-alarm-state --alarm-name cl-aws-health-errors --state-value OK --state-reason "runbook test" --profile ig --region ap-southeast-2` |
 | `cl-aws-api-5xx` | Pages and actions fail across the app | Run the query below on the `/aws/apigateway/cl-aws-api` access logs: the route names the function, so read that function's logs next |
-| `cl-aws-lambda-throttles` | Errors everywhere: the account ran out of concurrency | The dashboard's account-wide concurrency graph shows who used it up; instagram-lite shares the same quota. Request the increase (step 1), and stop runs until it lands |
+| `cl-aws-lambda-throttles` | Errors everywhere: the account ran out of concurrency | The dashboard's account-wide concurrency graph shows who used it up; instagram-lite shares the same quota. Request the increase (step 1), and stop runs until it lands. `WebFunctionUrl` and the stream's Function URL are public with nothing throttling them, so a flood of direct calls shows as a spike on `cl-aws-web` or `cl-aws-stream` alone. Once the quota is raised, cap that function at once with `aws lambda put-function-concurrency --function-name cl-aws-web --reserved-concurrent-executions 20 --profile ig --region ap-southeast-2` (the stack doesn't set it, so a deploy keeps it; `delete-function-concurrency` lifts it), then ask for a fix |
 
 The access log query for `cl-aws-api-5xx`:
 ```
@@ -367,6 +370,7 @@ npm -w web run build:open-next
 cd infra
 npx cdk destroy cl-aws-core -c stage=aws --profile ig
 cd ..
+$account = aws sts get-caller-identity --query Account --output text --profile ig --region ap-southeast-2
 ```
 The destroy takes everything except users' data and the keys. CloudFront takes several minutes to disable and delete.
 
@@ -387,6 +391,11 @@ Then:
 
 **Check:**
 - `aws cloudformation describe-stacks --stack-name cl-aws-core --profile ig --region ap-southeast-2` says the stack does not exist;
-- `aws logs describe-log-groups --log-group-name-prefix /aws/lambda/cl-aws- --query "logGroups[].logGroupName" --profile ig --region ap-southeast-2` prints `[]`. A Lambda that ran during the destroy can leave its group behind, and the next deploy would trip over it. Delete any leftovers.
+- `aws logs describe-log-groups --log-group-name-prefix /aws/lambda/cl-aws- --query "logGroups[?!starts_with(logGroupName, '/aws/lambda/cl-aws-core')].logGroupName" --profile ig --region ap-southeast-2` prints `[]`. A Lambda that ran during the destroy can leave its group behind, and the next deploy would trip over it. Delete any leftovers.
+
+CDK's helper Lambdas leave `/aws/lambda/cl-aws-core*` groups that the stack doesn't own, so they survive the destroy and never expire. They're harmless and never block a deploy. To delete them too:
+```powershell
+(aws logs describe-log-groups --log-group-name-prefix /aws/lambda/cl-aws-core --query "logGroups[].logGroupName" --output text --profile ig --region ap-southeast-2) -split '\s+' | Where-Object { $_ } | ForEach-Object { aws logs delete-log-group --log-group-name $_ --profile ig --region ap-southeast-2 }
+```
 
 **Stop if:** the destroy fails (`DELETE_FAILED`). Send the resource and reason, and ask for a fix rather than deleting resources by hand.
