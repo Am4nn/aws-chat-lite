@@ -241,7 +241,7 @@ export function Composer({
         <AnimatePresence initial={false}>
           {dictation.state !== "idle" && (
             <motion.div
-              initial={{ height: 0, opacity: 0 }}
+              initial={reduced ? false : { height: 0, opacity: 0 }}
               animate={{ height: "auto", opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
               transition={motionFast}
