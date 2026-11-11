@@ -14,12 +14,12 @@ import { BUILT_IN_REFUSAL, agentsRepo } from "./repo.js";
 type CopyResult = { agent: Agent; dropped: ToolKind[]; schedules: { copied: number; skipped: number } };
 
 /** Chats sort by creation time, so the first is the room's oldest (`#general`, unless renamed). */
-async function oldestChat(roomId: string): Promise<string> {
+async function oldestChat(roomId: string): Promise<string | undefined> {
   const { Items = [] } = await docClient().send(new QueryCommand({
     TableName: tableName(), KeyConditionExpression: "pk = :p AND begins_with(sk, :c)", Limit: 1, ProjectionExpression: "chatId",
     ExpressionAttributeValues: { ":p": roomKey(roomId), ":c": "CHAT#" },
   }));
-  return String(Items[0]?.chatId);
+  return Items[0]?.chatId as string | undefined;
 }
 
 /**
@@ -46,5 +46,8 @@ export async function copyAgent(user: User, from: { roomId: string; agentId: str
   const copies = its.map(({ title, prompt, cadence }) => ({
     agentId: agent.agentId, title, prompt, cadence, createdBy: user.userId, createdByName: user.username,
   }));
-  return { agent, dropped, schedules: await schedules.createCopies(toRoomId, copies, await oldestChat(toRoomId)) };
+  // A schedule with no chat would post nowhere, so a room without one gets none and the copier hears how many.
+  const chatId = await oldestChat(toRoomId);
+  if (!chatId) return { agent, dropped, schedules: { copied: 0, skipped: copies.length } };
+  return { agent, dropped, schedules: await schedules.createCopies(toRoomId, copies, chatId) };
 }

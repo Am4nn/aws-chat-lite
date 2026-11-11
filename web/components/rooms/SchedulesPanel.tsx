@@ -161,7 +161,7 @@ export function SchedulesPanel({ roomId, me, chats, archived }: { roomId: string
 }
 
 /**
- * Every zone the browser knows; the server checks the pick and stores its canonical name. Browsers list some zones
+ * Every zone the browser knows; the server checks the pick and stores it exactly as given. Browsers list some zones
  * under older names (Asia/Calcutta for Asia/Kolkata), so the room's own zone is added in case it isn't listed.
  */
 function TimeZoneRow({ timeZone, canSet, onSet }: { timeZone: string; canSet: boolean; onSet: (tz: string) => void }) {
