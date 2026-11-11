@@ -12,7 +12,7 @@ const template = () => {
   return (cached = Template.fromStack(stack));
 };
 
-const ROUTE_KEYS = ["$connect", "$disconnect", "$default", "send", "edit", "delete", "react", "typing", "read", "subscribe", "ping"];
+const ROUTE_KEYS = ["$connect", "$disconnect", "$default", "send", "edit", "delete", "react", "typing", "read", "subscribe", "ping", "stop"];
 
 const liveFunction = () => {
   const fns = Object.entries(template().findResources("AWS::Lambda::Function", { Properties: { FunctionName: "cl-local-live" } }));
@@ -36,7 +36,7 @@ describe("live WebSocket API", () => {
     });
   });
 
-  it("has all 11 route keys", () => {
+  it("has all 12 route keys", () => {
     const keys = Object.values(template().findResources("AWS::ApiGatewayV2::Route")).map((r: any) => r.Properties.RouteKey);
     for (const k of ROUTE_KEYS) expect(keys, k).toContain(k);
   });
@@ -49,6 +49,13 @@ describe("live WebSocket API", () => {
     const actions = liveStatements().flatMap((s: any) => [s.Action].flat());
     expect(actions).toContain("execute-api:ManageConnections");
     expect(actions).toContain("dynamodb:PutItem");
+  });
+
+  it("the live Lambda may start agent runs, since a message in a thread starts or steers one", () => {
+    const vars = liveFunction().Properties.Environment.Variables;
+    expect(vars).toMatchObject({ RUN_FN_QUALIFIER: "live" });
+    expect(vars.RUN_FN_NAME).toBeDefined();
+    expect(liveStatements()).toContainEqual(expect.objectContaining({ Action: "lambda:InvokeFunction", Effect: "Allow" }));
   });
 
   it("the live Lambda posts back through the API's own Floci host locally", () => {

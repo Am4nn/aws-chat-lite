@@ -20,6 +20,8 @@ export type Message = {
   reactions: Partial<Record<Reaction, string[]>>;
   mentions: string[];
   everyone: boolean;
+  /** Set on a people-chat message that started a thread (its card) or was delivered into one (its chip). */
+  threadRef?: { threadId: string; kind: "started" | "delivered" };
   /** Set on an agent's answer (`authorId: "agent"`): how the run that wrote it ended. */
   agent?: {
     runId: string; status: RunEndStatus; reason?: string; steps: number; costMicros: number; ms: number; model: string;

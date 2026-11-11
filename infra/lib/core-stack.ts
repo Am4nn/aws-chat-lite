@@ -63,6 +63,8 @@ export class CoreStack extends Stack {
     this.allowBroadcast(addRooms(this));
     addChat(this);
     this.runs = addRuns(this);
+    // A message sent in a thread over the socket starts or steers its run.
+    this.allowRunStart(this.live.liveFn);
     const threadsFn = addThreads(this);
     this.allowBroadcast(threadsFn);
     this.allowRunStart(threadsFn);

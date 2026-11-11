@@ -14,7 +14,7 @@ interface User { userId: string; username: string }
 interface ChatRef { roomId: string; chatId: string }
 interface Cursor { before?: number; after?: number; around?: number }
 /** A send's content once `admit` has accepted it. */
-interface Admitted { text: string; attachments: Attachment[] }
+export interface Admitted { text: string; attachments: Attachment[] }
 
 const roomKey = (roomId: string) => `ROOM#${roomId}`;
 const chatKey = (chatId: string) => `CHAT#${chatId}`;
@@ -168,6 +168,18 @@ export function chatRepo() {
         countMentions(at, notified(message, members, user.userId)),
       ]);
       return withUrls(message);
+    },
+
+    /**
+     * Points a message at the thread it started or was delivered into. Only the server calls this, right after the
+     * message's own send checked its author, so it checks no caller.
+     */
+    async linkThread(at: ChatRef & { seq: number }, threadRef: NonNullable<Message["threadRef"]>): Promise<Message> {
+      const { Attributes } = await db.send(new UpdateCommand({
+        TableName, Key: messageKey(at, at.seq), UpdateExpression: "SET threadRef = :ref", ConditionExpression: "attribute_exists(sk)",
+        ExpressionAttributeValues: { ":ref": threadRef }, ReturnValues: "ALL_NEW",
+      }));
+      return toMessage(Attributes!);
     },
 
     /**

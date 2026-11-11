@@ -3,7 +3,7 @@ import { WebSocketLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integra
 import type { CoreStack } from "./core-stack.js";
 
 /** A route per client action rather than all on $default, so each gets its own metrics and can get its own throttle. */
-const ACTIONS = ["send", "edit", "delete", "react", "typing", "read", "subscribe", "ping"];
+const ACTIONS = ["send", "edit", "delete", "react", "typing", "read", "subscribe", "ping", "stop"];
 
 /** The live socket: one WebSocket API whose every route goes to one Lambda, which routes again on the frame's action. */
 export function addLive(stack: CoreStack) {

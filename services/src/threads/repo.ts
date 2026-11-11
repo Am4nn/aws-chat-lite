@@ -4,7 +4,7 @@ import { conditionFailed, docClient, failedAt, tableName } from "../lib/db.js";
 import { Conflict, NotFound } from "../lib/errors.js";
 import { requireMember } from "../chat/membership.js";
 import type { Message } from "../chat/model.js";
-import { chatRepo } from "../chat/repo.js";
+import { chatRepo, type Admitted } from "../chat/repo.js";
 import { broadcastToRoom } from "../live/broadcast.js";
 import { PROVISIONAL, isNumberedName, summary, threadName, threadSk, uniqueCandidates } from "./model.js";
 import type { ThreadSummary } from "./types.js";
@@ -85,11 +85,15 @@ export function threadsRepo() {
      * The room's counter hands out the number, so concurrent starts get #1, #2… The first message is admitted before
      * anything is written, so a refused message leaves no empty thread behind. The thread, its chat and its name guard
      * are then written together, and the message is sent into the new chat. Numbers have no gaps as long as creates
-     * succeed: one refused after the counter moved (its name held by a chat) skips its number.
+     * succeed: one refused after the counter moved (its name held by a chat) skips its number. A thread started from
+     * a people-chat message takes that message's admission, so the message counts once towards the rate limit.
      */
-    async createThread(user: User, roomId: string, input: { text: unknown; clientId: string; from?: { chatId: string; seq: number } }): Promise<{ thread: ThreadSummary; message: Message }> {
+    async createThread(
+      user: User, roomId: string,
+      input: { text: unknown; clientId: string; from?: { chatId: string; seq: number }; admitted?: Admitted },
+    ): Promise<{ thread: ThreadSummary; message: Message }> {
       const chat = chatRepo();
-      const admitted = await chat.admit(user, { roomId, text: input.text });
+      const admitted = input.admitted ?? await chat.admit(user, { roomId, text: input.text });
       const { Attributes } = await db.send(new UpdateCommand({
         TableName, Key: { pk: roomKey(roomId), sk: "META" }, UpdateExpression: "ADD threadSeq :one",
         ConditionExpression: "attribute_exists(pk)", ExpressionAttributeValues: { ":one": 1 }, ReturnValues: "UPDATED_NEW",

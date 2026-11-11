@@ -1,5 +1,7 @@
 import { broadcastToRoom, sendToConnection, sendToUser } from "../live/broadcast.js";
 import { UserError, ValidationError } from "../lib/errors.js";
+import { requestStop } from "../runs/stop.js";
+import { routeSend } from "../threads/route.js";
 import { REACTIONS, idOf, seqNumber, type Message, type Reaction } from "./model.js";
 import { chatRepo, type ChatRepo } from "./repo.js";
 
@@ -21,11 +23,16 @@ const updated = (message: Message): Outcome =>
 async function perform(connId: string, user: User, f: Frame): Promise<Outcome> {
   switch (f.action) {
     case "send": {
-      const message = await chat().send(user, {
+      const { message, route } = await routeSend(user, {
         ...chatRef(f), clientId: idOf(f.clientId, "clientId"), text: f.text, attachments: f.attachments,
         replyToSeq: f.replyToSeq === undefined ? undefined : seqNumber(f.replyToSeq),
+        threadId: f.threadId === undefined ? undefined : idOf(f.threadId, "threadId"),
       });
-      return { data: message, notify: () => broadcastToRoom(message.roomId, { type: "message.new", message }) };
+      const notify = async () => {
+        await broadcastToRoom(message.roomId, { type: "message.new", message });
+        await route();
+      };
+      return { data: message, notify };
     }
     case "edit":
       return updated(await chat().edit(user, { ...chatRef(f), seq: seqNumber(f.seq), text: f.text }));
@@ -50,6 +57,8 @@ async function perform(connId: string, user: User, f: Frame): Promise<Outcome> {
       const event = { type: "read", roomId, chatId, lastReadSeq };
       return { data: { lastReadSeq }, notify: () => sendToUser(user.userId, event, { exceptConnId: connId }) };
     }
+    case "stop":
+      return { data: await requestStop(user, idOf(f.roomId, "roomId"), idOf(f.threadId, "threadId")) };
     default:
       throw new ValidationError("Unknown action.");
   }
