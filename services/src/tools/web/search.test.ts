@@ -8,6 +8,7 @@ const env = (fetchImpl: typeof fetch, tavilyKey?: string): ToolEnv => ({
     throw new Error("unused");
   },
   keys: { tavilyKey },
+  mcpCall: () => Promise.reject(new Error("not wired")),
 });
 const status = (code: number): typeof fetch => async () => new Response("no", { status: code });
 

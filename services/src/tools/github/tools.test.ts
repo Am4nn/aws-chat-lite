@@ -9,7 +9,10 @@ const READ_SET = { metadata: "read", contents: "read", issues: "read", pull_requ
 
 function setup(answer?: (call: GitHubCall) => Response | undefined) {
   const { calls, fetch } = recordGitHub(answer);
-  const env: ToolEnv = { fetch, fetchPage: () => Promise.reject(new Error("no pages")), keys: fakeKeys(), github: conn };
+  const env: ToolEnv = {
+    fetch, fetchPage: () => Promise.reject(new Error("no pages")), keys: fakeKeys(), github: conn,
+    mcpCall: () => Promise.reject(new Error("not wired")),
+  };
   return { calls, env, repoCalls: () => calls.filter((c) => c.path.startsWith("/repos/")).map((c) => `${c.method} ${c.path}`) };
 }
 const tool = (name: string): Tool => GITHUB_TOOLS.find((t) => t.spec.name === name)!;

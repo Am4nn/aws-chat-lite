@@ -34,11 +34,11 @@ describe("run engine", () => {
     expect(fnNamed("cl-local-run", "local", { SANDBOX_TOKEN: "t" }).props.Environment.Variables).toMatchObject({ SANDBOX_TOKEN: "t" });
   });
 
-  it("keeps the hand-set keys secrets on AWS and lets cdk destroy remove them locally", () => {
+  it("keeps the keys secrets on AWS and lets cdk destroy remove them locally", () => {
     const local = Object.values(template().findResources("AWS::SecretsManager::Secret")) as any[];
-    expect(local.map((s) => s.DeletionPolicy)).toEqual(["Delete", "Delete"]);
+    expect(local.map((s) => s.DeletionPolicy)).toEqual(["Delete", "Delete", "Delete"]);
     const secrets = Object.values(template("aws").findResources("AWS::SecretsManager::Secret"));
-    expect(secrets).toHaveLength(2);
+    expect(secrets).toHaveLength(3);
     for (const secret of secrets) expect(secret).toMatchObject({ DeletionPolicy: "Retain", UpdateReplacePolicy: "Retain" });
   });
 
@@ -47,8 +47,9 @@ describe("run engine", () => {
     .filter((s: any) => [s.Action].flat().includes("secretsmanager:GetSecretValue"))
     .map((s: any) => s.Resource.Ref);
 
-  it("the run function may read both keys secrets, the connections function only the tool keys, and no one else either", () => {
-    expect(secretReads("cl-local-run").sort()).toEqual([secretId("cl-local-model-keys"), secretId("cl-local-tool-keys")].sort());
+  it("the run function may read the keys secrets and the token key, the connections function only the tool keys, and no one else either", () => {
+    const run = ["cl-local-model-keys", "cl-local-tool-keys", "cl-local-token-key"].map(secretId);
+    expect(secretReads("cl-local-run").sort()).toEqual(run.sort());
     expect(secretReads("cl-local-connections")).toEqual([secretId("cl-local-tool-keys")]);
     expect(secretReads("cl-local-threads")).toEqual([]);
   });

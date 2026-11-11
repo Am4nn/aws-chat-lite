@@ -17,6 +17,9 @@ import { addThreads } from "./threads.js";
 import { addRuns } from "./runs.js";
 import { addStream } from "./stream.js";
 import { addConnections } from "./connections.js";
+import { addMcpConnections } from "./mcp-connections.js";
+import { addMcpServer } from "./mcp-server.js";
+import { addOAuth } from "./oauth.js";
 import { addSandbox } from "./sandbox.js";
 
 /** Path to a handler file in services/src */
@@ -37,6 +40,8 @@ export class CoreStack extends Stack {
   readonly runs: ReturnType<typeof addRuns>;
   /** Where browsers open the live socket. */
   readonly wsUrl: string;
+  /** Where MCP clients reach the OAuth and MCP endpoints: the issuer, and the base of the resource `/mcp`. */
+  readonly publicApiUrl: string;
 
   constructor(scope: Construct, id: string, props: CoreStackProps) {
     super(scope, id, props);
@@ -60,6 +65,8 @@ export class CoreStack extends Stack {
     });
 
     this.api = new apigwv2.HttpApi(this, "Api", { apiName: `${prefix}-api` });
+    // Floci serves each HTTP API on its own host, as it does the WebSocket API.
+    this.publicApiUrl = props.config.isLocal ? `http://${this.api.apiId}.execute-api.localhost.floci.io:4566` : props.config.mcpBaseUrl!;
     this.auth = addAuth(this);
     this.route("GET", "/health", this.addFunction("health", "health.ts"), { public: true });
     this.live = addLive(this);
@@ -81,6 +88,9 @@ export class CoreStack extends Stack {
     this.allowRunStart(threadsFn);
     this.allowRunCallback(threadsFn);
     addConnections(this);
+    addMcpConnections(this);
+    addOAuth(this);
+    addMcpServer(this, files);
     const { streamUrl } = addStream(this);
     threadsFn.addEnvironment("STREAM_URL", streamUrl);
 
@@ -88,6 +98,7 @@ export class CoreStack extends Stack {
     new CfnOutput(this, "WsUrl", { value: this.wsUrl });
     new CfnOutput(this, "TableName", { value: this.table.tableName });
     new CfnOutput(this, "StreamUrl", { value: streamUrl });
+    new CfnOutput(this, "McpBaseUrl", { value: this.publicApiUrl });
   }
 
   /** Adds a route; JWT-protected unless `public`. */

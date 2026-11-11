@@ -21,6 +21,15 @@ describe("CoreStack", () => {
     t.hasResourceProperties("AWS::Lambda::Function", { FunctionName: "cl-local-health", Runtime: "nodejs22.x" });
   });
 
+  it("gives MCP clients the API's Floci host as its public base locally, and the site's domain on AWS", () => {
+    const [local] = Object.values(template().findOutputs("McpBaseUrl")) as any[];
+    const [prefix, ref, host] = local.Value["Fn::Join"][1];
+    expect(prefix).toBe("http://");
+    expect(ref).toEqual({ Ref: expect.stringMatching(/^Api/) });
+    expect(host).toMatch(/^\.execute-api\.localhost\.floci\.io:4566$/);
+    expect(Object.values(template("aws").findOutputs("McpBaseUrl"))).toEqual([expect.objectContaining({ Value: "https://chat.amanarya.com" })]);
+  });
+
   it("has no VPC resources", () => {
     expect(Object.values(template().toJSON().Resources).some((r: any) => String(r.Type).startsWith("AWS::EC2::"))).toBe(false);
   });

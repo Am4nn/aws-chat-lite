@@ -13,7 +13,7 @@ afterEach(() => vi.restoreAllMocks());
 const connection = { installationId: 1, account: "fake-org", repos: ["fake-org/playground"], addedBy: "aman", addedAt: "2026-11-11T10:00:00.000Z" };
 
 /** The table as the caller with `role` sees it; writes succeed and are recorded. */
-function fakeTable(role: Role, rows: { github?: object; approvalTimeoutSec?: number } = {}) {
+function fakeTable(role: Role, rows: { github?: object; approvalTimeoutSec?: number; mcp?: object[] } = {}) {
   return vi.spyOn(docClient(), "send").mockImplementation((async (c: unknown) => {
     if (c instanceof GetCommand) {
       const sk = String(c.input.Key?.sk);
@@ -21,7 +21,10 @@ function fakeTable(role: Role, rows: { github?: object; approvalTimeoutSec?: num
       if (sk === "META") return { Item: { name: "Room", ...(rows.approvalTimeoutSec && { approvalTimeoutSec: rows.approvalTimeoutSec }) } };
       if (sk === "CONN#github") return { Item: rows.github };
     }
-    if (c instanceof QueryCommand) return { Items: [] };
+    if (c instanceof QueryCommand) {
+      const v = c.input.ExpressionAttributeValues!;
+      return { Items: v[":prefix"] === "CONN#mcp#" ? (rows.mcp ?? []).map((m) => ({ pk: v[":pk"], sk: `CONN#mcp#${(m as { name: string }).name}`, ...m })) : [] };
+    }
     return {};
   }) as never);
 }
@@ -117,7 +120,7 @@ describe("GET connections", () => {
   it("a member reads the connection and the timeout but can't manage, and no key material leaves", async () => {
     const res = await call("member", "GET /rooms/{roomId}/connections", undefined, { github: connection, approvalTimeoutSec: 2700 });
     expect(res.body).toEqual({
-      github: connection, approvalTimeoutMin: 45, canManage: false, installUrl: "https://github.com/apps/fake-app/installations/new",
+      github: connection, mcp: [], approvalTimeoutMin: 45, canManage: false, installUrl: "https://github.com/apps/fake-app/installations/new",
     });
     expect(JSON.stringify(res.body)).not.toMatch(/BEGIN|ghs_|tvly-/);
   });
@@ -125,6 +128,14 @@ describe("GET connections", () => {
   it("defaults to 2 hours and no connection; an admin can manage", async () => {
     const res = await call("admin", "GET /rooms/{roomId}/connections");
     expect(res.body).toMatchObject({ github: null, approvalTimeoutMin: 120, canManage: true });
+  });
+
+  it("lists the room's MCP servers, read consistently, without their table keys", async () => {
+    const mcp = { name: "test", url: "https://x.example/mcp", auth: "oauth", status: "needs_auth", tools: [], toolCount: 0, toolsAt: "t", addedBy: "aman", addedAt: "t" };
+    const res = await call("member", "GET /rooms/{roomId}/connections", undefined, { mcp: [mcp] });
+    expect(res.body.mcp).toEqual([mcp]);
+    const query = res.send.mock.calls.map(([c]) => c).find((c) => c instanceof QueryCommand) as QueryCommand;
+    expect(query.input).toMatchObject({ ConsistentRead: true, ExpressionAttributeValues: { ":pk": "ROOM#r", ":prefix": "CONN#mcp#" } });
   });
 
   it("has no install link without App keys", async () => {

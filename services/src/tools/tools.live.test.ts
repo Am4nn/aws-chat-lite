@@ -22,7 +22,7 @@ let labelExisted = true;
 /** The PR while it is open, so a run that fails before the merge still closes it. */
 let openPr: number | undefined;
 
-const run = (name: string, input: Record<string, unknown>): Promise<ToolResult> => findTool(name)!.run(input, env);
+const run = (name: string, input: Record<string, unknown>): Promise<ToolResult> => findTool(name, { roomId: "live", mcp: [] })!.run(input, env);
 
 /** Every write names the playground, and the connection holds nothing else, so no call can land anywhere else. */
 async function write(name: string, input: Record<string, unknown>): Promise<ToolResult> {
@@ -54,7 +54,7 @@ describe.skipIf(!process.env.REAL_TOOLS)("tools against the real services", () =
       githubAppId: process.env.GITHUB_APP_ID,
       githubPrivateKey: readFileSync(resolve(ROOT, process.env.GITHUB_APP_PRIVATE_KEY_PATH ?? ""), "utf8"),
     };
-    env = { fetch, fetchPage: (url) => fetchPage(url), keys };
+    env = { fetch, fetchPage: (url) => fetchPage(url), keys, mcpCall: () => Promise.reject(new Error("No MCP servers in this suite.")) };
   });
 
   afterAll(async () => {

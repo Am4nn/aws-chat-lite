@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useParams, usePathname, useRouter } from "next/navigation";
+import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { motion, useReducedMotion } from "motion/react";
 import { Bot, Folder, Plug, Search, UserPlus, Users } from "lucide-react";
 import { bff, bffOrNull, errorText } from "@/lib/client/bff";
 import { useLive, useLiveStatus } from "@/lib/client/LiveProvider";
+import { returnToast } from "@/lib/client/mcp";
 import { ModelsProvider } from "@/lib/client/ModelsProvider";
 import { sidebarThreads } from "@/lib/client/threads";
 import { useThreads } from "@/lib/client/ThreadsProvider";
@@ -77,12 +78,26 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
   const members = usePresence(view.members, me.userId);
   const files = useRoomFiles(roomId);
   const exitRoom = useRoomExit({ roomId, rooms, onExited: () => setDialog(null) });
+  const query = useSearchParams();
+  const mcpName = query.get("mcp");
+  const mcpError = query.get("mcpError");
 
   // The socket outlives room switches and subscribes only to the rooms the user was in when it connected, so each
   // room asks for its own events once the socket is open (again after every reconnect).
   useEffect(() => {
     if (status === "open") live.request("subscribe", { roomId }).catch(() => {});
   }, [live, status, roomId]);
+
+  // Connecting an MCP server comes back here from its sign-in with the result in the address. It is shown once, with
+  // the Connections tab open, then dropped from the address so a reload doesn't show it again.
+  useEffect(() => {
+    if (!mcpName && !mcpError) return;
+    const shown = returnToast(mcpName, mcpError);
+    window.history.replaceState(null, "", window.location.pathname);
+    if (!shown) return;
+    toast(shown.text, shown.kind);
+    setPanelTab("connections");
+  }, [mcpName, mcpError, toast]);
 
   // Read once: the order only needs to know which threads the sidebar lists, and that changes by days, not seconds.
   const loadedAt = useNow(false);

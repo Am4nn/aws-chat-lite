@@ -1,7 +1,10 @@
+import { mcpServerOf } from "../mcp/client/names.js";
 import { modelInfo, type Provider } from "../models/catalog.js";
 import type { ToolCall, ToolSpec } from "../models/gateway.js";
+import { mcpTaint, type TaintSource } from "../models/privacy.js";
 import { LANGUAGES, MAX_TIMEOUT_SEC } from "../sandbox/sandbox.js";
-import { findTool, roomTools } from "../tools/index.js";
+import { findTool, roomTools, type RoomMcp } from "../tools/index.js";
+import type { Tool } from "../tools/types.js";
 
 export const FAKE_TOOLS: ToolSpec[] = [
   {
@@ -28,30 +31,47 @@ export const SANDBOX_TOOL: ToolSpec = {
 
 /**
  * The tools a model is offered. Sandbox output carries room files, so only a model that may see private content gets
- * the sandbox; the fake's tools are ones only the fake accepts; GitHub's need the room to be connected.
+ * the sandbox; the fake's tools are ones only the fake accepts; GitHub's need the room to be connected, and an MCP
+ * server's a signed-in connection.
  */
-export function toolsFor(model: string, served: Provider, connected: boolean): ToolSpec[] {
+export function toolsFor(model: string, served: Provider, room: RoomMcp & { github: boolean }): ToolSpec[] {
   const privateOk = modelInfo(model).privateOk;
   return [
     ...(served === "fake" ? FAKE_TOOLS : []),
     ...(privateOk ? [SANDBOX_TOOL] : []),
-    ...roomTools({ connected, privateOk }).map((t) => t.spec),
+    ...roomTools({ ...room, privateOk }).map((t) => t.spec),
   ];
 }
 
 /**
- * Whether a call may run: a tool its model could be offered. A room's missing connection is left to the tool's own
- * check, which tells the model so, rather than calling the tool unknown.
+ * Whether a call may run: a tool its model could be offered were every room connection signed in. A room's missing or
+ * signed-out connection is left to the tool's own check, which tells the model so, rather than calling the tool unknown.
  */
-export const mayRun = (model: string, served: Provider, name: string) => toolsFor(model, served, true).some((t) => t.name === name);
+export function mayRun(model: string, served: Provider, name: string, { roomId, mcp }: RoomMcp): boolean {
+  const signedIn = mcp.map((c) => ({ ...c, status: "connected" as const }));
+  return toolsFor(model, served, { roomId, github: true, mcp: signedIn }).some((t) => t.name === name);
+}
+
+/**
+ * Whether a call waits for a member's approval. A write always does. A web or MCP call sends its input out, so text
+ * injected into private content could have the model carry that content out in it: such a call asks once the thread
+ * holds any private content but what this same MCP server returned itself. `taint` is the thread's, with whatever
+ * the model's turn saw that the stored taint may lag behind.
+ */
+export function asksFirst(tool: Pick<Tool, "spec" | "kind" | "write">, taint: TaintSource[]): boolean {
+  if (tool.write) return true;
+  if (tool.kind === "github") return false;
+  const own = tool.kind === "mcp" ? mcpTaint(mcpServerOf(tool.spec.name)) : undefined;
+  return taint.some((t) => t !== own);
+}
 
 const firstLine = (code: unknown) => String(code ?? "").split("\n").map((l) => l.trim()).find(Boolean) ?? "";
 
 /** The line a running step shows under its tool's name. */
-export function toolDetail(call: ToolCall): string {
+export function toolDetail(call: ToolCall, room: RoomMcp): string {
   if (call.name === "fake.lookup") return `Looking up "${call.input.query}"`;
   if (call.name === SANDBOX_TOOL.name) return `Running ${call.input.language}: ${firstLine(call.input.code).slice(0, 60)}`;
-  return findTool(call.name)?.detail(call.input) ?? call.name;
+  return findTool(call.name, room)?.detail(call.input) ?? call.name;
 }
 
 export async function runTool(

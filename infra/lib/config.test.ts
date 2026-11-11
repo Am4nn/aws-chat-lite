@@ -34,7 +34,7 @@ describe("loadConfig", () => {
   it("builds the aws stage in ap-southeast-2 with no endpoint override", () => {
     expect(loadConfig("aws", {})).toEqual({
       stage: "aws", prefix: "cl-aws", isLocal: false, region: "ap-southeast-2", siteOrigins: ["https://chat.amanarya.com"],
-      modelGateway: "live", toolMode: "live",
+      mcpBaseUrl: "https://chat.amanarya.com", modelGateway: "live", toolMode: "live",
     });
   });
 

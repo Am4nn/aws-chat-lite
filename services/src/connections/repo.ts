@@ -4,11 +4,11 @@ import { auditItem } from "../audit/repo.js";
 import { requireMember } from "../chat/membership.js";
 import { formatWait, timeoutMinutes } from "../approvals/model.js";
 import type { User } from "../lib/auth.js";
-import { conditionFailed, docClient, tableName } from "../lib/db.js";
+import { conditionFailed, docClient, queryAll, tableName } from "../lib/db.js";
 import { Forbidden, ValidationError } from "../lib/errors.js";
 import { roomKey } from "../lib/keys.js";
 import { can } from "../rooms/access.js";
-import type { AuditKind, GitHubConnection } from "../threads/types.js";
+import type { AuditKind, GitHubConnection, McpConnection } from "../threads/types.js";
 
 type Installation = { id: number; account: string; repos: string[] };
 
@@ -17,10 +17,24 @@ const MAX_REPOS = 20;
 
 const githubKey = (roomId: string) => ({ pk: roomKey(roomId), sk: "CONN#github" });
 const metaKey = (roomId: string) => ({ pk: roomKey(roomId), sk: "META" });
+const MCP_PREFIX = "CONN#mcp#";
+export const mcpConnKey = (roomId: string, name: string) => ({ pk: roomKey(roomId), sk: `${MCP_PREFIX}${name}` });
+
+export const withoutKeys = ({ pk: _pk, sk: _sk, ...rest }: Record<string, unknown>) => rest;
+
+/** A room's remote MCP servers, in name order. */
+export async function mcpConnections(roomId: string): Promise<McpConnection[]> {
+  const items = await queryAll({
+    KeyConditionExpression: "pk = :pk AND begins_with(sk, :prefix)", ConsistentRead: true,
+    ExpressionAttributeValues: { ":pk": roomKey(roomId), ":prefix": MCP_PREFIX },
+  });
+  return items.map((item) => withoutKeys(item) as McpConnection);
+}
 
 /**
- * What a room's agent may reach (its GitHub installation and repos) and how long a write waits for approval. Only
- * admins change either, and each change is written in one transaction with its audit entry, so the log can't miss one.
+ * What a room's agent may reach (its GitHub installation and repos, its remote MCP servers) and how long a write waits
+ * for approval. Only admins change them, and each change is written in one transaction with its audit entry, so the log
+ * can't miss one.
  */
 export function connectionsRepo() {
   const db = docClient();
@@ -38,13 +52,14 @@ export function connectionsRepo() {
   }
 
   /** Read by the run engine as well as the room's settings, so it checks no one's role. */
-  async function get(roomId: string): Promise<{ github: GitHubConnection | null; approvalTimeoutSec: number }> {
-    const [conn, meta] = await Promise.all([
+  async function get(roomId: string): Promise<{ github: GitHubConnection | null; mcp: McpConnection[]; approvalTimeoutSec: number }> {
+    const [conn, mcp, meta] = await Promise.all([
       db.send(new GetCommand({ TableName, Key: githubKey(roomId), ConsistentRead: true })),
+      mcpConnections(roomId),
       db.send(new GetCommand({ TableName, Key: metaKey(roomId), ConsistentRead: true })),
     ]);
-    const github = conn.Item ? (({ pk: _pk, sk: _sk, ...rest }) => rest as GitHubConnection)(conn.Item) : null;
-    return { github, approvalTimeoutSec: Number(meta.Item?.approvalTimeoutSec ?? DEFAULT_APPROVAL_TIMEOUT_SEC) };
+    const github = conn.Item ? (withoutKeys(conn.Item) as GitHubConnection) : null;
+    return { github, mcp, approvalTimeoutSec: Number(meta.Item?.approvalTimeoutSec ?? DEFAULT_APPROVAL_TIMEOUT_SEC) };
   }
 
   return {

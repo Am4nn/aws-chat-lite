@@ -40,6 +40,14 @@ const ROUTES: [method: string, pattern: string][] = [
   ["GET", "/rooms/:x/files/download"],
   ["DELETE", "/rooms/:x/files"],
   ["PUT", "/rooms/:x/sandbox"],
+  ["GET", "/oauth/requests/:x"],
+  ["POST", "/oauth/requests/:x/decision"],
+  ["GET", "/me/apps"],
+  ["DELETE", "/me/apps/:x"],
+  ["POST", "/rooms/:x/connections/mcp"],
+  ["POST", "/rooms/:x/connections/mcp/:x/reconnect"],
+  ["POST", "/rooms/:x/connections/mcp/:x/refresh"],
+  ["DELETE", "/rooms/:x/connections/mcp/:x"],
 ];
 
 const SEGMENT = /^[A-Za-z0-9_-]+$/;

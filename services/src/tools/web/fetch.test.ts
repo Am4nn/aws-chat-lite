@@ -103,7 +103,8 @@ describe("htmlText", () => {
 });
 
 describe("webFetch", () => {
-  const env = (opts = {}): ToolEnv => ({ fetch, fetchPage: (u) => fetchPage(u, local(opts)), keys: {} });
+  const mcpCall = () => Promise.reject(new Error("not wired"));
+  const env = (opts = {}): ToolEnv => ({ fetch, fetchPage: (u) => fetchPage(u, local(opts)), keys: {}, mcpCall });
   const run = (path: string) => webFetch.run({ url: `${base}${path}` }, env());
 
   it("names the url in its approval title, for a thread with private content", () => {
@@ -122,6 +123,6 @@ describe("webFetch", () => {
     expect(await run("/big")).toEqual({ ok: false, output: "The page is over 2 MB." });
     expect(await run("/r4")).toEqual({ ok: false, output: "Too many redirects." });
     const real = (u: string): Promise<Page> => fetchPage(u);
-    expect(await webFetch.run({ url: "http://169.254.169.254/" }, { fetch, fetchPage: real, keys: {} })).toEqual({ ok: false, output: "That address is private." });
+    expect(await webFetch.run({ url: "http://169.254.169.254/" }, { fetch, fetchPage: real, keys: {}, mcpCall })).toEqual({ ok: false, output: "That address is private." });
   });
 });

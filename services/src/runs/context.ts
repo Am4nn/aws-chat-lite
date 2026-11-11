@@ -29,10 +29,12 @@ export function buildContext(prior: Message[], events: RunEvent[]): ModelMessage
     m.authorId === "agent" ? { role: "assistant", text: m.text } : { role: "user", author: m.authorName, text: withAttachments(m.text, m.attachments.map((a) => a.name)) },
   );
   const calls = new Map<number, ToolCall>();
-  // The assistant message this run is writing; a tool result or a steer ends it.
+  // The assistant message this run is writing, and whether it is still open: a tool result or a steer closes it.
   let current: Assistant | undefined;
+  let open = false;
   const assistant = () => {
-    if (!current) messages.push((current = { role: "assistant", text: "" }));
+    if (!current || !open) messages.push((current = { role: "assistant", text: "" }));
+    open = true;
     return current;
   };
 
@@ -42,15 +44,19 @@ export function buildContext(prior: Message[], events: RunEvent[]): ModelMessage
     } else if (e.type === "model.turn") {
       assistant().native = { model: e.model, content: e.content };
     } else if (e.type === "step.started") {
+      // A turn that asked for several tools runs them one step at a time, so its later calls start after its earlier
+      // results. A native turn is replayed verbatim with every call it made, and the API wants all their results right
+      // after it, so those calls stay on its message. Every turn that calls tools logs its native turn first.
+      if (current?.native) open = true;
       const turn = assistant();
       turn.toolCalls = [...(turn.toolCalls ?? []), e.call];
       calls.set(e.step, e.call);
     } else if (e.type === "step.finished") {
       messages.push({ role: "tool", toolCallId: calls.get(e.step)?.id ?? "", output: e.output, isError: !e.ok });
-      current = undefined;
+      open = false;
     } else if (e.type === "steer") {
       messages.push({ role: "user", author: e.authorName, text: withAttachments(e.text, e.attachments) });
-      current = undefined;
+      open = false;
     }
   }
   return messages;

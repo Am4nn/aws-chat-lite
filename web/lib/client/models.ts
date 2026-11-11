@@ -16,10 +16,16 @@ export function pickMenu(models: ModelOption[], s: MenuState) {
   return { items, privateNote: items.some((i) => i.disabled), canSetDefault: s.isAdmin && s.value !== s.roomDefault };
 }
 
-const TAINT_WORDS: Record<TaintSource, string> = { attachment: "attachments", github: "GitHub data", sandbox: "sandbox files" };
+/** By kind: every server's `mcp:<name>` reads the same. */
+const TAINT_WORDS: Record<string, string> = {
+  attachment: "attachments", github: "GitHub data", mcp: "MCP tool output", sandbox: "sandbox files",
+};
 
 /** Why DeepSeek is off on a private thread, for the header's lock and the model menu. */
-export const taintHint = (taint: TaintSource[]) => `Private: has ${taint.map((t) => TAINT_WORDS[t]).join(" and ")}, so DeepSeek is off.`;
+export function taintHint(taint: TaintSource[]): string {
+  const words = new Set(taint.map((t) => TAINT_WORDS[t.split(":")[0]!]));
+  return `Private: has ${[...words].join(" and ")}, so DeepSeek is off.`;
+}
 
 /**
  * What a send from this chat runs on: its own pick, else the room default. The server turns a default that may not

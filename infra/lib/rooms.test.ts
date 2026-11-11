@@ -23,9 +23,12 @@ describe("rooms API", () => {
     for (const k of ROUTES) expect(keys, k).toContain(k);
   });
 
-  it("protects every route with the JWT authorizer except the invite preview and /health", () => {
+  it("protects every route with the JWT authorizer except the invite preview, /health and what MCP clients call", () => {
+    // MCP clients have no chat-lite session: they discover, register and sign in through OAuth, and /mcp checks
+    // its own bearer tokens.
+    const mcpClientRoute = /^\w+ \/(\.well-known\/oauth-|oauth\/(register|authorize|token|revoke)$|mcp$)/;
     for (const p of routes()) {
-      const open = p.RouteKey === "GET /invites/{code}" || p.RouteKey === "GET /health";
+      const open = p.RouteKey === "GET /invites/{code}" || p.RouteKey === "GET /health" || mcpClientRoute.test(p.RouteKey);
       expect(p.AuthorizationType ?? "NONE", p.RouteKey).toBe(open ? "NONE" : "JWT");
     }
   });
@@ -45,9 +48,10 @@ describe("rooms API", () => {
       .map((f: any) => f.Properties.FunctionName);
   };
 
-  it("only the rooms, chat, files, live, threads, run and connections Lambdas get table access (the public health check and sign-up trigger get none)", () => {
+  it("only the rooms, chat, files, live, threads, run, connections, MCP and OAuth Lambdas get table access (the public health check and sign-up trigger get none)", () => {
     expect(tableWriters().sort()).toEqual([
-      "cl-local-chat", "cl-local-connections", "cl-local-files", "cl-local-live", "cl-local-rooms", "cl-local-run", "cl-local-threads",
+      "cl-local-chat", "cl-local-connections", "cl-local-files", "cl-local-live", "cl-local-mcp", "cl-local-mcp-connections", "cl-local-oauth",
+      "cl-local-rooms", "cl-local-run", "cl-local-threads",
     ]);
   });
 
