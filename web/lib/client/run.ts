@@ -1,10 +1,11 @@
-import type { ApprovalStatus, FilesSynced, Message, ModelPick, RunEndStatus, RunEvent, Source } from "../types";
+import type { ApprovalStatus, FilesSynced, GeneratedImage, Message, ModelPick, RunEndStatus, RunEvent, Source } from "../types";
 import { keyOf, type PendingMessage } from "./timeline";
 
 export type RunItem =
   | {
     kind: "step"; step: number; name: string; detail: string; status: "running" | "done" | "failed"; output?: string; ms?: number; startedAt: string;
     files?: FilesSynced;
+    image?: GeneratedImage;
     /** A `delegate` step: the helper agent that does it, and what it does in its own lane. */
     helper?: Helper;
   }
@@ -36,6 +37,8 @@ export type RunView = Lane & {
   reason?: string;
   /** What the run's web tools read, once per url, in the order they came. */
   sources: Source[];
+  /** Every image the run generated, any lane, in step order. */
+  images: GeneratedImage[];
   costMicros: number;
   pick?: ModelPick;
   model?: string;
@@ -43,7 +46,7 @@ export type RunView = Lane & {
   endedAt?: string;
 };
 
-export const emptyRun = (): RunView => ({ lastSeq: 0, events: [], status: "running", items: [], text: "", sources: [], costMicros: 0 });
+export const emptyRun = (): RunView => ({ lastSeq: 0, events: [], status: "running", items: [], text: "", sources: [], images: [], costMicros: 0 });
 
 type LaneEvent = Extract<RunEvent, { type: "steer" | "text" | "text.reset" | "step.started" | "step.finished" | "approval.requested" | "approval.settled" | "files.synced" }>;
 
@@ -79,10 +82,12 @@ export function applyRunEvent(v: RunView, e: RunEvent): RunView {
     }
   }
   const sources = e.type === "step.finished" ? addSources(v.sources, e.sources) : v.sources;
+  const image = e.type === "step.finished" ? e.image : undefined;
+  const images = image && !v.images.some((i) => i.path === image.path) ? [...v.images, image] : v.images;
   const lane = e.lane ?? 0;
-  if (!lane) return { ...applyToLane(next, e), sources };
+  if (!lane) return { ...applyToLane(next, e), sources, images };
   return {
-    ...next, sources,
+    ...next, sources, images,
     items: v.items.map((i) => (i.kind === "step" && i.helper?.lane === lane ? { ...i, helper: applyToLane(i.helper, e) } : i)),
   };
 }
@@ -102,7 +107,7 @@ export function applyToLane<T extends Lane>(v: T, e: LaneEvent): T {
     case "step.finished":
       return {
         ...v,
-        items: v.items.map((i) => (i.kind === "step" && i.step === e.step ? { ...i, status: e.ok ? "done" : "failed", output: e.output, ms: e.ms } : i)),
+        items: v.items.map((i) => (i.kind === "step" && i.step === e.step ? { ...i, status: e.ok ? "done" : "failed", output: e.output, ms: e.ms, image: e.image } : i)),
       };
     case "approval.requested":
       return { ...v, items: [...v.items, { kind: "approval", step: e.step, title: e.title, call: e.call, expiresAt: e.expiresAt, status: "pending" }] };

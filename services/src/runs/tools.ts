@@ -1,5 +1,6 @@
 import { mcpServerOf } from "../mcp/client/names.js";
 import { modelInfo, type Provider } from "../models/catalog.js";
+import { ASPECTS } from "../images/step.js";
 import type { ToolCall, ToolSpec } from "../models/gateway.js";
 import { mcpTaint, type TaintSource } from "../models/privacy.js";
 import { LANGUAGES, MAX_TIMEOUT_SEC } from "../sandbox/sandbox.js";
@@ -27,6 +28,21 @@ export const SANDBOX_TOOL: ToolSpec = {
       timeoutSec: { type: "integer", minimum: 1, maximum: MAX_TIMEOUT_SEC },
     },
     required: ["language", "code"],
+  },
+};
+
+export const IMAGE_TOOL: ToolSpec = {
+  name: "image_generate",
+  description: "Generate an image from a text description, with Gemini. "
+    + "It is saved to the room's files under images/ and shown in the thread. About $0.07 per image.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      prompt: { type: "string", minLength: 1, maxLength: 2000 },
+      aspect: { enum: [...ASPECTS] },
+      name: { type: "string", description: "A few words to name the file by." },
+    },
+    required: ["prompt"],
   },
 };
 
@@ -62,8 +78,9 @@ export function delegateSpec(others: AgentCard[]): ToolSpec | undefined {
 
 /**
  * The tools a model is offered: those of the kinds its agent may use, plus the room memory, which every agent shares.
- * Sandbox output carries room files, so only a model that may see private content gets the sandbox; the fake's tools
- * are ones only the fake accepts; GitHub's need the room to be connected, and an MCP server's a signed-in connection.
+ * Sandbox output carries room files, so only a model that may see private content gets the sandbox; images go to any
+ * model, since what comes back is only the file's path, never the image. The fake's tools are ones only the fake
+ * accepts; GitHub's need the room to be connected, and an MCP server's a signed-in connection.
  */
 export function toolsFor(model: string, served: Provider, room: RoomMcp & { github: boolean }, kinds: ToolKind[]): ToolSpec[] {
   const privateOk = modelInfo(model).privateOk;
@@ -71,6 +88,7 @@ export function toolsFor(model: string, served: Provider, room: RoomMcp & { gith
   return [
     ...(served === "fake" ? FAKE_TOOLS : []),
     ...(privateOk && kinds.includes("sandbox") ? [SANDBOX_TOOL] : []),
+    ...(kinds.includes("images") ? [IMAGE_TOOL] : []),
     ...roomTools({ ...room, privateOk }).filter(allowed).map((t) => t.spec),
   ];
 }
@@ -102,6 +120,7 @@ export function asksFirst(tool: Pick<Tool, "spec" | "kind" | "write">, taint: Ta
 export function toolDetail(call: ToolCall, room: RoomMcp): string {
   if (call.name === "fake.lookup") return `Looking up "${call.input.query}"`;
   if (call.name === SANDBOX_TOOL.name) return `Running ${call.input.language}: ${firstLine(call.input.code).slice(0, 60)}`;
+  if (call.name === IMAGE_TOOL.name) return `Drawing "${String(call.input.prompt ?? "").slice(0, 60)}"`;
   return findTool(call.name, room)?.detail(call.input) ?? call.name;
 }
 

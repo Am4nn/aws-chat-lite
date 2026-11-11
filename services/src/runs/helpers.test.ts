@@ -48,8 +48,8 @@ describe("helperKinds", () => {
     expect(helperKinds(["github", "mcp", "sandbox", "web"], "claude-sonnet-5-5")).toEqual(["github", "mcp", "sandbox", "web"]);
   });
 
-  it("keeps only the web for a helper working for DeepSeek, so its results never make the thread private", () => {
-    expect(helperKinds(["github", "mcp", "sandbox", "web"], "deepseek-flash")).toEqual(["web"]);
+  it("keeps only the web and images for a helper working for DeepSeek, so its results never make the thread private", () => {
+    expect(helperKinds(["github", "images", "mcp", "sandbox", "web"], "deepseek-flash")).toEqual(["images", "web"]);
   });
 });
 

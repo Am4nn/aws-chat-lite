@@ -26,7 +26,8 @@ describe("instructionsText", () => {
 });
 
 describe("toolKinds", () => {
-  it("dedupes and sorts", () => expect(toolKinds(["web", "github", "web"])).toEqual(["github", "web"]));
+  it("dedupes and sorts", () => expect(toolKinds(["web", "images", "github", "web"])).toEqual(["github", "images", "web"]));
+  it("gives the built-in @agent every kind, images included", () => expect(BUILT_IN.tools).toEqual(["github", "images", "mcp", "sandbox", "web"]));
   it.each([["shell"], "web", undefined])("refuses %j", (raw) => expect(() => toolKinds(raw)).toThrow("Unknown tool kind."));
 });
 

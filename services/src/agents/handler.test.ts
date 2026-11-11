@@ -57,8 +57,8 @@ describe("agents routes", () => {
     const res = await call("member", "GET /rooms/{roomId}/agents");
     expect(res.status).toBe(200);
     expect(res.body.agents.map((a: { name: string }) => a.name)).toEqual(["agent", "scout"]);
-    expect(res.body.kinds).toEqual(["sandbox", "web"]);
-    expect((await call("member", "GET /rooms/{roomId}/agents", undefined, {}, { github: true })).body.kinds).toEqual(["github", "sandbox", "web"]);
+    expect(res.body.kinds).toEqual(["images", "sandbox", "web"]);
+    expect((await call("member", "GET /rooms/{roomId}/agents", undefined, {}, { github: true })).body.kinds).toEqual(["github", "images", "sandbox", "web"]);
   });
 
   it("POST refuses a bad name, before any write", async () => {

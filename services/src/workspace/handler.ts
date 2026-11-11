@@ -3,6 +3,7 @@ import { callerFromEvent } from "../lib/auth.js";
 import { bestEffort } from "../lib/best-effort.js";
 import { Conflict, NotFound, ValidationError } from "../lib/errors.js";
 import { errorResponse, json, parseBody } from "../lib/http.js";
+import { inlineType } from "../chat/files.js";
 import { requireMember } from "../chat/membership.js";
 import { broadcastToRoom } from "../live/broadcast.js";
 import { MAX_ROOM_FILE_BYTES, MAX_ROOM_FILES, OVER_QUOTA, ROOM_FILES_BYTES, TOO_BIG, TOO_MANY } from "./limits.js";
@@ -16,7 +17,9 @@ type Event = APIGatewayProxyEventV2WithJWTAuthorizer;
 
 export interface Deps {
   files: Pick<WorkspaceRepo, "list" | "get" | "usage" | "commit" | "remove" | "countUpload">;
-  storage: Pick<typeof storage, "presignFileUpload" | "headObject" | "copyObject" | "deleteObjects" | "presignFileDownload">;
+  storage: Pick<
+    typeof storage, "presignFileUpload" | "headObject" | "copyObject" | "deleteObjects" | "presignFileDownload" | "presignFileView"
+  >;
   requireMember: typeof requireMember;
   notify: (roomId: string, event: FilesUpdated) => Promise<unknown>;
 }
@@ -105,7 +108,9 @@ export function makeHandler(deps: Deps) {
           await deps.requireMember(roomId, user.userId);
           const file = await deps.files.get(roomId, path);
           if (!file) throw new NotFound("That file isn't in the room.");
-          return json(200, { url: await deps.storage.presignFileDownload(file) });
+          const type = file.contentType;
+          const view = query.inline === "1" && inlineType(type);
+          return json(200, { url: await (view ? deps.storage.presignFileView(file, type) : deps.storage.presignFileDownload(file)) });
         }
 
         case "DELETE /rooms/{roomId}/files": {

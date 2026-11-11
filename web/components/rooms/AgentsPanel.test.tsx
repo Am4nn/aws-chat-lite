@@ -22,7 +22,7 @@ const mockedBff = vi.mocked(bff);
 beforeEach(() => {
   mockedBff.mockImplementation(async (path) => {
     if (path.endsWith("/copy")) return { agent: agent("scout-2"), dropped: ["github"], schedules: { copied: 1, skipped: 0 } };
-    if (path.endsWith("/agents")) return { agents: AGENTS, kinds: ["sandbox", "web"] };
+    if (path.endsWith("/agents")) return { agents: AGENTS, kinds: ["images", "sandbox", "web"] };
     return {};
   });
 });
@@ -71,6 +71,7 @@ describe("AgentsPanel", () => {
     expect(within(form).getByRole("button", { name: "Connect GitHub in Connections first." })).toBeTruthy();
     fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "Reviewer" } });
     fireEvent.click(within(form).getByLabelText("Sandbox"));
+    fireEvent.click(within(form).getByLabelText("Images"));
     fireEvent.change(within(form).getByLabelText("Model"), { target: { value: "haiku" } });
     fireEvent.click(within(form).getByRole("button", { name: "Create agent" }));
     await vi.waitFor(() => expect(mockedBff).toHaveBeenCalledWith("/bff/api/rooms/r1/agents", {

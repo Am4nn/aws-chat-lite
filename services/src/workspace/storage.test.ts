@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { copyObject, newObjectKey, presignFileDownload, presignFileUpload, stagingPrefix } from "./storage.js";
+import { copyObject, newObjectKey, putBytes, presignFileDownload, presignFileUpload, presignFileView, stagingPrefix } from "./storage.js";
 
 const sent = vi.hoisted(() => [] as { input: Record<string, unknown> }[]);
 vi.mock("../lib/s3.js", async (real) => ({
@@ -35,6 +35,20 @@ describe("room file storage", () => {
     });
     const disposition = new URL(url).searchParams.get("response-content-disposition");
     expect(disposition).toBe('attachment; filename="it\'s _x_ _.html"');
+  });
+
+  it("shows an image inline, pinned to its own type", async () => {
+    const url = new URL(await presignFileView({
+      path: "images/7-1-fox.png", size: 1, contentType: "image/png", v: 1, updatedAt: "t",
+      updatedBy: { kind: "thread", threadId: "t", number: 7 }, objectKey: "workspaces/r/k",
+    }, "image/png"));
+    expect(url.searchParams.get("response-content-type")).toBe("image/png");
+    expect(url.searchParams.get("response-content-disposition")).toBe('inline; filename="7-1-fox.png"');
+  });
+
+  it("stores the metadata it is given with the bytes", async () => {
+    await putBytes("generated/run/1", new Uint8Array([1]), "image/png", { cost: "{}" });
+    expect(sent.at(-1)!.input).toMatchObject({ Key: "generated/run/1", ContentType: "image/png", Metadata: { cost: "{}" } });
   });
 
   it("encodes each segment of a copy's source key, since S3 reads it as a URL path", async () => {

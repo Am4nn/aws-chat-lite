@@ -31,6 +31,7 @@ function fakes(files: StoredFile[] = []) {
       copyObject: vi.fn(async () => {}),
       deleteObjects: vi.fn(async () => {}),
       presignFileDownload: vi.fn(async () => "http://s3/b/dl"),
+      presignFileView: vi.fn(async () => "http://s3/b/view"),
     },
     requireMember: vi.fn(async () => "member" as const),
     notify: vi.fn(async () => {}),
@@ -155,6 +156,15 @@ describe("files handler", () => {
     });
     expect(deps.storage.presignFileDownload).toHaveBeenCalledWith(stored("a.txt"));
     expect(deps.requireMember).toHaveBeenCalledWith("r", "u1");
+  });
+
+  it("inline=1 shows an image in the browser, and still downloads any other file", async () => {
+    const { deps, handle } = fakes([stored("a.png", { contentType: "image/png" }), stored("a.html", { contentType: "text/html" })]);
+    const get = (path: string) => handle(ev("GET /rooms/{roomId}/files/download", { query: { path, inline: "1" } }));
+    expect(result(await get("a.png")).body).toEqual({ url: "http://s3/b/view" });
+    expect(result(await get("a.html")).body).toEqual({ url: "http://s3/b/dl" });
+    expect(deps.storage.presignFileView).toHaveBeenCalledTimes(1);
+    expect(deps.storage.presignFileDownload).toHaveBeenCalledWith(stored("a.html", { contentType: "text/html" }));
   });
 
   it("the listing never shows object keys, and reports the room's usage against its limit", async () => {

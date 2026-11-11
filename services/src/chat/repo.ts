@@ -4,6 +4,7 @@ import { conditionFailed, docClient, failedAt, tableName, transactionConflict } 
 import { Conflict, Forbidden, NotFound, ValidationError } from "../lib/errors.js";
 import { counterKey, memberKey, roomKey } from "../lib/keys.js";
 import { countTowardsRate } from "../lib/rate.js";
+import { enqueuePush } from "../push/enqueue.js";
 import { storedAttachment, withUrls } from "./files.js";
 import { requireMember } from "./membership.js";
 import { notified, parseMentions } from "./mentions.js";
@@ -92,8 +93,17 @@ export function chatRepo() {
 
   /**
    * Best effort: the message is already stored, and a badge that misses one mention isn't worth failing the send.
-   * Each mention counts on the chat's read state and on the member's room total (the room list's dot).
+   * Each mention counts on the chat's read state and on the member's room total (the room list's dot), and sends a
+   * push, even from a muted chat: muting quiets a chat's chatter, not a member called by name.
    */
+  async function notifyMentioned(m: Pick<Message, "roomId" | "chatId" | "seq" | "authorName" | "text" | "everyone">, userIds: string[]) {
+    const at = { roomId: m.roomId, chatId: m.chatId };
+    await Promise.all([
+      countMentions(at, userIds),
+      enqueuePush({ kind: "mention", ...at, seq: m.seq, authorName: m.authorName, text: m.text, everyone: m.everyone, userIds }),
+    ]);
+  }
+
   async function countMentions(at: ChatRef, userIds: string[]) {
     const add = { UpdateExpression: "ADD mentions :one", ExpressionAttributeValues: { ":one": 1 } };
     const results = await Promise.allSettled(userIds.flatMap((userId) => [
@@ -158,7 +168,7 @@ export function chatRepo() {
         ConditionExpression: "attribute_not_exists(sk)",
       }));
       const writes = opts.system ? [] : [readOwnMessage(at, user.userId, seq)];
-      if (!opts.copy) writes.push(countMentions(at, notified(message, members, user.userId)));
+      if (!opts.copy) writes.push(notifyMentioned(message, notified(message, members, user.userId)));
       await Promise.all(writes);
       return withUrls(message);
     },
@@ -218,7 +228,8 @@ export function chatRepo() {
         throw e;
       }
       const before = new Set(notified(old, members, user.userId));
-      await countMentions(at, notified({ mentions, everyone }, members, user.userId).filter((id) => !before.has(id)));
+      const added = notified({ mentions, everyone }, members, user.userId).filter((id) => !before.has(id));
+      await notifyMentioned({ ...at, seq: input.seq, authorName: old.authorName, text, everyone }, added);
       return toMessage({ ...old, text, editedAt, mentions, everyone, v: (old.v ?? 0) + 1 });
     },
 

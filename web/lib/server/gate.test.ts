@@ -31,6 +31,13 @@ describe("gate (what proxy.ts does with each request)", () => {
     expect(req({ path: "/bff/auth/refresh", search: "?next=/" })).toEqual({ type: "next" });
   });
 
+  it("the service worker, the manifest, the icons and the audio worklet load without a token", () => {
+    for (const path of ["/sw.js", "/manifest.webmanifest", "/icon", "/apple-icon", "/pcm-worklet.js"]) {
+      expect(req({ path })).toEqual({ type: "next" });
+    }
+    expect(req({ path: "/sw.js.map" })).toMatchObject({ type: "redirect" });
+  });
+
   it("BFF mutations need our Origin and a JSON body", () => {
     const json = { "content-type": "application/json" };
     expect(req({ method: "POST", path: "/bff/api/rooms", headers: { ...json, origin: SITE } })).toEqual({ type: "next" });

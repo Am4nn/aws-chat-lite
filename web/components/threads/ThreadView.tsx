@@ -113,7 +113,7 @@ export function ThreadView({ roomId, initialThread, me, members, archived, initi
   );
   const runBlock = (runId: string, answer: Message | undefined, steers: Message[], isLast: boolean) => (
     <RunBlock
-      key={`run:${runId}`} runId={runId} answer={answer} steers={steers} pending={isLast && steering ? timeline.pending : []}
+      key={`run:${runId}`} roomId={roomId} runId={runId} answer={answer} steers={steers} pending={isLast && steering ? timeline.pending : []}
       active={running && runId === thread.runId} meName={me.username} members={members} onRetry={retry} onDiscard={discard}
     />
   );

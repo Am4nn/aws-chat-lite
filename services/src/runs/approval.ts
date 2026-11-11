@@ -2,6 +2,7 @@ import { wakeRun } from "../approvals/decide.js";
 import { approvalsRepo, type Approval } from "../approvals/repo.js";
 import { auditRepo } from "../audit/repo.js";
 import type { ToolCall } from "../models/gateway.js";
+import { enqueuePush } from "../push/enqueue.js";
 import { mergeTaint, type TaintSource } from "../models/privacy.js";
 import { findTool, toolEnv } from "../tools/index.js";
 import { repoOf } from "../tools/github/repo.js";
@@ -41,9 +42,10 @@ export async function gateOf(run: RoutedRun, call: ToolCall, taint: TaintSource[
 }
 
 /**
- * The wait's submitter: stores the approval with the input the gate pinned, logs it once and shows the thread as
- * waiting. A retried submitter is handed the same callback; it finds the approval already decided, or the run
- * already asked to stop, and then wakes the wait itself, since nothing else will.
+ * The wait's submitter: stores the approval with the input the gate pinned, logs it once, shows the thread as
+ * waiting and tells the whole room, since any member may approve. A retried submitter is handed the same callback; it
+ * finds the approval already decided, or the run already asked to stop, and then wakes the wait itself, since nothing
+ * else will.
  */
 export async function requestApproval(
   run: RoutedRun, call: ToolCall, step: number, gate: { timeoutSec: number; title: string; input: Record<string, unknown> }, callbackId: string,
@@ -57,11 +59,15 @@ export async function requestApproval(
   });
   if (item.status !== "pending") return wakeRun(callbackId);
   const { title, expiresAt } = item;
-  const requested = (await runs.allEvents(run.runId)).find((e) => e.type === "approval.requested" && e.step === step)
+  const logged = (await runs.allEvents(run.runId)).find((e) => e.type === "approval.requested" && e.step === step);
+  const requested = logged
     ?? await (await runs.eventWriter(run.runId, laneOf(run))).append({ type: "approval.requested", step, call: item.call, title, expiresAt });
   const deadAt = new Date(Date.parse(expiresAt) + DEAD_AFTER_MS).toISOString();
   const { thread, stopRequestedBy } = await runs.markWaiting(run, { step, title, expiresAt }, deadAt);
   await notifyRun(run.roomId, thread, requested.seq);
+  if (!logged) {
+    await enqueuePush({ kind: "approval", roomId: run.roomId, threadId: run.threadId, number: run.number, runId: run.runId, step, title });
+  }
   if (stopRequestedBy && await approvals.cancel(run.runId, step, stopRequestedBy)) await wakeRun(callbackId);
 }
 

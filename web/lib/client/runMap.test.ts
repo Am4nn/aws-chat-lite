@@ -95,6 +95,11 @@ describe("runMap", () => {
     ], T0);
     expect(byId(m, "step-3")).toMatchObject({ file: "out.txt +2", costMicros: 61 });
   });
+
+  it("adds an image step's Gemini cost to it", () => {
+    const m = runMap([started(0, 2, "image_generate"), usage(1, { job: "image", step: 2, costMicros: 67_000 }), finished(1, 2, 1000)], T0);
+    expect(byId(m, "step-2")).toMatchObject({ costMicros: 67_000 });
+  });
 });
 
 describe("edgePath", () => {
@@ -124,6 +129,11 @@ describe("timeShares", () => {
 
   it("splits the cost the same way, leaving out what cost nothing", () =>
     expect(timeShares(events, "cost").map((s) => [s.key, s.pct])).toEqual([["thinking", 60], ["helpers", 30], ["tools", 10]]));
+
+  it("counts an image's cost as a tool's", () => {
+    const drew = [usage(0, { ms: 1000, costMicros: 3000 }), started(1, 1, "image_generate"), usage(2, { job: "image", step: 1, costMicros: 67_000 }), finished(2, 1, 1000)];
+    expect(timeShares(drew, "cost").map((s) => [s.key, s.pct])).toEqual([["thinking", 4], ["tools", 96]]);
+  });
 
   it("rounds to whole percents that still add up to 100", () => {
     const thirds = [usage(0, { ms: 1000 }), started(1, 1, "a"), finished(2, 1, 1000), ev(2, { type: "helper.finished", lane: 1, step: 9, status: "done", summary: "", steps: 0, ms: 1000, costMicros: 0 })];

@@ -7,7 +7,9 @@ import { Archive, Check, ChevronDown, LogOut, Plus } from "lucide-react";
 import { useClickOutside } from "@/lib/client/useClickOutside";
 import { useEscape } from "@/lib/client/useEscape";
 import { dur, easeOut, instant } from "@/lib/motion";
+import type { PushState } from "@/lib/client/push";
 import type { RoomSummary } from "@/lib/types";
+import { NotificationsToggle } from "./NotificationsToggle";
 
 const MENU_ITEM = "flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13.5px] transition-colors";
 
@@ -15,9 +17,10 @@ function MentionDot() {
   return <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-lime" />;
 }
 
-export function RoomSwitcher({ current, rooms, hasMentions, canCreate, canLeave, canArchive, onCreate, onLeave, onArchive }: {
+export function RoomSwitcher({ current, rooms, hasMentions, canCreate, canLeave, canArchive, push, onCreate, onLeave, onArchive }: {
   current: { roomId: string; name: string }; rooms: RoomSummary[]; hasMentions: (roomId: string) => boolean;
-  canCreate: boolean; canLeave: boolean; canArchive: boolean; onCreate: () => void; onLeave: () => void; onArchive: () => void;
+  canCreate: boolean; canLeave: boolean; canArchive: boolean; push: { state: PushState; toggle: () => void };
+  onCreate: () => void; onLeave: () => void; onArchive: () => void;
 }) {
   const reduced = useReducedMotion();
   const [open, setOpen] = useState(false);
@@ -70,7 +73,8 @@ export function RoomSwitcher({ current, rooms, hasMentions, canCreate, canLeave,
                 {r.roomId === current.roomId && <Check aria-hidden="true" size={14} className="ml-auto shrink-0 text-lime" />}
               </Link>
             ))}
-            {(canCreate || canLeave || canArchive) && <div role="separator" className="my-1 h-px bg-line" />}
+            {(push.state !== "hidden" || canCreate || canLeave || canArchive) && <div role="separator" className="my-1 h-px bg-line" />}
+            <NotificationsToggle state={push.state} onToggle={push.toggle} />
             {canCreate && <MenuItem onClick={choose(onCreate)} icon={<Plus aria-hidden="true" size={14} />}>New room</MenuItem>}
             {canLeave && <MenuItem danger onClick={choose(onLeave)} icon={<LogOut aria-hidden="true" size={14} />}>Leave room</MenuItem>}
             {canArchive && <MenuItem danger onClick={choose(onArchive)} icon={<Archive aria-hidden="true" size={14} />}>Archive room</MenuItem>}

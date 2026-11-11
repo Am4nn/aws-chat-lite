@@ -138,6 +138,19 @@ describe("applyRunEvent: approvals and sources", () => {
     );
     expect(v.sources.map((x) => x.url)).toEqual(["https://a.dev/1", "https://b.dev"]);
   });
+
+  it("collects generated images in step order, once per path, and puts each on its step", () => {
+    const call = { id: "c", name: "image_generate", input: {} };
+    const v = run(
+      ev(1, { type: "step.started", step: 1, call, detail: "" }),
+      ev(2, { type: "step.finished", step: 1, output: "", ms: 1, ok: true, image: { path: "images/a.png", aspect: "1:1" } }),
+      ev(3, { type: "step.finished", step: 2, output: "", ms: 1, ok: true, image: { path: "images/b.png", aspect: "16:9" } }),
+      ev(4, { type: "step.finished", step: 3, output: "", ms: 1, ok: true, image: { path: "images/a.png", aspect: "1:1" } }),
+      ev(5, { type: "step.finished", step: 4, output: "", ms: 1, ok: true }),
+    );
+    expect(v.images).toEqual([{ path: "images/a.png", aspect: "1:1" }, { path: "images/b.png", aspect: "16:9" }]);
+    expect(v.items[0]).toMatchObject({ kind: "step", image: { path: "images/a.png" } });
+  });
 });
 
 describe("applyRunEvent: helper lanes", () => {

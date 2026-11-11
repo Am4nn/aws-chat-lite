@@ -9,6 +9,8 @@
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.1163.0",
+    "@smithy/eventstream-codec": "^4.5.2",
+    "@smithy/util-utf8": "^4.5.2",
     "cmdk": "^1.1.1",
     "geist": "^1.9.2",
     "lucide-react": "^1.71.0",

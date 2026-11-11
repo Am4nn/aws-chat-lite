@@ -141,7 +141,8 @@ export function runMap(events: RunEvent[], nowMs: number): RunMap {
         lane.view = applyToLane(lane.view, e);
         break;
       case "usage": {
-        if (e.job === "sandbox") {
+        // Sandbox time and Gemini images are billed while (or right after) their step runs, so they are its own cost.
+        if (e.job === "sandbox" || e.job === "image") {
           const node = lane.groups.flatMap((g) => g.nodes).at(-1);
           if (node) own.set(node, (own.get(node) ?? 0) + e.costMicros);
         }
@@ -265,7 +266,7 @@ export function timeShares(events: RunEvent[], by: "time" | "cost"): Share[] {
     if (e.type === "helper.finished") sums.helpers += time ? e.ms : e.costMicros;
     if (e.lane) continue;
     if (e.type === "usage" && e.job === "run") sums.thinking += time ? e.ms ?? 0 : e.costMicros;
-    if (e.type === "usage" && e.job === "sandbox" && !time) sums.tools += e.costMicros;
+    if (e.type === "usage" && (e.job === "sandbox" || e.job === "image") && !time) sums.tools += e.costMicros;
     if (e.type === "step.finished" && time && !delegates.has(e.step)) sums.tools += e.ms;
     if (e.type === "approval.requested") asked.set(e.step, Date.parse(e.at));
     if (e.type === "approval.settled" && time && asked.has(e.step)) sums.waiting += Date.parse(e.at) - asked.get(e.step)!;

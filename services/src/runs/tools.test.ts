@@ -9,7 +9,7 @@ const conn = (status: McpConnection["status"]): McpConnection => ({
   addedAt: "2026-11-11T00:00:00Z", tools: [{ name: "add_note", description: "Saves a note.", inputSchema: { type: "object" }, readOnly: false }],
 });
 const noMcp = { roomId: "r1", mcp: [] };
-const ALL: ToolKind[] = ["sandbox", "web", "github", "mcp"];
+const ALL: ToolKind[] = ["sandbox", "web", "github", "mcp", "images"];
 
 const recorder = () => {
   const waits: number[] = [];
@@ -71,6 +71,12 @@ describe("toolDetail", () => {
     expect(run("\nprint(1)\nprint(2)")).toBe("Running python: print(1)");
     expect(run("x".repeat(80))).toBe(`Running python: ${"x".repeat(60)}`);
   });
+
+  it("quotes the first 60 characters of an image prompt", () => {
+    const draw = (prompt: string) => toolDetail({ id: "c", name: "image_generate", input: { prompt } }, noMcp);
+    expect(draw("A red fox")).toBe("Drawing \"A red fox\"");
+    expect(draw("y".repeat(80))).toBe(`Drawing "${"y".repeat(60)}"`);
+  });
 });
 
 describe("toolsFor", () => {
@@ -79,17 +85,18 @@ describe("toolsFor", () => {
     toolsFor(model, served, { ...noMcp, github: connected }, kinds).map((t) => t.name);
   const web = ["web_search", "web_fetch"];
   const memory = ["memory_save", "memory_update", "memory_forget"];
+  const forAll = ["image_generate", ...web, ...memory];
 
-  it("offers the sandbox only to models that may see private content, the fake tools only to the fake, and the web to all", () => {
-    expect(names("deepseek-flash", "fake")).toEqual(["fake.lookup", ...web, ...memory]);
-    expect(names("deepseek-flash", "deepseek")).toEqual([...web, ...memory]);
-    expect(names("claude-sonnet-5-5", "anthropic")).toEqual(["sandbox_run", ...web, ...memory]);
-    expect(names("fake", "fake")).toEqual(["fake.lookup", "sandbox_run", ...web, ...memory]);
+  it("offers the sandbox only to models that may see private content, the fake tools only to the fake, and images and the web to all", () => {
+    expect(names("deepseek-flash", "fake")).toEqual(["fake.lookup", ...forAll]);
+    expect(names("deepseek-flash", "deepseek")).toEqual(forAll);
+    expect(names("claude-sonnet-5-5", "anthropic")).toEqual(["sandbox_run", ...forAll]);
+    expect(names("fake", "fake")).toEqual(["fake.lookup", "sandbox_run", ...forAll]);
   });
 
   it("offers GitHub only when the room is connected, and never to a model kept from private content", () => {
     expect(names("claude-sonnet-5-5", "anthropic", true).filter((n) => n.startsWith("github_"))).toHaveLength(9);
-    expect(names("deepseek-flash", "deepseek", true)).toEqual([...web, ...memory]);
+    expect(names("deepseek-flash", "deepseek", true)).toEqual(forAll);
   });
 
   it("lets a GitHub call run without a connection, so the tool itself says it isn't connected, but never for DeepSeek", () => {
@@ -97,13 +104,14 @@ describe("toolsFor", () => {
     expect(mayRun("deepseek-flash", "deepseek", "github_read_file", noMcp, ALL)).toBe(false);
     expect(mayRun("deepseek-flash", "deepseek", "web_fetch", noMcp, ALL)).toBe(true);
     expect(mayRun("deepseek-flash", "deepseek", "sandbox_run", noMcp, ALL)).toBe(false);
+    expect(mayRun("deepseek-flash", "deepseek", "image_generate", noMcp, ALL)).toBe(true);
     expect(mayRun("claude-sonnet-5-5", "anthropic", "fake.lookup", noMcp, ALL)).toBe(false);
   });
 
   it("offers a signed-in MCP server's tools to a model that may see private content, and never to DeepSeek", () => {
     const room = (status: McpConnection["status"]) => ({ roomId: "r1", github: false, mcp: [conn(status)] });
     expect(toolsFor("claude-sonnet-5-5", "anthropic", room("connected"), ALL).map((t) => t.name)).toContain("mcp__test__add_note");
-    expect(toolsFor("deepseek-flash", "deepseek", room("connected"), ALL).map((t) => t.name)).toEqual([...web, ...memory]);
+    expect(toolsFor("deepseek-flash", "deepseek", room("connected"), ALL).map((t) => t.name)).toEqual(forAll);
     expect(toolsFor("claude-sonnet-5-5", "anthropic", room("needs_auth"), ALL).some((t) => t.name.startsWith("mcp__"))).toBe(false);
   });
 
@@ -117,6 +125,7 @@ describe("toolsFor", () => {
     const webOnly = names("claude-sonnet-5-5", "anthropic", true, ["web"]);
     expect(webOnly).toEqual([...web, ...memory]);
     expect(names("claude-sonnet-5-5", "anthropic", true, [])).toEqual(memory);
+    expect(names("deepseek-flash", "deepseek", false, ["images"])).toEqual(["image_generate", ...memory]);
     const room = { roomId: "r1", github: false, mcp: [conn("connected")] };
     expect(toolsFor("claude-sonnet-5-5", "anthropic", room, ["mcp"]).map((t) => t.name)).toEqual(["mcp__test__add_note", ...memory]);
   });
@@ -125,6 +134,7 @@ describe("toolsFor", () => {
     expect(mayRun("claude-sonnet-5-5", "anthropic", "sandbox_run", noMcp, ["web"])).toBe(false);
     expect(mayRun("claude-sonnet-5-5", "anthropic", "github_comment", noMcp, ["web"])).toBe(false);
     expect(mayRun("claude-sonnet-5-5", "anthropic", "web_search", noMcp, ["web"])).toBe(true);
+    expect(mayRun("claude-sonnet-5-5", "anthropic", "image_generate", noMcp, ["web"])).toBe(false);
     expect(mayRun("deepseek-flash", "deepseek", "memory_save", noMcp, [])).toBe(true);
   });
 

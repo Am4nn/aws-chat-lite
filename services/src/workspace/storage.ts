@@ -6,6 +6,7 @@ import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { ValidationError } from "../lib/errors.js";
 import { filesBucket, missingObject, objects, s3 } from "../lib/s3.js";
+import type { InlineImageType } from "../models/gateway.js";
 import { MAX_ROOM_FILE_BYTES } from "./limits.js";
 import type { StoredFile } from "./types.js";
 
@@ -35,15 +36,22 @@ export async function presignFileUpload(roomId: string, userId: string, file: { 
   return { url, fields, uploadKey };
 }
 
-/** The object as S3 stored it: the truth about an upload's size and type, where the uploader's are only a claim. */
-export async function headObject(key: string) {
+/** The object as S3 stored it, or undefined when there is none. */
+export async function findObject(key: string) {
   try {
     const head = await objects().send(new HeadObjectCommand({ Bucket: filesBucket(), Key: key }));
-    return { size: Number(head.ContentLength), contentType: head.ContentType ?? "application/octet-stream" };
+    return { size: Number(head.ContentLength), contentType: head.ContentType ?? "application/octet-stream", metadata: head.Metadata ?? {} };
   } catch (e) {
-    if (missingObject(e)) throw new ValidationError("That upload isn't there; try again.");
+    if (missingObject(e)) return undefined;
     throw e;
   }
+}
+
+/** An upload as S3 stored it: the truth about its size and type, where the uploader's are only a claim. */
+export async function headObject(key: string) {
+  const found = await findObject(key);
+  if (!found) throw new ValidationError("That upload isn't there; try again.");
+  return found;
 }
 
 export async function getBytes(key: string): Promise<Uint8Array> {
@@ -51,8 +59,8 @@ export async function getBytes(key: string): Promise<Uint8Array> {
   return Body!.transformToByteArray();
 }
 
-export async function putBytes(key: string, bytes: Uint8Array, type: string) {
-  await objects().send(new PutObjectCommand({ Bucket: filesBucket(), Key: key, Body: bytes, ContentType: type }));
+export async function putBytes(key: string, bytes: Uint8Array, type: string, metadata?: Record<string, string>) {
+  await objects().send(new PutObjectCommand({ Bucket: filesBucket(), Key: key, Body: bytes, ContentType: type, Metadata: metadata }));
 }
 
 /** Server side: the bytes never pass through the Lambda. S3 reads the source as a URL path, so each segment is encoded. */
@@ -73,13 +81,19 @@ export async function deleteObjects(keys: string[]) {
   }
 }
 
+/** The header only carries printable ASCII, so other characters in the name become underscores. */
+const fileName = (f: StoredFile) => f.path.slice(f.path.lastIndexOf("/") + 1).replace(/[^\x20-\x7e]|["\\]/g, "_");
+
+const presign = (f: StoredFile, headers: { ResponseContentDisposition: string; ResponseContentType?: string }) =>
+  getSignedUrl(s3(), new GetObjectCommand({ Bucket: filesBucket(), Key: f.objectKey, ...headers }), { expiresIn: DOWNLOAD_EXPIRY_SEC });
+
+/** Always a download, never rendered: a room file can be anything, and an HTML or SVG file shown inline could run script. */
+export const presignFileDownload = (f: StoredFile): Promise<string> =>
+  presign(f, { ResponseContentDisposition: `attachment; filename="${fileName(f)}"` });
+
 /**
- * Always a download, never rendered: a room file can be anything, and an HTML or SVG file shown inline could run
- * script. The header only carries printable ASCII, so other characters in the name become underscores.
+ * Shown in the browser, for an image type a browser draws without running anything. The response is pinned to that
+ * type, so whatever bytes the object holds are never read as a page.
  */
-export function presignFileDownload(f: StoredFile): Promise<string> {
-  const filename = f.path.slice(f.path.lastIndexOf("/") + 1).replace(/[^\x20-\x7e]|["\\]/g, "_");
-  return getSignedUrl(s3(), new GetObjectCommand({
-    Bucket: filesBucket(), Key: f.objectKey, ResponseContentDisposition: `attachment; filename="${filename}"`,
-  }), { expiresIn: DOWNLOAD_EXPIRY_SEC });
-}
+export const presignFileView = (f: StoredFile, type: InlineImageType): Promise<string> =>
+  presign(f, { ResponseContentDisposition: `inline; filename="${fileName(f)}"`, ResponseContentType: type });

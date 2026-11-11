@@ -1,7 +1,7 @@
 import type { Role } from "../rooms/access.js";
 import { ValidationError } from "../lib/errors.js";
 import type { ModelPick } from "../models/catalog.js";
-import type { RunEndStatus } from "../threads/types.js";
+import type { GeneratedImage, RunEndStatus } from "../threads/types.js";
 
 export type Reaction = "thumbs" | "heart" | "joy" | "tada" | "eyes" | "check";
 export type Attachment = { key: string; name: string; size: number; type: string; url?: string };
@@ -28,6 +28,8 @@ export type Message = {
     runId: string; status: RunEndStatus; reason?: string; steps: number; costMicros: number; ms: number;
     /** The model id that answered, and the pick it answered for. */
     model: string; pick: ModelPick; firstSeq: number;
+    /** Every image the run made, in step order. */
+    images?: GeneratedImage[];
   };
   /** How many times the message has changed (edit, delete, reaction); absent until the first change. */
   v?: number;

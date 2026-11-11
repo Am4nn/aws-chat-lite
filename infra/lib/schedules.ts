@@ -18,6 +18,8 @@ export function addSchedules(stack: CoreStack) {
   allowSchedules(stack, fireFn, groupName, ["DeleteSchedule"]);
   stack.allowBroadcast(fireFn);
   stack.allowRunStart(fireFn);
+  // A card or prompt can mention members, who get a push.
+  stack.allowPush(fireFn);
 
   // The SourceAccount condition stops another account's schedule from using this role (the confused deputy).
   const role = new iam.Role(stack, "SchedulerRole", {

@@ -10,7 +10,7 @@ const MAX_INSTRUCTIONS = 4000;
 const NAME = /^[a-z][a-z0-9-]{1,31}$/;
 /** Mentions already give these a meaning: the built-in agent, the whole room and the scheduled messages' author. */
 const RESERVED = new Set(["agent", "everyone", "schedule"]);
-const KINDS: ToolKind[] = ["github", "mcp", "sandbox", "web"];
+const KINDS: ToolKind[] = ["github", "images", "mcp", "sandbox", "web"];
 
 /** Virtual until an admin edits it, so every room has it without a write at room creation. */
 export const BUILT_IN: Agent = {

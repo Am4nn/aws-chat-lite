@@ -46,7 +46,7 @@ export type Message = {
   mentions: string[];
   everyone: boolean;
   threadRef?: { threadId: string; kind: "started" | "delivered" };
-  agent?: { runId: string; status: RunEndStatus; reason?: string; steps: number; costMicros: number; ms: number; model: string; pick: ModelPick; firstSeq: number };
+  agent?: { runId: string; status: RunEndStatus; reason?: string; steps: number; costMicros: number; ms: number; model: string; pick: ModelPick; firstSeq: number; images?: GeneratedImage[] };
   /** How many times the message has changed (edit, delete, reaction); absent until the first change. */
   v?: number;
 };
@@ -106,19 +106,23 @@ export type TaintSource = "attachment" | "github" | "sandbox" | `mcp:${string}`;
 
 export type Budget = { spentMicros: number; capMicros: number; month: string; resetsAt: string };
 
+export type Aspect = "1:1" | "3:4" | "4:3" | "9:16" | "16:9";
+/** An image a run generated, saved at `path` in the room's files. */
+export type GeneratedImage = { path: string; aspect: Aspect };
+
 type RunEventBody =
   | { type: "run.started"; pick: ModelPick; startedBy: string; agentName: string }
   | { type: "routed"; model: string; by: "pick" | "default" | "auto" }
   | { type: "model.turn"; model: string; content: unknown; turn: number }
-  | { type: "steer"; messageSeq: number; authorName: string; text: string; attachments?: string[] }
+  | { type: "steer"; messageSeq: number; authorName: string; text: string; attachments?: Attachment[] }
   | { type: "text"; text: string; turn: number }
   | { type: "text.reset"; turn: number }
   | { type: "step.started"; step: number; call: { id: string; name: string; input: Record<string, unknown> }; detail: string }
-  | { type: "step.finished"; step: number; output: string; ms: number; ok: boolean; sources?: Source[] }
+  | { type: "step.finished"; step: number; output: string; ms: number; ok: boolean; sources?: Source[]; image?: GeneratedImage }
   | ({ type: "files.synced"; step: number } & FilesSynced)
   | { type: "approval.requested"; step: number; call: { id: string; name: string; input: Record<string, unknown> }; title: string; expiresAt: string }
   | { type: "approval.settled"; step: number; decision: Exclude<ApprovalStatus, "pending">; by?: string }
-  | { type: "usage"; model: string; job: "route" | "name" | "run" | "sandbox"; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; costMicros: number; ms?: number }
+  | { type: "usage"; model: string; job: "route" | "name" | "run" | "sandbox" | "image"; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; costMicros: number; ms?: number; step?: number }
   | { type: "helper.started"; step: number; agentId: string; agentName: string; task: string; model: string }
   | { type: "helper.finished"; step: number; status: RunEndStatus; summary: string; steps: number; ms: number; costMicros: number }
   | { type: "run.finished"; status: RunEndStatus; reason?: string; ms: number; steps: number; costMicros: number };
@@ -151,7 +155,7 @@ export type AuditEntry = {
 };
 
 // Agents, memory and schedules: mirrors services/src/threads/types.ts.
-export type ToolKind = "sandbox" | "web" | "github" | "mcp";
+export type ToolKind = "sandbox" | "web" | "github" | "mcp" | "images";
 export type AgentModel = ModelPick | "room";
 export type Agent = {
   agentId: string; name: string; instructions: string; tools: ToolKind[]; model: AgentModel;

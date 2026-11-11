@@ -90,10 +90,11 @@ export async function startHelper(
 
 /**
  * A helper's answer goes to its parent's model. GitHub, MCP and the sandbox return content that makes the thread
- * private, after which a parent that may not see private content could only refuse, so its helpers get the web alone.
+ * private, after which a parent that may not see private content could only refuse, so its helpers get the web and
+ * images alone: an image step returns only the saved file's path.
  */
 export const helperKinds = (kinds: ToolKind[], parentModel: string): ToolKind[] =>
-  modelInfo(parentModel).privateOk ? kinds : kinds.filter((k) => k === "web");
+  modelInfo(parentModel).privateOk ? kinds : kinds.filter((k) => k === "web" || k === "images");
 
 /**
  * The delegate step's end: the helper's ending in its own lane, then the main lane's step with the helper's answer as

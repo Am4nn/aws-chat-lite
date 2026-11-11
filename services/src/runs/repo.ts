@@ -5,7 +5,7 @@ import { conditionFailed, docClient, failedAt, queryAll, setFields, tableName } 
 import { LAST_SEQ, forReaders, seqKey, type Message, type StoredMessage } from "../chat/model.js";
 import type { ModelPick } from "../models/catalog.js";
 import { summary, threadSk } from "../threads/model.js";
-import type { RunEndStatus, RunEvent, RunEventBody, ThreadSummary } from "../threads/types.js";
+import type { GeneratedImage, RunEndStatus, RunEvent, RunEventBody, ThreadSummary } from "../threads/types.js";
 import { DEAD_AFTER_MS, eventSk } from "./model.js";
 
 /** A run's META item: one durable execution answering one thread message (plus any steers it reads). */
@@ -22,7 +22,9 @@ export type Run = {
   pickBy: "pick" | "default";
   /** The model id it routed to; unset until it has routed. */
   model?: string;
+  /** The starter's username; `startedById` is their user id, unset on runs from before it was stored. */
   startedBy: string;
+  startedById?: string;
   startedAt: string;
   /** Past this the run can't be alive: the claim plus the execution's own limit, moved past each approval's expiry. */
   deadAt: string;
@@ -297,9 +299,12 @@ export function runsRepo() {
      * stored. Item 4 failing means a newer run has the thread, so the close goes ahead without touching it.
      */
     async closeRun(
-      run: Run, opts: { status: RunEndStatus; reason?: string; text: string; summary: string; seenSeq: number; force: boolean },
+      run: Run,
+      opts: {
+        status: RunEndStatus; reason?: string; text: string; images?: GeneratedImage[]; summary: string; seenSeq: number; force: boolean;
+      },
     ): Promise<{ result: "closed" | "unread" | "already"; answer?: Message; endedAt?: string }> {
-      const { status, reason, text, force } = opts;
+      const { status, reason, text, images, force } = opts;
       let seen = opts.seenSeq;
       let owns = true;
       for (let attempt = 1; ; attempt++) {
@@ -311,6 +316,7 @@ export function runsRepo() {
           agent: {
             runId: run.runId, status, reason, steps: run.steps, costMicros: run.costMicros,
             ms: Date.parse(now) - Date.parse(run.startedAt), model: run.model ?? "", pick: run.pick, firstSeq: run.firstSeq,
+            ...(images?.length ? { images } : {}),
           },
         };
         const thread = setFields({

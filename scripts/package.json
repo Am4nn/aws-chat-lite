@@ -29,6 +29,8 @@
     "@aws-sdk/client-sts": "^3.1163.0",
     "@aws-sdk/lib-dynamodb": "^3.1163.0",
     "@modelcontextprotocol/sdk": "^1.32.2",
+    "@smithy/eventstream-codec": "^4.5.2",
+    "@smithy/util-utf8": "^4.5.2",
     "ws": "^8"
   },
   "devDependencies": {

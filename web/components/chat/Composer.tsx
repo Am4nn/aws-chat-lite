@@ -2,13 +2,17 @@
 
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useParams } from "next/navigation";
 import { ArrowUp, Bot, CornerDownRight, Paperclip, Pencil, Reply, Square, Users, X } from "lucide-react";
 import { mentionOptions, mentionQuery, type Mentionable } from "@/lib/client/mentions";
 import { useThreads } from "@/lib/client/ThreadsProvider";
+import { useEscape } from "@/lib/client/useEscape";
 import { dur, easeOut, instant } from "@/lib/motion";
 import type { Message } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { UploadChip } from "./Attachments";
+import { DictationRow, isDictating, MicButton } from "./MicButton";
+import { useDictation } from "./useDictation";
 import type { useUploads } from "./useUploads";
 
 /** `thread`: the next message goes from this chat into an agent thread. */
@@ -37,6 +41,7 @@ export function Composer({
 }: Props) {
   const reduced = useReducedMotion();
   const { byId } = useThreads();
+  const { roomId } = useParams<{ roomId: string }>();
   const listId = useId();
   const area = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -77,12 +82,16 @@ export function Composer({
     }
   }, [text]);
 
+  const dictation = useDictation({ roomId, onText: insertDictation });
+  const dictating = isDictating(dictation);
+  useEscape(dictation.state !== "idle", dictation.cancel);
+
   const query = mentionQuery(text.slice(0, caret));
   const options = query && query.start !== dismissedAt ? mentionOptions(query.query, { agents, members, meId }) : [];
 
   const editing = mode?.kind === "edit" ? mode.message : undefined;
   const trimmed = text.trim();
-  const canSubmit = trimmed.length <= MAX_TEXT && !uploads?.busy &&
+  const canSubmit = trimmed.length <= MAX_TEXT && !uploads?.busy && !dictating &&
     (editing ? !!trimmed || editing.attachments.length > 0 : !!trimmed || !!uploads?.uploads.length);
 
   function change(value: string, caretAt: number) {
@@ -102,6 +111,16 @@ export function Composer({
     change(before + text.slice(caret), before.length);
   }
 
+  // Spoken words go in at the caret, with a space on either side unless one is already there.
+  function insertDictation(words: string) {
+    const before = text.slice(0, caret);
+    const after = text.slice(caret);
+    const head = before && !/\s$/.test(before) ? `${before} ${words}` : before + words;
+    nextCaret.current = head.length;
+    change(head + (after && !/^\s/.test(after) ? ` ${after}` : after), head.length);
+    area.current?.focus();
+  }
+
   function submit() {
     if (!canSubmit) return;
     if (editing) onSaveEdit(editing, trimmed);
@@ -111,7 +130,8 @@ export function Composer({
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.nativeEvent.isComposing) return;
+    // A prevented key was already handled, such as the Escape that cancelled a dictation.
+    if (e.nativeEvent.isComposing || e.defaultPrevented) return;
     if (options.length) {
       const move = e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
       if (move) {
@@ -218,7 +238,21 @@ export function Composer({
           </div>
         )}
 
-        <div className={`flex items-end gap-1.5 py-2 pr-2 ${uploads ? "pl-2" : "pl-3.5"}`}>
+        <AnimatePresence initial={false}>
+          {dictation.state !== "idle" && (
+            <motion.div
+              initial={reduced ? false : { height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={motionFast}
+              className="overflow-hidden"
+            >
+              <DictationRow dictation={dictation} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <div className="flex items-end gap-1.5 p-2">
           {uploads && (
             <>
               <button
@@ -238,6 +272,7 @@ export function Composer({
               />
             </>
           )}
+          <MicButton dictation={dictation} />
           <label htmlFor="composer" className="sr-only">{steering ? "Steer the agent" : "Message"}</label>
           <textarea
             id="composer"

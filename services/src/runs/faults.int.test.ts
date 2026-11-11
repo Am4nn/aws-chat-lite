@@ -135,7 +135,7 @@ describe("run steps and starts under injected failures", () => {
     await chatRepo().send(owner, { roomId, chatId: t.threadId, clientId: `k${++clients}`, text: "and this" }, { text: "and this", attachments: [file] });
     await modelTurn(run, 1);
     const steers = (await runs.allEvents(run.runId)).filter((e) => e.type === "steer");
-    expect(steers).toEqual([expect.objectContaining({ text: "and this", attachments: ["log.txt"] })]);
+    expect(steers).toEqual([expect.objectContaining({ text: "and this", attachments: [file] })]);
   });
 
   it("a model turn that fails after streaming, before its usage is recorded, answers once and charges once", async () => {

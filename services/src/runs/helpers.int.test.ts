@@ -123,8 +123,11 @@ describe("helper agents in their own lanes of the run, on Floci", { timeout: 120
     expect(answers(stored.text)).toBe(1);
     expect((await threads.threadById(at.roomId, thread.threadId))!.summary).toBe(summaryLine(main.final));
 
-    // The delegate step and the helper's two lookups share the run's step count and its cost.
+    // The delegate step and the helper's two lookups share the run's step count and its cost. Step numbers are the
+    // run's, not the lane's, so what is keyed by step (an image's staging object and file, its "already billed" check)
+    // never meets another lane's.
     expect(run.steps).toBe(3);
+    expect(ofType(events, "step.started").map((e) => e.step)).toEqual([1, 2, 3]);
     expect(run.costMicros).toBe(ofType(events, "usage").reduce((sum, e) => sum + e.costMicros, 0));
   });
 

@@ -91,8 +91,24 @@ describe("buildContext", () => {
   });
 
   it("a steer names its attachments the same way", () => {
-    const run = events({ type: "steer", messageSeq: 2, authorName: "ravi", text: "and this", attachments: ["log.txt"] });
+    const run = events({ type: "steer", messageSeq: 2, authorName: "ravi", text: "and this", attachments: [{ key: "k/log.txt", name: "log.txt", size: 1, type: "text/plain" }] });
     expect(buildContext(threadMessages([message(1, "u1", "aman", "go")]), run)[1]).toEqual({ role: "user", author: "ravi", text: "and this\n[attached: log.txt]" });
+  });
+
+  it("an image attachment goes along as an image part, without its bytes; every file is still named", () => {
+    const png = { key: "k/shot.png", name: "shot.png", size: 9, type: "image/png", url: "https://s3/shot.png" };
+    const pdf = { key: "k/report.pdf", name: "report.pdf", size: 1, type: "application/pdf" };
+    expect(buildContext(threadMessages([{ ...message(1, "u1", "aman", "what is this"), attachments: [png, pdf] }]), [])).toEqual([{
+      role: "user", author: "aman", text: "what is this\n[attached: shot.png]\n[attached: report.pdf]",
+      images: [{ name: "shot.png", mediaType: "image/png", key: "k/shot.png", size: 9 }],
+    }]);
+  });
+
+  it("a steer's image attachment goes along as an image part", () => {
+    const run = events({ type: "steer", messageSeq: 2, authorName: "ravi", text: "and this", attachments: [{ key: "k/a.webp", name: "a.webp", size: 3, type: "image/webp" }] });
+    expect(buildContext(threadMessages([message(1, "u1", "aman", "go")]), run)[1]).toEqual({
+      role: "user", author: "ravi", text: "and this\n[attached: a.webp]", images: [{ name: "a.webp", mediaType: "image/webp", key: "k/a.webp", size: 3 }],
+    });
   });
 
   it("starts at the first member message: older agent answers before it are left out", () => {
@@ -116,7 +132,7 @@ describe("a failed attempt's writes", () => {
     { type: "text", text: "\n\nWhole answer.", turn: 2 },
   );
   it("is left out of the answer", () => {
-    expect(answerOf(run)).toEqual({ text: "Let me look.\n\nWhole answer.", final: "Whole answer." });
+    expect(answerOf(run)).toEqual({ text: "Let me look.\n\nWhole answer.", final: "Whole answer.", images: [] });
   });
   it("is left out of what the model sees, while the steer read in that attempt stays", () => {
     expect(buildContext([], run).slice(2)).toEqual([
@@ -140,11 +156,19 @@ describe("answerOf", () => {
       { type: "steer", messageSeq: 2, authorName: "ravi", text: "more" },
       { type: "text", text: "\n\nSecond ", turn: 1 }, { type: "text", text: "answer.", turn: 1 },
     );
-    expect(answerOf(run)).toEqual({ text: "Let me look.\n\nFirst answer.\n\nSecond answer.", final: "Second answer." });
+    expect(answerOf(run)).toEqual({ text: "Let me look.\n\nFirst answer.\n\nSecond answer.", final: "Second answer.", images: [] });
   });
 
   it("a run that ends during a step has no final text", () => {
-    expect(answerOf(events({ type: "text", text: "Looking.", turn: 1 }, started(1)))).toEqual({ text: "Looking.", final: "" });
+    expect(answerOf(events({ type: "text", text: "Looking.", turn: 1 }, started(1)))).toEqual({ text: "Looking.", final: "", images: [] });
+  });
+
+  it("lists the images the run made, in step order", () => {
+    const drew = (n: number, path: string): RunEventBody => ({
+      type: "step.finished", step: n, output: "Saved", ms: 5, ok: true, image: { path, aspect: "1:1" },
+    });
+    const run = events(started(1), drew(1, "images/7-1-fox.png"), started(2), finished(2), started(3), drew(3, "images/7-3-owl.png"));
+    expect(answerOf(run).images).toEqual([{ path: "images/7-1-fox.png", aspect: "1:1" }, { path: "images/7-3-owl.png", aspect: "1:1" }]);
   });
 });
 
@@ -185,7 +209,13 @@ describe("lanes", () => {
   });
 
   it("each lane's answer is its own text", () => {
-    expect(answerOf(run)).toEqual({ text: "Asking.\n\nThe researcher found 3 docs.", final: "The researcher found 3 docs." });
-    expect(answerOf(run, 1)).toEqual({ text: "Found 3 docs.", final: "Found 3 docs." });
+    expect(answerOf(run)).toEqual({ text: "Asking.\n\nThe researcher found 3 docs.", final: "The researcher found 3 docs.", images: [] });
+    expect(answerOf(run, 1)).toEqual({ text: "Found 3 docs.", final: "Found 3 docs.", images: [] });
+  });
+
+  it("an image a helper drew shows under the main answer", () => {
+    const image = { path: "images/7-1-2-fox.png", aspect: "1:1" as const };
+    const drew = run.map((e) => (e.type === "step.finished" && e.step === 2 ? { ...e, image } : e));
+    expect(answerOf(drew).images).toEqual([image]);
   });
 });

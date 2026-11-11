@@ -1,11 +1,19 @@
-import type { Message } from "../chat/model.js";
-import type { ModelMessage, ToolCall } from "../models/gateway.js";
-import type { RunEvent } from "../threads/types.js";
+import { inlineType } from "../chat/files.js";
+import type { Attachment, Message } from "../chat/model.js";
+import type { ImagePart, ModelMessage, ToolCall } from "../models/gateway.js";
+import type { GeneratedImage, RunEvent } from "../threads/types.js";
 
 type Assistant = Extract<ModelMessage, { role: "assistant" }>;
 
-/** The model can't open files, so a message names its attachments for it. */
-const withAttachments = (text: string, names: string[] = []) => [text, ...names.map((name) => `[attached: ${name}]`)].join("\n");
+/**
+ * A member's message as the model gets it. The model can't open files, so the text names each attachment; an image
+ * also goes along as a part, whose bytes are filled in only for a model that may see them.
+ */
+function memberMessage(author: string, text: string, attachments: Attachment[] = []): ModelMessage {
+  const images = attachments.flatMap(({ key, name, size, type }): ImagePart[] => (inlineType(type) ? [{ name, mediaType: type, key, size }] : []));
+  const named = [text, ...attachments.map((a) => `[attached: ${a.name}]`)].join("\n");
+  return { role: "user", author, text: named, ...(images.length > 0 && { images }) };
+}
 
 /** Whether an event is in a lane: one with no lane is the thread's own agent's (lane 0). */
 export const inLane = (lane: number) => (e: RunEvent) => (e.lane ?? 0) === lane;
@@ -30,7 +38,7 @@ function withoutVoided(events: RunEvent[], lane: number): RunEvent[] {
 export function threadMessages(prior: Message[]): ModelMessage[] {
   const from = prior.findIndex((m) => m.authorId !== "agent");
   return (from < 0 ? [] : prior.slice(from)).map((m) =>
-    m.authorId === "agent" ? { role: "assistant", text: m.text } : { role: "user", author: m.authorName, text: withAttachments(m.text, m.attachments.map((a) => a.name)) },
+    m.authorId === "agent" ? { role: "assistant", text: m.text } : memberMessage(m.authorName, m.text, m.attachments),
   );
 }
 
@@ -69,7 +77,7 @@ export function buildContext(opening: ModelMessage[], events: RunEvent[], lane =
       messages.push({ role: "tool", toolCallId: calls.get(e.step)?.id ?? "", output: e.output, isError: !e.ok });
       open = false;
     } else if (e.type === "steer") {
-      messages.push({ role: "user", author: e.authorName, text: withAttachments(e.text, e.attachments) });
+      messages.push(memberMessage(e.authorName, e.text, e.attachments));
       open = false;
     }
   }
@@ -78,9 +86,10 @@ export function buildContext(opening: ModelMessage[], events: RunEvent[], lane =
 
 /**
  * A lane's answer: every text event in order (what viewers saw stream, less any attempt voided), and the final turn's
- * text, the part after the last tool step or steer, which the thread's card (or the helper's step) summarizes.
+ * text, the part after the last tool step or steer, which the thread's card (or the helper's step) summarizes. The
+ * images are every lane's, so a picture a helper drew shows under the answer it went into.
  */
-export function answerOf(events: RunEvent[], lane = 0): { text: string; final: string } {
+export function answerOf(events: RunEvent[], lane = 0): { text: string; final: string; images: GeneratedImage[] } {
   let text = "";
   let final = "";
   for (const e of withoutVoided(events, lane)) {
@@ -91,5 +100,6 @@ export function answerOf(events: RunEvent[], lane = 0): { text: string; final: s
       final = "";
     }
   }
-  return { text, final: final.trim() };
+  const images = events.flatMap((e) => (e.type === "step.finished" && e.image ? [e.image] : []));
+  return { text, final: final.trim(), images };
 }

@@ -60,6 +60,12 @@ describe("matchForward (/bff/api/* → HTTP API allowlist)", () => {
     ["PATCH", ["rooms", "r", "schedules", "s"], "/rooms/r/schedules/s"],
     ["DELETE", ["rooms", "r", "schedules", "s"], "/rooms/r/schedules/s"],
     ["PUT", ["rooms", "r", "timezone"], "/rooms/r/timezone"],
+    ["GET", ["push", "key"], "/push/key"],
+    ["PUT", ["me", "push"], "/me/push"],
+    ["DELETE", ["me", "push", "abc123"], "/me/push/abc123"],
+    ["POST", ["rooms", "r", "voice", "sessions"], "/rooms/r/voice/sessions"],
+    ["POST", ["rooms", "r", "voice", "sessions", "v1", "done"], "/rooms/r/voice/sessions/v1/done"],
+    ["POST", ["rooms", "r", "speech"], "/rooms/r/speech"],
   ])("%s %j → %s", (method, segs, path) => {
     expect(matchForward(method, segs)).toBe(path);
   });
@@ -92,6 +98,9 @@ describe("matchForward (/bff/api/* → HTTP API allowlist)", () => {
     // Memory is written by agents; members only edit and delete it.
     ["POST", ["rooms", "r", "memory"]],
     ["GET", ["rooms", "r", "timezone"]],
+    ["DELETE", ["me", "push", "..", "x"]],
+    ["DELETE", ["me", "push"]],
+    ["GET", ["rooms", "r", "speech"]],
   ])("refuses %s %j", (method, segs) => {
     expect(matchForward(method, segs)).toBeNull();
   });
