@@ -96,6 +96,8 @@ export function threadsRepo() {
       user: User, roomId: string,
       input: {
         text: unknown; clientId: string; from?: { chatId: string; seq: number }; admitted?: Admitted; agentId?: string; name?: string;
+        /** The first message is posted for a pseudo-author (a schedule), who has no read state. */
+        system?: boolean;
       },
     ): Promise<{ thread: ThreadSummary; message: Message }> {
       const chat = chatRepo();
@@ -132,7 +134,7 @@ export function threadsRepo() {
       // Only older data can hold a numbered name's guard (new chats can't take thread-<N> names); a retry gets the next number.
       if (!item) throw new Conflict(`#${numbered} is already a chat's name; try again.`);
       const message = await chat.send(
-        user, { roomId, chatId: threadId, clientId: input.clientId, text: input.text }, admitted, { copy: !!input.from },
+        user, { roomId, chatId: threadId, clientId: input.clientId, text: input.text }, admitted, { copy: !!input.from, system: input.system },
       );
       const thread = summary(item, Date.now());
       await announce(thread);
