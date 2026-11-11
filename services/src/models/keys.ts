@@ -1,6 +1,6 @@
 import { secretJson, type ReadSecret, type SecretFields } from "../lib/secrets.js";
 
-export type ModelKeys = { anthropicKey?: string; deepseekKey?: string; deepseekBaseUrl: string };
+export type ModelKeys = { anthropicKey?: string; deepseekKey?: string; geminiKey?: string; deepseekBaseUrl: string };
 
 /** DeepSeek's Anthropic-compatible API lives under /anthropic, beside its OpenAI-style /v1. */
 export function deepseekBaseUrl(base: string): string {
@@ -17,6 +17,7 @@ export async function modelKeys(env: SecretFields = process.env, read?: ReadSecr
   return {
     anthropicKey: source.ANTHROPIC_API_KEY,
     deepseekKey: source.DEEPSEEK_API_KEY,
+    geminiKey: source.GEMINI_API_KEY,
     deepseekBaseUrl: deepseekBaseUrl(source.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com"),
   };
 }
