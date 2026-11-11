@@ -1,6 +1,8 @@
 import type { Aspect } from "../threads/types.js";
 import type { TokenUsage } from "./catalog.js";
 import { FAKE_GEMINI_KEY, fakeGeminiFetch } from "./fake-gemini.js";
+import type { InlineImageType } from "./gateway.js";
+import { imageType } from "./image-header.js";
 import { modelKeys } from "./keys.js";
 
 export const IMAGE_MODEL = "gemini-3.1-flash-image";
@@ -15,9 +17,8 @@ const PRICE = { input: 500, text: 3000, image: 60_000 };
 /** What one 1K image costs, charged when a reply doesn't say how many tokens it used. */
 const UNMETERED_MICROS = 67_000;
 
-type MediaType = "image/png" | "image/jpeg" | "image/webp";
 type ImageRequest = { prompt: string; aspect: Aspect };
-type ImageResult = ({ ok: true; bytes: Uint8Array; mediaType: MediaType } | { ok: false; error: string }) & {
+type ImageResult = ({ ok: true; bytes: Uint8Array; mediaType: InlineImageType } | { ok: false; error: string }) & {
   usage: TokenUsage;
   costMicros: number;
 };
@@ -33,14 +34,6 @@ type Reply = {
   promptFeedback?: { blockReason?: string };
   usageMetadata?: UsageMetadata;
 };
-
-/** The types an answer may hold, each with its magic-number check, so a mislabelled reply is never stored as an image. */
-const MAGIC = new Map<string, (b: Uint8Array) => boolean>([
-  ["image/png", (b) => b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47],
-  ["image/jpeg", (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff],
-  ["image/webp", (b) => ascii(b, 0, 4) === "RIFF" && ascii(b, 8, 12) === "WEBP"],
-]);
-const ascii = (b: Uint8Array, start: number, end: number) => String.fromCharCode(...b.subarray(start, end));
 
 function tokens(meta: UsageMetadata) {
   const details = meta.candidatesTokensDetails ?? [];
@@ -86,8 +79,10 @@ function parse(reply: Reply): ImageResult {
   const image = candidate.content?.parts?.find((p) => p.inlineData && !p.thought)?.inlineData;
   if (!image) return declined("NO_IMAGE");
   const bytes = new Uint8Array(Buffer.from(image.data, "base64"));
-  if (!MAGIC.get(image.mimeType)?.(bytes)) return failed(NOT_AN_IMAGE, meta, costMicros);
-  return { ok: true, bytes, mediaType: image.mimeType as MediaType, usage: usageOf(meta), costMicros };
+  // The bytes must be the type Gemini named, so a mislabelled reply is never stored as an image.
+  const mediaType = imageType(bytes);
+  if (!mediaType || mediaType !== image.mimeType) return failed(NOT_AN_IMAGE, meta, costMicros);
+  return { ok: true, bytes, mediaType, usage: usageOf(meta), costMicros };
 }
 
 /**

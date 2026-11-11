@@ -17,7 +17,7 @@ const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const BAD_PROMPT = "Describe the image in 1 to 2000 characters.";
 const FULL = "The room's files are full, so the image has nowhere to go.";
 const LOST = "Gemini didn't make that image.";
-const EXTENSIONS: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
+const EXTENSIONS: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" };
 
 type Cost = { usage: TokenUsage; costMicros: number };
 type RunRef = Pick<Run, "runId" | "roomId" | "threadId" | "number" | "firstSeq">;
