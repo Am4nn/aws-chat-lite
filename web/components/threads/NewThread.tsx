@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bot } from "lucide-react";
 import { bff, errorText } from "@/lib/client/bff";
+import { useThreads } from "@/lib/client/ThreadsProvider";
 import type { Me, Member, ThreadSummary } from "@/lib/types";
 import { useToast } from "@/components/overlays/Toast";
 import { ArchivedNotice } from "@/components/chat/ArchivedNotice";
@@ -17,6 +18,7 @@ import { UserBubble } from "./UserBubble";
 export function NewThread({ roomId, me, members, archived }: { roomId: string; me: Me; members: Member[]; archived: boolean }) {
   const router = useRouter();
   const toast = useToast();
+  const { apply } = useThreads();
   const [sent, setSent] = useState<{ text: string; failed: boolean } | null>(null);
 
   async function start(text: string) {
@@ -25,6 +27,8 @@ export function NewThread({ roomId, me, members, archived }: { roomId: string; m
       const { thread } = await bff<{ thread: ThreadSummary }>(`/bff/api/rooms/${roomId}/threads`, {
         body: { text, clientId: crypto.randomUUID() },
       });
+      // The room's layout isn't fetched again on this navigation, so the new thread joins the list from the reply.
+      apply(thread);
       router.replace(`/r/${roomId}/t/${thread.number}`);
     } catch (e) {
       setSent({ text, failed: true });

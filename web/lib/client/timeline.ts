@@ -5,6 +5,8 @@ export type PendingMessage = {
   text: string;
   createdAt: string;
   replyTo?: Message["replyTo"];
+  /** Sent from a chat into this agent thread. */
+  threadId?: string;
   attachments: Message["attachments"];
   failed?: boolean;
 };

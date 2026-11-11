@@ -22,6 +22,10 @@ export function formatUsd(micros: number): string {
   return `$${(Math.round(micros / 10_000) / 100).toFixed(2)}`;
 }
 
+/** The day the room's budget resets, which is the 1st of a month in UTC. */
+export const resetsOn = (resetsAt: string) =>
+  new Date(resetsAt).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+
 export const budgetFill = (b: Pick<Budget, "spentMicros" | "capMicros">) =>
   b.capMicros === 0 ? 100 : Math.min(100, (b.spentMicros / b.capMicros) * 100);
 

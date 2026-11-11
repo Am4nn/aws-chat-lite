@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Message, ThreadSummary } from "../types";
-import { applyThreadUpdate, groupThread, liveCount, sidebarThreads, threadMeta } from "./threads";
+import { applyThreadUpdate, groupThread, liveCount, runLabel, runMeta, sidebarThreads, slugName, threadMeta } from "./threads";
 
 const th = (o: Partial<ThreadSummary>): ThreadSummary => ({
   roomId: "r", threadId: "t1", number: 1, name: "n", status: "idle", rev: 1, steps: 0, costMicros: 0,
@@ -80,4 +80,40 @@ describe("groupThread", () => {
   it("passes through plain messages", () => {
     expect(groupThread([msg(1)]).map((b) => b.kind)).toEqual(["message"]);
   });
+});
+
+describe("run status (header capsule and card)", () => {
+  const now = Date.parse("2026-11-11T15:00:00Z");
+  const started = new Date(now - 64_000).toISOString();
+  it("names the running step, or thinking before the first", () => {
+    expect(runLabel(th({ status: "running", currentStep: "github.list_prs" }))).toBe("github.list_prs");
+    expect(runLabel(th({ status: "running" }))).toBe("thinking");
+  });
+  it("names how a run ended", () => {
+    expect(runLabel(th({ status: "done" }))).toBe("Done");
+    expect(runLabel(th({ status: "stopped" }))).toBe("Stopped");
+    expect(runLabel(th({ status: "failed" }))).toBe("Failed");
+    expect(runLabel(th({ status: "capped" }))).toBe("Budget reached");
+  });
+  it("counts the current step and the time so far while running", () => {
+    expect(runMeta(th({ status: "running", steps: 2, startedAt: started }), now)).toBe("step 2 · 1:04");
+  });
+  it("counts at least step 1 while thinking, so a live run never reads step 0", () => {
+    expect(runMeta(th({ status: "running", steps: 0, startedAt: started }), now)).toBe("step 1 · 1:04");
+  });
+  it("totals the steps and the run's time after it ends", () => {
+    const ended = th({ status: "done", steps: 3, startedAt: started, endedAt: new Date(now - 4_000).toISOString() });
+    expect(runMeta(ended, now)).toBe("3 steps · 1:00");
+    expect(runMeta({ ...ended, steps: 1 }, now)).toBe("1 step · 1:00");
+  });
+});
+
+describe("slugName (a thread name as it's typed)", () => {
+  it("lowercases and turns spaces into dashes", () => expect(slugName("PR Check")).toBe("pr-check"));
+  it("drops what a name can't hold", () => expect(slugName("deploy_v2!?")).toBe("deployv2"));
+  it("never doubles a dash, but keeps one being typed at the end", () => {
+    expect(slugName("a  --b")).toBe("a-b");
+    expect(slugName("pr ")).toBe("pr-");
+  });
+  it("stops at 32 characters", () => expect(slugName("x".repeat(40))).toHaveLength(32));
 });

@@ -1,4 +1,4 @@
-import type { Message, ThreadSummary } from "../types";
+import type { Message, RunEndStatus, ThreadSummary } from "../types";
 import { formatElapsed } from "./format";
 
 const IDLE_ARCHIVE_MS = 7 * 24 * 3600_000;
@@ -18,11 +18,33 @@ export const sidebarThreads = (list: ThreadSummary[], nowMs: number) =>
 
 export const liveCount = (list: ThreadSummary[]) => list.filter((t) => t.status === "running").length;
 
+const ENDED: Record<RunEndStatus, string> = { done: "Done", stopped: "Stopped", failed: "Failed", capped: "Budget reached" };
+
+/** What the run is doing now, or how it ended. */
+export function runLabel(t: ThreadSummary): string {
+  if (t.status === "running") return t.currentStep ?? "thinking";
+  return t.status === "idle" ? "" : ENDED[t.status];
+}
+
+/** How long the run has taken: so far while it runs, in total once it ended. */
+export function runElapsed(t: ThreadSummary, nowMs: number): string {
+  const from = t.startedAt ? Date.parse(t.startedAt) : nowMs;
+  const to = t.status === "running" || !t.endedAt ? nowMs : Date.parse(t.endedAt);
+  return formatElapsed(to - from);
+}
+
+/** The step count and time, as the run's progress while it runs and its totals once it ended. */
+export function runMeta(t: ThreadSummary, nowMs: number): string {
+  if (t.status === "running") return `step ${Math.max(1, t.steps)} · ${runElapsed(t, nowMs)}`;
+  return `${t.steps} ${t.steps === 1 ? "step" : "steps"} · ${runElapsed(t, nowMs)}`;
+}
+
+/** A name as it's typed: what the server would refuse never appears, so only the length or a missing letter can fail. */
+export const slugName = (typed: string) =>
+  typed.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").replace(/-{2,}/g, "-").slice(0, 32);
+
 export function threadMeta(t: ThreadSummary, nowMs: number, timeZone?: string): { text: string; tone: "live" | "muted" } {
-  if (t.status === "running") {
-    const elapsed = t.startedAt ? formatElapsed(nowMs - Date.parse(t.startedAt)) : "0:00";
-    return { text: `step ${t.steps} · ${elapsed}`, tone: "live" };
-  }
+  if (t.status === "running") return { text: runMeta(t, nowMs), tone: "live" };
   if (t.status === "capped") return { text: "budget", tone: "muted" };
   if (t.status === "stopped" || t.status === "failed") return { text: t.status, tone: "muted" };
   const at = new Date(t.endedAt ?? t.lastActivityAt);

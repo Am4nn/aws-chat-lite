@@ -92,7 +92,7 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
   const deliver = useCallback(async (p: PendingMessage) => {
     try {
       const message = await live.request("send", {
-        roomId, chatId, clientId: p.clientId, text: p.text, replyToSeq: p.replyTo?.seq,
+        roomId, chatId, clientId: p.clientId, text: p.text, replyToSeq: p.replyTo?.seq, threadId: p.threadId,
         attachments: p.attachments.map(({ key, name, size, type }) => ({ key, name, size, type })),
       }) as Message;
       apply([message]);
@@ -116,7 +116,7 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
     if (hasNewer) void showLatest();
     const quoted = mode?.kind === "reply" ? mode.message : undefined;
     queue({
-      text, attachments: uploads.take(),
+      text, attachments: uploads.take(), threadId: mode?.kind === "thread" ? mode.threadId : undefined,
       replyTo: quoted && { seq: quoted.seq, authorName: quoted.authorName, excerpt: excerpt(quoted.text) },
     });
   }
@@ -145,6 +145,7 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
       }
     },
     reply: (m: Message) => setMode({ kind: "reply", message: m }),
+    replyInThread: (threadId: string) => setMode({ kind: "thread", threadId }),
     edit: (m: Message) => setMode({ kind: "edit", message: m }),
     async remove(m: Message) {
       try {
@@ -159,7 +160,7 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
       const failed = latest.current.pending.find((p) => p.clientId === clientId);
       if (!failed) return;
       setTimeline((t) => dropPending(t, clientId));
-      queue({ text: failed.text, attachments: failed.attachments, replyTo: failed.replyTo });
+      queue({ text: failed.text, attachments: failed.attachments, replyTo: failed.replyTo, threadId: failed.threadId });
     },
     discard(clientId: string) {
       const failed = latest.current.pending.find((p) => p.clientId === clientId);

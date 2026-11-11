@@ -2,15 +2,17 @@
 
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { ArrowUp, Paperclip, Pencil, Reply, Square, Users, X } from "lucide-react";
+import { ArrowUp, CornerDownRight, Paperclip, Pencil, Reply, Square, Users, X } from "lucide-react";
 import { mentionQuery, type Mentionable } from "@/lib/client/mentions";
+import { useThreads } from "@/lib/client/ThreadsProvider";
 import { dur, easeOut, instant } from "@/lib/motion";
 import type { Message } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { UploadChip } from "./Attachments";
 import type { useUploads } from "./useUploads";
 
-export type ComposerMode = { kind: "reply" | "edit"; message: Message } | null;
+/** `thread`: the next message goes from this chat into an agent thread. */
+export type ComposerMode = { kind: "reply" | "edit"; message: Message } | { kind: "thread"; threadId: string } | null;
 
 const MAX_TEXT = 4000;
 const COUNTER_FROM = 3600;
@@ -34,6 +36,7 @@ export function Composer({
   onModeChange, onSend, onSaveEdit, onEditLast, onTyping, onStop,
 }: Props) {
   const reduced = useReducedMotion();
+  const { byId } = useThreads();
   const listId = useId();
   const area = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -195,10 +198,12 @@ export function Composer({
               className="overflow-hidden"
             >
               <div className="flex items-center gap-2 px-4 pt-2.5 text-[12.5px] text-text-2">
-                {mode.kind === "reply" ? <Reply aria-hidden="true" size={13} className="shrink-0 text-text-3" /> : <Pencil aria-hidden="true" size={12} className="shrink-0 text-text-3" />}
-                {mode.kind === "reply"
-                  ? <span className="min-w-0 truncate">Replying to <b className="font-semibold text-text">{mode.message.authorName}</b> <span className="text-text-3">{mode.message.text}</span></span>
-                  : <span>Editing message</span>}
+                {mode.kind === "reply" && <Reply aria-hidden="true" size={13} className="shrink-0 text-text-3" />}
+                {mode.kind === "edit" && <Pencil aria-hidden="true" size={12} className="shrink-0 text-text-3" />}
+                {mode.kind === "thread" && <CornerDownRight aria-hidden="true" size={13} className="shrink-0 text-lime" />}
+                {mode.kind === "reply" && <span className="min-w-0 truncate">Replying to <b className="font-semibold text-text">{mode.message.authorName}</b> <span className="text-text-3">{mode.message.text}</span></span>}
+                {mode.kind === "edit" && <span>Editing message</span>}
+                {mode.kind === "thread" && <span className="min-w-0 truncate">to <b className="font-mono font-medium text-text">#{byId(mode.threadId)?.name}</b></span>}
                 <kbd className="ml-auto shrink-0 font-mono text-[11px] text-text-3">Esc</kbd>
                 <button onClick={() => onModeChange(null)} aria-label="Cancel" className="grid size-6 shrink-0 place-items-center rounded-md text-text-3 transition-colors hover:bg-surface-3 hover:text-text">
                   <X aria-hidden="true" size={13} />

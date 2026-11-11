@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { answerParagraphs, budgetFill, clockTime, dayKey, dayLabel, excerpt, fileSize, formatElapsed, formatStepTime, formatUsd, matchSnippet, shortWhen, splitHeadline, streamWords, typingText } from "./format";
+import { answerParagraphs, budgetFill, clockTime, dayKey, dayLabel, excerpt, fileSize, formatElapsed, formatStepTime, formatUsd, matchSnippet, resetsOn, shortWhen, splitHeadline, streamWords, typingText } from "./format";
 
 describe("format", () => {
   it("formatElapsed", () => {
@@ -118,5 +118,11 @@ describe("answerParagraphs", () => {
     expect(answerParagraphs("one two\n\n", false)).toEqual([["one", "two"]]);
     expect(answerParagraphs("a\n\n\n\nb", true)).toEqual([["a"], ["b"]]);
     expect(answerParagraphs("", false)).toEqual([]);
+  });
+});
+
+describe("resetsOn", () => {
+  it("names the UTC day the budget resets, whatever the reader's zone", () => {
+    expect(resetsOn("2026-12-01T00:00:00.000Z")).toBe("Dec 1");
   });
 });
