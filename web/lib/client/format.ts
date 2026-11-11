@@ -50,7 +50,7 @@ export function answerParagraphs(text: string, final: boolean): string[][] {
     .filter((words) => words.length > 0);
 }
 
-/** How long an approval waits, in the words the server uses for the same wait. */
+/** Mirrors the server's wait copy, so the room's setting, the card and the model's "skipped" result read the same. */
 export function formatWait(sec: number): string {
   if (sec < 60) return "under a minute";
   const hours = Math.floor(sec / 3600);
