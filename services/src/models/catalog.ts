@@ -9,8 +9,8 @@ export type ModelPick =
   | "fake";
 export type Provider = "anthropic" | "deepseek" | "fake";
 /** Nano-dollars per token, which is USD per million tokens times 1000. */
-export type Price = { input: number; output: number; cacheRead: number; cacheWrite: number };
-export type ModelInfo = {
+type Price = { input: number; output: number; cacheRead: number; cacheWrite: number };
+type ModelInfo = {
   id: string;
   pick: Exclude<ModelPick, "auto">;
   label: string;
@@ -40,7 +40,7 @@ export const JOBS: Record<"run" | "route" | "name", { maxTokens: number; effort:
 };
 
 // Prices were read from the providers' pricing pages on 2026-11-11. DeepSeek is always billed at its peak rate.
-export const MODELS: Record<string, ModelInfo> = Object.fromEntries(
+const MODELS: Record<string, ModelInfo> = Object.fromEntries(
   (
     [
       {

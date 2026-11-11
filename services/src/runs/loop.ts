@@ -2,7 +2,7 @@ import { createRetryStrategy, StepError, withDurableExecution, type DurableConte
 import type { RunEndStatus } from "../threads/types.js";
 import { finishRun } from "./finish.js";
 import { runsRepo } from "./repo.js";
-import { load, modelTurn, nameThread, toolStep } from "./steps.js";
+import { load, modelTurn, nameThread, routeRun, toolStep } from "./steps.js";
 
 /** Each step is tried 3 times in all, a second or two apart, before the run gives up on it. */
 const retryStrategy = createRetryStrategy({ maxAttempts: 3, initialDelay: { seconds: 1 } });
@@ -17,7 +17,7 @@ export async function runLoop({ runId }: { runId: string }, ctx: DurableContext)
   try {
     const loaded = await step("load", () => load(runId));
     if (!loaded) return;
-    let run = loaded.run;
+    let run = { ...loaded.run, ...await step("route", () => routeRun(loaded.run)) };
     const close = (name: string, end: { status: RunEndStatus; reason?: string }, force: boolean) =>
       step(name, () => finishRun(run, end, { seenSeq: run.seenSeq, force }));
 
