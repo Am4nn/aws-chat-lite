@@ -13,8 +13,11 @@ const inV4 = (ip: number[], base: number[], bits: number) => {
 
 const PRIVATE_V4: [number[], number][] = [
   [[0, 0, 0, 0], 8], [[10, 0, 0, 0], 8], [[100, 64, 0, 0], 10], [[127, 0, 0, 0], 8],
-  [[169, 254, 0, 0], 16], [[172, 16, 0, 0], 12], [[192, 168, 0, 0], 16],
+  [[169, 254, 0, 0], 16], [[172, 16, 0, 0], 12], [[192, 0, 0, 0], 24], [[192, 168, 0, 0], 16], [[198, 18, 0, 0], 15],
+  [[224, 0, 0, 0], 4], [[240, 0, 0, 0], 4],
 ];
+
+const v4Of = (high: number, low: number) => `${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`;
 
 /** Expands any IPv6 text form (`::`, a dotted IPv4 tail) to eight 16-bit groups. */
 function v6Groups(ip: string): number[] {
@@ -31,7 +34,10 @@ function v6Groups(ip: string): number[] {
   return [...left, ...fill, ...right].map((g) => parseInt(g, 16));
 }
 
-/** False for anything that could reach inside a network: private, loopback, link-local, metadata, unspecified. */
+/**
+ * False for anything that could reach inside a network or isn't one host: private, loopback, link-local, metadata,
+ * unspecified, benchmarking, multicast and reserved.
+ */
 export function isPublicAddress(ip: string): boolean {
   const family = net.isIP(ip);
   if (family === 4) {
@@ -39,12 +45,15 @@ export function isPublicAddress(ip: string): boolean {
     return !PRIVATE_V4.some(([base, bits]) => inV4(parts, base, bits));
   }
   if (family !== 6) return false;
-  const g = v6Groups(ip);
-  if (g.slice(0, 5).every((x) => x === 0) && (g[5] === 0xffff || g[5] === 0)) {
-    // IPv4-mapped (::ffff:a.b.c.d) and the unspecified/loopback addresses: judge the embedded IPv4 part.
-    return isPublicAddress(`${g[6]! >> 8}.${g[6]! & 255}.${g[7]! >> 8}.${g[7]! & 255}`) && g[5] === 0xffff;
-  }
-  return (g[0]! & 0xfe00) !== 0xfc00 && (g[0]! & 0xffc0) !== 0xfe80;
+  const g = v6Groups(ip) as [number, number, number, number, number, number, number, number];
+  // IPv4-mapped (::ffff:a.b.c.d), NAT64 (64:ff9b::a.b.c.d) and 6to4 (2002:aabb:ccdd::) addresses reach the IPv4 host
+  // they embed, so that host is judged. The unspecified and loopback addresses fall in the first range and are refused.
+  if (g.slice(0, 5).every((x) => x === 0) && (g[5] === 0xffff || g[5] === 0)) return g[5] === 0xffff && isPublicAddress(v4Of(g[6], g[7]));
+  if (g[0] === 0x64 && g[1] === 0xff9b && g.slice(2, 6).every((x) => x === 0)) return isPublicAddress(v4Of(g[6], g[7]));
+  if (g[0] === 0x2002) return isPublicAddress(v4Of(g[1], g[2]));
+  // Teredo hides its host in obfuscated bits, and the rest of 64::/16 is local-use NAT64 or unassigned.
+  if ((g[0] === 0x2001 && g[1] === 0) || g[0] === 0x64) return false;
+  return (g[0] & 0xfe00) !== 0xfc00 && (g[0] & 0xffc0) !== 0xfe80 && (g[0] & 0xff00) !== 0xff00;
 }
 
 /** Throws a plain reason unless the URL is http(s) on 80/443 and not an IP literal inside a network. */

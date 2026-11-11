@@ -1,3 +1,4 @@
+import { cut } from "../cut.js";
 import type { Tool, ToolEnv } from "../types.js";
 import { GitHubError, githubCall, installationToken, type Permissions } from "./app.js";
 import { repoOf } from "./repo.js";
@@ -21,14 +22,25 @@ type GitHubToolDef = {
 };
 
 const READ_SET: Permissions = { metadata: "read", contents: "read", issues: "read", pull_requests: "read" };
-const MAX_OUTPUT = 20_000;
 const MAX_PATCH = 3_000;
 const DEFAULT_BRANCH_REFUSED = "Push to a new branch, then open a PR.";
 // Installation tokens, personal tokens, JWTs and PEM blocks, in case GitHub echoes a credential back in an error.
 const SECRET = /gh[opsu]_\w+|github_pat_\w+|eyJ[\w-]+\.[\w-]+\.[\w-]+|-----BEGIN [A-Z ]+-----[\s\S]*?(?:-----END [A-Z ]+-----|$)/g;
 
-const cut = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)}\n…(cut)` : text);
 const inRepo = (input: Input) => (input.repo ? ` in ${input.repo}` : "");
+
+/**
+ * Git's own ref-name rules. A name that breaks them could read two ways: the URL parser resolves "." and ".."
+ * segments and GitHub drops empty ones, so "main/" or "x/../main" would reach the default branch's ref, or another
+ * endpoint, while the approval showed something else.
+ */
+const validRef = (name: string) =>
+  !/\.\.|@\{|[\x00-\x20\x7f~^:?*[\\]|\.$/.test(name) && name !== "@"
+  && name.split("/").every((part) => part !== "" && !part.startsWith(".") && !part.endsWith(".lock"));
+const refError = (input: Input, ...keys: string[]) => {
+  const bad = keys.find((key) => input[key] !== undefined && !validRef(input[key]));
+  return bad ? `"${bad}" isn't a valid git ref name.` : null;
+};
 
 const REPO: Schema = { type: "string", description: "owner/name; optional when the room has one repo connected" };
 const NUMBER: Schema = { type: "integer", minimum: 1, description: "issue or PR number" };
@@ -73,7 +85,7 @@ function githubTool(def: GitHubToolDef): Tool {
       try {
         const token = await installationToken(env, env.github!.installationId, repo, def.permissions);
         const gh: RepoCall = (method, path, body) => githubCall(env, token, method, `/repos/${repo}${path}`, body);
-        return { ok: true, output: cut(await def.call(gh, input, repo), MAX_OUTPUT) };
+        return { ok: true, output: cut(await def.call(gh, input, repo)) };
       } catch (e) {
         const message = e instanceof GitHubError ? e.message : `GitHub couldn't be reached (${(e as Error).message}).`;
         return { ok: false, output: message.replace(SECRET, "[redacted]") };
@@ -182,6 +194,10 @@ export const GITHUB_TOOLS: Tool[] = [
     required: ["path"],
     permissions: READ_SET,
     detail: (input) => `Reading ${input.path}${inRepo(input)}`,
+    check: (input) =>
+      input.path.split("/").some((part: string) => part === "." || part === "..") || /[\x00-\x1f\x7f]/.test(input.path)
+        ? `"path" can't have . or .. segments or control characters.`
+        : refError(input, "ref"),
     call: readFile,
   }),
   githubTool({
@@ -242,7 +258,7 @@ export const GITHUB_TOOLS: Tool[] = [
     ask: ({ branch, files }, repo) => `Push ${files.length} file(s) to ${branch} in ${repo}?`,
     // The connection doesn't know each repo's default branch, so the usual names are refused here, before anyone is
     // asked, and the real one again when the push runs.
-    check: ({ branch }) => (["main", "master"].includes(branch) ? DEFAULT_BRANCH_REFUSED : null),
+    check: (input) => refError(input, "branch", "base") ?? (["main", "master"].includes(input.branch) ? DEFAULT_BRANCH_REFUSED : null),
     call: pushBranch,
   }),
   githubTool({

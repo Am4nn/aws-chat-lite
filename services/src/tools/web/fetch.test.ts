@@ -19,6 +19,12 @@ beforeAll(async () => {
       res.writeHead(302, { location: "http://127.0.0.1:9001/" }).end();
     } else if (path === "/big") {
       res.writeHead(200, { "content-type": "text/plain" }).end(Buffer.alloc(3_000_000, "a"));
+    } else if (path === "/drip") {
+      res.writeHead(200, { "content-type": "text/plain" });
+      const drip = setInterval(() => res.write("x"), 50);
+      res.on("close", () => clearInterval(drip));
+    } else if (path === "/png-located") {
+      res.writeHead(200, { "content-type": "image/png", location: "/ok" }).end("x");
     } else if (path === "/png") {
       res.writeHead(200, { "content-type": "image/png" }).end("x");
     } else if (path === "/long") {
@@ -67,9 +73,27 @@ describe("fetchPage", () => {
   it("gives up on a page that stalls", async () => {
     await expect(fetchPage(`${base}/slow`, local({ timeoutMs: 200 }))).rejects.toThrow("took too long");
   });
+  it("gives up at the deadline on a page that keeps dripping bytes", async () => {
+    const t0 = Date.now();
+    await expect(fetchPage(`${base}/drip`, local({ timeoutMs: 300 }))).rejects.toThrow("took too long");
+    expect(Date.now() - t0).toBeLessThan(1_500);
+  });
+  it("follows a Location header only on a redirect", async () => {
+    expect(await fetchPage(`${base}/png-located`, local())).toMatchObject({ url: `${base}/png-located`, status: 200, contentType: "image/png" });
+  });
 });
 
 describe("htmlText", () => {
+  it.each(["<", "<!--", "<script", "<title", "<a "])("reads 2 MB of %j quickly", (unit) => {
+    const t0 = Date.now();
+    htmlText(unit.repeat(Math.ceil(2_000_000 / unit.length)));
+    expect(Date.now() - t0).toBeLessThan(1_000);
+  });
+  it("drops an unclosed script or comment to the end, keeps the first title and reads only the first 500 KB", () => {
+    expect(htmlText('<title lang="en">A &amp; B</title><p>x</p><script>never')).toEqual({ title: "A & B", text: "x" });
+    expect(htmlText("<p>x</p><!-- never")).toEqual({ title: "", text: "x" });
+    expect(htmlText(`<p>${"a".repeat(600_000)}</p>tail`).text).not.toContain("tail");
+  });
   it("drops scripts, decodes entities and collapses whitespace", () => {
     expect(htmlText("<title>T</title><script>x</script><style>b{}</style><p>a&amp;b</p>\n\n<p>&#65;  &lt;c&gt;</p><svg><g>s</g></svg>")).toEqual({
       title: "T",

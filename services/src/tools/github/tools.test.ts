@@ -113,6 +113,30 @@ describe("GITHUB_TOOLS", () => {
       });
     });
 
+    it.each([
+      "main/", "./main", "x/../main", "x/../../tags/v1", "/main", "a//b", "", ".", "..", "a/.hidden", "a.lock", "a/b.lock/c",
+      "a.", "a b", "a\u0000b", "a\tb", "a\u007fb", "a~1", "a^", "a:b", "a?", "a*", "a[b", "a\\b", "a@{1}", "@",
+    ])("refuses the ref name %j before anyone is asked, and never calls GitHub with it", async (branch) => {
+      const { env, repoCalls } = setup();
+      const input = { branch, message: "m", files };
+      expect(tool("github_push_branch").check!(input, env)).toBe('"branch" isn\'t a valid git ref name.');
+      expect((await tool("github_push_branch").run(input, env)).ok).toBe(false);
+      expect(repoCalls()).toEqual([]);
+    });
+
+    it("refuses a bad base the same way", () => {
+      const { env } = setup();
+      expect(tool("github_push_branch").check!({ branch: "topic", base: "x/../main", message: "m", files }, env)).toBe(
+        '"base" isn\'t a valid git ref name.',
+      );
+    });
+
+    it("pushes a nested branch name as it is", async () => {
+      const { env, repoCalls } = setup();
+      expect((await tool("github_push_branch").run({ branch: "feat/a-1.2", message: "m", files }, env)).ok).toBe(true);
+      expect(repoCalls()).toContain("GET /repos/fake-org/playground/git/ref/heads/feat/a-1.2");
+    });
+
     it("refuses the default branch", async () => {
       const { env } = setup((c) => (c.path === "/repos/fake-org/playground" ? Response.json({ default_branch: "trunk" }) : undefined));
       expect(tool("github_push_branch").check!({ branch: "main", message: "m", files }, env)).toBe("Push to a new branch, then open a PR.");
@@ -120,6 +144,24 @@ describe("GITHUB_TOOLS", () => {
         ok: false,
         output: "Push to a new branch, then open a PR.",
       });
+    });
+  });
+
+  describe("github_read_file", () => {
+    it.each(["../../other/x/contents/a", "a/../../../x", "./a", "a/./b", "a\u0000b", "a\nb"])(
+      "refuses the path %j, so it can't climb out of the repo's contents",
+      async (path) => {
+        const { env, repoCalls } = setup();
+        expect(tool("github_read_file").check!({ path }, env)).toBe('"path" can\'t have . or .. segments or control characters.');
+        expect((await tool("github_read_file").run({ path }, env)).ok).toBe(false);
+        expect(repoCalls()).toEqual([]);
+      },
+    );
+
+    it("refuses a ref that isn't a valid git ref name", () => {
+      const { env } = setup();
+      expect(tool("github_read_file").check!({ path: "README.md", ref: "../main" }, env)).toBe('"ref" isn\'t a valid git ref name.');
+      expect(tool("github_read_file").check!({ path: "src/a.ts", ref: "v1.2" }, env)).toBeNull();
     });
   });
 

@@ -1,5 +1,5 @@
 import type { Tool } from "../types.js";
-import { cut } from "./fetch.js";
+import { cut } from "../cut.js";
 
 type TavilyResult = { title: string; url: string; content: string };
 

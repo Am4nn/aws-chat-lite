@@ -21,7 +21,8 @@ export function modelKeysSecret(envText: string): string {
  * key itself goes into the secret. Errors name the setting, never the file's contents.
  */
 export function toolKeysSecret(envText: string, readFile: (path: string) => string): string {
-  const { GITHUB_APP_PRIVATE_KEY_PATH: path, ...keys } = pick(envText, ["TAVILY_API_KEY", "GITHUB_APP_ID", "GITHUB_APP_SLUG", "GITHUB_APP_PRIVATE_KEY_PATH"]);
+  const fromEnv = TOOL_KEY_NAMES.map((name) => (name === "GITHUB_APP_PRIVATE_KEY" ? "GITHUB_APP_PRIVATE_KEY_PATH" : name));
+  const { GITHUB_APP_PRIVATE_KEY_PATH: path, ...keys } = pick(envText, fromEnv);
   let pem: string;
   try {
     pem = readFile(path!);
