@@ -9,6 +9,7 @@ import { assertOurFlociUp } from "./floci-owner.js";
 import { cleanStaleStacks } from "./stale.js";
 import { devEnvFile } from "./dev-env.js";
 import { MODEL_KEY_NAMES, TOOL_KEY_NAMES, modelKeysSecret, toolKeysSecret } from "./keys-secrets.js";
+import { localSandboxToken } from "./sandbox-token.js";
 
 const infraDir = fileURLToPath(new URL("../../infra/", import.meta.url));
 const webEnvPath = fileURLToPath(new URL("../../web/.env.development.local", import.meta.url));
@@ -49,7 +50,9 @@ async function main() {
   const stale = await cleanStaleStacks();
   if (stale.length) console.log(`Floci was reset; removed stale stack records: ${stale.join(", ")}`);
   cdk(["bootstrap", "aws://000000000000/us-east-1", "-c", "stage=local"]);
-  const cdkEnv = { ...localEnv(process.env), MODEL_GATEWAY: liveModels ? "live" : "fake", TOOL_MODE: liveTools ? "live" : "fake" };
+  const cdkEnv = {
+    ...localEnv(process.env), MODEL_GATEWAY: liveModels ? "live" : "fake", TOOL_MODE: liveTools ? "live" : "fake", SANDBOX_TOKEN: localSandboxToken(),
+  };
   cdk(["deploy", "cl-local-core", "-c", "stage=local", "--require-approval", "never", "--outputs-file", "cdk.out/outputs-local.json"], cdkEnv);
   if (modelKeys) await putSecret("cl-local-model-keys", modelKeys, MODEL_KEY_NAMES, "model");
   if (toolKeys) await putSecret("cl-local-tool-keys", toolKeys, TOOL_KEY_NAMES, "tool");

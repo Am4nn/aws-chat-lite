@@ -22,6 +22,11 @@ describe("loadConfig", () => {
     expect(loadConfig("local", { ...FLOCI, TOOL_MODE: "anything" }).toolMode).toBe("fake");
   });
 
+  it("carries the local sandbox token, and never on aws", () => {
+    expect(loadConfig("local", { ...FLOCI, SANDBOX_TOKEN: "t" }).sandboxToken).toBe("t");
+    expect(loadConfig("aws", { SANDBOX_TOKEN: "t" }).sandboxToken).toBeUndefined();
+  });
+
   it("accepts the *.floci.io endpoint", () => {
     expect(loadConfig("local", { AWS_ENDPOINT_URL: "http://localhost.floci.io:4566" }).isLocal).toBe(true);
   });

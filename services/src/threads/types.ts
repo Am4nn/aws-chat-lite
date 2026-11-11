@@ -1,6 +1,7 @@
 import type { ToolCall } from "../models/gateway.js";
 import type { ModelPick, TokenUsage } from "../models/catalog.js";
 import type { TaintSource } from "../models/privacy.js";
+import type { FilesSynced } from "../workspace/types.js";
 
 export type RunEndStatus = "done" | "stopped" | "failed" | "capped";
 export type ThreadStatus = "idle" | "running" | "waiting" | RunEndStatus;
@@ -49,9 +50,12 @@ export type RunEventBody =
   | { type: "text"; text: string }
   | { type: "step.started"; step: number; call: { id: string; name: string; input: Record<string, unknown> }; detail: string }
   | { type: "step.finished"; step: number; output: string; ms: number; ok: boolean; sources?: Source[] }
+  /** What a sandbox step saved to or deleted from the room's files, and what it couldn't. */
+  | ({ type: "files.synced"; step: number } & FilesSynced)
   | { type: "approval.requested"; step: number; call: ToolCall; title: string; expiresAt: string }
   | { type: "approval.settled"; step: number; decision: Exclude<ApprovalStatus, "pending">; by?: string }
-  | ({ type: "usage"; model: string; job: "route" | "name" | "run"; costMicros: number } & TokenUsage)
+  /** Sandbox time is billed as `model: "sandbox"` with no tokens. */
+  | ({ type: "usage"; model: string; job: "route" | "name" | "run" | "sandbox"; costMicros: number } & TokenUsage)
   | { type: "run.finished"; status: RunEndStatus; reason?: string; ms: number; steps: number; costMicros: number };
 
 export type RunEvent = RunEventBody & { seq: number; at: string };

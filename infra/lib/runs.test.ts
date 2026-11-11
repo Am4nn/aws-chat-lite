@@ -29,10 +29,11 @@ const statementsOf = (role: string) =>
     .flatMap((p: any) => p.Properties.PolicyDocument.Statement);
 
 describe("run engine", () => {
-  it("the run function is durable for 7 days (a write can wait that long for approval), keeps executions 7 days and times out at 15 minutes", () => {
+  it("the run function is durable for 7 days (a write can wait that long for approval), keeps executions 7 days, times out at 15 minutes and has 1 GB", () => {
     const { props } = fnNamed("cl-local-run");
     expect(props.DurableConfig).toEqual({ ExecutionTimeout: 7 * 24 * 3600, RetentionPeriodInDays: 7 });
     expect(props.Timeout).toBe(900);
+    expect(props.MemorySize).toBe(1024);
     expect(props.Environment.Variables).toMatchObject({ MODEL_GATEWAY: "fake" });
     expect(props.Environment.Variables.WS_CALLBACK_URL).toBeDefined();
   });
@@ -53,6 +54,11 @@ describe("run engine", () => {
     expect(secrets).toHaveLength(1);
     expect(fnNamed("cl-local-run").props.Environment.Variables).toMatchObject({ TOOL_MODE: "fake", TOOL_KEYS_SECRET: "cl-local-tool-keys" });
     expect(fnNamed("cl-local-run", { ...FLOCI, TOOL_MODE: "live" }).props.Environment.Variables).toMatchObject({ TOOL_MODE: "live" });
+  });
+
+  it("gives the run function the local sandbox token only when the deploy passes one", () => {
+    expect(fnNamed("cl-local-run").props.Environment.Variables.SANDBOX_TOKEN).toBeUndefined();
+    expect(fnNamed("cl-local-run", { ...FLOCI, SANDBOX_TOKEN: "t" }).props.Environment.Variables).toMatchObject({ SANDBOX_TOKEN: "t" });
   });
 
   it("keeps the hand-set keys secrets on AWS and lets cdk destroy remove them locally", () => {

@@ -1,14 +1,7 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "ignoreIssues": {
-    "services/src/models/catalog.ts": [
-      "exports",
-      "types"
-    ],
     "web/lib/types.ts": [
-      "types"
-    ],
-    "services/src/tools/types.ts": [
       "types"
     ]
   },
@@ -41,7 +34,7 @@
     },
     "scripts": {
       "entry": [
-        "src/{floci-up,deploy-local,spike-check,spike-aws,grant,smoke,dev,stream-local}.ts"
+        "src/{floci-up,deploy-local,spike-check,spike-aws,grant,smoke,dev,stream-local,sandbox-local}.ts"
       ],
       "project": [
         "src/**/*.ts"

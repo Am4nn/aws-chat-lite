@@ -170,6 +170,11 @@ export function runsRepo() {
       return summary(Attributes!, Date.now());
     },
 
+    /** The model the run routed to, which its answer names. */
+    async setModel(runId: string, model: string): Promise<void> {
+      await db.send(new UpdateCommand({ TableName, Key: runKey(runId), ...setFields({ model }) }));
+    },
+
     /** Asks a running run to stop; false when it is no longer running. */
     async flagStop(runId: string, username: string): Promise<boolean> {
       try {

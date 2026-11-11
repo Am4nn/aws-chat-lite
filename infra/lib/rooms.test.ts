@@ -18,6 +18,7 @@ const ROUTES = [
   "POST /rooms/{roomId}/invite", "GET /rooms/{roomId}/invite", "DELETE /rooms/{roomId}/invite",
   "GET /invites/{code}", "POST /invites/{code}/accept",
   "PATCH /rooms/{roomId}/chats/{chatId}/prefs", "POST /rooms/{roomId}/leave", "POST /rooms/{roomId}/archive", "PUT /rooms/{roomId}/model",
+  "PUT /rooms/{roomId}/sandbox",
 ];
 
 describe("rooms API", () => {
@@ -55,8 +56,10 @@ describe("rooms API", () => {
       .map((f: any) => f.Properties.FunctionName);
   };
 
-  it("only the rooms, chat, live, threads, run and connections Lambdas get table access (the public health check and sign-up trigger get none)", () => {
-    expect(tableWriters().sort()).toEqual(["cl-local-chat", "cl-local-connections", "cl-local-live", "cl-local-rooms", "cl-local-run", "cl-local-threads"]);
+  it("only the rooms, chat, files, live, threads, run and connections Lambdas get table access (the public health check and sign-up trigger get none)", () => {
+    expect(tableWriters().sort()).toEqual([
+      "cl-local-chat", "cl-local-connections", "cl-local-files", "cl-local-live", "cl-local-rooms", "cl-local-run", "cl-local-threads",
+    ]);
   });
 
   it("the rooms Lambda may post to open sockets", () => {

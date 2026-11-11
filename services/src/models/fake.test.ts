@@ -216,6 +216,45 @@ describe("fakeModel", () => {
     });
   });
 
+  describe("sandbox spans", () => {
+    const sandboxTool = { name: "sandbox_run", description: "", inputSchema: {} };
+    const withSandbox = { tools: [sandboxTool] };
+
+    it("turns each span into one sandbox_run call, in order, and then answers", async () => {
+      const first = user("go sh`echo hi` py`print(1)` js`1+1`");
+      expect(toolCalls(await collect(request([first], withSandbox)))).toEqual([
+        { id: "call-1", name: "sandbox_run", input: { language: "shell", code: "echo hi" } },
+      ]);
+      expect(toolCalls(await collect(request([first, toolResult(1)], withSandbox)))[0]!.input).toEqual({ language: "python", code: "print(1)" });
+      expect(toolCalls(await collect(request([first, toolResult(1), toolResult(2)], withSandbox)))[0]!.input)
+        .toEqual({ language: "javascript", code: "1+1" });
+      const done = await collect(request([first, toolResult(1), toolResult(2), toolResult(3)], withSandbox));
+      expect(toolCalls(done)).toHaveLength(0);
+      expect(textOf(done)).toMatch(/^Fake answer for "go"\./);
+    });
+
+    it("says there is no sandbox when it isn't offered, and calls no tool", async () => {
+      const chunks = await collect(request([user("go sh`echo hi`")]));
+      expect(toolCalls(chunks)).toHaveLength(0);
+      expect(textOf(chunks).startsWith("(no sandbox here)")).toBe(true);
+    });
+
+    it("reads no directives inside a span", async () => {
+      const chunks = await collect(request([user("go sh`echo fail tools:3`")], withSandbox));
+      expect(toolCalls(chunks).map((c) => c.name)).toEqual(["sandbox_run"]);
+    });
+
+    it("runs the spans before any call:<tool>", async () => {
+      const first = user("go sh`ls` call:web_search");
+      const tools = [sandboxTool, { name: "web_search", description: "", inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] } }];
+      expect(toolCalls(await collect(request([first], { tools })))[0]!.name).toBe("sandbox_run");
+      expect(toolCalls(await collect(request([first, toolResult(1)], { tools })))).toEqual([
+        { id: "call-2", name: "web_search", input: { query: "fake" } },
+      ]);
+      expect(toolCalls(await collect(request([first, toolResult(1), toolResult(2)], { tools })))).toHaveLength(0);
+    });
+  });
+
   it("strips the new directives from the query", async () => {
     const chunks = await collect(request([user("look route:haiku cutoff")]));
     expect(toolCalls(chunks)[0].input).toMatchObject({ query: "look" });

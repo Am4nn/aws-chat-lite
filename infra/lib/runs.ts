@@ -9,7 +9,7 @@ import type { CoreStack } from "./core-stack.js";
  * invoked through a version or alias, never $LATEST.
  */
 export function addRuns(stack: CoreStack) {
-  const { prefix, isLocal, modelGateway, toolMode } = stack.stageConfig;
+  const { prefix, isLocal, modelGateway, toolMode, sandboxToken } = stack.stageConfig;
   // The keys are set by hand, so AWS keeps them past a stack delete. Leave the generated value as is: changing the
   // generator makes CloudFormation write a new value over the hand-set keys.
   const removalPolicy = isLocal ? RemovalPolicy.DESTROY : RemovalPolicy.RETAIN;
@@ -32,10 +32,14 @@ export function addRuns(stack: CoreStack) {
   const toolEnvironment = { TOOL_MODE: toolMode, TOOL_KEYS_SECRET: toolKeysName };
   const runFn = stack.addFunction("run", "runs/loop.ts", { tableAccess: true }, {
     timeout: Duration.minutes(15),
+    // Room files pass through on their way in and out of the sandbox: a batch of up to 8 MB in, a 25 MB file out.
+    memorySize: 1024,
     // A run's own time is capped at two hours, but a write may wait on a member's approval for up to a day, and paused
     // time costs nothing, so the execution itself may last a week.
     durableConfig: { executionTimeout: Duration.days(7), retentionPeriod: Duration.days(7) },
-    environment: { MODEL_GATEWAY: modelGateway, MODEL_KEYS_SECRET: keysName, ...toolEnvironment },
+    environment: {
+      MODEL_GATEWAY: modelGateway, MODEL_KEYS_SECRET: keysName, ...toolEnvironment, ...(sandboxToken && { SANDBOX_TOKEN: sandboxToken }),
+    },
   });
   modelKeys.grantRead(runFn);
   toolKeys.grantRead(runFn);

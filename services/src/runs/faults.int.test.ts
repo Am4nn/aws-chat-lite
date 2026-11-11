@@ -53,11 +53,11 @@ async function thread(text: string) {
 /** A thread with a running run, written straight to the table so no run function is invoked. */
 async function runningThread(text: string) {
   const { owner, roomId, thread: t, message } = await thread(text);
-  const run: Run = {
+  const run = {
     runId: randomUUID(), roomId, threadId: t.threadId, number: t.number, status: "running", model: "fake", pick: "auto",
     pickBy: "default", startedBy: owner.username, startedAt: new Date().toISOString(), firstSeq: message.seq, seenSeq: message.seq, steps: 0,
     costMicros: 0,
-  };
+  } satisfies Run;
   await docClient().send(new PutCommand({ TableName: tableName(), Item: { pk: `RUN#${run.runId}`, sk: "META", ...run } }));
   await docClient().send(new UpdateCommand({
     TableName: tableName(), Key: { pk: `ROOM#${roomId}`, sk: threadSk(t.number) },

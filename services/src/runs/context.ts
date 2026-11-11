@@ -4,13 +4,19 @@ import type { RunEvent } from "../threads/types.js";
 
 type Assistant = Extract<ModelMessage, { role: "assistant" }>;
 
+/** The model can't open files, so a message names its attachments for it. */
+const withAttachments = (m: Message) => [m.text, ...m.attachments.map((a) => `[attached: ${a.name}]`)].join("\n");
+
 /**
  * What the model sees: the thread before the run, then the run so far, rebuilt from its event log. The log is the
  * source of truth, so a model step that is retried sees exactly what members saw stream.
+ *
+ * The context starts at a member's message: providers reject one that opens with an assistant turn.
  */
 export function buildContext(prior: Message[], events: RunEvent[]): ModelMessage[] {
-  const messages: ModelMessage[] = prior.map((m) =>
-    m.authorId === "agent" ? { role: "assistant", text: m.text } : { role: "user", author: m.authorName, text: m.text },
+  const from = prior.findIndex((m) => m.authorId !== "agent");
+  const messages: ModelMessage[] = (from < 0 ? [] : prior.slice(from)).map((m) =>
+    m.authorId === "agent" ? { role: "assistant", text: m.text } : { role: "user", author: m.authorName, text: withAttachments(m) },
   );
   const calls = new Map<number, ToolCall>();
   // The assistant message this run is writing; a tool result or a steer ends it.
@@ -23,6 +29,8 @@ export function buildContext(prior: Message[], events: RunEvent[]): ModelMessage
   for (const e of events) {
     if (e.type === "text") {
       assistant().text += e.text;
+    } else if (e.type === "model.turn") {
+      assistant().native = { model: e.model, content: e.content };
     } else if (e.type === "step.started") {
       const turn = assistant();
       turn.toolCalls = [...(turn.toolCalls ?? []), e.call];
