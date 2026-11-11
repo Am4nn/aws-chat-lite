@@ -9,6 +9,7 @@ import { counterKey, memberKey, roomKey } from "../lib/keys.js";
 import { findMember, requireMember } from "../chat/membership.js";
 import { isOnline, type Presence } from "../live/presence.js";
 import { budgetOf, monthKey } from "../budget/model.js";
+import { modelOptions, type ModelOption, type ModelPick } from "../models/catalog.js";
 import { claimableName, summary } from "../threads/model.js";
 import type { Budget, ThreadSummary } from "../threads/types.js";
 import { can, type Action, type Role } from "./access.js";
@@ -22,6 +23,9 @@ interface RoomView {
   members: { userId: string; username: string; role: Role; online: boolean; lastSeen?: string }[];
   threads: ThreadSummary[];
   budget: Budget;
+  defaultModel: ModelPick;
+  /** The model picker, as this stage offers it. */
+  models: ModelOption[];
 }
 
 const nowSec = () => Math.floor(Date.now() / 1000);
@@ -202,7 +206,20 @@ export function roomsRepo() {
         }),
         threads: threads.map((t) => summary(t, nowMs)),
         budget: budgetOf(month, meta, usage),
+        defaultModel: (meta.defaultModel as ModelPick | undefined) ?? "auto",
+        models: modelOptions(process.env.STAGE ?? ""),
       };
+    },
+
+    /** The model a run uses when its message picks none. `pick` is already validated. */
+    async setDefaultModel(user: User, roomId: string, pick: ModelPick): Promise<ModelPick> {
+      await requireRole(roomId, user.userId, "setModel", { writing: true });
+      await db.send(new UpdateCommand({
+        TableName, Key: { pk: roomKey(roomId), sk: "META" }, UpdateExpression: "SET #defaultModel = :m",
+        ConditionExpression: "attribute_exists(pk)", ExpressionAttributeNames: { "#defaultModel": "defaultModel" },
+        ExpressionAttributeValues: { ":m": pick },
+      }));
+      return pick;
     },
 
     /**

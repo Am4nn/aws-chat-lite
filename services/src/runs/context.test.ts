@@ -18,8 +18,8 @@ describe("buildContext", () => {
   it("prior messages, then tool calls, their results and the merged answer text", () => {
     const prior = [message(1, "u1", "aman", "hi"), message(2, "agent", "agent", "earlier answer")];
     const run = events(
-      { type: "run.started", model: "fake", startedBy: "aman" },
-      started(1), finished(1), { type: "usage", model: "fake", inputTokens: 1, outputTokens: 1, costMicros: 18 },
+      { type: "run.started", pick: "auto", startedBy: "aman" },
+      started(1), finished(1), { type: "usage", model: "fake", job: "run", inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0, costMicros: 18 },
       { type: "text", text: "a " }, { type: "text", text: "b" },
     );
     expect(buildContext(prior, run)).toEqual([

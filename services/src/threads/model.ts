@@ -1,4 +1,5 @@
 import { ValidationError } from "../lib/errors.js";
+import type { TaintSource } from "../models/privacy.js";
 import type { ThreadStatus, ThreadSummary } from "./types.js";
 
 export const ARCHIVE_AFTER_SEC = 604_800;
@@ -41,12 +42,15 @@ export function isArchived(t: { status: ThreadStatus; lastActivityAt: string }, 
   return t.status !== "running" && nowMs - Date.parse(t.lastActivityAt) > ARCHIVE_AFTER_SEC * 1000;
 }
 
-/** A stored thread as clients get it: the bookkeeping fields stay on the server, and `archived` is worked out now. */
+/**
+ * A stored thread as clients get it: the bookkeeping fields stay on the server, `archived` is worked out now, and the
+ * taint, stored as a string set (which DynamoDB can only add to, and which has no order), becomes a sorted list.
+ */
 export function summary(
-  { pk: _pk, sk: _sk, activeRunId: _run, named: _named, from: _from, ...rest }: Record<string, unknown>, nowMs: number,
+  { pk: _pk, sk: _sk, activeRunId: _run, named: _named, from: _from, taint, ...rest }: Record<string, unknown>, nowMs: number,
 ): ThreadSummary {
-  const thread = rest as Omit<ThreadSummary, "archived">;
-  return { ...thread, archived: isArchived(thread, nowMs) };
+  const thread = rest as Omit<ThreadSummary, "archived" | "taint">;
+  return { ...thread, taint: [...((taint as Set<TaintSource> | undefined) ?? [])].sort(), archived: isArchived(thread, nowMs) };
 }
 
 /** `#12` or `#name` at the very start of a message; a tag later in the text is just text. */

@@ -7,7 +7,7 @@ import type { RoomsRepo } from "./repo.js";
 function fakeRepo(over: Partial<Record<keyof RoomsRepo, unknown>> = {}): RoomsRepo {
   const base: Record<string, unknown> = {};
   const names: (keyof RoomsRepo)[] = ["createRoom", "listMyRooms", "getRoomView", "createChat", "setRole", "removeMember",
-    "rotateInvite", "getInvite", "revokeInvite", "previewInvite", "acceptInvite", "setChatPrefs", "leaveRoom", "archiveRoom"];
+    "rotateInvite", "getInvite", "revokeInvite", "previewInvite", "acceptInvite", "setChatPrefs", "leaveRoom", "archiveRoom", "setDefaultModel"];
   for (const n of names) {
     const v = over[n];
     base[n] = async () => { if (v instanceof Error) throw v; return v ?? {}; };
@@ -54,23 +54,24 @@ describe("rooms handler", () => {
     const routes = ["GET /rooms", "GET /rooms/{roomId}", "POST /rooms/{roomId}/chats", "PATCH /rooms/{roomId}/members/{userId}",
       "DELETE /rooms/{roomId}/members/{userId}", "POST /rooms/{roomId}/invite", "GET /rooms/{roomId}/invite",
       "DELETE /rooms/{roomId}/invite", "GET /invites/{code}", "POST /invites/{code}/accept",
-      "PATCH /rooms/{roomId}/chats/{chatId}/prefs", "POST /rooms/{roomId}/leave", "POST /rooms/{roomId}/archive"];
+      "PATCH /rooms/{roomId}/chats/{chatId}/prefs", "POST /rooms/{roomId}/leave", "POST /rooms/{roomId}/archive",
+      "PUT /rooms/{roomId}/model"];
     for (const r of routes) {
-      const s = await status(fakeRepo(), ev(r, { params: { roomId: "r1", userId: "u2", code: "c" }, body: { name: "x", role: "admin" } }));
+      const s = await status(fakeRepo(), ev(r, { params: { roomId: "r1", userId: "u2", code: "c" }, body: { name: "x", role: "admin", model: "auto" } }));
       expect([200, 201, 204], r).toContain(s);
     }
   });
 
   it("writes that change what members see tell the room to refetch; reads and invite admin don't", async () => {
     const repo = fakeRepo({ acceptInvite: { roomId: "r9" } });
-    const p = { params: { roomId: "r1", userId: "u2", code: "c", chatId: "c1" }, body: { name: "x", role: "admin", muted: true } };
+    const p = { params: { roomId: "r1", userId: "u2", code: "c", chatId: "c1" }, body: { name: "x", role: "admin", muted: true, model: "auto" } };
     const notified = async (route: string) => {
       const notify = vi.fn(async (_roomId: string) => {});
       await makeHandler(repo, notify)(ev(route, p));
       return notify.mock.calls.map(([roomId]) => roomId);
     };
     for (const r of ["POST /rooms/{roomId}/chats", "PATCH /rooms/{roomId}/members/{userId}", "DELETE /rooms/{roomId}/members/{userId}",
-      "POST /rooms/{roomId}/leave", "POST /rooms/{roomId}/archive"]) {
+      "POST /rooms/{roomId}/leave", "POST /rooms/{roomId}/archive", "PUT /rooms/{roomId}/model"]) {
       expect(await notified(r), r).toEqual(["r1"]);
     }
     expect(await notified("POST /invites/{code}/accept")).toEqual(["r9"]);
@@ -112,6 +113,27 @@ describe("rooms handler", () => {
     const res = await makeHandler(repo, vi.fn())(ev("PATCH /rooms/{roomId}/chats/{chatId}/prefs", { params: { roomId: "r1", chatId: "c1" }, body: { muted: true } }));
     expect(JSON.parse(res.body as string)).toEqual({ muted: true });
     expect(setChatPrefs).toHaveBeenCalledWith("r1", "u1", "c1", true);
+  });
+
+  it("PUT /model: an unknown model is a 400, a member is a 403, an admin sets it and the room hears once", async () => {
+    const put = (repo: RoomsRepo, notify: () => Promise<void>, model: unknown) =>
+      makeHandler(repo, notify)(ev("PUT /rooms/{roomId}/model", { params: { roomId: "r" }, body: { model } }));
+    const setDefaultModel = vi.fn(async (_u: unknown, _r: string, pick: string) => pick);
+    const repo = { ...fakeRepo(), setDefaultModel } as unknown as RoomsRepo;
+    const notify = vi.fn(async () => {});
+
+    expect((await put(repo, notify, "gpt")).statusCode).toBe(400);
+    expect((await put(repo, notify, undefined)).statusCode).toBe(400);
+    expect(setDefaultModel).not.toHaveBeenCalled();
+    expect((await put(fakeRepo({ setDefaultModel: new Forbidden("no") }), notify, "haiku")).statusCode).toBe(403);
+    expect(notify).not.toHaveBeenCalled();
+
+    const res = await put(repo, notify, "haiku");
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body as string)).toEqual({ defaultModel: "haiku" });
+    expect(setDefaultModel).toHaveBeenCalledWith({ userId: "u1", username: "aman" }, "r", "haiku");
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith("r", undefined);
   });
 
   it("unknown route is a 404", async () => {

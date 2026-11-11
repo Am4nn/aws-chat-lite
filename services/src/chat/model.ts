@@ -1,5 +1,6 @@
 import type { Role } from "../rooms/access.js";
 import { ValidationError } from "../lib/errors.js";
+import type { ModelPick } from "../models/catalog.js";
 import type { RunEndStatus } from "../threads/types.js";
 
 export type Reaction = "thumbs" | "heart" | "joy" | "tada" | "eyes" | "check";
@@ -24,8 +25,9 @@ export type Message = {
   threadRef?: { threadId: string; kind: "started" | "delivered" };
   /** Set on an agent's answer (`authorId: "agent"`): how the run that wrote it ended. */
   agent?: {
-    runId: string; status: RunEndStatus; reason?: string; steps: number; costMicros: number; ms: number; model: string;
-    firstSeq: number;
+    runId: string; status: RunEndStatus; reason?: string; steps: number; costMicros: number; ms: number;
+    /** The model id that answered, and the pick it answered for. */
+    model: string; pick: ModelPick; firstSeq: number;
   };
   /** How many times the message has changed (edit, delete, reaction); absent until the first change. */
   v?: number;

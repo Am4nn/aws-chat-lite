@@ -28,6 +28,9 @@ type Usage = Extract<ModelChunk, { type: "usage" }>;
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+/** The model a run calls: the one it routed to, else the fake, which answers for any pick. */
+const modelOf = (run: Run) => run.model ?? "fake";
+
 /** Null when the run is already over (its start failed after the invoke was accepted). */
 export async function load(runId: string): Promise<{ run: Run; provisional: boolean } | null> {
   const run = await runsRepo().getRun(runId);
@@ -50,11 +53,10 @@ async function limitsReached(run: Run): Promise<End | null> {
  * Every model call is metered: an event for the run's viewers, the room's monthly spend and the run's total, which the
  * room hears at once, so cost and budget move while a long answer streams.
  */
-async function recordUsage(run: Run, writer: Writer, usage: Usage): Promise<number> {
-  const { inputTokens, outputTokens, costMicros } = usage;
-  const event = await writer.append({ type: "usage", model: run.model, inputTokens, outputTokens, costMicros });
-  await budgetRepo().record(run.roomId, costMicros, new Date());
-  const total = run.costMicros + costMicros;
+async function recordUsage(run: Run, writer: Writer, usage: Usage, job: "name" | "run"): Promise<number> {
+  const event = await writer.append({ ...usage, model: modelOf(run), job });
+  await budgetRepo().record(run.roomId, usage.costMicros, new Date());
+  const total = run.costMicros + usage.costMicros;
   await notifyRun(run.roomId, await runsRepo().progress(run, { costMicros: total }), event.seq);
   return total;
 }
@@ -67,12 +69,12 @@ export async function nameThread(run: Run): Promise<number> {
   const messages = buildContext(await runs.prior(run.threadId, run.firstSeq), []);
   let name = "";
   let usage: Usage | undefined;
-  const request = { model: run.model, system: NAME_PROMPT, messages, tools: [], maxTokens: JOBS.name.maxTokens };
+  const request = { model: modelOf(run), system: NAME_PROMPT, messages, tools: [], maxTokens: JOBS.name.maxTokens };
   for await (const chunk of gateway().stream(request)) {
     if (chunk.type === "text") name += chunk.text;
     else if (chunk.type === "usage") usage = chunk;
   }
-  const cost = usage ? await recordUsage(run, await runs.eventWriter(run.runId), usage) : run.costMicros;
+  const cost = usage ? await recordUsage(run, await runs.eventWriter(run.runId), usage, "name") : run.costMicros;
   await threadsRepo().nameIfProvisional(run.roomId, run.threadId, name.trim());
   return cost;
 }
@@ -138,7 +140,7 @@ async function stream(run: Run, writer: Writer, messages: ReturnType<typeof buil
   let usage: Usage | undefined;
   try {
     const chunks = gateway().stream({
-      model: run.model, system: SYSTEM, messages, tools: FAKE_TOOLS, maxTokens: JOBS.run.maxTokens, signal: abort.signal,
+      model: modelOf(run), system: SYSTEM, messages, tools: FAKE_TOOLS, maxTokens: JOBS.run.maxTokens, signal: abort.signal,
     });
     for await (const chunk of chunks) {
       if (chunk.type === "text") pending += chunk.text;
@@ -154,7 +156,7 @@ async function stream(run: Run, writer: Writer, messages: ReturnType<typeof buil
   }
   await flush();
   if (failure) throw failure;
-  const costMicros = usage ? await recordUsage(run, writer, usage) : run.costMicros;
+  const costMicros = usage ? await recordUsage(run, writer, usage, "run") : run.costMicros;
   if (stopper) return { toolCalls: [], costMicros, end: stoppedBy(stopper) };
   return { toolCalls, costMicros };
 }

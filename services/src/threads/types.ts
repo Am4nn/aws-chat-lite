@@ -1,3 +1,6 @@
+import type { ModelPick, TokenUsage } from "../models/catalog.js";
+import type { TaintSource } from "../models/privacy.js";
+
 export type RunEndStatus = "done" | "stopped" | "failed" | "capped";
 export type ThreadStatus = "idle" | "running" | RunEndStatus;
 
@@ -16,6 +19,8 @@ export type ThreadSummary = {
   steps: number;
   currentStep?: string;
   costMicros: number;
+  /** Why the thread is private, sorted; [] while it has no private content. */
+  taint: TaintSource[];
   summary?: string;
   createdBy: string;
   lastActivityAt: string;
@@ -26,12 +31,16 @@ export type ThreadSummary = {
 export type Budget = { spentMicros: number; capMicros: number; month: string; resetsAt: string };
 
 export type RunEventBody =
-  | { type: "run.started"; model: string; startedBy: string }
+  | { type: "run.started"; pick: ModelPick; startedBy: string }
+  /** Once per run, before its first model call: the model id that answers. */
+  | { type: "routed"; model: string; by: "pick" | "default" | "auto" }
+  /** The provider's own content for a model call that ended, replayed verbatim on the next call; never streamed. */
+  | { type: "model.turn"; model: string; content: unknown }
   | { type: "steer"; messageSeq: number; authorName: string; text: string }
   | { type: "text"; text: string }
   | { type: "step.started"; step: number; call: { id: string; name: string; input: Record<string, unknown> }; detail: string }
   | { type: "step.finished"; step: number; output: string; ms: number; ok: boolean }
-  | { type: "usage"; model: string; inputTokens: number; outputTokens: number; costMicros: number }
+  | ({ type: "usage"; model: string; job: "route" | "name" | "run"; costMicros: number } & TokenUsage)
   | { type: "run.finished"; status: RunEndStatus; reason?: string; ms: number; steps: number; costMicros: number };
 
 export type RunEvent = RunEventBody & { seq: number; at: string };

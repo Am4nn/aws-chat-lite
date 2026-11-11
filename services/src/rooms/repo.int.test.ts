@@ -33,6 +33,17 @@ describe("rooms repo on Floci", () => {
     expect(mine).toContainEqual(expect.objectContaining({ roomId, name: "Dev Team", role: "owner" }));
   });
 
+  it("the room view has the default model, Auto until an admin sets one, and the picker's options", async () => {
+    const { owner, member, roomId } = await roomWithMember();
+    expect(await repo.getRoomView(roomId, member.userId)).toMatchObject({ defaultModel: "auto" });
+    await expect(repo.setDefaultModel(member, roomId, "haiku")).rejects.toBeInstanceOf(Forbidden);
+    await repo.setRole(roomId, owner.userId, member.userId, "admin");
+    expect(await repo.setDefaultModel(member, roomId, "haiku")).toBe("haiku");
+    const view = await repo.getRoomView(roomId, owner.userId);
+    expect(view.defaultModel).toBe("haiku");
+    expect(view.models.map((m) => m.pick)).toEqual(["auto", "sonnet", "haiku", "opus", "fable", "deepseek-flash", "deepseek-pro"]);
+  });
+
   it("a non-member gets NotFound (never learns the room exists)", async () => {
     const { roomId } = await repo.createRoom(user("o"), "Secret");
     await expect(repo.getRoomView(roomId, randomUUID())).rejects.toBeInstanceOf(NotFound);
