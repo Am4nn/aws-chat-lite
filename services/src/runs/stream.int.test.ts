@@ -154,7 +154,8 @@ describe("local stream server on Floci", () => {
     const rest = await read(await streamUrl(owner, runId), { lastEventId: first.events.at(-1)!.seq });
     const seen = [...first.events, ...rest.events];
     expect(seen.at(-1)!.type).toBe("run.finished");
-    expect(seen.map((e) => e.seq)).toEqual(seen.map((_, i) => i + 1));
+    const streamed = (await runs.allEvents(runId)).filter((e) => e.type !== "model.turn").map((e) => e.seq);
+    expect(seen.map((e) => e.seq)).toEqual(streamed);
 
     const shown = seen.flatMap((e) => (e.type === "text" ? e.text : [])).join("");
     const { messages } = await chatRepo().history(owner, roomId, thread.threadId, {});
