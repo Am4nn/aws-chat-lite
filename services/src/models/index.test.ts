@@ -1,7 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { priceMicros } from "./catalog.js";
 import type { ModelChunk, ModelProvider, ModelRequest, ProviderChunk } from "./gateway.js";
 import { gateway, liveProviders } from "./index.js";
+import { modelKeys } from "./keys.js";
+
+vi.mock("./keys.js", async (actual) => {
+  const keys = await actual<typeof import("./keys.js")>();
+  return { ...keys, modelKeys: vi.fn(keys.modelKeys) };
+});
 
 const request = (model: string, text: string): ModelRequest => ({
   model,
@@ -86,6 +92,13 @@ describe("gateway", () => {
     await expect(collect(live.stream(request("deepseek-flash", "hi")))).rejects.toThrow(
       "DeepSeek isn't set up here (no DEEPSEEK_API_KEY).",
     );
+  });
+
+  it("reads the keys again after a failed read, so a long-lived gateway gets over a blip", async () => {
+    vi.mocked(modelKeys).mockRejectedValueOnce(new Error("secret read failed"));
+    const live = gateway({ MODEL_GATEWAY: "live" });
+    await expect(collect(live.stream(request("claude-haiku-5-5", "hi")))).rejects.toThrow("secret read failed");
+    await expect(collect(live.stream(request("claude-haiku-5-5", "hi")))).rejects.toThrow("no ANTHROPIC_API_KEY");
   });
 
   it("says who serves each model", () => {

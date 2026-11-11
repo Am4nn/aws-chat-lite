@@ -28,6 +28,23 @@ describe("priceMicros", () => {
     expect(priceMicros("fake", use(10, 5))).toBe(105);
   });
   it("rejects an unknown model", () => expect(() => priceMicros("gpt-5", use(1))).toThrow("Unknown model gpt-5"));
+
+  // Anthropic's price cards, in USD per million tokens: input, output, cache read, 5-minute cache write. Priced on
+  // 100,000 tokens, the most Haiku's base card covers.
+  const K = 100_000;
+  it.each([
+    ["claude-sonnet-5-5", 2, 10, 0.1, 2.5],
+    ["claude-haiku-5-5", 0.1, 0.5, 0.01, 0.125],
+    ["claude-opus-5-5", 4, 20, 0.2, 5],
+    ["claude-fable-5-2", 8, 40, 0.2, 10],
+  ])("bills %s at its published card", (id, input, output, cacheRead, cacheWrite) => {
+    expect([use(K), use(0, K), use(0, 0, K), use(0, 0, 0, K)].map((u) => priceMicros(id, u))).toEqual(
+      [input, output, cacheRead, cacheWrite].map((usd) => Math.round(usd * K)),
+    );
+  });
+  it("bills Haiku 5.5 above 100k prompt tokens at its long card: $0.50 / $2.50, cache $0.05 / $0.625", () => {
+    expect(priceMicros("claude-haiku-5-5", use(M, M, M, M))).toBe((0.5 + 2.5 + 0.05 + 0.625) * M);
+  });
 });
 
 describe("modelOptions", () => {

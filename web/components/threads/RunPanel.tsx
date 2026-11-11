@@ -2,6 +2,8 @@
 
 import { runFiles } from "@/lib/client/files";
 import { formatUsd } from "@/lib/client/format";
+import { modelLabel } from "@/lib/client/models";
+import { useModels } from "@/lib/client/ModelsProvider";
 import { runElapsed } from "@/lib/client/threads";
 import { useNow } from "@/lib/client/useNow";
 import type { RoomFile, ThreadSummary } from "@/lib/types";
@@ -13,16 +15,25 @@ import type { RoomFile, ThreadSummary } from "@/lib/types";
 export function RunPanel({ thread: t, files }: { thread: ThreadSummary; files: RoomFile[] }) {
   const now = useNow(t.status === "running");
   const written = t.runId ? runFiles(files, t) : [];
+  const { models } = useModels();
   return (
     <section className="flex flex-col gap-2">
       <h2 className="text-[11.5px] font-semibold text-text-3">This run</h2>
       {t.runId
         ? (
-          <dl className="grid grid-cols-3 gap-2">
-            <Tile label="steps" value={String(t.steps)} />
-            <Tile label="elapsed" value={runElapsed(t, now)} />
-            <Tile label="cost" value={formatUsd(t.costMicros)} />
-          </dl>
+          <>
+            <dl className="grid grid-cols-3 gap-2">
+              <Tile label="steps" value={String(t.steps)} />
+              <Tile label="elapsed" value={runElapsed(t, now)} />
+              <Tile label="cost" value={formatUsd(t.costMicros)} />
+            </dl>
+            {t.model && (
+              <dl className="flex items-baseline justify-between rounded-[10px] bg-surface-2 px-2.5 py-2">
+                <dt className="text-[11px] text-text-3">Model</dt>
+                <dd className="font-mono text-[12.5px]">{modelLabel(models, t.model)}</dd>
+              </dl>
+            )}
+          </>
         )
         : <p className="text-[12.5px] text-text-3">Nothing has run here yet.</p>}
       {written.length > 0 && (

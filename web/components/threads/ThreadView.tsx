@@ -5,6 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ArrowDown, Bot } from "lucide-react";
 import { errorText } from "@/lib/client/bff";
 import { useLive } from "@/lib/client/LiveProvider";
+import { useModelPick } from "@/lib/client/ModelsProvider";
 import { groupThread } from "@/lib/client/threads";
 import { useThreads } from "@/lib/client/ThreadsProvider";
 import { addPending, dropPending, failPending, keyOf, type PendingMessage } from "@/lib/client/timeline";
@@ -13,6 +14,7 @@ import type { Attachment, Me, Member, Message, ThreadSummary } from "@/lib/types
 import { useToast } from "@/components/overlays/Toast";
 import { ArchivedNotice } from "@/components/chat/ArchivedNotice";
 import { Composer } from "@/components/chat/Composer";
+import { ModelPill } from "@/components/chat/ModelPill";
 import { TypingLine } from "@/components/chat/TypingLine";
 import { useChatTimeline } from "@/components/chat/useChatTimeline";
 import { useUploads } from "@/components/chat/useUploads";
@@ -44,6 +46,7 @@ export function ThreadView({ roomId, initialThread, me, members, archived, initi
   const scroll = useStickToBottom();
   const { toBottom } = scroll;
   const [stopping, setStopping] = useState(false);
+  const [pick, setPick] = useModelPick(threadId);
   if (stopping && !running) setStopping(false);
 
   useEffect(() => () => latest.current.pending.forEach((p) => revokePreviews(p.attachments)), [latest]);
@@ -51,7 +54,7 @@ export function ThreadView({ roomId, initialThread, me, members, archived, initi
   const deliver = useCallback(async (p: PendingMessage) => {
     try {
       const message = await live.request("send", {
-        roomId, chatId: threadId, clientId: p.clientId, text: p.text,
+        roomId, chatId: threadId, clientId: p.clientId, text: p.text, model: p.model,
         attachments: p.attachments.map(({ key, name, size, type }) => ({ key, name, size, type })),
       }) as Message;
       apply([message]);
@@ -63,7 +66,7 @@ export function ThreadView({ roomId, initialThread, me, members, archived, initi
     }
   }, [live, roomId, threadId, apply, setTimeline, toast]);
 
-  const queue = useCallback((p: Pick<PendingMessage, "text" | "attachments">) => {
+  const queue = useCallback((p: Pick<PendingMessage, "text" | "attachments" | "model">) => {
     const pending = { ...p, clientId: crypto.randomUUID(), createdAt: new Date().toISOString() };
     markFresh([keyOf(pending)]);
     setTimeline((t) => addPending(t, pending));
@@ -75,7 +78,7 @@ export function ThreadView({ roomId, initialThread, me, members, archived, initi
     const failed = latest.current.pending.find((p) => p.clientId === clientId);
     if (!failed) return;
     setTimeline((t) => dropPending(t, clientId));
-    queue({ text: failed.text, attachments: failed.attachments });
+    queue({ text: failed.text, attachments: failed.attachments, model: failed.model });
   }, [latest, setTimeline, queue]);
 
   const discard = useCallback((clientId: string) => {
@@ -176,7 +179,13 @@ export function ThreadView({ roomId, initialThread, me, members, archived, initi
             members={members} meId={me.userId} mode={null} uploads={uploads} placeholder="Ask a follow-up…"
             steering={running} stopping={stopping} onStop={stop}
             onModeChange={() => {}} onSaveEdit={() => {}} onEditLast={() => false}
-            onSend={(text) => queue({ text, attachments: uploads.take() })}
+            onSend={(text) => queue({ text, attachments: uploads.take(), model: pick })}
+            pill={(
+              <ModelPill
+                value={pick} onChange={setPick} locked={running}
+                taint={uploads.uploads.length ? [...thread.taint, "attachment"] : thread.taint}
+              />
+            )}
             onTyping={() => live.request("typing", { roomId, chatId: threadId }).catch(() => {})}
           />
         )}

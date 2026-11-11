@@ -8,6 +8,8 @@ import { errorText } from "@/lib/client/bff";
 import { excerpt } from "@/lib/client/format";
 import { useLive, useLiveStatus } from "@/lib/client/LiveProvider";
 import { canEditLast, withReaction } from "@/lib/client/messageRules";
+import { useModelPick } from "@/lib/client/ModelsProvider";
+import { useThreads } from "@/lib/client/ThreadsProvider";
 import { addPending, dropPending, failPending, keyOf, newestSeq, updateMessage, type PendingMessage } from "@/lib/client/timeline";
 import { useTimeZone } from "@/lib/client/useTimeZone";
 import { dur, instant } from "@/lib/motion";
@@ -16,6 +18,7 @@ import { useToast } from "@/components/overlays/Toast";
 import { ArchivedNotice } from "./ArchivedNotice";
 import { Composer, type ComposerMode } from "./Composer";
 import { MessageList } from "./MessageList";
+import { ModelPill } from "./ModelPill";
 import type { Row, RowActions, RowContext } from "./MessageRow";
 import { TypingLine } from "./TypingLine";
 import { useChatTimeline } from "./useChatTimeline";
@@ -56,6 +59,8 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
   const chat = useChatTimeline({ roomId, chatId, meId: me.userId, initial });
   const { timeline, setTimeline, latest, apply, markFresh, refetchAround, hasNewer, showLatest, jumpTo, scrollToBottom } = chat;
   const [mode, setMode] = useState<ComposerMode>(null);
+  const [pick, setPick] = useModelPick(chatId);
+  const { byId } = useThreads();
   const [dragging, setDragging] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const visible = useSyncExternalStore(subscribeVisibility, () => document.visibilityState === "visible", () => true);
@@ -92,7 +97,7 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
   const deliver = useCallback(async (p: PendingMessage) => {
     try {
       const message = await live.request("send", {
-        roomId, chatId, clientId: p.clientId, text: p.text, replyToSeq: p.replyTo?.seq, threadId: p.threadId,
+        roomId, chatId, clientId: p.clientId, text: p.text, replyToSeq: p.replyTo?.seq, threadId: p.threadId, model: p.model,
         attachments: p.attachments.map(({ key, name, size, type }) => ({ key, name, size, type })),
       }) as Message;
       apply([message]);
@@ -116,7 +121,7 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
     if (hasNewer) void showLatest();
     const quoted = mode?.kind === "reply" ? mode.message : undefined;
     queue({
-      text, attachments: uploads.take(), threadId: mode?.kind === "thread" ? mode.threadId : undefined,
+      text, attachments: uploads.take(), threadId: mode?.kind === "thread" ? mode.threadId : undefined, model: pick,
       replyTo: quoted && { seq: quoted.seq, authorName: quoted.authorName, excerpt: excerpt(quoted.text) },
     });
   }
@@ -160,7 +165,7 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
       const failed = latest.current.pending.find((p) => p.clientId === clientId);
       if (!failed) return;
       setTimeline((t) => dropPending(t, clientId));
-      queue({ text: failed.text, attachments: failed.attachments, replyTo: failed.replyTo, threadId: failed.threadId });
+      queue({ text: failed.text, attachments: failed.attachments, replyTo: failed.replyTo, threadId: failed.threadId, model: failed.model });
     },
     discard(clientId: string) {
       const failed = latest.current.pending.find((p) => p.clientId === clientId);
@@ -215,6 +220,13 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
           <Composer
             members={members} meId={me.userId} mode={mode} uploads={uploads} onModeChange={setMode}
             onSend={send} onSaveEdit={saveEdit}
+            // A people chat can start a run too, with @agent or by sending into a thread; files make what it sees private.
+            pill={(
+              <ModelPill
+                value={pick} onChange={setPick}
+                taint={[...(mode?.kind === "thread" ? byId(mode.threadId)?.taint ?? [] : []), ...(uploads.uploads.length ? ["attachment" as const] : [])]}
+              />
+            )}
             onEditLast={() => {
               const m = canEditLast(timeline.messages, me.userId, Date.now());
               if (m) setMode({ kind: "edit", message: m });

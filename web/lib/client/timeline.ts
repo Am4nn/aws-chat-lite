@@ -1,4 +1,4 @@
-import type { Message } from "../types";
+import type { Message, ModelPick } from "../types";
 
 export type PendingMessage = {
   clientId: string;
@@ -7,6 +7,8 @@ export type PendingMessage = {
   replyTo?: Message["replyTo"];
   /** Sent from a chat into this agent thread. */
   threadId?: string;
+  /** The model the agent should answer with, if this message starts a run. */
+  model?: ModelPick;
   attachments: Message["attachments"];
   failed?: boolean;
 };

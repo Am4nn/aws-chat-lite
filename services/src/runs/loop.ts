@@ -1,8 +1,7 @@
 import { createRetryStrategy, StepError, withDurableExecution, type DurableContext } from "@aws/durable-execution-sdk-js";
 import type { RunEndStatus } from "../threads/types.js";
 import { finishRun } from "./finish.js";
-import { runsRepo } from "./repo.js";
-import { load, modelTurn, nameThread, routeRun, toolStep } from "./steps.js";
+import { failRun, load, modelTurn, nameThread, routeRun, toolStep } from "./steps.js";
 
 /** Each step is tried 3 times in all, a second or two apart, before the run gives up on it. */
 const retryStrategy = createRetryStrategy({ maxAttempts: 3, initialDelay: { seconds: 1 } });
@@ -45,11 +44,8 @@ export async function runLoop({ runId }: { runId: string }, ctx: DurableContext)
     }
   } catch (e) {
     if (!(e instanceof StepError)) throw e;
-    // The stored run carries the steps and cost recorded so far, even when the failing step was the first.
-    await step("fail", async () => {
-      const run = await runsRepo().getRun(runId);
-      return run ? finishRun(run, { status: "failed", reason: "The agent hit an error." }, { seenSeq: run.seenSeq, force: true }) : null;
-    });
+    // The stored run carries what was recorded so far, even when the failing step was the first.
+    await step("fail", () => failRun(runId));
   }
 }
 

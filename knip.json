@@ -21,7 +21,8 @@
         "src/runs/loop.ts",
         "src/runs/stream-handler.ts",
         "src/spike/*.ts",
-        "src/**/*.live.test.ts"
+        "src/**/*.live.test.ts",
+        "src/**/*.load.test.ts"
       ],
       "project": [
         "src/**/*.ts"

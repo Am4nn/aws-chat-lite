@@ -80,6 +80,8 @@ export type ThreadSummary = {
   steps: number;
   currentStep?: string;
   costMicros: number;
+  /** The model the latest run answers on, once it has routed. */
+  model?: string;
   summary?: string;
   createdBy: string;
   lastActivityAt: string;
@@ -98,7 +100,7 @@ type RunEventBody =
   | { type: "run.started"; pick: ModelPick; startedBy: string }
   | { type: "routed"; model: string; by: "pick" | "default" | "auto" }
   | { type: "model.turn"; model: string; content: unknown; turn: number }
-  | { type: "steer"; messageSeq: number; authorName: string; text: string }
+  | { type: "steer"; messageSeq: number; authorName: string; text: string; attachments?: string[] }
   | { type: "text"; text: string; turn: number }
   | { type: "text.reset"; turn: number }
   | { type: "step.started"; step: number; call: { id: string; name: string; input: Record<string, unknown> }; detail: string }

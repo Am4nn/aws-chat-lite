@@ -4,11 +4,13 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bot } from "lucide-react";
 import { bff, errorText } from "@/lib/client/bff";
+import { useModelPick } from "@/lib/client/ModelsProvider";
 import { useThreads } from "@/lib/client/ThreadsProvider";
 import type { Me, Member, ThreadSummary } from "@/lib/types";
 import { useToast } from "@/components/overlays/Toast";
 import { ArchivedNotice } from "@/components/chat/ArchivedNotice";
 import { Composer } from "@/components/chat/Composer";
+import { ModelPill } from "@/components/chat/ModelPill";
 import { UserBubble } from "./UserBubble";
 
 /**
@@ -20,12 +22,13 @@ export function NewThread({ roomId, me, members, archived }: { roomId: string; m
   const toast = useToast();
   const { apply } = useThreads();
   const [sent, setSent] = useState<{ text: string; failed: boolean } | null>(null);
+  const [pick, setPick] = useModelPick("new");
 
   async function start(text: string) {
     setSent({ text, failed: false });
     try {
       const { thread } = await bff<{ thread: ThreadSummary }>(`/bff/api/rooms/${roomId}/threads`, {
-        body: { text, clientId: crypto.randomUUID() },
+        body: { text, clientId: crypto.randomUUID(), model: pick },
       });
       // The room's layout isn't fetched again on this navigation, so the new thread joins the list from the reply.
       apply(thread);
@@ -62,6 +65,7 @@ export function NewThread({ roomId, me, members, archived }: { roomId: string; m
             members={members} meId={me.userId} mode={null} placeholder="Ask @agent anything…"
             onModeChange={() => {}} onSaveEdit={() => {}} onEditLast={() => false} onTyping={() => {}}
             onSend={(text) => { if (!sent || sent.failed) void start(text); }}
+            pill={<ModelPill value={pick} onChange={setPick} taint={[]} />}
           />
         )}
     </div>

@@ -1,13 +1,14 @@
 /**
  * End-to-end check of the running app (Floci + `npm run dev`): sign-up, the creators group, rooms, invites, roles,
  * the API's 403s, httpOnly cookies, the motion rules (no layout shift, no movement under reduced motion), then the
- * live chat between real browsers, then agent threads on the fake model, then room files and the sandbox.
+ * live chat between real browsers, then agent threads and the model picker on the fake model, then room files and the sandbox.
  */
 import puppeteer, { type Page } from "puppeteer-core";
 import { useLocalEnv } from "./env.js";
 import { clsFrom } from "./smoke-helpers.js";
 import { WEB, bff, check, grantCreator, person, results, signUp } from "./smoke-page.js";
 import { emptyHomeCheck, liveChecks } from "./smoke-live.js";
+import { modelChecks } from "./smoke-models.js";
 import { threadChecks } from "./smoke-threads.js";
 import { fileChecks } from "./smoke-files.js";
 
@@ -130,6 +131,7 @@ async function main() {
     await ownerPage.emulateMediaFeatures([]);
     await liveChecks(stamp, { page: ownerPage, name: owner }, { page: guestPage, name: guest }, { page: latePage, name: late });
     await threadChecks(stamp, { page: ownerPage, name: owner }, { page: guestPage, name: guest });
+    await modelChecks(stamp, { page: ownerPage, name: owner }, { page: guestPage, name: guest });
     await fileChecks(stamp, { page: ownerPage, name: owner }, { page: guestPage, name: guest });
     await emptyHomeCheck(browser, newcomer);
   } finally {
