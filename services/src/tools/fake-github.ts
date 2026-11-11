@@ -132,7 +132,9 @@ export const fakeGitHubFetch: typeof fetch = async (input, init) => {
   if (path.startsWith("/user/")) {
     if (auth !== "ghu_fake") return json(401, { message: "Bad credentials" });
     if (path === "/user/installations") return json(200, { total_count: 1, installations: [{ id: 1, account: { login: "fake-org" } }] });
-    if (path === "/user/installations/1/repositories") return json(200, { total_count: 1, repositories: [{ full_name: REPO }] });
+    if (path === "/user/installations/1/repositories") {
+      return json(200, { total_count: 1, repositories: [{ full_name: REPO, permissions: { admin: true, push: true, pull: true } }] });
+    }
     return notFound();
   }
 

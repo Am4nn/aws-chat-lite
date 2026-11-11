@@ -298,7 +298,7 @@ The next day, check Billing.
 **Stop if:** an alarm isn't OK, or a function has no lines after the walk. Ask why before inviting anyone.
 
 ## 11. Invite friends
-> **First:** the GitHub sign-in row of step 9 passes on AWS. It is what keeps a friend who admins a room to the installations their own GitHub account reaches, so nobody can connect your repos.
+> **First:** the GitHub sign-in row of step 9 passes on AWS. It is what keeps a friend who admins a room to the installations their own GitHub account reaches, and to the repos it can push to, so nobody can connect your repos.
 
 1. Confirm the Lambda concurrency increase from step 1 was approved:
    ```powershell

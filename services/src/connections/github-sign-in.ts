@@ -36,18 +36,23 @@ async function userToken({ fetch, keys }: GitHubEnv, code: string, verifier: str
   return data.access_token;
 }
 
+type Repo = { full_name: string; permissions?: { admin?: boolean; push?: boolean } };
+
 /**
- * The App's installations the signed-in user can reach, each with only the repos that user can reach in it: an org
- * member who can't see a private repo can't connect it either. The user token is used here and dropped.
+ * The App's installations the signed-in user can reach, each with only the repos that user can write to. GitHub
+ * lists read-only repos too, but the agent writes with the App's own token, so a reader who connected one could have
+ * the agent push there. The user token is used here and dropped.
  */
 export async function userInstallations(env: GitHubEnv, code: string, verifier: string, redirectUri: string): Promise<Installation[]> {
   const token = await userToken(env, code, verifier, redirectUri);
   const { installations }: { installations: { id: number; account: { login: string } }[] } =
     await githubCall(env, token, "GET", "/user/installations?per_page=100");
-  return Promise.all(
+  const reachable = await Promise.all(
     installations.map(async ({ id, account }) => {
-      const { repositories } = await githubCall(env, token, "GET", `/user/installations/${id}/repositories?per_page=100`);
-      return { id, account: account.login, repos: repositories.map((r: { full_name: string }) => r.full_name) };
+      const { repositories }: { repositories: Repo[] } = await githubCall(env, token, "GET", `/user/installations/${id}/repositories?per_page=100`);
+      const writable = repositories.filter((r) => r.permissions?.push || r.permissions?.admin);
+      return { id, account: account.login, repos: writable.map((r) => r.full_name) };
     }),
   );
+  return reachable.filter((i) => i.repos.length);
 }

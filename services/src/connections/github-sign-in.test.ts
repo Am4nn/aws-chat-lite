@@ -43,6 +43,22 @@ describe("userInstallations", () => {
     });
   });
 
+  it("keeps only the repos the user can push to, and drops an installation left with none", async () => {
+    const { verifier, challenge } = pkce();
+    const repo = (name: string, push: boolean, admin = false) => ({ full_name: name, permissions: { admin, push, pull: true } });
+    const { fetch } = recordGitHub(({ path }) => {
+      if (path.startsWith("/user/installations?")) {
+        return Response.json({ total_count: 2, installations: [{ id: 1, account: { login: "fake-org" } }, { id: 2, account: { login: "friend" } }] });
+      }
+      if (path.startsWith("/user/installations/1/")) {
+        return Response.json({ total_count: 3, repositories: [repo("fake-org/read", false), repo("fake-org/write", true), repo("fake-org/owned", false, true)] });
+      }
+      if (path.startsWith("/user/installations/2/")) return Response.json({ total_count: 1, repositories: [repo("friend/read", false)] });
+    });
+    expect(await userInstallations({ fetch, keys: fakeKeys() }, codeFor(challenge), verifier, REDIRECT))
+      .toEqual([{ id: 1, account: "fake-org", repos: ["fake-org/write", "fake-org/owned"] }]);
+  });
+
   it("names GitHub's refusal of a code, as for a verifier that doesn't match its challenge", async () => {
     const { challenge } = pkce();
     const { fetch } = recordGitHub();
