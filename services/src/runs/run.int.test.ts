@@ -265,14 +265,14 @@ describe("the run loop on Floci", { timeout: 60_000 }, () => {
     }
   });
 
-  it("a thread whose run started over 130 minutes ago is not wedged: the next message starts a new run", async () => {
+  it("a thread whose run is past its deadAt is not wedged: the next message starts a new run", async () => {
     const { owner, roomId } = await room();
     const { thread, message } = await threadsRepo().createThread(owner, roomId, { text: "go tools:0 words:3", clientId: `k${++clients}` });
     await docClient().send(new UpdateCommand({
       TableName: tableName(), Key: { pk: `ROOM#${roomId}`, sk: threadSk(thread.number) },
-      UpdateExpression: "SET activeRunId = :dead, startedAt = :then, #status = :running",
+      UpdateExpression: "SET activeRunId = :dead, deadAt = :then, #status = :running",
       ExpressionAttributeNames: { "#status": "status" },
-      ExpressionAttributeValues: { ":dead": "dead-run", ":then": new Date(Date.now() - 131 * 60_000).toISOString(), ":running": "running" },
+      ExpressionAttributeValues: { ":dead": "dead-run", ":then": new Date(Date.now() - 60_000).toISOString(), ":running": "running" },
     }));
     const { runId, started } = await startOrSteer(owner, roomId, thread.threadId, message);
     expect(started).toBe(true);

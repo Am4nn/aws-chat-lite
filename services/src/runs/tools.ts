@@ -1,5 +1,6 @@
 import { modelInfo, type Provider } from "../models/catalog.js";
 import type { ToolCall, ToolSpec } from "../models/gateway.js";
+import { findTool, roomTools } from "../tools/index.js";
 
 export const FAKE_TOOLS: ToolSpec[] = [
   {
@@ -26,12 +27,22 @@ export const SANDBOX_TOOL: ToolSpec = {
 
 /**
  * The tools a model is offered. Sandbox output carries room files, so only a model that may see private content gets
- * the sandbox; the fake's tools are ones only the fake accepts.
+ * the sandbox; the fake's tools are ones only the fake accepts; GitHub's need the room to be connected.
  */
-export const toolsFor = (model: string, served: Provider): ToolSpec[] => [
-  ...(served === "fake" ? FAKE_TOOLS : []),
-  ...(modelInfo(model).privateOk ? [SANDBOX_TOOL] : []),
-];
+export function toolsFor(model: string, served: Provider, connected: boolean): ToolSpec[] {
+  const privateOk = modelInfo(model).privateOk;
+  return [
+    ...(served === "fake" ? FAKE_TOOLS : []),
+    ...(privateOk ? [SANDBOX_TOOL] : []),
+    ...roomTools({ connected, privateOk }).map((t) => t.spec),
+  ];
+}
+
+/**
+ * Whether a call may run: a tool its model could be offered. A room's missing connection is left to the tool's own
+ * check, which tells the model so, rather than calling the tool unknown.
+ */
+export const mayRun = (model: string, served: Provider, name: string) => toolsFor(model, served, true).some((t) => t.name === name);
 
 const firstLine = (code: unknown) => String(code ?? "").split("\n").map((l) => l.trim()).find(Boolean) ?? "";
 
@@ -39,7 +50,7 @@ const firstLine = (code: unknown) => String(code ?? "").split("\n").map((l) => l
 export function toolDetail(call: ToolCall): string {
   if (call.name === "fake.lookup") return `Looking up "${call.input.query}"`;
   if (call.name === SANDBOX_TOOL.name) return `Running ${call.input.language}: ${firstLine(call.input.code).slice(0, 60)}`;
-  return call.name;
+  return findTool(call.name)?.detail(call.input) ?? call.name;
 }
 
 export async function runTool(

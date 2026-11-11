@@ -20,6 +20,8 @@ export type Run = {
   model?: string;
   startedBy: string;
   startedAt: string;
+  /** Past this the run can't be alive: the claim plus the execution's own limit, moved past each approval's expiry. */
+  deadAt: string;
   endedAt?: string;
   reason?: string;
   /** The message that started the run. */
@@ -30,6 +32,10 @@ export type Run = {
   costMicros: number;
   stopRequestedBy?: string;
   answerSeq?: number;
+  /** Set while the run waits on the approval for this step. */
+  waitingStep?: number;
+  /** Time spent waiting on approvals, which the run's time limit leaves out. */
+  pausedMs?: number;
 };
 
 type Item = Record<string, unknown>;
@@ -175,18 +181,61 @@ export function runsRepo() {
       await db.send(new UpdateCommand({ TableName, Key: runKey(runId), ...setFields({ model }) }));
     },
 
-    /** Asks a running run to stop; false when it is no longer running. */
-    async flagStop(runId: string, username: string): Promise<boolean> {
+    /** Asks a running run to stop. Returns the run as flagged, or undefined when it is no longer running. */
+    async flagStop(runId: string, username: string): Promise<Run | undefined> {
       try {
-        await db.send(new UpdateCommand({
+        const { Attributes } = await db.send(new UpdateCommand({
           TableName, Key: runKey(runId), UpdateExpression: "SET stopRequestedBy = :by", ConditionExpression: "#status = :running",
           ExpressionAttributeNames: { "#status": "status" }, ExpressionAttributeValues: { ":by": username, ":running": "running" },
+          ReturnValues: "ALL_NEW",
         }));
-        return true;
+        return withoutKeys(Attributes!) as Run;
       } catch (e) {
-        if (conditionFailed(e)) return false;
+        if (conditionFailed(e)) return undefined;
         throw e;
       }
+    },
+
+    /**
+     * The run waits on a member: its thread shows the approval, and its dead time moves past the approval's expiry.
+     * The stop flag comes back from the same write, so a stop that landed before it is seen here.
+     */
+    async markWaiting(
+      run: Run, approval: { step: number; title: string; expiresAt: string }, deadAt: string,
+    ): Promise<{ thread: ThreadSummary; stopRequestedBy?: string }> {
+      const thread = setFields({ status: "waiting", approval, deadAt });
+      const [{ Attributes: meta }, { Attributes }] = await Promise.all([
+        db.send(new UpdateCommand({
+          TableName, Key: runKey(run.runId), ...setFields({ waitingStep: approval.step, deadAt }), ReturnValues: "ALL_NEW",
+        })),
+        db.send(new UpdateCommand({
+          TableName, Key: threadKey(run), ...thread, UpdateExpression: `${thread.UpdateExpression} ADD #rev :one`,
+          ExpressionAttributeNames: { ...thread.ExpressionAttributeNames, "#rev": "rev" },
+          ExpressionAttributeValues: { ...thread.ExpressionAttributeValues, ":one": 1 }, ReturnValues: "ALL_NEW",
+        })),
+      ]);
+      return { thread: summary(Attributes!, Date.now()), stopRequestedBy: meta!.stopRequestedBy as string | undefined };
+    },
+
+    /**
+     * Back to running once the approval settles. The wait joins the run's paused time only while the run still waits on
+     * that step, so a retried settle can't count it twice.
+     */
+    async doneWaiting(run: Run, step: number, waitedMs: number): Promise<ThreadSummary> {
+      try {
+        await db.send(new UpdateCommand({
+          TableName, Key: runKey(run.runId), UpdateExpression: "REMOVE waitingStep ADD pausedMs :waited",
+          ConditionExpression: "waitingStep = :step", ExpressionAttributeValues: { ":waited": waitedMs, ":step": step },
+        }));
+      } catch (e) {
+        if (!conditionFailed(e)) throw e;
+      }
+      const { Attributes } = await db.send(new UpdateCommand({
+        TableName, Key: threadKey(run), UpdateExpression: "SET #status = :running REMOVE approval ADD #rev :one",
+        ExpressionAttributeNames: { "#status": "status", "#rev": "rev" }, ExpressionAttributeValues: { ":running": "running", ":one": 1 },
+        ReturnValues: "ALL_NEW",
+      }));
+      return summary(Attributes!, Date.now());
     },
 
     /**
@@ -234,7 +283,7 @@ export function runsRepo() {
               {
                 Update: {
                   TableName, Key: threadKey(run), ...thread,
-                  UpdateExpression: `${thread.UpdateExpression} REMOVE activeRunId, currentStep ADD #rev :one`,
+                  UpdateExpression: `${thread.UpdateExpression} REMOVE activeRunId, currentStep, approval ADD #rev :one`,
                   ExpressionAttributeNames: { ...thread.ExpressionAttributeNames, "#rev": "rev" },
                   ExpressionAttributeValues: { ...thread.ExpressionAttributeValues, ":one": 1 },
                 },

@@ -37,9 +37,9 @@ export function uniqueCandidates(name: string): string[] {
   return [name, ...rest];
 }
 
-/** A running thread is never archived, however long it has been quiet. */
+/** A thread with a live run, running or waiting on an approval, is never archived, however long it has been quiet. */
 export function isArchived(t: { status: ThreadStatus; lastActivityAt: string }, nowMs: number): boolean {
-  return t.status !== "running" && nowMs - Date.parse(t.lastActivityAt) > ARCHIVE_AFTER_SEC * 1000;
+  return t.status !== "running" && t.status !== "waiting" && nowMs - Date.parse(t.lastActivityAt) > ARCHIVE_AFTER_SEC * 1000;
 }
 
 /**
@@ -47,7 +47,7 @@ export function isArchived(t: { status: ThreadStatus; lastActivityAt: string }, 
  * taint, stored as a string set (which DynamoDB can only add to, and which has no order), becomes a sorted list.
  */
 export function summary(
-  { pk: _pk, sk: _sk, activeRunId: _run, named: _named, from: _from, taint, ...rest }: Record<string, unknown>, nowMs: number,
+  { pk: _pk, sk: _sk, activeRunId: _run, deadAt: _dead, named: _named, from: _from, taint, ...rest }: Record<string, unknown>, nowMs: number,
 ): ThreadSummary {
   const thread = rest as Omit<ThreadSummary, "archived" | "taint">;
   return { ...thread, taint: [...((taint as Set<TaintSource> | undefined) ?? [])].sort(), archived: isArchived(thread, nowMs) };

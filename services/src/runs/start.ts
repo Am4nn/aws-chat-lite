@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { auditRepo } from "../audit/repo.js";
 import { docClient, failedAt, tableName, transactionConflict } from "../lib/db.js";
 import { NotFound } from "../lib/errors.js";
 import type { Message } from "../chat/model.js";
@@ -64,7 +65,7 @@ async function claimed(claim: TransactWriteCommand): Promise<boolean> {
  * thread's active run, then the run's durable execution is started. With a run active, the message is a steer: it is
  * already in the thread, past the run's cursor, and the run reads it before its next model call.
  *
- * A run whose `startedAt` is older than the execution timeout can't still be alive, so it no longer counts as active.
+ * A run past its `deadAt` can't still be alive, so it no longer counts as active.
  *
  * A new run takes the message's `pick`, else the room default; a default that may not see a private thread's content
  * becomes Auto. A steer's pick is ignored: the run keeps the model it started with. Either way a message with an
@@ -85,12 +86,13 @@ export async function startOrSteer(
   const key = { pk: `ROOM#${roomId}`, sk: threadSk(thread.number) };
   const now = new Date();
   const startedAt = now.toISOString();
+  const deadAt = new Date(now.getTime() + DEAD_AFTER_MS).toISOString();
   const run: Run = {
     runId: randomUUID(), roomId, threadId, number: thread.number, status: "running", pick: chosen.pick, pickBy: chosen.by,
-    startedBy: user.username, startedAt, firstSeq: message.seq, seenSeq: message.seq, steps: 0, costMicros: 0,
+    startedBy: user.username, startedAt, deadAt, firstSeq: message.seq, seenSeq: message.seq, steps: 0, costMicros: 0,
   };
   const start = setFields({
-    activeRunId: run.runId, runId: run.runId, runFirstSeq: message.seq, status: "running", startedAt, steps: 0, costMicros: 0,
+    activeRunId: run.runId, runId: run.runId, runFirstSeq: message.seq, status: "running", startedAt, deadAt, steps: 0, costMicros: 0,
     lastActivityAt: startedAt,
   });
 
@@ -100,11 +102,9 @@ export async function startOrSteer(
       {
         Update: {
           TableName, Key: key, UpdateExpression: `${start.UpdateExpression} REMOVE endedAt, currentStep ${adds.clause}`,
-          ConditionExpression: "attribute_not_exists(activeRunId) OR #startedAt < :deadAt",
+          ConditionExpression: "attribute_not_exists(activeRunId) OR #deadAt < :now",
           ExpressionAttributeNames: { ...start.ExpressionAttributeNames, ...adds.names },
-          ExpressionAttributeValues: {
-            ...start.ExpressionAttributeValues, ...adds.values, ":deadAt": new Date(now.getTime() - DEAD_AFTER_MS).toISOString(),
-          },
+          ExpressionAttributeValues: { ...start.ExpressionAttributeValues, ...adds.values, ":now": startedAt },
         },
       },
     ],
@@ -123,6 +123,9 @@ export async function startOrSteer(
   let first: RunEvent;
   try {
     first = await (await runs.eventWriter(run.runId)).append({ type: "run.started", pick: run.pick, startedBy: run.startedBy });
+    await auditRepo().record(roomId, {
+      id: `${run.runId}#${first.seq}`, at: first.at, actor: user.username, kind: "asked", threadNumber: thread.number, detail: message.text,
+    });
     // The execution name is the run id, so a repeated start can't begin a second execution of the same run.
     await (lambda ??= new LambdaClient({})).send(new InvokeCommand({
       FunctionName: process.env.RUN_FN_NAME, Qualifier: process.env.RUN_FN_QUALIFIER, InvocationType: "Event",

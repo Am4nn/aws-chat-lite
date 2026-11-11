@@ -7,7 +7,7 @@ import type { ToolCall } from "../models/gateway.js";
 import type { ApprovalStatus } from "../threads/types.js";
 import { conflictCopy } from "./model.js";
 
-type Approval = {
+export type Approval = {
   runId: string;
   roomId: string;
   threadId: string;
@@ -88,7 +88,7 @@ export function approvalsRepo() {
       const item = await get(runId, step);
       if (!item) throw new NotFound("Approval not found.");
       if (!(await findMember(item.roomId, user.userId))) throw new Forbidden("Only members of this room can approve.");
-      const status = decision === "approve" ? "approved" : "denied";
+      const status: "approved" | "denied" = decision === "approve" ? "approved" : "denied";
       try {
         const { Attributes } = await db.send(new UpdateCommand({
           TableName, Key: approvalKey(runId, step),

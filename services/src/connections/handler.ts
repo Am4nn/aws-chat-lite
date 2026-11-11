@@ -5,8 +5,7 @@ import { callerFromEvent, subFromEvent } from "../lib/auth.js";
 import { errorResponse, json, parseBody } from "../lib/http.js";
 import { broadcastToRoom } from "../live/broadcast.js";
 import { listInstallations } from "../tools/github/app.js";
-import { fakeGitHubFetch, fakeKeys } from "../tools/fake-github.js";
-import { toolKeys } from "../tools/keys.js";
+import { toolEnv } from "../tools/index.js";
 import type { ToolEnv } from "../tools/types.js";
 import { connectionsRepo, type ConnectionsRepo } from "./repo.js";
 
@@ -68,12 +67,8 @@ export function makeHandler(repo: ConnectionsRepo, githubApp: GitHubApp, notifyR
   };
 }
 
-/** Fake mode answers as a canned GitHub App, so local runs and tests never need a real key or the network. */
-const githubApp: GitHubApp = async () =>
-  process.env.TOOL_MODE === "live" ? { fetch, keys: await toolKeys() } : { fetch: fakeGitHubFetch, keys: fakeKeys() };
-
 const roomUpdated = (roomId: string) => broadcastToRoom(roomId, { type: "room.updated", roomId });
 
 // Built on first use, so tests can import makeHandler without a table configured.
 let liveHandler: ReturnType<typeof makeHandler> | undefined;
-export const handler = (event: Event) => (liveHandler ??= makeHandler(connectionsRepo(), githubApp, roomUpdated))(event);
+export const handler = (event: Event) => (liveHandler ??= makeHandler(connectionsRepo(), toolEnv, roomUpdated))(event);

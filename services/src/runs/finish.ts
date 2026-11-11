@@ -1,8 +1,9 @@
+import { SKIP_NOTE } from "../approvals/model.js";
 import type { Message } from "../chat/model.js";
 import { broadcastToRoom } from "../live/broadcast.js";
 import { summaryLine } from "../threads/model.js";
 import { threadsRepo } from "../threads/repo.js";
-import type { RunEndStatus } from "../threads/types.js";
+import type { RunEndStatus, RunEvent } from "../threads/types.js";
 import { closeSandbox } from "../workspace/session.js";
 import { answerOf } from "./context.js";
 import { notifyRun } from "./notify.js";
@@ -17,17 +18,34 @@ async function announce(answer: Message) {
   }
 }
 
+/** A note for each write skipped because no one approved it in time, that the answer doesn't carry yet. */
+function skipNotes(events: RunEvent[]): string[] {
+  const texts = new Set(events.flatMap((e) => (e.type === "text" ? [e.text] : [])));
+  return events.flatMap((e) => {
+    if (e.type !== "approval.settled" || e.decision !== "expired") return [];
+    const asked = events.find((r) => r.type === "approval.requested" && r.step === e.step);
+    const note = asked?.type === "approval.requested" ? SKIP_NOTE(asked.title) : "";
+    return note && !texts.has(note) ? [note] : [];
+  });
+}
+
 /**
  * Ends a run: posts the answer (all the text it streamed), then writes `run.finished`, then tells the room. The event
  * comes after the close because a close can come back "unread", and then the run carries on; a stream that saw
  * `run.finished` would already have stopped reading. A close that finds the run already closed (a retried step)
- * reports the ending that is stored, whatever this attempt meant to write. Every ending also closes the run's sandbox.
+ * reports the ending that is stored, whatever this attempt meant to write. Every ending also closes the run's sandbox,
+ * and the answer ends by naming any write that was skipped for want of an approval.
  */
 export async function finishRun(
   run: Run, end: { status: RunEndStatus; reason?: string }, opts: { seenSeq: number; force: boolean },
 ): Promise<"closed" | "unread" | "already"> {
   const runs = runsRepo();
   const events = await runs.allEvents(run.runId);
+  const notes = skipNotes(events);
+  if (notes.length) {
+    const writer = await runs.eventWriter(run.runId);
+    for (const text of notes) events.push(await writer.append({ type: "text", text }));
+  }
   const { text, final } = answerOf(events);
   const { result, answer } = await runs.closeRun(run, { ...end, text, summary: summaryLine(final) || end.reason || "", ...opts });
   if (result === "unread") return result;

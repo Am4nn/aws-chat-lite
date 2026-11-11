@@ -15,8 +15,13 @@ function keyPair() {
   return pair;
 }
 
-/** An RSA key made once per container, so fake mode runs the real JWT signing and nothing real is ever needed. */
-export const fakeKeys = (): ToolKeys => ({ githubAppId: "1", githubAppSlug: "fake-app", githubPrivateKey: keyPair().privatePem });
+/**
+ * Fake mode's keys: an RSA key made once per container, so the real JWT signing runs, and a stand-in Tavily key, so
+ * the real search request is built. Nothing real is ever needed.
+ */
+export const fakeKeys = (): ToolKeys => ({
+  githubAppId: "1", githubAppSlug: "fake-app", githubPrivateKey: keyPair().privatePem, tavilyKey: "fake-tavily-key",
+});
 
 function validJwt(jwt: string): boolean {
   const [header, payload, signature] = jwt.split(".");

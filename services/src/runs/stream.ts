@@ -1,7 +1,6 @@
 import { NotFound } from "../lib/errors.js";
 import { requireMember } from "../chat/membership.js";
 import type { RunEvent } from "../threads/types.js";
-import { DEAD_AFTER_MS } from "./model.js";
 import { runsRepo, type Run } from "./repo.js";
 import { consumeStreamTicket } from "./stream-tickets.js";
 
@@ -34,7 +33,7 @@ export function refuse(sink: StreamSink, status: number, error: string) {
 export interface StreamDeps {
   consume: typeof consumeStreamTicket;
   events(runId: string, afterSeq: number): Promise<RunEvent[]>;
-  getRun(runId: string): Promise<Pick<Run, "status" | "startedAt" | "endedAt"> | undefined>;
+  getRun(runId: string): Promise<Pick<Run, "status" | "startedAt" | "deadAt" | "endedAt"> | undefined>;
   isMember(roomId: string, userId: string): Promise<boolean>;
   nowMs(): number;
   sleep(ms: number): Promise<void>;
@@ -62,13 +61,13 @@ const frame = (e: RunEvent) => `id: ${e.seq}\nevent: run\ndata: ${JSON.stringify
 const resumeAfter = (lastEventId: string | undefined) => (/^\d+$/.test(lastEventId ?? "") ? Number(lastEventId) : 0);
 
 /**
- * True once the run can write no more events, though its log may lack `run.finished`: past its execution timeout
- * while still marked running, or closed more than 30 s ago (the closer writes `run.finished` right after the close).
+ * True once the run can write no more events, though its log may lack `run.finished`: past its `deadAt` while still
+ * marked running, or closed more than 30 s ago (the closer writes `run.finished` right after the close).
  */
 async function runOver(deps: StreamDeps, runId: string, nowMs: number): Promise<boolean> {
   const run = await deps.getRun(runId);
   if (!run) return true;
-  if (run.status === "running") return nowMs - Date.parse(run.startedAt) > DEAD_AFTER_MS;
+  if (run.status === "running") return nowMs > Date.parse(run.deadAt);
   return nowMs - Date.parse(run.endedAt ?? run.startedAt) >= CHECK_MS;
 }
 

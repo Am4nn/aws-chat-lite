@@ -1,0 +1,76 @@
+import { wakeRun } from "../approvals/decide.js";
+import { approvalsRepo, type Approval } from "../approvals/repo.js";
+import { auditRepo } from "../audit/repo.js";
+import { connectionsRepo } from "../connections/repo.js";
+import type { ToolCall } from "../models/gateway.js";
+import { gateway } from "../models/index.js";
+import { findTool, toolEnv } from "../tools/index.js";
+import type { ApprovalStatus } from "../threads/types.js";
+import { DEAD_AFTER_MS } from "./model.js";
+import { notifyRun } from "./notify.js";
+import { runsRepo, type Run } from "./repo.js";
+import { limitsReached } from "./steps.js";
+import { mayRun } from "./tools.js";
+
+/*
+ * The steps around a write tool's wait for a member. Everything the wait depends on is read inside a step, so a
+ * replay of the run sees the same values.
+ */
+
+type Gate = { write: false } | { write: true; timeoutSec: number; title: string };
+
+/**
+ * Whether a call waits for a member's approval: a write the run may make, whose input passes the tool's own check (so
+ * a repo outside the connection is refused before anyone is asked). A run that must end anyway asks no one.
+ */
+export async function gateOf(run: Run & { model: string }, call: ToolCall): Promise<Gate> {
+  const tool = findTool(call.name);
+  if (!tool?.write || !mayRun(run.model, gateway().servedBy(run.model), call.name) || await limitsReached(run)) return { write: false };
+  const { github, approvalTimeoutSec } = await connectionsRepo().get(run.roomId);
+  const env = await toolEnv(process.env.TOOL_MODE, github ?? undefined);
+  if (tool.check?.(call.input, env)) return { write: false };
+  return { write: true, timeoutSec: approvalTimeoutSec, title: tool.ask!(call.input, env) };
+}
+
+/**
+ * The wait's submitter: stores the approval with this attempt's callback, logs it once and shows the thread as
+ * waiting. A retried submitter finds the approval already decided, or the run already asked to stop, and then wakes the
+ * wait itself, since nothing else will.
+ */
+export async function requestApproval(
+  run: Run, call: ToolCall, step: number, gate: { timeoutSec: number; title: string }, callbackId: string,
+): Promise<void> {
+  const runs = runsRepo();
+  const approvals = approvalsRepo();
+  const item = await approvals.open({
+    runId: run.runId, roomId: run.roomId, threadId: run.threadId, step, call, title: gate.title, callbackId,
+    expiresAt: new Date(Date.now() + gate.timeoutSec * 1000).toISOString(),
+  });
+  if (item.status !== "pending") return wakeRun(callbackId);
+  const { title, expiresAt } = item;
+  const requested = (await runs.allEvents(run.runId)).find((e) => e.type === "approval.requested" && e.step === step)
+    ?? await (await runs.eventWriter(run.runId)).append({ type: "approval.requested", step, call, title, expiresAt });
+  const deadAt = new Date(Date.parse(expiresAt) + DEAD_AFTER_MS).toISOString();
+  const { thread, stopRequestedBy } = await runs.markWaiting(run, { step, title, expiresAt }, deadAt);
+  await notifyRun(run.roomId, thread, requested.seq);
+  if (stopRequestedBy && await approvals.cancel(run.runId, step, stopRequestedBy)) await wakeRun(callbackId);
+}
+
+/**
+ * Once the wait is over, by a decision, a stop or the timeout: the approval item says which (one still pending
+ * expires now). It is logged and audited once, and the thread goes back to running.
+ */
+export async function settleApproval(run: Run, step: number): Promise<Approval> {
+  const runs = runsRepo();
+  const item = await approvalsRepo().settle(run.runId, step);
+  const decision = item.status as Exclude<ApprovalStatus, "pending">;
+  const settled = (await runs.allEvents(run.runId)).find((e) => e.type === "approval.settled" && e.step === step)
+    ?? await (await runs.eventWriter(run.runId)).append({ type: "approval.settled", step, decision, by: item.by });
+  await auditRepo().record(run.roomId, {
+    id: `${run.runId}#${settled.seq}`, at: settled.at, actor: item.by ?? "agent", kind: decision, threadNumber: run.number,
+    tool: item.call.name, detail: item.title,
+  });
+  const thread = await runs.doneWaiting(run, step, Date.now() - Date.parse(item.requestedAt));
+  await notifyRun(run.roomId, thread, settled.seq);
+  return item;
+}

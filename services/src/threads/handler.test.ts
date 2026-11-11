@@ -19,8 +19,9 @@ function setup() {
     budget: { setCap: vi.fn(async () => ({})) },
     startRun: vi.fn(async () => ({ runId: "run1", started: true })),
     issueTicket: vi.fn(async () => ({ ticket: "tk" })),
+    decide: vi.fn(async () => ({ status: "approved" as const, by: "aman" })),
   };
-  return { ...repos, handle: makeHandler(repos.threads as any, repos.budget as any, repos.startRun, repos.issueTicket) };
+  return { ...repos, handle: makeHandler(repos.threads as any, repos.budget as any, repos.startRun, repos.issueTicket, repos.decide) };
 }
 
 const me = { userId: "u1", username: "aman" };
@@ -96,6 +97,31 @@ describe("threads handler", () => {
     const { issueTicket, handle } = setup();
     issueTicket.mockRejectedValueOnce(new NotFound("Room not found."));
     expect((await handle(ev("POST /runs/{runId}/stream-ticket", { params: { runId: "run1" } }))).statusCode).toBe(404);
+  });
+
+  it("POST /runs/{runId}/approvals/{step} passes the decision on and answers who decided", async () => {
+    const { decide, handle } = setup();
+    const res = await handle(ev("POST /runs/{runId}/approvals/{step}", { params: { runId: "run1", step: "2" }, body: { decision: "approve" } }));
+    expect(res.statusCode).toBe(200);
+    expect(decide).toHaveBeenCalledWith(me, "run1", 2, "approve");
+    expect(JSON.parse(res.body as string)).toEqual({ status: "approved", by: "aman" });
+  });
+
+  it("a decision other than approve or deny, or a bad step, is a 400", async () => {
+    const { decide, handle } = setup();
+    const post = (step: string, decision: unknown) =>
+      handle(ev("POST /runs/{runId}/approvals/{step}", { params: { runId: "run1", step }, body: { decision } }));
+    expect((await post("1", "maybe")).statusCode).toBe(400);
+    expect((await post("x", "deny")).statusCode).toBe(400);
+    expect(decide).not.toHaveBeenCalled();
+  });
+
+  it("a decision that lost is a 409 with who won", async () => {
+    const { decide, handle } = setup();
+    decide.mockRejectedValueOnce(new Conflict("Already denied by bea."));
+    const res = await handle(ev("POST /runs/{runId}/approvals/{step}", { params: { runId: "run1", step: "1" }, body: { decision: "approve" } }));
+    expect(res.statusCode).toBe(409);
+    expect(JSON.parse(res.body as string)).toEqual({ error: "Already denied by bea." });
   });
 
   it("an unknown route is a 404", async () => {

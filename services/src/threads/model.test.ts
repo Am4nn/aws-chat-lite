@@ -38,8 +38,9 @@ describe("isArchived", () => {
     expect(isArchived({ status: "done", lastActivityAt: idle(ARCHIVE_AFTER_SEC + 1) }, now)).toBe(true);
     expect(isArchived({ status: "done", lastActivityAt: idle(ARCHIVE_AFTER_SEC - 1) }, now)).toBe(false);
   });
-  it("never archives a running thread", () => {
+  it("never archives a running thread, or one waiting on an approval", () => {
     expect(isArchived({ status: "running", lastActivityAt: idle(30 * 86400) }, now)).toBe(false);
+    expect(isArchived({ status: "waiting", lastActivityAt: idle(30 * 86400) }, now)).toBe(false);
   });
 });
 
@@ -60,12 +61,12 @@ describe("summary", () => {
   const now = Date.parse("2026-11-11T00:00:00Z");
   const stored = {
     pk: "ROOM#r", sk: "THREAD#0000000001", roomId: "r", threadId: "t", number: 1, name: "thread-1", named: false,
-    activeRunId: "run", from: { chatId: "c", seq: 3 }, status: "done", rev: 4, steps: 2, costMicros: 9, createdBy: "u",
+    activeRunId: "run", deadAt: "2026-11-11T02:10:00Z", from: { chatId: "c", seq: 3 }, status: "done", rev: 4, steps: 2, costMicros: 9, createdBy: "u",
     lastActivityAt: new Date(now - (ARCHIVE_AFTER_SEC + 1) * 1000).toISOString(),
   };
   it("keeps the bookkeeping on the server and works out archived", () => {
     const t = summary(stored, now);
-    for (const k of ["pk", "sk", "named", "activeRunId", "from"]) expect(t).not.toHaveProperty(k);
+    for (const k of ["pk", "sk", "named", "activeRunId", "deadAt", "from"]) expect(t).not.toHaveProperty(k);
     expect(t).toMatchObject({ threadId: "t", number: 1, status: "done", rev: 4, archived: true });
   });
 
