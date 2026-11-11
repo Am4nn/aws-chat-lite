@@ -19,6 +19,11 @@ describe("endReason", () => {
   it("ends at the time limit", () => {
     expect(endReason(base, 1_000 + 7_200_001)?.reason).toBe("Time limit reached (2 hours).");
   });
+  it("leaves time spent waiting for an approval off the time limit", () => {
+    const later = 1_000 + 9_000_000;
+    expect(endReason({ ...base, pausedMs: 3_600_000 }, later)).toBeNull();
+    expect(endReason({ ...base, pausedMs: 0 }, later)?.reason).toBe("Time limit reached (2 hours).");
+  });
   it("continues otherwise", () => expect(endReason(base, now)).toBeNull());
   it("prefers stop over budget over steps over time", () => {
     const all = { ...base, steps: 200, spentMicros: 3_000_000 };
