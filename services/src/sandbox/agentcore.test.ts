@@ -24,10 +24,9 @@ const started = (c: Cmd) => (c.constructor.name === "StartCodeInterpreterSession
 describe("agentCoreSandbox", () => {
   it("starts on the offline interpreter unless internet is on", async () => {
     const { sb, calls } = setup(started);
-    const handle = await sb.start({ runId: "r1", internet: false });
-    expect(calls[0]!.input).toMatchObject({ codeInterpreterIdentifier: "off-id", name: "run-r1", sessionTimeoutSeconds: 7800 });
-    expect(handle).toBe("off:s1");
-    expect(await sb.start({ runId: "r1", internet: true })).toBe("on:s1");
+    expect(await sb.start({ runId: "r1", internet: false, lifetimeSec: 900 })).toEqual({ handle: "off:s1", internet: false });
+    expect(calls[0]!.input).toMatchObject({ codeInterpreterIdentifier: "off-id", name: "run-r1", sessionTimeoutSeconds: 900 });
+    expect(await sb.start({ runId: "r1", internet: true, lifetimeSec: 900 })).toEqual({ handle: "on:s1", internet: true });
     expect(calls[1]!.input.codeInterpreterIdentifier).toBe("on-id");
   });
 
@@ -54,11 +53,25 @@ describe("agentCoreSandbox", () => {
     expect(await sb.exec("off:s1", { language: "shell", code: "x", timeoutSec: 60 })).toEqual({ stdout: "boom", stderr: "", exitCode: 1, timedOut: false });
   });
 
-  it("calls exit 124 and 137 a timeout", async () => {
-    for (const exitCode of [124, 137]) {
-      const { sb } = setup(() => events({ content: [], structuredContent: { stdout: "", stderr: "", exitCode } }));
-      expect((await sb.exec("off:s1", { language: "shell", code: "x", timeoutSec: 1 })).timedOut).toBe(true);
-    }
+  it("calls exit 124 a timeout, and a 137 well before the limit a kill", async () => {
+    const exited = (exitCode: number) => setup(() => events({ content: [], structuredContent: { stdout: "", stderr: "", exitCode } })).sb;
+    expect((await exited(124).exec("off:s1", { language: "shell", code: "x", timeoutSec: 1 })).timedOut).toBe(true);
+    expect(await exited(137).exec("off:s1", { language: "shell", code: "x", timeoutSec: 60 }))
+      .toMatchObject({ timedOut: false, stderr: "\nkilled (likely out of memory)" });
+  });
+
+  it("writes long code in pieces that each fit in one command argument, then runs it", async () => {
+    const { sb, calls } = setup(() => events(done));
+    const code = "x".repeat(150 * 1024);
+    await sb.exec("off:s1", { language: "python", code, timeoutSec: 5 });
+    const commands = calls.map((c) => c.input.arguments.command as string);
+    expect(commands).toHaveLength(3);
+    expect(commands.every((c) => c.length < 128 * 1024)).toBe(true);
+    expect(commands[0]).toMatch(/ > \/tmp\/cl-run\.py$/);
+    expect(commands[1]).toMatch(/ >> \/tmp\/cl-run\.py$/);
+    expect(commands[2]).toMatch(/ >> \/tmp\/cl-run\.py && timeout -k 5 5 python3 /);
+    const sent = commands.map((c) => Buffer.from(c.match(/^printf %s (\S+) \|/)![1]!, "base64").toString()).join("");
+    expect(sent).toBe(code);
   });
 
   it("writes files in batches of at most 5 MB", async () => {
@@ -89,12 +102,6 @@ describe("agentCoreSandbox", () => {
     expect(files.map((f) => f.path)).toEqual(["a/b.bin", "c.txt"]);
     expect(Array.from(files[0]!.bytes)).toEqual([1, 2]);
     expect(new TextDecoder().decode(files[1]!.bytes)).toBe("hi");
-  });
-
-  it("removes files", async () => {
-    const { sb, calls } = setup(() => events({ content: [] }));
-    await sb.removeFiles("off:s1", ["a"]);
-    expect(calls[0]!.input).toMatchObject({ name: "removeFiles", arguments: { paths: ["a"] } });
   });
 
   it("turns a missing session into SandboxGone, but not on stop", async () => {

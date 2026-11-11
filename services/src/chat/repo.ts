@@ -3,6 +3,7 @@ import type { User } from "../lib/auth.js";
 import { conditionFailed, docClient, failedAt, tableName, transactionConflict } from "../lib/db.js";
 import { Conflict, Forbidden, NotFound, ValidationError } from "../lib/errors.js";
 import { counterKey, memberKey, roomKey } from "../lib/keys.js";
+import { countTowardsRate } from "../lib/rate.js";
 import { storedAttachment, withUrls } from "./files.js";
 import { requireMember } from "./membership.js";
 import { notified, parseMentions } from "./mentions.js";
@@ -43,17 +44,6 @@ function attachmentList(raw: unknown, roomId: string, userId: string): Attachmen
 export function chatRepo() {
   const db = docClient();
   const TableName = tableName();
-
-  /** A fixed-window counter: one item per user per calendar minute, incremented atomically and swept by TTL. */
-  async function countTowardsRate(userId: string) {
-    const nowSec = Math.floor(Date.now() / 1000);
-    const { Attributes } = await db.send(new UpdateCommand({
-      TableName, Key: { pk: `RATE#${userId}`, sk: String(Math.floor(nowSec / 60)) },
-      UpdateExpression: "ADD n :one SET #ttl = :ttl", ExpressionAttributeNames: { "#ttl": "ttl" },
-      ExpressionAttributeValues: { ":one": 1, ":ttl": nowSec + 120 }, ReturnValues: "UPDATED_NEW",
-    }));
-    if (Number(Attributes?.n) > RATE_PER_MIN) throw new Conflict(`Slow down: ${RATE_PER_MIN} messages a minute.`);
-  }
 
   /** The condition makes the same atomic increment that allocates the seq also prove the chat is in this room. */
   async function nextSeq(at: ChatRef): Promise<number> {
@@ -134,7 +124,7 @@ export function chatRepo() {
     const declared = attachmentList(input.attachments, input.roomId, user.userId);
     if (!text && !declared.length) throw new ValidationError(NEEDS_CONTENT);
     await requireMember(input.roomId, user.userId, { writing: true });
-    await countTowardsRate(user.userId);
+    await countTowardsRate(`RATE#${user.userId}`, { windowSec: 60, max: RATE_PER_MIN, message: `Slow down: ${RATE_PER_MIN} messages a minute.` });
     return { text, attachments: await Promise.all(declared.map(storedAttachment)) };
   }
 

@@ -1,5 +1,6 @@
 import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
 import { callerFromEvent } from "../lib/auth.js";
+import { bestEffort } from "../lib/best-effort.js";
 import { Conflict, NotFound, ValidationError } from "../lib/errors.js";
 import { errorResponse, json, parseBody } from "../lib/http.js";
 import { requireMember } from "../chat/membership.js";
@@ -14,7 +15,7 @@ import type { FilesUpdated, RoomFile } from "./types.js";
 type Event = APIGatewayProxyEventV2WithJWTAuthorizer;
 
 export interface Deps {
-  files: Pick<WorkspaceRepo, "list" | "get" | "usage" | "commit" | "remove">;
+  files: Pick<WorkspaceRepo, "list" | "get" | "usage" | "commit" | "remove" | "countUpload">;
   storage: Pick<typeof storage, "presignFileUpload" | "headObject" | "copyObject" | "deleteObjects" | "presignFileDownload">;
   requireMember: typeof requireMember;
   notify: (roomId: string, event: FilesUpdated) => Promise<unknown>;
@@ -31,15 +32,6 @@ function fileSize(raw: unknown): number {
 }
 
 const clashError = (path: string, other: string) => new Conflict(`${path} clashes with ${other}: a file and a folder can't share a name.`);
-
-/** Once the write has happened, a failed cleanup or broadcast is logged rather than failing the request. */
-async function bestEffort(what: string, work: () => Promise<unknown>) {
-  try {
-    await work();
-  } catch (e) {
-    console.error(`${what} failed`, e);
-  }
-}
 
 /**
  * Room files over HTTP. Bytes never pass through this Lambda: an upload goes from the browser to a staging key on a
@@ -65,10 +57,12 @@ export function makeHandler(deps: Deps) {
         }
 
         // A quick check of the room's limits before the browser spends time uploading; the commit enforces them.
+        // Each signed upload may leave a 25 MB object in staging for a day, so members get only so many an hour.
         case "POST /rooms/{roomId}/files/uploads": {
           const path = workspacePath(body.path);
           const size = fileSize(body.size);
           await deps.requireMember(roomId, user.userId, { writing: true });
+          await deps.files.countUpload(user.userId);
           const [files, usage] = await Promise.all([deps.files.list(roomId), deps.files.usage(roomId)]);
           const clash = pathClash(files.map((f) => f.path), path);
           if (clash) throw clashError(path, clash);

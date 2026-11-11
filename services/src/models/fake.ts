@@ -1,6 +1,7 @@
 import type { ModelMessage, ModelProvider, ModelRequest, ProviderChunk, StopReason } from "./gateway.js";
 import { NAME_PROMPT } from "./gateway.js";
 import { sleep as wait } from "../lib/sleep.js";
+import type { Language } from "../sandbox/sandbox.js";
 import { ROUTER_PROMPT } from "./picks.js";
 
 const BODY_WORDS =
@@ -19,7 +20,7 @@ const firstWords = (text: string, n: number) => text.split(/\s+/).filter(Boolean
 
 /** Each sh`…`, py`…` or js`…` span in the prompt is one sandbox_run call. */
 const SPAN = /\b(sh|py|js)`([^`]*)`/g;
-const LANGUAGES: Record<string, string> = { sh: "shell", py: "python", js: "javascript" };
+const SPAN_LANGUAGES: Record<string, Language> = { sh: "shell", py: "python", js: "javascript" };
 
 const charsOf = (m: ModelMessage) => {
   if (m.role === "tool") return m.output.length;
@@ -62,7 +63,7 @@ async function* run(req: ModelRequest, sleep: (ms: number) => Promise<void>): As
     return;
   }
 
-  const spans = [...prompt.matchAll(SPAN)].map(([, lang, code]) => ({ language: LANGUAGES[lang!]!, code: code! }));
+  const spans = [...prompt.matchAll(SPAN)].map(([, lang, code]) => ({ language: SPAN_LANGUAGES[lang!]!, code: code! }));
   const sandboxOffered = req.tools.some((t) => t.name === "sandbox_run");
   const sandboxCalls = sandboxOffered ? spans : [];
   // Directives are read outside the spans, so code that says "fail" or "slow" is only code.

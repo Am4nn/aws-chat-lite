@@ -343,13 +343,18 @@ const hasChanges = (s: FilesSynced) => s.written.length + s.deleted.length + s.n
 
 /**
  * Only a tool the model was offered runs, so a model kept from private content can't reach the sandbox by naming it.
- * A stop requested while another tool works cuts it short.
+ * A stop requested while the tool works cuts it short. A sandbox step reports its own time, since a retry of it
+ * reuses what an earlier attempt ran.
  */
-async function runCall(run: RoutedRun, call: ToolCall, offered: boolean): Promise<{ output: string; ok: boolean; synced?: FilesSynced }> {
+async function runCall(
+  run: RoutedRun, call: ToolCall, offered: boolean, step: number,
+): Promise<{ output: string; ok: boolean; synced?: FilesSynced; ms?: number }> {
   if (!offered) return { ok: false, output: `Unknown tool ${call.name}.` };
-  if (call.name === SANDBOX_TOOL.name) return runSandbox(run, call.input);
   const stop = watchStop(run.runId);
-  return runTool(call, { sleep, signal: stop.signal }).finally(stop.close);
+  const work = call.name === SANDBOX_TOOL.name
+    ? runSandbox(run, step, call.input, { signal: stop.signal })
+    : runTool(call, { sleep, signal: stop.signal });
+  return work.finally(stop.close);
 }
 
 /**
@@ -377,8 +382,9 @@ export async function toolStep(run: RoutedRun, call: ToolCall): Promise<ToolResu
   const started = logged("step.started") ?? await writer.append({ type: "step.started", step, call, detail: toolDetail(call) });
   await notifyRun(run.roomId, await runs.progress(run, { steps: step, currentStep: call.name }), started.seq);
   const t0 = Date.now();
-  const { output, ok, synced } = await runCall(run, call, offered);
-  const ms = Date.now() - t0;
+  const result = await runCall(run, call, offered, step);
+  const { output, ok, synced } = result;
+  const ms = result.ms ?? Date.now() - t0;
   if (synced && hasChanges(synced) && !logged("files.synced")) await writer.append({ type: "files.synced", step, ...synced });
   const finished = await writer.append({ type: "step.finished", step, output, ms, ok });
   await notifyRun(run.roomId, await runs.stepDone(run), finished.seq);
