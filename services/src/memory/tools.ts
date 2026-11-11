@@ -38,7 +38,9 @@ export function memoryTools(repo: () => MemoryStore = memoryRepo): Tool[] {
       run: (input, env) => answer(async () => {
         const { agentName: agent, threadNumber, roomId, tainted } = env.room;
         const entry = await repo().save(roomId, { text: input.text, private: tainted, source: { kind: "agent", agent, threadNumber } });
-        return `Saved to room memory as [${entry.memoryId}].`;
+        // Memory is read again for every model call, so the agent meets this entry next turn and could take it for an
+        // older copy of its own note.
+        return `Saved to room memory as [${entry.memoryId}]; from your next turn it is listed in the room memory.`;
       }),
     },
     {

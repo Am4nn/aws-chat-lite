@@ -104,7 +104,7 @@ describe("room agents and memory in the run loop on Floci", { timeout: 90_000 },
   it("memory_save keeps scout's name and the thread, and an entry saved from a thread with a file is private", async () => {
     const at = await roomWithScout();
     const plain = await scoutRun(at, "go call:memory_save");
-    expect(ofType(plain.events, "step.finished")[0]).toMatchObject({ ok: true, output: expect.stringMatching(/^Saved to room memory as \[[0-9a-f]{8}\]\.$/) });
+    expect(ofType(plain.events, "step.finished")[0]).toMatchObject({ ok: true, output: expect.stringMatching(/^Saved to room memory as \[[0-9a-f]{8}\]; from your next turn it is listed in the room memory\.$/) });
     const [saved] = await memoryRepo().entries(at.roomId);
     expect(saved).toMatchObject({ private: false, source: { kind: "agent", agent: "scout", threadNumber: plain.thread.number } });
 

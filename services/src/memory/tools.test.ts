@@ -52,7 +52,7 @@ describe("memory tools", () => {
 
   it("memory_save from a tainted thread saves a private entry, credited to the agent and thread", async () => {
     const { save, calls } = tools();
-    expect(await save.run({ text: "Acme renews in March." }, env(true))).toEqual({ ok: true, output: "Saved to room memory as [ab12cd34]." });
+    expect(await save.run({ text: "Acme renews in March." }, env(true))).toEqual({ ok: true, output: "Saved to room memory as [ab12cd34]; from your next turn it is listed in the room memory." });
     expect(calls.saved).toEqual([{ text: "Acme renews in March.", private: true, source: { kind: "agent", agent: "scout", threadNumber: 12 } }]);
   });
 
