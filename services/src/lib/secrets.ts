@@ -7,25 +7,32 @@ const readSecret: ReadSecret = async (name) => {
   return (await new SecretsManagerClient({}).send(new GetSecretValueCommand({ SecretId: name }))).SecretString;
 };
 
-const cache = new Map<string, Promise<SecretFields>>();
+const cache = new Map<string, Promise<string>>();
 
 /**
- * A JSON secret's fields, read once per container so a key never sits in a Lambda's configuration and warm
- * invocations don't pay for the call. A failed read isn't cached, so the next invocation tries again.
+ * A secret's text, read once per container so a key never sits in a Lambda's configuration and warm invocations
+ * don't pay for the call. A failed read isn't cached, so the next invocation tries again.
  */
-export function secretJson(name: string, read: ReadSecret = readSecret): Promise<SecretFields> {
-  let fields = cache.get(name);
-  if (!fields) {
-    fields = read(name).then((text) => {
-      // Node's JSON.parse error quotes the text it choked on, which here would be part of a key.
-      try {
-        return JSON.parse(text ?? "{}") as SecretFields;
-      } catch {
-        throw new Error(`The secret ${name} isn't valid JSON.`);
-      }
+export function secretText(name: string, read: ReadSecret = readSecret): Promise<string> {
+  let text = cache.get(name);
+  if (!text) {
+    text = read(name).then((value) => {
+      if (value === undefined) throw new Error(`The secret ${name} has no text.`);
+      return value;
     });
-    fields.catch(() => cache.delete(name));
-    cache.set(name, fields);
+    text.catch(() => cache.delete(name));
+    cache.set(name, text);
   }
-  return fields;
+  return text;
+}
+
+/** A JSON secret's fields. */
+export async function secretJson(name: string, read: ReadSecret = readSecret): Promise<SecretFields> {
+  const text = await secretText(name, read);
+  // Node's JSON.parse error quotes the text it choked on, which here would be part of a key.
+  try {
+    return JSON.parse(text) as SecretFields;
+  } catch {
+    throw new Error(`The secret ${name} isn't valid JSON.`);
+  }
 }
