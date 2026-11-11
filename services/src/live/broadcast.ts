@@ -36,13 +36,13 @@ export async function sendToConnection(connId: string, event: object): Promise<v
       return;
     }
     // The socket closed without (or before) its $disconnect: clean up after it, as $disconnect would.
-    await closeConnection(connId);
+    await closeConnection(connId, { gone: true });
   }
 }
 
 /** A socket is gone: its items go, and when that was a counted socket, the user's rooms hear their new presence. */
-export async function closeConnection(connId: string): Promise<void> {
-  const conn = await forgetConnection(connId);
+export async function closeConnection(connId: string, opts: { gone?: boolean } = {}): Promise<void> {
+  const conn = await forgetConnection(connId, opts);
   const presence = conn && await markDisconnected(conn.userId);
   if (conn && presence) await announcePresence(conn.userId, conn.roomIds, presence);
 }

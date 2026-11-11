@@ -10,8 +10,8 @@ import { budgetRepo } from "../budget/repo.js";
 import { threadsRepo } from "../threads/repo.js";
 import { issueTicket, consumeTicket } from "./tickets.js";
 import { isOnline } from "./presence.js";
-import { broadcastToRoom, sendToUser } from "./broadcast.js";
-import { subscribe } from "./connections.js";
+import { broadcastToRoom, sendToConnection, sendToUser } from "./broadcast.js";
+import { getConnection, saveConnection, subscribe } from "./connections.js";
 
 // Runs against the deployed stack on Floci: npm run floci:up && npm run deploy:local, then npm -w services run test:int
 const outputs = JSON.parse(readFileSync(new URL("../../../infra/cdk.out/outputs-local.json", import.meta.url), "utf8"));
@@ -190,6 +190,22 @@ describe("live socket on Floci", () => {
     const read = (pk: string, sk: string) => docClient().send(new GetCommand({ TableName: tableName(), Key: { pk, sk }, ConsistentRead: true }));
     expect((await read(`CONN#${connId}`, "META")).Item).toBeUndefined();
     expect((await read("ROOM#r-gone", `CONN#${connId}`)).Item).toBeUndefined();
+  });
+
+  it("a post that answers Gone right after $connect keeps the socket, since it may still be opening; later, it's cleaned up", async () => {
+    // Connection ids API Gateway doesn't know, so every post to them answers Gone.
+    const [opening, closed] = [`opening-${randomUUID()}`, `closed-${randomUUID()}`];
+    const owner = user("ann");
+    await saveConnection(opening, owner, ["r-opening"]);
+    await saveConnection(closed, owner, ["r-opening"]);
+    await docClient().send(new UpdateCommand({
+      TableName: tableName(), Key: { pk: `CONN#${closed}`, sk: "META" }, UpdateExpression: "SET connectedAt = :t",
+      ExpressionAttributeValues: { ":t": Date.now() - 60_000 },
+    }));
+    await sendToConnection(opening, { type: "pong" });
+    await sendToConnection(closed, { type: "pong" });
+    expect(await getConnection(opening)).toBeDefined();
+    expect(await getConnection(closed)).toBeUndefined();
   });
 
   it("sendToUser reaches every tab the user has open", async () => {
