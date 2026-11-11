@@ -1,4 +1,4 @@
-import type { Message, RunEndStatus, RunEvent } from "../types";
+import type { Message, ModelPick, RunEndStatus, RunEvent } from "../types";
 
 type RunItem =
   | { kind: "step"; step: number; name: string; detail: string; status: "running" | "done" | "failed"; output?: string; ms?: number; startedAt: string }
@@ -11,6 +11,7 @@ type RunView = {
   items: RunItem[];
   text: string;
   costMicros: number;
+  pick?: ModelPick;
   model?: string;
   startedAt?: string;
   endedAt?: string;
@@ -23,7 +24,11 @@ export function applyRunEvent(v: RunView, e: RunEvent): RunView {
   const next = { ...v, lastSeq: e.seq };
   switch (e.type) {
     case "run.started":
-      return { ...next, model: e.model, startedAt: e.at };
+      return { ...next, pick: e.pick, startedAt: e.at };
+    case "routed":
+      return { ...next, model: e.model };
+    case "model.turn":
+      return next;
     case "steer":
       return { ...next, items: [...v.items, { kind: "steer", messageSeq: e.messageSeq, authorName: e.authorName, text: e.text, at: e.at }] };
     case "text":
@@ -38,7 +43,7 @@ export function applyRunEvent(v: RunView, e: RunEvent): RunView {
         ),
       };
     case "usage":
-      return { ...next, model: e.model, costMicros: v.costMicros + e.costMicros };
+      return { ...next, costMicros: v.costMicros + e.costMicros };
     case "run.finished":
       return { ...next, status: e.status, reason: e.reason, costMicros: e.costMicros, endedAt: e.at };
   }
