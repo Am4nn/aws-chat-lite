@@ -251,7 +251,7 @@ export async function liveChecks(stamp: number, owner: Person, guest: Person, th
   // Removal: B keeps the same socket (B lands in the side room), and it must stop hearing this room.
   await B.evaluate(() => { window.__seen = []; window.__live.on("message.new", (e) => window.__seen.push(e.message.roomId)); });
   await bff(A, `/bff/api/rooms/${roomId}/members/${guestId}`, "DELETE", {});
-  const told = await toastSays(B, `You're no longer in ${roomName}`);
+  const told = await toastSays(B, "You're no longer in that room");
   const moved = await until(B, (id) => location.pathname.startsWith(`/r/${id}/`), side.roomId, 10_000);
   check(told && moved, "the owner removes B: B is told and leaves the room");
   await say(A, roomId, general, "not for removed members");

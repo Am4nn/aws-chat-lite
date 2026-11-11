@@ -34,7 +34,11 @@ export function CommandPalette({ open, onClose, items }: { open: boolean; onClos
             <Command
               label="Command palette"
               loop
-              onKeyDown={(e) => e.key === "Escape" && onClose()}
+              onKeyDown={(e) => {
+                if (e.key !== "Escape") return;
+                e.preventDefault();
+                onClose();
+              }}
               className="overflow-hidden rounded-[18px] border border-[#262d30] bg-surface-2 shadow-[0_30px_80px_rgba(0,0,0,.55)]"
             >
               <div className="flex h-14 items-center gap-2.5 border-b border-[#1c2225] px-4">

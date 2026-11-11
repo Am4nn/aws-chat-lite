@@ -28,14 +28,19 @@ describe("countMessage", () => {
   it("counts someone else's message once, even if it's delivered twice", () => {
     const once = countMessage(chat, msg({}), "u-me");
     expect(once).toEqual({ ...chat, lastSeq: 5, unread: 2 });
-    expect(countMessage(once, msg({}), "u-me")).toBe(once);
+    expect(countMessage(once, msg({}), "u-me")).toEqual(once);
   });
   it("counts a mention of me or @everyone", () => {
     expect(countMessage(chat, msg({ mentions: ["u-me"] }), "u-me").mentions).toBe(1);
     expect(countMessage(chat, msg({ everyone: true }), "u-me").mentions).toBe(1);
   });
-  it("doesn't count my own message, which is read by sending it", () =>
-    expect(countMessage(chat, msg({ authorId: "u-me", everyone: true }), "u-me")).toEqual({ ...chat, lastSeq: 5 }));
+  it("counts by seq past the read marker, so a message arriving out of order isn't lost", () => {
+    const later = countMessage(chat, msg({ seq: 6 }), "u-me");
+    expect(later.unread).toBe(3);
+    expect(countMessage(later, msg({ seq: 5 }), "u-me").unread).toBe(3);
+  });
+  it("my own message moves my read marker, as sending it does on the server", () =>
+    expect(countMessage(chat, msg({ authorId: "u-me", everyone: true }), "u-me")).toEqual({ ...chat, lastSeq: 5, unread: 0 }));
 });
 
 describe("countRead", () => {

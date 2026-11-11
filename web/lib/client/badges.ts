@@ -20,14 +20,17 @@ export function lastSeenText(iso: string, now: number): string {
 }
 
 /**
- * A live message in a chat I'm not looking at. Only a seq past the last one counted moves anything, so a repeated
- * delivery counts once; the room view, fetched again on any change, corrects whatever a missed event left out.
+ * A live message in a chat I'm not looking at. Unread is everything past my read marker (lastSeq − unread), the way the
+ * server counts it, so a repeat delivery changes nothing and one arriving out of order still counts. Mentions are
+ * counted only for a seq past the newest seen, so a repeat can't count twice; the price is that a mention arriving
+ * out of order is missed until the room view is fetched again (on any `room.updated`, a reload or a room switch).
  */
 export function countMessage(c: ChatCounts, m: Pick<Message, "seq" | "authorId" | "mentions" | "everyone">, meId: string): ChatCounts {
-  if (m.seq <= c.lastSeq) return c;
-  if (m.authorId === meId) return { ...c, lastSeq: m.seq };
-  const mentionsMe = m.everyone || m.mentions.includes(meId);
-  return { ...c, lastSeq: m.seq, unread: c.unread + 1, mentions: c.mentions + (mentionsMe ? 1 : 0) };
+  const mine = m.authorId === meId;
+  const readTo = mine ? Math.max(c.lastSeq - c.unread, m.seq) : c.lastSeq - c.unread;
+  const lastSeq = Math.max(c.lastSeq, m.seq);
+  const mentionsMe = !mine && m.seq > c.lastSeq && (m.everyone || m.mentions.includes(meId));
+  return { ...c, lastSeq, unread: Math.max(0, lastSeq - readTo), mentions: c.mentions + (mentionsMe ? 1 : 0) };
 }
 
 /** I read the chat in another tab: the server cleared its mentions and moved the marker. */
