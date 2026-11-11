@@ -7,7 +7,7 @@
 export function Hint({ text, below = false }: { text: string; below?: boolean }) {
   return (
     <span className={`group ml-0.5 flex ${below ? "" : "relative"}`}>
-      <button aria-label={text} className="-mx-1 grid size-6 place-items-center rounded-full">
+      <button type="button" aria-label={text} className="-mx-1 grid size-6 place-items-center rounded-full">
         <span
           aria-hidden="true"
           className="grid size-4 place-items-center rounded-full border border-line-strong font-mono text-[10px] leading-none text-text-3 transition-colors group-hover:border-[#36403f] group-hover:text-text-2"
