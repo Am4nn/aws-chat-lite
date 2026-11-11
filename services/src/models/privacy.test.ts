@@ -35,9 +35,9 @@ describe("runRefusal", () => {
 
 describe("copy", () => {
   it("is fixed", () => {
-    expect(PICK_REFUSED).toBe("This has private content (attachments, GitHub data, sandbox files), so DeepSeek is off here. Pick another model.");
+    expect(PICK_REFUSED).toBe("This has private content (attachments, GitHub data, MCP tool output, sandbox files), so DeepSeek is off here. Pick another model.");
     expect(RUN_REFUSED).toBe(
-      "This thread now has private content (attachments, GitHub data, sandbox files), so DeepSeek stopped. Send again with another model.",
+      "This thread now has private content (attachments, GitHub data, MCP tool output, sandbox files), so DeepSeek stopped. Send again with another model.",
     );
   });
 });

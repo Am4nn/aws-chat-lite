@@ -39,6 +39,21 @@ export type ThreadSummary = {
 export type Source = { title: string; url: string };
 export type ApprovalStatus = "pending" | "approved" | "denied" | "expired" | "cancelled";
 export type GitHubConnection = { installationId: number; account: string; repos: string[]; addedBy: string; addedAt: string };
+export type Scope = "rooms:read" | "rooms:write";
+export type McpToolInfo = { name: string; title?: string; description: string; inputSchema: object; readOnly: boolean };
+export type McpConnection = {
+  name: string;
+  url: string;
+  auth: "oauth" | "none";
+  status: "connected" | "needs_auth";
+  tools: McpToolInfo[];
+  /** How many tools the server listed, before the snapshot was capped. */
+  toolCount: number;
+  toolsAt: string;
+  addedBy: string;
+  addedAt: string;
+};
+export type McpApp = { grantId: string; clientName: string; scopes: Scope[]; createdAt: string; lastUsedAt: string };
 export type AuditKind = "asked" | "tool" | "approved" | "denied" | "expired" | "cancelled" | "connected" | "disconnected" | "timeout";
 export type AuditEntry = { id: string; at: string; actor: string; kind: AuditKind; threadNumber?: number; tool?: string; detail: string };
 

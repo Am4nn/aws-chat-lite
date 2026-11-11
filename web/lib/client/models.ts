@@ -16,7 +16,9 @@ export function pickMenu(models: ModelOption[], s: MenuState) {
   return { items, privateNote: items.some((i) => i.disabled), canSetDefault: s.isAdmin && s.value !== s.roomDefault };
 }
 
-const TAINT_WORDS: Record<TaintSource, string> = { attachment: "attachments", github: "GitHub data", sandbox: "sandbox files" };
+const TAINT_WORDS: Record<TaintSource, string> = {
+  attachment: "attachments", github: "GitHub data", mcp: "MCP tool output", sandbox: "sandbox files",
+};
 
 /** Why DeepSeek is off on a private thread, for the header's lock and the model menu. */
 export const taintHint = (taint: TaintSource[]) => `Private: has ${taint.map((t) => TAINT_WORDS[t]).join(" and ")}, so DeepSeek is off.`;

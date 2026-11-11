@@ -21,6 +21,7 @@
     "@aws-sdk/s3-presigned-post": "^3.1166.0",
     "@aws-sdk/s3-request-presigner": "^3.1166.0",
     "@aws/durable-execution-sdk-js": "^3.0.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "undici": "^7.30.2"
   },
   "devDependencies": {

@@ -37,7 +37,10 @@ describe.skipIf(!process.env.REAL_TOOLS)("GitHub tools on the playground repo", 
     const base = { fetch, fetchPage: () => Promise.reject(new Error("no pages")), keys };
     const installation = (await listInstallations(base)).find((i) => i.repos.includes(REPO));
     if (!installation) throw new Error(`The App isn't installed on ${REPO}.`);
-    env = { ...base, github: { installationId: installation.id, account: installation.account, repos: [REPO], addedBy: "live", addedAt: "" } };
+    env = {
+      ...base, github: { installationId: installation.id, account: installation.account, repos: [REPO], addedBy: "live", addedAt: "" },
+      mcpCall: () => Promise.reject(new Error("not wired")),
+    };
   });
 
   afterAll(async () => {

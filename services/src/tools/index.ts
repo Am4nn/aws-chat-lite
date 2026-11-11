@@ -21,8 +21,10 @@ const fakeFetch: typeof fetch = (input, init) => {
   return url.startsWith("https://api.github.com/") ? fakeGitHubFetch(input, init) : fakeWebFetch(input, init);
 };
 
+const mcpCall: ToolEnv["mcpCall"] = () => Promise.reject(new Error("MCP calls aren't wired."));
+
 /** Fake mode answers as GitHub and Tavily and serves canned pages, so every real code path runs without the network. */
 export async function toolEnv(mode = process.env.TOOL_MODE, github?: GitHubConnection): Promise<ToolEnv> {
-  if (mode === "live") return { fetch, fetchPage, keys: await toolKeys(), github };
-  return { fetch: fakeFetch, fetchPage: fakePage, keys: fakeKeys(), github };
+  if (mode === "live") return { fetch, fetchPage, keys: await toolKeys(), github, mcpCall };
+  return { fetch: fakeFetch, fetchPage: fakePage, keys: fakeKeys(), github, mcpCall };
 }

@@ -3,12 +3,18 @@ import type { GitHubConnection, Source } from "../threads/types.js";
 
 export type ToolKeys = { tavilyKey?: string; githubAppId?: string; githubAppSlug?: string; githubPrivateKey?: string };
 export type Page = { url: string; status: number; contentType: string; body: string };
-export type ToolEnv = { fetch: typeof fetch; fetchPage: (url: string) => Promise<Page>; keys: ToolKeys; github?: GitHubConnection };
 export type ToolResult = { ok: boolean; output: string; sources?: Source[] };
+export type ToolEnv = {
+  fetch: typeof fetch;
+  fetchPage: (url: string) => Promise<Page>;
+  keys: ToolKeys;
+  github?: GitHubConnection;
+  mcpCall: (target: { roomId: string; name: string }, tool: string, input: Record<string, unknown>) => Promise<ToolResult>;
+};
 
 export type Tool = {
   spec: ToolSpec;
-  kind: "github" | "web";
+  kind: "github" | "mcp" | "web";
   write: boolean;
   /** The step row line. */
   detail(input: Record<string, unknown>): string;

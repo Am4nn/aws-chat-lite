@@ -4,7 +4,10 @@ import { webSearch } from "./search.js";
 
 // Opt-in and uses the free Tavily quota: REAL_TOOLS=1 npm -w services run test:live
 describe.skipIf(!process.env.REAL_TOOLS)("web tools against the real internet", () => {
-  const env = { fetch, fetchPage: (url: string) => fetchPage(url), keys: { tavilyKey: process.env.TAVILY_API_KEY } };
+  const env = {
+    fetch, fetchPage: (url: string) => fetchPage(url), keys: { tavilyKey: process.env.TAVILY_API_KEY },
+    mcpCall: () => Promise.reject(new Error("not wired")),
+  };
 
   it("searches through Tavily", async () => {
     const r = await webSearch.run({ query: "AWS Lambda durable functions" }, env);

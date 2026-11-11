@@ -1,5 +1,11 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
+  // The MCP types are a contract the connection, app and run-engine code is written against; they have no user until
+  // that code lands. Remove each line once every type in that file has an importer.
+  "ignoreIssues": {
+    "services/src/threads/types.ts": ["types"],
+    "web/lib/types.ts": ["types"]
+  },
   "workspaces": {
     "infra": {
       "entry": [
@@ -22,7 +28,10 @@
         "src/runs/stream-handler.ts",
         "src/spike/*.ts",
         "src/**/*.live.test.ts",
-        "src/**/*.load.test.ts"
+        "src/**/*.load.test.ts",
+        // The MCP client contract has no importer until the client library lands; as an entry its SDK type import
+        // keeps the dependency counted. Remove once a module imports it.
+        "src/mcp/client/types.ts"
       ],
       "project": [
         "src/**/*.ts"
