@@ -4,10 +4,11 @@ import { fnNamed, template } from "./test-templates.js";
 const ROUTES = [
   "GET /rooms/{roomId}/connections", "GET /rooms/{roomId}/connections/github/installations", "PUT /rooms/{roomId}/connections/github",
   "DELETE /rooms/{roomId}/connections/github", "PUT /rooms/{roomId}/approval-timeout", "GET /rooms/{roomId}/audit",
+  "POST /rooms/{roomId}/connections/github/sign-in", "POST /github-flows/finish",
 ];
 
 describe("connections API", () => {
-  it("one Lambda serves the room's connection, timeout and audit routes, behind the JWT authorizer", () => {
+  it("one Lambda serves the room's connection, GitHub sign-in, timeout and audit routes, behind the JWT authorizer", () => {
     const { logicalId } = fnNamed("cl-local-connections");
     const integrations = template().findResources("AWS::ApiGatewayV2::Integration");
     const routes = Object.values(template().findResources("AWS::ApiGatewayV2::Route")).map((r: any) => r.Properties);
@@ -20,10 +21,10 @@ describe("connections API", () => {
     }
   });
 
-  it("has 15 s to reach GitHub, knows its tool mode and keys secret, and may tell the room", () => {
+  it("has 15 s to reach GitHub, knows its tool mode, keys secret and the site's origins, and may tell the room", () => {
     const { props } = fnNamed("cl-local-connections");
     expect(props.Timeout).toBe(15);
-    expect(props.Environment.Variables).toMatchObject({ TOOL_MODE: "fake", TOOL_KEYS_SECRET: "cl-local-tool-keys" });
+    expect(props.Environment.Variables).toMatchObject({ TOOL_MODE: "fake", TOOL_KEYS_SECRET: "cl-local-tool-keys", SITE_ORIGINS: expect.stringContaining("http://localhost:3000") });
     expect(props.Environment.Variables.WS_CALLBACK_URL).toBeDefined();
   });
 });

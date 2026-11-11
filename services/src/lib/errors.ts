@@ -14,3 +14,13 @@ export class Gone extends UserError {}
 export class Upstream extends UserError {}
 /** The table is throttling us; trying again shortly will likely work → 503. */
 export class Unavailable extends UserError {}
+
+/**
+ * A sign-in that failed after its flow was found. The browser is on its way back from the other site, so the answer
+ * names the room it should land in, with the error.
+ */
+export class FlowFailed extends Error {
+  constructor(readonly roomId: string, readonly error: unknown) {
+    super("The connection attempt failed.");
+  }
+}

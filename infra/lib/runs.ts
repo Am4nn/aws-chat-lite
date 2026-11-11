@@ -22,8 +22,9 @@ export function addRuns(stack: CoreStack) {
     description: "Model provider API keys for the run loop",
     removalPolicy,
   });
-  // JSON {TAVILY_API_KEY, GITHUB_APP_ID, GITHUB_APP_SLUG, GITHUB_APP_PRIVATE_KEY}, kept apart from the model keys so
-  // the connections function can read these without being able to read those.
+  // JSON {TAVILY_API_KEY, GITHUB_APP_ID, GITHUB_APP_SLUG, GITHUB_APP_PRIVATE_KEY, GITHUB_APP_CLIENT_ID,
+  // GITHUB_APP_CLIENT_SECRET}, kept apart from the model keys so the connections function can read these without being
+  // able to read those.
   const toolKeysName = `${prefix}-tool-keys`;
   const toolKeys = new secretsmanager.Secret(stack, "ToolKeys", {
     secretName: toolKeysName,

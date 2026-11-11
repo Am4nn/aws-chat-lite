@@ -1,7 +1,9 @@
 import { parseEnv } from "node:util";
 
 export const MODEL_KEY_NAMES = ["ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL", "GEMINI_API_KEY"] as const;
-export const TOOL_KEY_NAMES = ["TAVILY_API_KEY", "GITHUB_APP_ID", "GITHUB_APP_SLUG", "GITHUB_APP_PRIVATE_KEY"] as const;
+export const TOOL_KEY_NAMES = [
+  "TAVILY_API_KEY", "GITHUB_APP_ID", "GITHUB_APP_SLUG", "GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_CLIENT_ID", "GITHUB_APP_CLIENT_SECRET",
+] as const;
 export const PUSH_KEY_NAMES = ["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"] as const;
 
 /** The named values from the text of .env; only these leave the file. */

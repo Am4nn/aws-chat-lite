@@ -1,22 +1,37 @@
-import { randomUUID } from "node:crypto";
-import { GetCommand, TransactWriteCommand, type TransactWriteCommandInput } from "@aws-sdk/lib-dynamodb";
+import { randomBytes, randomUUID } from "node:crypto";
+import { GetCommand, PutCommand, TransactWriteCommand, type TransactWriteCommandInput } from "@aws-sdk/lib-dynamodb";
 import { auditItem } from "../audit/repo.js";
 import { requireMember } from "../chat/membership.js";
 import { formatWait, timeoutMinutes } from "../approvals/model.js";
 import type { User } from "../lib/auth.js";
-import { conditionFailed, docClient, queryAll, tableName } from "../lib/db.js";
-import { Forbidden, ValidationError } from "../lib/errors.js";
+import { conditionFailed, docClient, queryAll, tableName, takeOnce } from "../lib/db.js";
+import { FlowFailed, Forbidden, Gone, Upstream, ValidationError } from "../lib/errors.js";
+import { siteCallback } from "../lib/http.js";
 import { roomKey } from "../lib/keys.js";
 import { can } from "../rooms/access.js";
+import { cut } from "../tools/cut.js";
+import { GitHubError } from "../tools/github/app.js";
 import type { AuditKind, GitHubConnection, McpConnection } from "../threads/types.js";
+import { pkce, type Installation } from "./github-sign-in.js";
 
-type Installation = { id: number; account: string; repos: string[] };
+/** A GitHub sign-in between the admin leaving for GitHub and coming back. */
+type GitHubFlow = { roomId: string; userId: string; redirectUri: string; verifier: string };
+/** Trades a sign-in's code for what the signed-in GitHub account can reach. */
+type FindInstallations = (code: string, verifier: string, redirectUri: string) => Promise<Installation[]>;
 
 const DEFAULT_APPROVAL_TIMEOUT_SEC = 7200;
 const MAX_REPOS = 20;
+const FLOW_TTL_SEC = 600;
+const GRANT_TTL_SEC = 900;
+const STATE = /^[A-Za-z0-9_-]{1,100}$/;
+const CALLBACK_PATH = "/bff/github/callback";
 
 const githubKey = (roomId: string) => ({ pk: roomKey(roomId), sk: "CONN#github" });
 const metaKey = (roomId: string) => ({ pk: roomKey(roomId), sk: "META" });
+const flowKey = (state: string) => ({ pk: `GHFLOW#${state}`, sk: "META" });
+/** What one admin's GitHub account can reach, for picking repos in one room. */
+const grantKey = (roomId: string, userId: string) => ({ pk: `GHGRANT#${roomId}#${userId}`, sk: "META" });
+const nowSec = () => Math.floor(Date.now() / 1000);
 const MCP_PREFIX = "CONN#mcp#";
 export const mcpConnKey = (roomId: string, name: string) => ({ pk: roomKey(roomId), sk: `${MCP_PREFIX}${name}` });
 
@@ -62,6 +77,13 @@ export function connectionsRepo() {
     return { github, mcp, approvalTimeoutSec: Number(meta.Item?.approvalTimeoutSec ?? DEFAULT_APPROVAL_TIMEOUT_SEC) };
   }
 
+  /** TTL deletion can lag by days, so the expiry is checked here too. */
+  async function granted(roomId: string, userId: string): Promise<Installation[]> {
+    const { Item } = await db.send(new GetCommand({ TableName, Key: grantKey(roomId, userId), ConsistentRead: true }));
+    if (!Item || Number(Item.ttl) <= nowSec()) throw new Gone("Sign in with GitHub to pick repos.");
+    return Item.installations as Installation[];
+  }
+
   return {
     requireManager,
     get,
@@ -73,12 +95,60 @@ export function connectionsRepo() {
     },
 
     /**
-     * `installations` is loaded only after the role check, so a member's request never reaches GitHub. Picking from
-     * what the App can see is what stops a room from naming a repo the App was never installed on.
+     * Starts the GitHub App's user sign-in. The PKCE verifier stays in the flow, kept for ten minutes under its state;
+     * only the challenge goes to the browser.
      */
-    async setGitHub(user: User, roomId: string, pick: { installationId: unknown; repos: unknown }, installations: () => Promise<Installation[]>) {
+    async startGitHubSignIn(user: User, roomId: string, redirectUri: unknown) {
       await requireManager(roomId, user.userId, { writing: true });
-      const installation = (await installations()).find((i) => i.id === pick.installationId);
+      const returnTo = siteCallback(redirectUri, CALLBACK_PATH);
+      const state = randomBytes(32).toString("base64url");
+      const { verifier, challenge } = pkce();
+      const flow: GitHubFlow = { roomId, userId: user.userId, redirectUri: returnTo, verifier };
+      await db.send(new PutCommand({ TableName, Item: { ...flowKey(state), ...flow, ttl: nowSec() + FLOW_TTL_SEC } }));
+      return { state, challenge, redirectUri: returnTo };
+    },
+
+    /**
+     * Only the admin who started a sign-in may finish it: otherwise a crafted callback link could hand an admin's
+     * room the installations of whoever made it (OAuth CSRF). What that admin's GitHub account can reach is kept for
+     * fifteen minutes, long enough to pick repos; the user token itself is never stored. The starter is checked before
+     * the state is used up, so someone else holding the link can't cancel the admin's sign-in.
+     */
+    async finishGitHubSignIn(user: User, { state, code, error }: { state?: unknown; code?: unknown; error?: unknown }, find: FindInstallations) {
+      const expired = new Gone("This GitHub sign-in expired. Try again.");
+      if (typeof state !== "string" || !STATE.test(state)) throw expired;
+      const { Item } = await db.send(new GetCommand({ TableName, Key: flowKey(state), ConsistentRead: true }));
+      if (!Item) throw expired;
+      const flow = Item as GitHubFlow;
+      if (flow.userId !== user.userId) throw new FlowFailed(flow.roomId, new Forbidden("Finish signing in as the admin who started it."));
+      await takeOnce(flowKey(state), expired);
+      try {
+        await requireManager(flow.roomId, user.userId, { writing: true });
+        if (error || typeof code !== "string") {
+          throw new Upstream(`GitHub didn't allow access (${typeof error === "string" ? cut(error, 100) : "no code"}).`);
+        }
+        const installations = await find(code, flow.verifier, flow.redirectUri).catch((e) => {
+          throw e instanceof GitHubError ? new Upstream(e.message) : e;
+        });
+        await db.send(new PutCommand({ TableName, Item: { ...grantKey(flow.roomId, user.userId), installations, ttl: nowSec() + GRANT_TTL_SEC } }));
+        return { roomId: flow.roomId };
+      } catch (e) {
+        throw new FlowFailed(flow.roomId, e);
+      }
+    },
+
+    async installations(roomId: string, userId: string) {
+      await requireManager(roomId, userId);
+      return granted(roomId, userId);
+    },
+
+    /**
+     * Picking from what the admin's own GitHub sign-in can reach is what stops a room from naming someone else's
+     * installation, or a repo the App was never installed on.
+     */
+    async setGitHub(user: User, roomId: string, pick: { installationId: unknown; repos: unknown }) {
+      await requireManager(roomId, user.userId, { writing: true });
+      const installation = (await granted(roomId, user.userId)).find((i) => i.id === pick.installationId);
       const repos = Array.isArray(pick.repos) ? [...new Set<unknown>(pick.repos)] : [];
       const fromInstallation = (r: unknown): r is string => typeof r === "string" && !!installation?.repos.includes(r);
       if (!installation || repos.length < 1 || repos.length > MAX_REPOS || !repos.every(fromInstallation)) {

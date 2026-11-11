@@ -40,10 +40,8 @@ describe("chat API", () => {
   });
 
   it("the chat Lambda signs uploads and downloads; the live Lambda signs downloads only; both only under rooms/", () => {
-    expect(s3Actions("cl-local-chat")).toContain("s3:PutObject");
-    expect(s3Actions("cl-local-chat")).toContain("s3:GetObject");
+    expect(s3Actions("cl-local-chat").sort()).toEqual(["s3:GetObject", "s3:PutObject"]);
     expect(s3Actions("cl-local-live")).toEqual(["s3:GetObject"]);
-    expect(s3Actions("cl-local-chat").filter((a: string) => /List|GetBucket|Delete/.test(a))).toEqual([]);
     for (const name of ["cl-local-chat", "cl-local-live"]) {
       for (const s of s3Statements(name)) expect(JSON.stringify(s.Resource), name).toMatch(/\/rooms\/\*"/);
     }

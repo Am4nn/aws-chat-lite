@@ -9,5 +9,7 @@ export async function toolKeys(env: SecretFields = process.env, read?: ReadSecre
     githubAppId: source.GITHUB_APP_ID,
     githubAppSlug: source.GITHUB_APP_SLUG,
     githubPrivateKey: source.GITHUB_APP_PRIVATE_KEY,
+    githubClientId: source.GITHUB_APP_CLIENT_ID,
+    githubClientSecret: source.GITHUB_APP_CLIENT_SECRET,
   };
 }

@@ -1,6 +1,6 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
-  BatchGetCommand, DynamoDBDocumentClient, QueryCommand,
+  BatchGetCommand, DeleteCommand, DynamoDBDocumentClient, QueryCommand,
   type BatchGetCommandInput, type BatchGetCommandOutput, type QueryCommandInput, type QueryCommandOutput,
 } from "@aws-sdk/lib-dynamodb";
 import { Unavailable } from "./errors.js";
@@ -37,6 +37,24 @@ export function failedAt(e: unknown, index: number): boolean {
 /** True when a transaction was cancelled because another transaction was writing one of its items at the same time. */
 export function transactionConflict(e: unknown): boolean {
   return !!(e as { CancellationReasons?: { Code?: string }[] }).CancellationReasons?.some((r) => r.Code === "TransactionConflict");
+}
+
+/**
+ * Deletes an item as it reads it, so it works once, whoever presents it. TTL deletion can lag by days, hence the
+ * expiry check. Throws `expired` when the item is gone or out of date.
+ */
+export async function takeOnce(Key: Record<string, string>, expired: Error): Promise<Record<string, unknown>> {
+  try {
+    const { Attributes } = await docClient().send(new DeleteCommand({
+      TableName: tableName(), Key, ReturnValues: "ALL_OLD",
+      ConditionExpression: "attribute_exists(pk) AND #ttl > :now",
+      ExpressionAttributeNames: { "#ttl": "ttl" }, ExpressionAttributeValues: { ":now": Math.floor(Date.now() / 1000) },
+    }));
+    return Attributes!;
+  } catch (e) {
+    if (conditionFailed(e)) throw expired;
+    throw e;
+  }
 }
 
 /** Every item a query matches. One Query call returns at most 1 MB, so this follows LastEvaluatedKey to the end. */

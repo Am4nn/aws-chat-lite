@@ -12,5 +12,7 @@ export function serverEnv() {
     secureCookies: e.SECURE_COOKIES === "true",
     /** Extra browser origins allowed to write through /bff/* (for example a custom domain). */
     siteOrigins: (e.SITE_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+    /** The secret CloudFront sends in x-origin-verify; unset in next dev, which turns the check off. */
+    originSecret: e.ORIGIN_VERIFY_SECRET || undefined,
   };
 }

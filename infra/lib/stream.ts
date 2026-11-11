@@ -9,7 +9,8 @@ const LOCAL_STREAM_URL = "http://localhost:4600";
 /**
  * A run's resumable event stream: server-sent events from a Lambda with response streaming, behind a Function URL
  * (API Gateway buffers responses, so it can't stream). The URL needs no IAM auth because the one-time ticket in it is
- * the auth, and since no cookies travel, CORS can allow any origin.
+ * the auth, and since no cookies travel, CORS can allow any origin. On AWS browsers reach it through the site, whose
+ * CloudFront routes each run's stream path to the Function URL.
  */
 export function addStream(stack: CoreStack) {
   const fn = stack.addFunction("stream", "runs/stream-handler.ts", {}, { timeout: Duration.minutes(15) });
@@ -25,5 +26,5 @@ export function addStream(stack: CoreStack) {
     invokeMode: lambda.InvokeMode.RESPONSE_STREAM,
     cors: { allowedOrigins: ["*"], allowedHeaders: ["last-event-id"], allowedMethods: [lambda.HttpMethod.GET] },
   });
-  return { streamUrl: stack.stageConfig.isLocal ? LOCAL_STREAM_URL : url.url };
+  return { streamUrl: stack.stageConfig.isLocal ? LOCAL_STREAM_URL : stack.stageConfig.siteOrigins[0]!, functionUrl: url };
 }

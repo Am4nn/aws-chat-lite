@@ -10,9 +10,10 @@
 - **A private-thread web gate.** In a thread that holds private content (GitHub data, attachments or sandbox files), `web_fetch` and `web_search` go through the same approval card ("web call from a private thread"), because injected text could have the model put private data in a URL or a query.
 - **Timeouts.** Each room sets how long a write waits (5 to 1,440 minutes, 2 h by default). When it runs out, the action is skipped, the model is told so, and the answer ends with `(Skipped because no one approved in time: <title>)`.
 - **Connections, owned by the room.** In a new **Connections** tab, owners and admins connect one installation of the App with up to 20 of its repos, change the repos, disconnect, and set the approval timeout. Members see the same settings read-only.
+- **Sign in with GitHub before picking repos.** **Connect GitHub** and **Change repos** first send the admin through the App's GitHub sign-in. The picker then offers only the installations, and the repos inside them, that the admin's own GitHub account can reach, and the server accepts only those.
 - **An audit log.** The Connections tab ends with **Activity**, which every member can read: who asked the agent what, every tool it ran, every approval decision and skip, connections and timeout changes. It loads 50 at a time, newest first.
 - **`npm run smoke`** gained 10 tool checks (two browsers, an owner and a member, fake GitHub):
-  1. connecting the fake installation, which the member sees read-only;
+  1. signing in with the fake GitHub and connecting the fake installation, which the member sees read-only;
   2. setting the timeout, after which both changes appear in Activity;
   3. `needs you` in the sidebar, plus the toast;
   4. approve from the toast;
@@ -29,7 +30,7 @@
 ## How to try it
 ```powershell
 npm run deploy:local                            # fake GitHub, fake Tavily and canned pages: no network, no keys
-npm run deploy:local -- --live-tools            # the real App and Tavily: copies 4 keys from .env into cl-local-tool-keys
+npm run deploy:local -- --live-tools            # the real App and Tavily: copies 6 keys from .env into cl-local-tool-keys
 npm run deploy:local -- --live-models --live-tools   # real models too
 npm run dev
 $env:REAL_TOOLS='1'; npm -w services run test:live -- tools   # the live suite (one Tavily search; GitHub writes on the playground only)
@@ -37,9 +38,18 @@ $env:REAL_TOOLS='1'; npm -w services run test:live -- tools   # the live suite (
 `.env` (gitignored) holds:
 - `TAVILY_API_KEY`;
 - `GITHUB_APP_ID` and `GITHUB_APP_SLUG`;
+- `GITHUB_APP_CLIENT_ID` and `GITHUB_APP_CLIENT_SECRET`, from the App's settings page (**Client secrets → Generate a new client secret**), for the admins' GitHub sign-in;
 - `GITHUB_APP_PRIVATE_KEY_PATH`, the path of the App's `.pem` file. The deploy reads the file and puts the key itself into the secret.
 
 A plain `deploy:local` goes back to fake tools, but it leaves the last keys in the secret, so put `{}` into `cl-local-tool-keys` after a live session.
+
+**Checking the GitHub sign-in by hand.** No automated test reaches GitHub's real sign-in page, so check it once with the real App:
+1. In the App's settings, under **Callback URL**, add `http://localhost:3000/bff/github/callback` (and `https://chat.amanarya.com/bff/github/callback` for the AWS stage). GitHub refuses any other return address ("The redirect_uri is not associated with this application").
+2. Generate a client secret there, and put the Client ID and the secret into `.env` as `GITHUB_APP_CLIENT_ID` and `GITHUB_APP_CLIENT_SECRET`.
+3. `npm run deploy:local -- --live-tools`, `npm run dev`, open a room you own, then **Connections → Connect GitHub**. The first time, GitHub asks you to authorize the App. You should land back in the room with the picker open, listing only `Am4nn` and `Am4nn/chat-lite-playground`.
+4. Pick the repo and save. The chip shows, and Activity says you connected it.
+5. Once authorized, GitHub skips its page. To see a refusal, revoke the App under your GitHub **Settings → Applications → Authorized GitHub Apps**, click **Change repos** and press **Cancel**: expect the toast `GitHub didn't allow access (access_denied).` Signed in as a second GitHub account that can't reach the App, expect an empty picker: "The App isn't installed on any account your GitHub sign-in can reach."
+6. Put `{}` into `cl-local-tool-keys` afterwards.
 
 The fake model gained one directive, read from the thread's first message like the others:
 
@@ -47,7 +57,7 @@ The fake model gained one directive, read from the thread's first message like t
 |---|---|
 | `call:<tool>` | the model calls that tool (with a sample input built from its schema), one per turn in the order named, in place of the fake lookups; e.g. `@agent go call:github_comment` asks to comment on #1 |
 
-In fake mode, `fetch` is swapped for a canned GitHub and Tavily router, and page fetches for canned pages. So the App JWT, the token mint, the REST paths and the parsing all still run, in the int tests and the smoke, without touching the network. The fake installation is `fake-org` with one repo, `fake-org/playground`.
+In fake mode, `fetch` is swapped for a canned GitHub and Tavily router, and page fetches for canned pages. So the App JWT, the token mint, the REST paths and the parsing all still run, in the int tests and the smoke, without touching the network. The fake installation is `fake-org` with one repo, `fake-org/playground`. GitHub's sign-in page is the one thing a fake `fetch` can't stand in for, since the browser goes there: in fake mode **Connect GitHub** sends the browser straight back to `/bff/github/callback` with a code that carries the PKCE challenge, and the fake token exchange checks the verifier against it.
 
 ## How an approval flows
 ```mermaid
@@ -85,7 +95,13 @@ sequenceDiagram
 2. **A token per tool call.** Each tool call mints its own installation token, for **one repo** and **that tool's permissions only**. Reads get `metadata, contents, issues, pull_requests: read`. A comment gets `issues, pull_requests: write`. A PR gets `contents: read, pull_requests: write`; the live suite found that GitHub refuses to open a PR ("not all refs are readable") without `contents: read`.
 3. **What that buys.** A token lasts an hour at most and can't act beyond its one tool, even though the App could. It never leaves the run Lambda: not in a tool result, an error (any installation token, JWT or PEM text in a GitHub error is redacted), an event or the sandbox.
 4. **Where the key lives.** The private key sits in the `cl-<stage>-tool-keys` secret, read per container.
-5. **Who can connect what.** Admins pick an installation from `GET /app/installations`, and `repoOf` keeps every call inside the room's connected repos.
+5. **Who can connect what.** Admins pick an installation that their own GitHub account can reach (below), and `repoOf` keeps every call inside the room's connected repos.
+
+**The App's user sign-in: connect only what you can reach yourself.** The App can see every account it is installed on, so picking from `GET /app/installations` would let an admin of one room connect someone else's repos. Instead the admin signs in with GitHub through the App (OAuth's authorization-code flow, with PKCE):
+1. **Start.** `POST /rooms/{id}/connections/github/sign-in` checks the caller is an admin and the return address is the site's own `/bff/github/callback`. It stores a flow item `GHFLOW#<state>` (room, user, return address, PKCE verifier) for 10 minutes and answers with GitHub's authorize URL, which carries the state and the S256 challenge. A GitHub App asks for no scopes: its user token reaches only what both the App and the user can.
+2. **Return.** GitHub sends the browser to `/bff/github/callback?code&state`. The BFF calls `POST /github-flows/finish` with the user's own ID token.
+3. **Finish.** Only the admin who started it may finish it, which stops OAuth CSRF (a link carrying someone else's code). The flow is read and its starter checked first, so another user holding the state can't use it up; then it is deleted as it is read (`ConditionExpression attribute_exists(pk) AND #ttl > :now`), so a state works once. The server trades the code, the client secret and the verifier for a user token at `github.com/login/oauth/access_token`, then calls `GET /user/installations` and, for each, `GET /user/installations/{id}/repositories`, following every page of 100 until `total_count` is reached: the repos *that user* can reach in it. Each repo there carries the user's `permissions`, and only those with `push` or `admin` are kept (an installation left with none is dropped): GitHub lists read-only repos too, and the agent writes with the App's own token, so a read-only collaborator who connected a repo could have the agent push to it.
+4. **The grant.** What came back is stored as `GHGRANT#<room>#<user>` for 15 minutes. The picker lists it, and `PUT /rooms/{id}/connections/github` accepts only an installation and repos from it. The user token is used inside the finish call and never stored, logged or sent to the browser.
 
 **SSRF defence at connect time.** `web_fetch` takes a URL the model chose, and the model may have read it from a hostile page. So:
 - **What the URL can be.** http and https only, ports 80 and 443 only, no credentials in the URL, and IP literals inside a network refused up front.
@@ -120,7 +136,12 @@ These were judgement calls during the build. Each line says what we chose and wh
 | A sandbox session lives until the run's stored `deadAt`, read when the session opens | A session opened before a long wait still ends at the old time; the next step opens a fresh one from the room files |
 | GitHub tools only for `privateOk` models; web tools for every model | A DeepSeek user who wants GitHub picks Claude |
 | In a private thread `web_fetch` and `web_search` need approval | An approval per web call in private threads |
-| Admins connect any installation of the App from `GET /app/installations` | Any room admin sees every installation's repo names: **must change before inviting friends** (setup-URL flow with a user token check, or bind each installation to the first room) |
+| Admins connect only installations their own GitHub account reaches, and only repos it can push to, through the App's user sign-in | Every Connect and Change repos goes through GitHub (a quick bounce once the App is authorized) |
+| The sign-in's grant lasts 15 minutes and isn't used up by a save | An admin who loses access on GitHub can still save from that list for up to 15 minutes |
+| The user token is used inside the finish call and dropped, not revoked | GitHub keeps it valid for its 8 hours; no one holds it |
+| PKCE on top of the state and client secret | One hash; a code stolen from the browser can't be finished in another flow |
+| The PKCE verifier sits in the flow item unsealed for its 10 minutes | Someone who can read the table and also steals the code could finish that one sign-in |
+| Lists stop at 100 installations and 100 repos each (one page) | An admin with more sees only the first 100 |
 | Tokens are minted per call, one repo, the tool's permissions | One extra GitHub call (~100 ms) per tool |
 | No Octokit: the JWT with `node:crypto` plus `fetch` | ~60 lines of our own; REST shape mistakes show in the live suite (one did: the PR permission) |
 | A write found half-done is never retried (`UNSURE`) | A transient failure before GitHub saw the call needs the user to ask again |
@@ -147,7 +168,6 @@ None. The App JWT uses `node:crypto`, the fetch guard `node:https`, `node:http` 
 - Details are in the [Floci compatibility report](floci-compat.md).
 
 ## Known limits
-- **Installation scoping** (see Rulings): fine for one person's local setup, not for a shared deploy.
 - **The needs-you toast only sees the open room's threads.** A run waiting in another room shows only when you open that room (web push comes later).
 - **Activity is stale for run entries between status changes:** asked, tool and approval rows appear when the run's status changes or a step finishes, or when the tab opens.
 - **`github_push_branch` writes files given inline,** not files from the sandbox; pushing sandbox output needs the model to pass the contents.
@@ -165,6 +185,7 @@ None. The App JWT uses `node:crypto`, the fetch guard `node:https`, `node:http` 
 ## Interview angle
 - "An agent needs a human to approve an action. How do you pause it without paying for compute, and survive crashes?" A durable execution waits on a callback. The decision is written to a record with a conditional update, and the callback only wakes the run, which re-reads the record. Lost wakes, double clicks and stops become reads of one item.
 - "Your retry ran a side effect twice. How do you prevent that?" Record intent before the side effect, and on retry treat "intent recorded, result missing" as unknown: report it rather than redo it. Use idempotency keys where the API offers them.
+- "One GitHub App serves every tenant. How do you stop a tenant's admin connecting another tenant's repos?" Have the admin sign in with GitHub through the App (authorization code with state and PKCE, the state bound to that admin and room and used once), list `/user/installations` with the user token, and accept only what that list holds. Drop the user token when the list is made.
 - "How do you give an agent GitHub access safely?" A GitHub App, not a personal token. Mint a short-lived installation token per call, narrowed to one repo and one tool's permissions, kept outside anything the model or the sandbox can read.
 - "How do you stop SSRF in a URL fetcher?" Allow-list the scheme and ports, check *every resolved address* inside the connect (not before it), re-check each redirect, and bound time, size and parsing.
 - "How do you defend against prompt injection?" Assume tool output is hostile. Validate inputs before asking, gate every write on a human who sees the exact input, run exactly what was approved, and track where private data has been so it can't leave unasked.

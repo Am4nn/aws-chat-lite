@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { DeleteCommand, GetCommand, PutCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { auditItem } from "../../audit/repo.js";
 import { connectionsRepo, mcpConnKey, mcpConnections, withoutKeys } from "../../connections/repo.js";
 import type { User } from "../../lib/auth.js";
-import { conditionFailed, docClient, failedAt, tableName } from "../../lib/db.js";
-import { Conflict, Forbidden, Gone, NotFound, Upstream, UserError, ValidationError } from "../../lib/errors.js";
+import { conditionFailed, docClient, failedAt, tableName, takeOnce } from "../../lib/db.js";
+import { Conflict, FlowFailed, Forbidden, Gone, NotFound, Upstream, UserError, ValidationError } from "../../lib/errors.js";
+import { siteCallback } from "../../lib/http.js";
 import { roomKey } from "../../lib/keys.js";
 import { roomUpdated } from "../../live/broadcast.js";
 import { cut } from "../../tools/cut.js";
@@ -39,13 +40,6 @@ const authAad = (roomId: string, name: string) => `${roomId}#${name}`;
 const unknownServer = (name: string) => new NotFound(noSuchServer(name));
 const nameTaken = (name: string) => new Conflict(`This room already has an MCP server called ${name}.`);
 const needsReconnect = (name: string) => new Conflict(needsReconnecting(name));
-
-/** A finish that failed after its flow was found: the browser is sent back to that room with the error. */
-export class FlowFailed extends Error {
-  constructor(readonly roomId: string, readonly error: unknown) {
-    super("The connection attempt failed.");
-  }
-}
 
 /** Remote servers fail in many shapes; the admin gets one line naming the host, and a URL we refused stays a 400. */
 async function fromRemote<T>(host: string, name: string, work: () => Promise<T>): Promise<T> {
@@ -180,8 +174,7 @@ export function mcpRepo(deps: Deps = liveDeps()) {
    * is sealed under its own state and kept for ten minutes, and the admin is sent to the authorize page.
    */
   async function start(user: User, roomId: string, name: string, url: URL, redirectUri: unknown, reconnect: boolean): Promise<Started> {
-    const callbacks = (process.env.SITE_ORIGINS ?? "").split(",").filter(Boolean).map((origin) => origin + CALLBACK_PATH);
-    if (typeof redirectUri !== "string" || !callbacks.includes(redirectUri)) throw new ValidationError("That isn't chat-lite's sign-in return address.");
+    const returnTo = siteCallback(redirectUri, CALLBACK_PATH);
     const { href, hostname } = url;
     const probed = await fromRemote(hostname, name, () => probe(href, deps.fetch));
     if (probed.auth === "none") {
@@ -191,27 +184,17 @@ export function mcpRepo(deps: Deps = liveDeps()) {
     // Reusing the client registered before saves a registration, and keeps the server's list of our clients short.
     const known = reconnect ? (await tokenStore(roomId, name).load())?.auth : undefined;
     const { authorizeUrl, state, pending } = await fromRemote(hostname, name, () =>
-      beginAuthorization({ url: href, redirectUri, probed, known }, deps.fetch, deps.hosts));
+      beginAuthorization({ url: href, redirectUri: returnTo, probed, known }, deps.fetch, deps.hosts));
     const flow: Flow = { roomId, userId: user.userId, name, url: href, reconnect, pending: seal(await deps.key(), JSON.stringify(pending), state) };
     await db.send(new PutCommand({ TableName, Item: { ...flowKey(state), ...flow, ttl: Math.floor(Date.now() / 1000) + FLOW_TTL_SEC } }));
     return { authorizeUrl };
   }
 
-  /** Deletes the flow as it reads it, so a state works once, whoever presents it. TTL deletion lags, hence the check. */
+  /** A state works once, whoever presents it. */
   async function takeFlow(state: unknown): Promise<Flow & { state: string }> {
     const expired = new Gone("This connection attempt expired. Try again.");
     if (typeof state !== "string" || !STATE.test(state)) throw expired;
-    try {
-      const { Attributes } = await db.send(new DeleteCommand({
-        TableName, Key: flowKey(state), ReturnValues: "ALL_OLD",
-        ConditionExpression: "attribute_exists(pk) AND #ttl > :now",
-        ExpressionAttributeNames: { "#ttl": "ttl" }, ExpressionAttributeValues: { ":now": Math.floor(Date.now() / 1000) },
-      }));
-      return { ...(Attributes as Flow), state };
-    } catch (e) {
-      if (conditionFailed(e)) throw expired;
-      throw e;
-    }
+    return { ...((await takeOnce(flowKey(state), expired)) as Flow), state };
   }
 
   return {

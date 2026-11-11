@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { McpConnection, McpToolInfo } from "../types";
-import { callbackTarget, keptLine, markFlowStarted, returnToast, toolLabel } from "./mcp";
+import { callbackTarget, keptLine, toolLabel } from "./mcp";
 
 const tool = (name: string, readOnly = false): McpToolInfo => ({ name, description: "", inputSchema: {}, readOnly });
 const conn = (over: Partial<McpConnection> = {}): McpConnection => ({
@@ -35,22 +35,5 @@ describe("callbackTarget", () => {
   it("returns home with the error when the flow was unknown", () => {
     expect(callbackTarget({ status: 410, body: { error: "This connection attempt expired. Try again." } }))
       .toBe("/?mcpError=This+connection+attempt+expired.+Try+again.");
-  });
-});
-
-describe("returnToast", () => {
-  afterEach(() => sessionStorage.clear());
-
-  it("shows the result of a flow this tab started, once", () => {
-    markFlowStarted();
-    expect(returnToast("test", null)).toEqual({ text: "Connected test", kind: "done" });
-    expect(returnToast("test", null)).toBeNull();
-    markFlowStarted();
-    expect(returnToast(null, "It failed.")).toEqual({ text: "It failed.", kind: "error" });
-  });
-
-  it("shows nothing for a link this tab didn't start a flow for, so a crafted ?mcpError= can't speak for chat-lite", () => {
-    expect(returnToast(null, "Your account is locked. Call +1 555 0100.")).toBeNull();
-    expect(returnToast("evil", null)).toBeNull();
   });
 });

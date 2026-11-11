@@ -1,11 +1,13 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { App } from "aws-cdk-lib";
 import { Template } from "aws-cdk-lib/assertions";
 import { expect } from "vitest";
-import { loadConfig } from "./config.js";
-import { CoreStack } from "./core-stack.js";
+import { loadConfig, type Stage } from "./config.js";
+import { CoreStack, type CoreStackProps } from "./core-stack.js";
 import { SpikeStack } from "./spike-stack.js";
-
-type Stage = "local" | "aws";
+import type { WebBuild } from "./web.js";
 
 /**
  * An app that bundles no Lambda: no stack is listed in `aws:cdk:bundling-stacks`, so each function gets a placeholder
@@ -13,9 +15,35 @@ type Stage = "local" | "aws";
  */
 const app = () => new App({ context: { "aws:cdk:bundling-stacks": [] } });
 
+/** Stand-ins for the values a real aws deploy reads from infra/cdk.context.json. */
+export const TEST_CONTEXT = {
+  alertEmail: "ops@example.com",
+  certificateArn: "arn:aws:acm:us-east-1:123456789012:certificate/test",
+};
+
 /** A stage's config, as a deploy from a shell with `env` set would load it. */
 const configFor = (stage: Stage, env: NodeJS.ProcessEnv = {}) =>
-  loadConfig(stage, { ...(stage === "local" && { AWS_ENDPOINT_URL: "http://localhost:4566" }), ...env });
+  loadConfig(stage, { ...(stage === "local" && { AWS_ENDPOINT_URL: "http://localhost:4566" }), ...env }, TEST_CONTEXT);
+
+/** A stand-in for the OpenNext build: a server entry point plus a hashed bundle, the public files and a public directory. */
+function fakeWebBuild(): WebBuild {
+  const root = mkdtempSync(join(tmpdir(), "cl-web-build-"));
+  for (const file of ["server/index.mjs", "assets/_next/static/app.js", "assets/sw.js", "assets/pcm-worklet.js", "assets/icons/a.png"]) {
+    mkdirSync(dirname(join(root, file)), { recursive: true });
+    writeFileSync(join(root, file), "");
+  }
+  return { serverDir: join(root, "server"), assetsDir: join(root, "assets") };
+}
+
+let webBuild: WebBuild | undefined;
+
+/** A fresh core stack, for a test that changes it (or its props) instead of only reading the shared template. */
+export function buildStack(stage: Stage, props: Partial<CoreStackProps> = {}): CoreStack {
+  const config = props.config ?? configFor(stage);
+  return new CoreStack(app(), `cl-${stage}-core`, {
+    config, env: { account: "000000000000", region: config.region }, webBuild: (webBuild ??= fakeWebBuild()), ...props,
+  });
+}
 
 const cache = new Map<string, Template>();
 
@@ -24,8 +52,7 @@ export function template(stage: Stage = "local", env: NodeJS.ProcessEnv = {}): T
   const key = `${stage} ${JSON.stringify(env)}`;
   let t = cache.get(key);
   if (!t) {
-    const config = configFor(stage, env);
-    t = Template.fromStack(new CoreStack(app(), `cl-${stage}-core`, { config, env: { account: "000000000000", region: config.region } }));
+    t = Template.fromStack(buildStack(stage, { config: configFor(stage, env) }));
     cache.set(key, t);
   }
   return t;

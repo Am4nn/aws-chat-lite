@@ -25,7 +25,8 @@ export function addSchedules(stack: CoreStack) {
   const role = new iam.Role(stack, "SchedulerRole", {
     assumedBy: new iam.ServicePrincipal("scheduler.amazonaws.com", { conditions: { StringEquals: { "aws:SourceAccount": stack.account } } }),
   });
-  fireFn.grantInvoke(role);
+  // Schedules target the function itself, never a version or alias.
+  role.addToPolicy(new iam.PolicyStatement({ actions: ["lambda:InvokeFunction"], resources: [fireFn.functionArn] }));
 
   const fn = stack.addFunction("schedules", "schedules/handler.ts", { tableAccess: true }, {
     timeout: Duration.seconds(15),

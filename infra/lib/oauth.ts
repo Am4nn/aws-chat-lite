@@ -1,6 +1,7 @@
 import { Duration } from "aws-cdk-lib";
 import * as iam from "aws-cdk-lib/aws-iam";
 import type { CoreStack } from "./core-stack.js";
+import { originSecret } from "./web.js";
 
 /** The partition keys of the items the authorization server owns. */
 const OWN_ITEMS = ["OAUTHCLIENT#*", "OAUTHREQ#*", "OAUTHCODE#*", "OAUTHGRANT#*", "RATE#oauth#*"];
@@ -23,7 +24,11 @@ export function addOAuth(stack: CoreStack) {
   const { table, auth } = stack;
   const fn = stack.addFunction("oauth", "oauth/handler.ts", {}, {
     timeout: Duration.seconds(15),
-    environment: { ...issuerEnvironment(stack), USER_POOL_ID: auth.userPool.userPoolId },
+    // Its rate limits count each viewer's address, which only requests carrying CloudFront's secret can vouch for.
+    environment: {
+      ...issuerEnvironment(stack), USER_POOL_ID: auth.userPool.userPoolId,
+      ...(!stack.stageConfig.isLocal && { ORIGIN_VERIFY_SECRET: originSecret(stack) }),
+    },
   });
   fn.addToRolePolicy(new iam.PolicyStatement({
     actions: ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem", "dynamodb:ConditionCheckItem"],

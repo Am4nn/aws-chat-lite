@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { McpConnection } from "../threads/types.js";
+import { pkce, userInstallations } from "../connections/github-sign-in.js";
+import { fakeSignInPage } from "./fake-github.js";
 import { findTool, roomTools, toolEnv } from "./index.js";
 
 const conn = (status: McpConnection["status"]): McpConnection => ({
@@ -55,6 +57,13 @@ describe("toolEnv in fake mode", () => {
     const env = { ...await toolEnv("fake", github), room };
     const result = await findTool("github_read_file", noMcp)!.run({ path: "README.md" }, env);
     expect(result).toMatchObject({ ok: true, output: expect.stringContaining("# Playground") });
+  });
+
+  it("signs an admin in with the canned GitHub, without the network", async () => {
+    const { verifier, challenge } = pkce();
+    const redirectUri = "http://localhost:3000/bff/github/callback";
+    const code = new URL(fakeSignInPage({ clientId: "fake-client-id", redirectUri, state: "s", challenge })).searchParams.get("code")!;
+    expect(await userInstallations(await toolEnv("fake"), code, verifier, redirectUri)).toEqual([{ id: 1, account: "fake-org", repos: ["fake-org/playground"] }]);
   });
 
   it("fetches pages without the network, still refusing private addresses", async () => {

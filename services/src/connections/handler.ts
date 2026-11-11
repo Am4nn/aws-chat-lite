@@ -2,22 +2,27 @@ import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyStructured
 import { auditRepo } from "../audit/repo.js";
 import { requireMember } from "../chat/membership.js";
 import { callerFromEvent, subFromEvent } from "../lib/auth.js";
+import { Conflict } from "../lib/errors.js";
 import { errorResponse, json, parseBody } from "../lib/http.js";
 import { roomUpdated } from "../live/broadcast.js";
-import { listInstallations } from "../tools/github/app.js";
+import { fakeSignInPage } from "../tools/fake-github.js";
 import { toolEnv } from "../tools/index.js";
 import type { ToolEnv } from "../tools/types.js";
+import { githubSignInPage, userInstallations, type SignIn } from "./github-sign-in.js";
 import { connectionsRepo, type ConnectionsRepo } from "./repo.js";
 
 type Event = APIGatewayProxyEventV2WithJWTAuthorizer;
 type GitHubApp = () => Promise<Pick<ToolEnv, "fetch" | "keys">>;
 
 /**
- * The room's connections, approval timeout and audit log. Every route checks membership; changes need an admin and
- * tell the room's open sockets to refetch (best effort, like the rooms API: the change has already been made).
- * Responses never carry key material: the App's slug, which is public, is the most of it that leaves.
+ * The room's connections, approval timeout and audit log, and the GitHub sign-in an admin goes through before picking
+ * repos. Every route checks membership; changes need an admin and tell the room's open sockets to refetch (best
+ * effort, like the rooms API: the change has already been made). Responses never carry key material or the user's
+ * GitHub token: the App's slug, which is public, is the most of it that leaves.
  */
-export function makeHandler(repo: ConnectionsRepo, githubApp: GitHubApp, notifyRoom: (roomId: string) => Promise<unknown>) {
+export function makeHandler(
+  repo: ConnectionsRepo, githubApp: GitHubApp, notifyRoom: (roomId: string) => Promise<unknown>, signInPage: (signIn: SignIn) => string,
+) {
   const changed = async (roomId: string, result: APIGatewayProxyStructuredResultV2) => {
     try {
       await notifyRoom(roomId);
@@ -26,7 +31,6 @@ export function makeHandler(repo: ConnectionsRepo, githubApp: GitHubApp, notifyR
     }
     return result;
   };
-  const installations = async () => listInstallations(await githubApp());
 
   return async (event: Event): Promise<APIGatewayProxyStructuredResultV2> => {
     const roomId = event.pathParameters?.roomId ?? "";
@@ -43,12 +47,22 @@ export function makeHandler(repo: ConnectionsRepo, githubApp: GitHubApp, notifyR
             installUrl: slug ? `https://github.com/apps/${slug}/installations/new` : null,
           });
         }
+        case "POST /rooms/{roomId}/connections/github/sign-in": {
+          const clientId = (await githubApp()).keys.githubClientId;
+          if (!clientId) throw new Conflict("GitHub sign-in isn't set up here (no App client id).");
+          const started = await repo.startGitHubSignIn(callerFromEvent(event), roomId, body.redirectUri);
+          return json(200, { authorizeUrl: signInPage({ clientId, ...started }) });
+        }
+        case "POST /github-flows/finish": {
+          const answer = { state: body.state, code: body.code, error: body.error };
+          return json(200, await repo.finishGitHubSignIn(callerFromEvent(event), answer, async (code, verifier, redirectUri) =>
+            userInstallations(await githubApp(), code, verifier, redirectUri)));
+        }
         case "GET /rooms/{roomId}/connections/github/installations":
-          await repo.requireManager(roomId, subFromEvent(event));
-          return json(200, { installations: await installations() });
+          return json(200, { installations: await repo.installations(roomId, subFromEvent(event)) });
         case "PUT /rooms/{roomId}/connections/github": {
           const pick = { installationId: body.installationId, repos: body.repos };
-          return changed(roomId, json(200, { github: await repo.setGitHub(callerFromEvent(event), roomId, pick, installations) }));
+          return changed(roomId, json(200, { github: await repo.setGitHub(callerFromEvent(event), roomId, pick) }));
         }
         case "DELETE /rooms/{roomId}/connections/github":
           await repo.removeGitHub(callerFromEvent(event), roomId);
@@ -67,6 +81,9 @@ export function makeHandler(repo: ConnectionsRepo, githubApp: GitHubApp, notifyR
   };
 }
 
+// Fake mode has no GitHub page to send the browser to: it comes straight back with a code the fake GitHub takes.
+const signInPage = process.env.TOOL_MODE === "live" ? githubSignInPage : fakeSignInPage;
+
 // Built on first use, so tests can import makeHandler without a table configured.
 let liveHandler: ReturnType<typeof makeHandler> | undefined;
-export const handler = (event: Event) => (liveHandler ??= makeHandler(connectionsRepo(), toolEnv, roomUpdated))(event);
+export const handler = (event: Event) => (liveHandler ??= makeHandler(connectionsRepo(), toolEnv, roomUpdated, signInPage))(event);

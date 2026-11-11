@@ -5,9 +5,10 @@ import { gate } from "./lib/server/gate";
 import { PATH_HEADER } from "./lib/server/next-path";
 
 export function proxy(req: NextRequest) {
+  const env = serverEnv();
   const r = gate({
     method: req.method, pathname: req.nextUrl.pathname, search: req.nextUrl.search, headers: req.headers,
-    idToken: req.cookies.get(ID_COOKIE)?.value, extraOrigins: serverEnv().siteOrigins,
+    idToken: req.cookies.get(ID_COOKIE)?.value, originSecret: env.originSecret, extraOrigins: env.siteOrigins,
   });
   if (r.type === "error") return NextResponse.json({ error: r.error }, { status: r.status });
   if (r.type === "redirect") return NextResponse.redirect(new URL(r.location, req.url), 307);

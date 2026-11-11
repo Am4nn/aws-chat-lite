@@ -2,7 +2,7 @@ import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyStructured
 import { callerFromEvent } from "../../lib/auth.js";
 import { errorResponse, json, parseBody } from "../../lib/http.js";
 import { roomUpdated } from "../../live/broadcast.js";
-import { FlowFailed, mcpRepo, type McpRepo } from "./repo.js";
+import { mcpRepo, type McpRepo } from "./repo.js";
 
 type Event = APIGatewayProxyEventV2WithJWTAuthorizer;
 type Result = APIGatewayProxyStructuredResultV2;
@@ -51,10 +51,7 @@ export function makeHandler(repo: McpRepo, notifyRoom: (roomId: string) => Promi
           return json(404, { error: "No such route." });
       }
     } catch (e) {
-      if (!(e instanceof FlowFailed)) return errorResponse(e);
-      // The browser came back from the server's sign-in; the room lets it land there with the error.
-      const res = errorResponse(e.error);
-      return { ...res, body: JSON.stringify({ ...JSON.parse(String(res.body)), roomId: e.roomId }) };
+      return errorResponse(e);
     }
   };
 }

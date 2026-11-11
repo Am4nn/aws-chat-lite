@@ -76,10 +76,12 @@ export async function toolChecks(stamp: number, owner: Person, guest: Person) {
     await openTab(page, "Connections");
   }
 
-  // Connect: the owner picks the fake installation's repo; the member sees the repo and nothing to change it with.
+  // Connect: the owner signs in with the fake GitHub, which sends the browser straight back to the room with the
+  // picker open, and picks the fake installation's repo; the member sees the repo and nothing to change it with.
   await A.bringToFront();
-  await clickButton(A, "Connect GitHub");
+  await Promise.all([A.waitForNavigation({ waitUntil: "domcontentloaded" }), clickButton(A, "Connect GitHub")]);
   await A.waitForSelector(`${PANEL} fieldset input[type=checkbox]`);
+  await socketOpen(A);
   await A.click(`${PANEL} fieldset input[type=checkbox]`);
   await clickButton(A, "Save");
   const chip = (page: Page) => until(page, (r) => [...document.querySelectorAll('ul[aria-label="Repos"] li')].some((li) => li.textContent === r), REPO);

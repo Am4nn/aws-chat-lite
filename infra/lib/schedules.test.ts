@@ -32,7 +32,7 @@ describe("schedules", () => {
     expect(fn.props.Timeout).toBe(15);
   });
 
-  it("Scheduler assumes its role only for this account, and the role may only invoke the fire function", () => {
+  it("Scheduler assumes its role only for this account, and the role may only invoke the fire function (no version or alias)", () => {
     const { logicalId, role } = schedulerRole();
     expect(role.Properties.AssumeRolePolicyDocument.Statement).toEqual([expect.objectContaining({
       Action: "sts:AssumeRole", Principal: { Service: "scheduler.amazonaws.com" },
@@ -42,7 +42,7 @@ describe("schedules", () => {
     expect(statements).toHaveLength(1);
     expect(statements[0].Action).toBe("lambda:InvokeFunction");
     const fire = fnNamed("cl-local-schedule-fire").logicalId;
-    for (const r of statements[0].Resource) expect(JSON.stringify(r)).toContain(fire);
+    expect(statements[0].Resource).toEqual({ "Fn::GetAtt": [fire, "Arn"] });
   });
 
   it("the schedules function manages schedules in the group, passes only the scheduler role, and names both and the target", () => {

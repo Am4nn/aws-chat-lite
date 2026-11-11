@@ -7,14 +7,32 @@ const fresh = `${b64({})}.${b64({ sub: "u1", exp: NOW / 1000 + 3600 })}.s`;
 const stale = `${b64({})}.${b64({ sub: "u1", exp: NOW / 1000 + 10 })}.s`;
 const SITE = "http://localhost:3000";
 
-function req(o: { method?: string; path?: string; search?: string; headers?: Record<string, string>; idToken?: string }) {
+function req(o: {
+  method?: string; path?: string; search?: string; headers?: Record<string, string>; idToken?: string; originSecret?: string;
+}) {
   return gate({
     method: o.method ?? "GET", pathname: o.path ?? "/r/abc", search: o.search ?? "",
-    headers: new Headers({ host: "localhost:3000", ...o.headers }), idToken: o.idToken, extraOrigins: [], now: NOW,
+    headers: new Headers({ host: "localhost:3000", ...o.headers }), idToken: o.idToken, originSecret: o.originSecret,
+    extraOrigins: [], now: NOW,
   });
 }
 
 describe("gate (what proxy.ts does with each request)", () => {
+  it("refuses a request without CloudFront's secret, before any CSRF or token check", () => {
+    const forbidden = { type: "error", status: 403, error: "Forbidden." };
+    expect(req({ path: "/login", originSecret: "s3cret" })).toEqual(forbidden);
+    expect(req({ method: "POST", path: "/bff/x", originSecret: "s3cret", headers: { "x-origin-verify": "wrong" } })).toEqual(forbidden);
+  });
+
+  it("with CloudFront's secret, decides as it does without one", () => {
+    const viaCloudFront = { originSecret: "s3cret", headers: { "x-origin-verify": "s3cret" } };
+    expect(req({ ...viaCloudFront, idToken: fresh })).toEqual({ type: "next" });
+    expect(req({ ...viaCloudFront, path: "/login" })).toEqual({ type: "next" });
+    expect(req(viaCloudFront)).toEqual({ type: "redirect", location: "/bff/auth/refresh?next=%2Fr%2Fabc" });
+    expect(req({ ...viaCloudFront, method: "POST", path: "/bff/x", headers: { ...viaCloudFront.headers, origin: SITE } }))
+      .toMatchObject({ type: "error", status: 415 });
+  });
+
   it("a page with a fresh token renders", () => {
     expect(req({ idToken: fresh })).toEqual({ type: "next" });
   });

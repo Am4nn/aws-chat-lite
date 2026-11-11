@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { FolderGit2, Hourglass, Pencil } from "lucide-react";
 import { bff, errorText } from "@/lib/client/bff";
+import { markFlowStarted } from "@/lib/client/flow-return";
 import { formatWait } from "@/lib/client/format";
 import { useLiveEvent } from "@/lib/client/LiveProvider";
 import { swap } from "@/lib/motion";
@@ -23,9 +24,12 @@ type Mode = { kind: "view" } | { kind: "confirmDisconnect" } | { kind: "pick"; i
 
 /**
  * What the room's agent may reach and how long its writes wait, plus the room's activity log. Every member reads it;
- * admins change it. The server's answer is the truth, fetched again whenever the room changes.
+ * admins change it. The server's answer is the truth, fetched again whenever the room changes. `pickGitHub`: the
+ * admin is back from GitHub's sign-in, so the repo picker opens.
  */
-export function ConnectionsPanel({ roomId, archived }: { roomId: string; archived: boolean }) {
+export function ConnectionsPanel({ roomId, archived, pickGitHub, onPickStarted }: {
+  roomId: string; archived: boolean; pickGitHub?: boolean; onPickStarted?: () => void;
+}) {
   const toast = useToast();
   const [data, setData] = useState<Connections | null>(null);
   const [version, setVersion] = useState(0);
@@ -54,7 +58,11 @@ export function ConnectionsPanel({ roomId, archived }: { roomId: string; archive
       <section className="flex flex-col gap-2">
         <h2 className="text-[11.5px] font-semibold text-text-3">GitHub</h2>
         {data
-          ? <GitHubSection roomId={roomId} data={data} manage={manage} onChange={(github) => changed({ github })} />
+          ? (
+            <GitHubSection
+              roomId={roomId} data={data} manage={manage} pick={!!pickGitHub} onPickStarted={onPickStarted} onChange={(github) => changed({ github })}
+            />
+          )
           : <div className="flex h-9 items-center justify-center text-text-3"><Spinner /></div>}
       </section>
       <section className="flex flex-col gap-2">
@@ -76,13 +84,38 @@ export function ConnectionsPanel({ roomId, archived }: { roomId: string; archive
   );
 }
 
-function GitHubSection({ roomId, data, manage, onChange }: {
-  roomId: string; data: Connections; manage: boolean; onChange: (github: GitHubConnection | null) => void;
+/**
+ * An admin signs in with GitHub before picking repos, so the picker offers only installations and repos their own
+ * GitHub account can reach.
+ */
+function GitHubSection({ roomId, data, manage, pick, onPickStarted, onChange }: {
+  roomId: string; data: Connections; manage: boolean; pick: boolean; onPickStarted?: () => void; onChange: (github: GitHubConnection | null) => void;
 }) {
   const toast = useToast();
   const [mode, setMode] = useState<Mode>({ kind: "view" });
   const [busy, setBusy] = useState(false);
   const { github, installUrl } = data;
+
+  // Back from GitHub's sign-in: the picker opens once, and the room forgets the request so a later visit doesn't.
+  useEffect(() => {
+    if (!pick || !manage) return;
+    onPickStarted?.();
+    void startPicking();
+  }, [pick, manage]);
+
+  /** The browser leaves for GitHub, so the spinner stays until the page goes. */
+  async function signIn() {
+    setBusy(true);
+    try {
+      const body = { redirectUri: `${window.location.origin}/bff/github/callback` };
+      const { authorizeUrl } = await bff<{ authorizeUrl: string }>(`/bff/api/rooms/${roomId}/connections/github/sign-in`, { body });
+      markFlowStarted();
+      window.location.assign(authorizeUrl);
+    } catch (e) {
+      toast(errorText(e), "error");
+      setBusy(false);
+    }
+  }
 
   async function startPicking() {
     setMode({ kind: "pick", installations: null });
@@ -153,7 +186,7 @@ function GitHubSection({ roomId, data, manage, onChange }: {
             </div>
           ) : (
             <div className="flex gap-2">
-              <Button onClick={startPicking} className="flex-1">Change repos</Button>
+              <Button onClick={signIn} disabled={busy} className="flex-1">{busy && <Spinner />}Change repos</Button>
               <Button onClick={() => setMode({ kind: "confirmDisconnect" })}>Disconnect</Button>
             </div>
           ))}
@@ -162,7 +195,11 @@ function GitHubSection({ roomId, data, manage, onChange }: {
       ) : (
         <motion.div key="off" {...swap}>
           {manage
-            ? <Button variant="primary" onClick={startPicking} className="w-full"><FolderGit2 aria-hidden="true" size={15} />Connect GitHub</Button>
+            ? (
+              <Button variant="primary" onClick={signIn} disabled={busy} className="w-full">
+                {busy ? <Spinner /> : <FolderGit2 aria-hidden="true" size={15} />}Connect GitHub
+              </Button>
+            )
             : <p className="text-[12.5px] text-text-3">Not connected</p>}
         </motion.div>
       )}

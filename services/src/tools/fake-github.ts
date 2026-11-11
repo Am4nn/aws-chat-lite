@@ -1,4 +1,5 @@
-import { generateKeyPairSync, type KeyObject, verify } from "node:crypto";
+import { createHash, generateKeyPairSync, type KeyObject, verify } from "node:crypto";
+import type { SignIn } from "../connections/github-sign-in.js";
 import type { ToolKeys } from "./types.js";
 
 const REPO = "fake-org/playground";
@@ -16,12 +17,28 @@ function keyPair() {
 }
 
 /**
- * Fake mode's keys: an RSA key made once per container, so the real JWT signing runs, and a stand-in Tavily key, so
- * the real search request is built. Nothing real is ever needed.
+ * Fake mode's keys: an RSA key made once per container, so the real JWT signing runs, and stand-in client and Tavily
+ * keys, so the real sign-in and search requests are built. Nothing real is ever needed.
  */
 export const fakeKeys = (): ToolKeys => ({
   githubAppId: "1", githubAppSlug: "fake-app", githubPrivateKey: keyPair().privatePem, tavilyKey: "fake-tavily-key",
+  githubClientId: "fake-client-id", githubClientSecret: "fake-client-secret",
 });
+
+/**
+ * Fake mode's GitHub sign-in page: the browser goes straight back to the return address, as GitHub does for a user
+ * who already authorized the App. The code carries the PKCE challenge, so the fake token exchange can check the verifier.
+ */
+export const fakeSignInPage = ({ redirectUri, state, challenge }: SignIn) =>
+  `${redirectUri}?${new URLSearchParams({ code: `fake-code.${challenge}`, state })}`;
+
+function userToken(body: { client_id?: string; client_secret?: string; code?: string; code_verifier?: string }): Response {
+  const [prefix, challenge] = (body.code ?? "").split(".");
+  const verified = !!body.code_verifier && createHash("sha256").update(body.code_verifier).digest("base64url") === challenge;
+  if (body.client_id !== "fake-client-id" || body.client_secret !== "fake-client-secret") return json(200, { error: "incorrect_client_credentials" });
+  if (prefix !== "fake-code" || !verified) return json(200, { error: "bad_verification_code" });
+  return json(200, { access_token: "ghu_fake", token_type: "bearer" });
+}
 
 function validJwt(jwt: string): boolean {
   const [header, payload, signature] = jwt.split(".");
@@ -100,8 +117,9 @@ function serve(routes: Route[], method: string, path: string, body: unknown): Re
 }
 
 /**
- * A stand-in for api.github.com: one installation (1, fake-org) with one repo whose default branch is main. App routes
- * check the JWT against the fake key, installation routes want the token this fake mints.
+ * A stand-in for api.github.com and GitHub's token exchange: one installation (1, fake-org) with one repo whose default
+ * branch is main. App routes check the JWT against the fake key, installation routes want the installation token this
+ * fake mints, and user routes the user token it hands out for its own sign-in codes.
  */
 export const fakeGitHubFetch: typeof fetch = async (input, init) => {
   const url = new URL(input instanceof Request ? input.url : input);
@@ -110,9 +128,18 @@ export const fakeGitHubFetch: typeof fetch = async (input, init) => {
   const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
   const path = url.pathname;
 
+  if (url.hostname === "github.com") return method === "POST" && path === "/login/oauth/access_token" ? userToken(body ?? {}) : notFound();
+  if (path.startsWith("/user/")) {
+    if (auth !== "ghu_fake") return json(401, { message: "Bad credentials" });
+    if (path === "/user/installations") return json(200, { total_count: 1, installations: [{ id: 1, account: { login: "fake-org" } }] });
+    if (path === "/user/installations/1/repositories") {
+      return json(200, { total_count: 1, repositories: [{ full_name: REPO, permissions: { admin: true, push: true, pull: true } }] });
+    }
+    return notFound();
+  }
+
   if (path.startsWith("/app/")) {
     if (!validJwt(auth)) return json(401, { message: "A JSON web token could not be decoded" });
-    if (method === "GET" && path === "/app/installations") return json(200, [{ id: 1, account: { login: "fake-org" } }]);
     if (method === "POST" && path === "/app/installations/1/access_tokens") {
       const repos: string[] = body?.repositories ?? [];
       if (repos.some((r) => r !== "playground")) return json(422, { message: "There is at least one repository that does not exist" });
@@ -121,7 +148,6 @@ export const fakeGitHubFetch: typeof fetch = async (input, init) => {
     return notFound();
   }
   if (auth !== "ghs_fake") return json(401, { message: "Bad credentials" });
-  if (method === "GET" && path === "/installation/repositories") return json(200, { repositories: [{ full_name: REPO }] });
   if (path === `/repos/${REPO}` || path.startsWith(`/repos/${REPO}/`)) {
     return serve(REPO_ROUTES, method, path.slice(`/repos/${REPO}`.length), body);
   }

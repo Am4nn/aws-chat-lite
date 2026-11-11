@@ -18,28 +18,3 @@ export function callbackTarget({ status, body }: {
     : [["mcpError", body.error ?? "Something went wrong."]]);
   return `${room}?${query}`;
 }
-
-const FLOW_STARTED = "mcp-flow-started";
-
-/** Set just before this tab leaves for a server's sign-in. Storage can be blocked, and then no result shows. */
-export function markFlowStarted() {
-  try {
-    sessionStorage.setItem(FLOW_STARTED, "1");
-  } catch {}
-}
-
-/**
- * The toast for a return from a server's sign-in, or null. Any link can carry `?mcp=` or `?mcpError=`, so only a return
- * this tab started a flow for shows one, and only once.
- */
-export function returnToast(mcp: string | null, mcpError: string | null): { text: string; kind: "done" | "error" } | null {
-  const text = mcpError ?? (mcp && `Connected ${mcp}`);
-  if (!text) return null;
-  try {
-    if (sessionStorage.getItem(FLOW_STARTED) === null) return null;
-    sessionStorage.removeItem(FLOW_STARTED);
-  } catch {
-    return null;
-  }
-  return { text, kind: mcpError ? "error" : "done" };
-}

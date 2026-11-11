@@ -72,7 +72,7 @@ describe("McpServers", () => {
     const navigate = vi.spyOn(console, "error").mockImplementation(() => {});
     render(<Panel initial={[conn("test")]} manage />);
     fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
-    await waitFor(() => expect(sessionStorage.getItem("mcp-flow-started")).toBe("1"));
+    await waitFor(() => expect(sessionStorage.getItem("sign-in-started")).toBe("1"));
     navigate.mockRestore();
     sessionStorage.clear();
   });

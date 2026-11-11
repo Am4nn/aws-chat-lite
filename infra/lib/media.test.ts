@@ -78,7 +78,7 @@ describe("media: push and voice", () => {
     expect(fnNamed("cl-aws-push", "aws").props.Environment.Variables.PUSH_MODE).toBe("live");
   });
 
-  it("every Lambda that posts a message, ends a run or asks for an approval may queue a push, and no other", () => {
+  it("every Lambda that posts a message, ends a run or asks for an approval may queue a push (the worker itself, no version or alias), and no other", () => {
     const push = fnNamed("cl-local-push").logicalId;
     const senders = Object.values(template().findResources("AWS::Lambda::Function"))
       .filter((f: any) => f.Properties.Environment?.Variables?.PUSH_FN_NAME).map((f: any) => f.Properties.FunctionName);
@@ -86,7 +86,8 @@ describe("media: push and voice", () => {
     for (const name of senders) {
       expect(fnNamed(name).props.Environment.Variables.PUSH_FN_NAME, name).toEqual({ Ref: push });
       const invokes = statementsOf(fnNamed(name)).filter((s: any) => [s.Action].flat().includes("lambda:InvokeFunction"));
-      expect(JSON.stringify(invokes), name).toContain(`"${push}"`);
+      expect(invokes.flatMap((st: any) => [st.Resource].flat()).filter((r: any) => JSON.stringify(r).includes(push)), name)
+        .toEqual([{ "Fn::GetAtt": [push, "Arn"] }]);
     }
   });
 

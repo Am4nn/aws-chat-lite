@@ -36,7 +36,8 @@ export function addChat(stack: CoreStack) {
   stack.table.grantReadData(fn);
   stack.table.grant(fn, "dynamodb:PutItem");
   fn.addEnvironment("WS_URL", stack.wsUrl);
-  files.grantPut(fn, "rooms/*");
+  // A presigned POST upload needs only PutObject. CDK's grantPut adds tagging, retention and multipart aborts.
+  fn.addToRolePolicy(new iam.PolicyStatement({ actions: ["s3:PutObject"], resources: [files.arnForObjects("rooms/*")] }));
   // Signing a download needs only GetObject on the uploads; the live Lambda's HeadObject of a new attachment does too.
   const readUploads = new iam.PolicyStatement({ actions: ["s3:GetObject"], resources: [files.arnForObjects("rooms/*")] });
   for (const signer of [fn, stack.live.liveFn]) {

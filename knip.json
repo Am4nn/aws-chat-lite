@@ -38,6 +38,9 @@
       ]
     },
     "web": {
+      "entry": [
+        "open-next.config.ts"
+      ],
       "project": [
         "**/*.{ts,tsx}"
       ],

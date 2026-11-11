@@ -3,6 +3,7 @@ import { callerFromEvent, subFromEvent } from "../lib/auth.js";
 import { errorResponse, json, parseBody } from "../lib/http.js";
 import { OAuthError, authServerMetadata, issuer, resourceMetadata } from "./model.js";
 import { oauthRepo, type OAuthRepo } from "./repo.js";
+import { viewerIp } from "./viewer-ip.js";
 
 type Event = APIGatewayProxyEventV2WithJWTAuthorizer;
 type Result = APIGatewayProxyStructuredResultV2;
@@ -19,7 +20,7 @@ const formOf = (event: Event) =>
  */
 export function makeHandler(repo: OAuthRepo) {
   return async (event: Event): Promise<Result> => {
-    const ip = event.requestContext.http.sourceIp;
+    const ip = viewerIp(event, process.env.ORIGIN_VERIFY_SECRET);
     const param = (name: string) => event.pathParameters?.[name] ?? "";
     try {
       switch (event.routeKey) {

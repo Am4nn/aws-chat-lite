@@ -37,7 +37,8 @@ export function roomTools({ github, roomId, mcp, privateOk }: RoomMcp & { github
 
 const fakeFetch: typeof fetch = (input, init) => {
   const url = input instanceof Request ? input.url : String(input);
-  return url.startsWith("https://api.github.com/") ? fakeGitHubFetch(input, init) : fakeWebFetch(input, init);
+  const github = url.startsWith("https://api.github.com/") || url.startsWith("https://github.com/login/oauth/");
+  return github ? fakeGitHubFetch(input, init) : fakeWebFetch(input, init);
 };
 
 // Both modes call MCP servers for real: locally that is the test server on this machine.
