@@ -10,6 +10,7 @@ describe("PreSignUp", () => {
   it("refuses the names mentions give a meaning to, in any case", async () => {
     await expect(handler(signUp("everyone"))).rejects.toThrow("That username is reserved.");
     await expect(handler(signUp("Agent"))).rejects.toThrow("That username is reserved.");
+    await expect(handler(signUp("schedule"))).rejects.toThrow("That username is reserved.");
   });
 
   it("confirms at once locally, where no email is sent", async () => {
