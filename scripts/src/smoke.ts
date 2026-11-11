@@ -1,39 +1,15 @@
 /**
  * End-to-end check of the running app (Floci + `npm run dev`): sign-up, the creators group, rooms, invites, roles,
- * the API's 403s, httpOnly cookies, and the motion rules (no layout shift, no movement under reduced motion).
- * Each person gets an isolated browser context, which also keeps Chrome's "save password" prompt from taking
- * keyboard and mouse focus away from the automated page.
+ * the API's 403s, httpOnly cookies, the motion rules (no layout shift, no movement under reduced motion), then the
+ * live chat between real browsers.
  */
-import puppeteer, { type Browser, type Page } from "puppeteer-core";
-import { CognitoIdentityProviderClient, AdminAddUserToGroupCommand } from "@aws-sdk/client-cognito-identity-provider";
+import puppeteer, { type Page } from "puppeteer-core";
 import { useLocalEnv } from "./env.js";
-import { readOutputs } from "./deploy-local.js";
 import { clsFrom } from "./smoke-helpers.js";
+import { WEB, bff, check, grantCreator, person, results, signUp } from "./smoke-page.js";
+import { emptyHomeCheck, liveChecks } from "./smoke-live.js";
 
-const WEB = process.env.WEB_URL ?? "http://localhost:3000";
 const CHROME = process.env.CHROME_PATH ?? "C:/Program Files/Google/Chrome/Application/chrome.exe";
-const PASSWORD = "password1";
-const results: [boolean, string][] = [];
-
-function check(ok: boolean, label: string) {
-  results.push([ok, label]);
-  console.log(`${ok ? "✅" : "❌"} ${label}`);
-}
-
-async function person(browser: Browser): Promise<Page> {
-  const page = await (await browser.createBrowserContext()).newPage();
-  await page.setViewport({ width: 1440, height: 900 });
-  await page.goto(`${WEB}/login`, { waitUntil: "networkidle0" });
-  return page;
-}
-
-/** Calls the BFF from inside the page, so the request carries that person's httpOnly cookies and Origin. */
-function bff(page: Page, path: string, method = "GET", body?: unknown) {
-  return page.evaluate(async (p, m, b) => {
-    const res = await fetch(p, { method: m, headers: { "content-type": "application/json" }, body: b === undefined ? undefined : JSON.stringify(b) });
-    return { status: res.status, body: await res.json().catch(() => ({})) };
-  }, path, method, body);
-}
 
 /**
  * Clicks the second chat and records the main content's on-screen transform on every frame for 800 ms. Sampling starts
@@ -60,25 +36,18 @@ async function offsetFrames(page: Page, roomUrl: string): Promise<number> {
   return (await page.evaluate(SWITCH_AND_SAMPLE)) as number;
 }
 
-async function signUp(page: Page, username: string) {
-  const r = await bff(page, "/bff/auth/signup", "POST", { username, password: PASSWORD });
-  check(r.status === 200, `${username} signs up (and is signed in by an httpOnly cookie)`);
-}
-
 async function main() {
   useLocalEnv();
   const browser = await puppeteer.launch({ executablePath: CHROME, headless: true });
   const stamp = Date.now() % 1_000_000;
-  const [owner, guest, late] = [`s${stamp}a`, `s${stamp}b`, `s${stamp}c`];
+  const [owner, guest, late, newcomer] = [`s${stamp}a`, `s${stamp}b`, `s${stamp}c`, `s${stamp}d`];
   try {
     const ownerPage = await person(browser);
     const guestPage = await person(browser);
     await signUp(ownerPage, owner);
     await signUp(guestPage, guest);
 
-    const { UserPoolId } = readOutputs("cl-local-core");
-    await new CognitoIdentityProviderClient({}).send(new AdminAddUserToGroupCommand({ UserPoolId, Username: owner, GroupName: "creators" }));
-    await bff(ownerPage, "/bff/auth/signin", "POST", { username: owner, password: PASSWORD });
+    await grantCreator(ownerPage, owner);
 
     check((await bff(guestPage, "/bff/api/rooms", "POST", { name: "nope" })).status === 403, "a non-creator can't create a room (403)");
     const room = await bff(ownerPage, "/bff/api/rooms", "POST", { name: `smoke ${stamp}` });
@@ -153,6 +122,10 @@ async function main() {
     await stalePage.setCookie({ name: "cl_id", value: `${fake({ alg: "RS256" })}.${fake({ sub: "x", exp: Math.floor(Date.now() / 1000) + 3600 })}.sig`, url: WEB, httpOnly: true });
     await stalePage.goto(roomUrl, { waitUntil: "networkidle0" });
     check(stalePage.url().endsWith(`/login?next=${encodeURIComponent(`/r/${roomId}`)}`), `a rejected session goes to sign-in and remembers the page (${stalePage.url().replace(WEB, "")})`);
+
+    await ownerPage.emulateMediaFeatures([]);
+    await liveChecks(stamp, { page: ownerPage, name: owner }, { page: guestPage, name: guest }, { page: latePage, name: late });
+    await emptyHomeCheck(browser, newcomer);
   } finally {
     await browser.close();
   }
