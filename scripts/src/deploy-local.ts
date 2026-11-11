@@ -2,16 +2,18 @@ import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { PutSecretValueCommand, SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { flociHost, localEnv, useLocalEnv } from "./env.js";
 import { assertOurFlociUp } from "./floci-owner.js";
 import { cleanStaleStacks } from "./stale.js";
 import { devEnvFile } from "./dev-env.js";
-import { MODEL_KEY_NAMES, modelKeysSecret } from "./model-keys.js";
+import { MODEL_KEY_NAMES, TOOL_KEY_NAMES, modelKeysSecret, toolKeysSecret } from "./keys-secrets.js";
 
 const infraDir = fileURLToPath(new URL("../../infra/", import.meta.url));
 const webEnvPath = fileURLToPath(new URL("../../web/.env.development.local", import.meta.url));
-const repoEnvPath = fileURLToPath(new URL("../../.env", import.meta.url));
+const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
+const repoEnvPath = `${repoRoot}.env`;
 
 /** Run the CDK CLI inside infra/ (default: with Floci env vars). Throws on non-zero exit. */
 export function cdk(args: string[], env: NodeJS.ProcessEnv = localEnv(process.env)): void {
@@ -26,24 +28,31 @@ export function readOutputs(stack: string, file = "outputs-local.json"): Record<
   return all[stack] ?? {};
 }
 
+async function putSecret(name: string, value: string, keyNames: readonly string[], what: string) {
+  await new SecretsManagerClient({}).send(new PutSecretValueCommand({ SecretId: name, SecretString: value }));
+  console.log(`${what} keys stored in Floci: ${keyNames.join(", ")}`);
+}
+
 /**
- * `--live-models` makes the run Lambda call the real providers. The keys go from .env straight into Floci's secret
- * after the deploy, never through CDK, so they stay out of the template and cdk.out.
+ * `--live-models` makes the run Lambda call the real providers, and `--live-tools` the real GitHub App and Tavily. The
+ * keys go from .env straight into Floci's secrets after the deploy, never through CDK, so they stay out of the
+ * template and cdk.out. They are read before the deploy, so a missing one fails fast.
  */
 async function main() {
   const liveModels = process.argv.includes("--live-models");
-  const keysSecret = liveModels ? modelKeysSecret(existsSync(repoEnvPath) ? readFileSync(repoEnvPath, "utf8") : "") : undefined;
+  const liveTools = process.argv.includes("--live-tools");
+  const envText = existsSync(repoEnvPath) ? readFileSync(repoEnvPath, "utf8") : "";
+  const modelKeys = liveModels ? modelKeysSecret(envText) : undefined;
+  const toolKeys = liveTools ? toolKeysSecret(envText, (path) => readFileSync(resolve(repoRoot, path), "utf8")) : undefined;
   await assertOurFlociUp();
   useLocalEnv();
   const stale = await cleanStaleStacks();
   if (stale.length) console.log(`Floci was reset; removed stale stack records: ${stale.join(", ")}`);
   cdk(["bootstrap", "aws://000000000000/us-east-1", "-c", "stage=local"]);
-  const cdkEnv = { ...localEnv(process.env), MODEL_GATEWAY: liveModels ? "live" : "fake" };
+  const cdkEnv = { ...localEnv(process.env), MODEL_GATEWAY: liveModels ? "live" : "fake", TOOL_MODE: liveTools ? "live" : "fake" };
   cdk(["deploy", "cl-local-core", "-c", "stage=local", "--require-approval", "never", "--outputs-file", "cdk.out/outputs-local.json"], cdkEnv);
-  if (keysSecret) {
-    await new SecretsManagerClient({}).send(new PutSecretValueCommand({ SecretId: "cl-local-model-keys", SecretString: keysSecret }));
-    console.log(`model keys stored in Floci: ${MODEL_KEY_NAMES.join(", ")}`);
-  }
+  if (modelKeys) await putSecret("cl-local-model-keys", modelKeys, MODEL_KEY_NAMES, "model");
+  if (toolKeys) await putSecret("cl-local-tool-keys", toolKeys, TOOL_KEY_NAMES, "tool");
   const out = readOutputs("cl-local-core");
   const api = `http://${flociHost(out.ApiUrl)}`;
   writeFileSync(webEnvPath, devEnvFile({ apiUrl: api, userPoolClientId: out.UserPoolClientId, streamUrl: out.StreamUrl }));

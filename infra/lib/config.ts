@@ -16,6 +16,8 @@ export interface StageConfig {
   s3PublicEndpoint?: string;
   /** Which models answer: the fake, or the real providers. Real models cost money, so local opts in. */
   modelGateway: "fake" | "live";
+  /** Which GitHub App and web search the tools reach: a canned fake, or the real ones. Locally that is opt-in too. */
+  toolMode: "fake" | "live";
 }
 
 function isFlociEndpoint(url: string | undefined): boolean {
@@ -39,14 +41,14 @@ export function loadConfig(stage: string | undefined, env: NodeJS.ProcessEnv): S
     return {
       stage, prefix: "cl-local", isLocal: true, region: "us-east-1",
       siteOrigins: ["http://localhost:3000", "http://localhost:3100"], s3PublicEndpoint: "http://localhost:4566",
-      modelGateway: env.MODEL_GATEWAY === "live" ? "live" : "fake",
+      modelGateway: env.MODEL_GATEWAY === "live" ? "live" : "fake", toolMode: env.TOOL_MODE === "live" ? "live" : "fake",
     };
   }
   if (stage === "aws") {
     if (env.AWS_ENDPOINT_URL) throw new Error("stage=aws: unset AWS_ENDPOINT_URL first (it is pointing at an emulator).");
     return {
       stage, prefix: "cl-aws", isLocal: false, region: "ap-southeast-2", siteOrigins: ["https://chat.amanarya.com"],
-      modelGateway: "live",
+      modelGateway: "live", toolMode: "live",
     };
   }
   throw new Error(`stage must be local or aws (got "${stage}"). Pass -c stage=local`);

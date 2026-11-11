@@ -15,6 +15,7 @@ import { addChat } from "./chat.js";
 import { addThreads } from "./threads.js";
 import { addRuns } from "./runs.js";
 import { addStream } from "./stream.js";
+import { addConnections } from "./connections.js";
 
 /** Path to a handler file in services/src */
 export const servicePath = (file: string) =>
@@ -67,9 +68,13 @@ export class CoreStack extends Stack {
     this.runs = addRuns(this);
     // A message sent in a thread over the socket starts or steers its run.
     this.allowRunStart(this.live.liveFn);
+    // Stopping a run that waits on an approval wakes it, and so does a decision.
+    this.allowRunCallback(this.live.liveFn);
     const threadsFn = addThreads(this);
     this.allowBroadcast(threadsFn);
     this.allowRunStart(threadsFn);
+    this.allowRunCallback(threadsFn);
+    addConnections(this);
     const { streamUrl } = addStream(this);
     threadsFn.addEnvironment("STREAM_URL", streamUrl);
 
@@ -109,6 +114,15 @@ export class CoreStack extends Stack {
     this.runs.alias.grantInvoke(fn);
     fn.addEnvironment("RUN_FN_NAME", this.runs.runFn.functionName);
     fn.addEnvironment("RUN_FN_QUALIFIER", this.runs.alias.aliasName);
+  }
+
+  /**
+   * Lets `fn` wake a run that is waiting on a durable callback. A durable execution's ARN is the run function's
+   * qualified ARN plus the execution's path, hence the `:*`.
+   */
+  allowRunCallback(fn: NodejsFunction) {
+    const arn = this.runs.runFn.functionArn;
+    fn.addToRolePolicy(new iam.PolicyStatement({ actions: ["lambda:SendDurableExecutionCallbackSuccess"], resources: [arn, `${arn}:*`] }));
   }
 
   /**
