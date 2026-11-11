@@ -48,6 +48,11 @@ describe("run engine", () => {
     });
   });
 
+  it("gives the run function the local sandbox token only when the deploy passes one", () => {
+    expect(fnNamed("cl-local-run").props.Environment.Variables.SANDBOX_TOKEN).toBeUndefined();
+    expect(fnNamed("cl-local-run", { ...FLOCI, SANDBOX_TOKEN: "t" }).props.Environment.Variables).toMatchObject({ SANDBOX_TOKEN: "t" });
+  });
+
   it("keeps the hand-set keys secret on AWS and lets cdk destroy remove it locally", () => {
     const local = Object.values(template().findResources("AWS::SecretsManager::Secret"))[0] as any;
     expect(local.DeletionPolicy).toBe("Delete");
