@@ -2,6 +2,12 @@ export type Stage = "local" | "aws";
 
 const DOMAIN_NAME = "chat.amanarya.com";
 
+/**
+ * Requests per second for every route of the AWS API and socket stages. On the socket stage it also limits `$connect`,
+ * the connection-rate protection: a flood of new sockets is refused at the edge before any Lambda runs.
+ */
+export const EDGE_THROTTLE = { rateLimit: 50, burstLimit: 100 };
+
 /** What only a real deploy needs: the public domain, its certificate and who the alarms mail. */
 export interface ProdSettings {
   domainName: typeof DOMAIN_NAME;

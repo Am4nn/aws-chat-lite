@@ -21,7 +21,8 @@ export function addAuth(stack: CoreStack): Auth {
     selfSignUpEnabled: true,
     signInAliases: { username: true },
     passwordPolicy: { minLength: 8, requireSymbols: false, requireUppercase: false, requireDigits: false },
-    removalPolicy: RemovalPolicy.DESTROY,
+    // Friends' accounts outlive a stack delete on AWS; Floci's are disposable.
+    removalPolicy: isLocal ? RemovalPolicy.DESTROY : RemovalPolicy.RETAIN,
     lambdaTriggers: { preSignUp: stack.addFunction("presignup", "auth/presignup.ts") },
     ...(!isLocal && {
       standardAttributes: { email: { required: true, mutable: true } },

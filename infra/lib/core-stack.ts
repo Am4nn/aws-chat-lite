@@ -4,10 +4,11 @@ import { Construct } from "constructs";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as logs from "aws-cdk-lib/aws-logs";
 import { NodejsFunction, type NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
 import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
-import type { StageConfig } from "./config.js";
+import { EDGE_THROTTLE, type StageConfig } from "./config.js";
 import { addAuth, type Auth } from "./auth.js";
 import { addRooms } from "./rooms.js";
 import { addLive } from "./live.js";
@@ -25,6 +26,13 @@ import { addSandbox } from "./sandbox.js";
 /** Path to a handler file in services/src */
 export const servicePath = (file: string) =>
   fileURLToPath(new URL(`../../services/src/${file}`, import.meta.url));
+
+/** One JSON line per request, so Logs Insights can filter on any field. */
+const ACCESS_LOG_FORMAT = JSON.stringify({
+  requestId: "$context.requestId", ip: "$context.identity.sourceIp", requestTime: "$context.requestTime",
+  routeKey: "$context.routeKey", status: "$context.status", responseLength: "$context.responseLength",
+  authorizerError: "$context.authorizer.error", integrationError: "$context.integrationErrorMessage",
+});
 
 export interface CoreStackProps extends StackProps {
   config: StageConfig;
@@ -46,7 +54,7 @@ export class CoreStack extends Stack {
   constructor(scope: Construct, id: string, props: CoreStackProps) {
     super(scope, id, props);
     this.stageConfig = props.config;
-    const { prefix } = props.config;
+    const { prefix, isLocal } = props.config;
 
     // Single-table design: every entity lives in this one table, and gsi1 serves the lookups by user.
     this.table = new dynamodb.Table(this, "Main", {
@@ -56,7 +64,9 @@ export class CoreStack extends Stack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       timeToLiveAttribute: "ttl",
       stream: dynamodb.StreamViewType.NEW_IMAGE,
-      removalPolicy: RemovalPolicy.DESTROY, // A learning project: `cdk destroy` should leave nothing behind.
+      // On AWS users' data outlives a stack delete, and point-in-time recovery can undo a bad write. Floci's is disposable.
+      removalPolicy: isLocal ? RemovalPolicy.DESTROY : RemovalPolicy.RETAIN,
+      ...(!isLocal && { pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true } }),
     });
     this.table.addGlobalSecondaryIndex({
       indexName: "gsi1",
@@ -65,6 +75,14 @@ export class CoreStack extends Stack {
     });
 
     this.api = new apigwv2.HttpApi(this, "Api", { apiName: `${prefix}-api` });
+    if (!isLocal) {
+      // HttpApi takes no options for the default stage it creates, so these are set on its CloudFormation resource.
+      const stage = this.api.defaultStage!.node.defaultChild as apigwv2.CfnStage;
+      stage.defaultRouteSettings = { throttlingRateLimit: EDGE_THROTTLE.rateLimit, throttlingBurstLimit: EDGE_THROTTLE.burstLimit };
+      stage.accessLogSettings = {
+        destinationArn: this.logGroup("ApiAccessLogs", `/aws/apigateway/${prefix}-api`).logGroupArn, format: ACCESS_LOG_FORMAT,
+      };
+    }
     // Floci serves each HTTP API on its own host, as it does the WebSocket API.
     this.publicApiUrl = props.config.isLocal ? `http://${this.api.apiId}.execute-api.localhost.floci.io:4566` : props.config.mcpBaseUrl!;
     this.auth = addAuth(this);
@@ -155,20 +173,31 @@ export class CoreStack extends Stack {
 
   /**
    * A Lambda from services/src with STAGE and TABLE_NAME set; `props` overrides the defaults and adds environment
-   * variables. Table read/write is opt-in, so each function gets least privilege.
+   * variables. Table read/write is opt-in, so each function gets least privilege. On AWS it logs to its own group, kept
+   * for a month instead of Lambda's default of forever.
    */
   addFunction(name: string, entry: string, opts: { tableAccess?: boolean } = {}, props: Partial<NodejsFunctionProps> = {}): NodejsFunction {
+    const functionName = `${this.stageConfig.prefix}-${name}`;
     const fn = new NodejsFunction(this, `Fn-${name}`, {
-      functionName: `${this.stageConfig.prefix}-${name}`,
+      functionName,
       entry: servicePath(entry),
       runtime: lambda.Runtime.NODEJS_22_X,
       memorySize: 256,
       timeout: Duration.seconds(10),
       bundling: { minify: true },
+      ...(!this.stageConfig.isLocal && { logGroup: this.logGroup(`Logs-${name}`, `/aws/lambda/${functionName}`) }),
       ...props,
       environment: { STAGE: this.stageConfig.stage, TABLE_NAME: this.table.tableName, ...props.environment },
     });
     if (opts.tableAccess) this.table.grantReadWriteData(fn);
     return fn;
+  }
+
+  /**
+   * A month of logs. The group goes with the stack: logs aren't users' data, and a group left behind would make the
+   * next deploy fail on its name.
+   */
+  private logGroup(id: string, logGroupName: string) {
+    return new logs.LogGroup(this, id, { logGroupName, retention: logs.RetentionDays.ONE_MONTH, removalPolicy: RemovalPolicy.DESTROY });
   }
 }
