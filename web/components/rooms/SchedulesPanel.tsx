@@ -4,7 +4,7 @@ import { useContext, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Globe, Pencil, Plus, Trash2 } from "lucide-react";
 import { agentLabel, RoomAgentsContext } from "@/lib/client/agents";
-import { bff, errorText } from "@/lib/client/bff";
+import { bff, BffError, errorText } from "@/lib/client/bff";
 import { useLiveEvent } from "@/lib/client/LiveProvider";
 import { cadenceLabel, canEditSchedule, nextLabel } from "@/lib/client/schedules";
 import { swap } from "@/lib/motion";
@@ -60,6 +60,12 @@ export function SchedulesPanel({ roomId, me, chats, archived }: { roomId: string
       refetch();
     } catch (e) {
       toast(errorText(e), "error");
+      // A 503 on create means the schedule was saved but left off: its row is there to switch on, and a second
+      // press would make a copy.
+      if (!schedule && e instanceof BffError && e.status === 503) {
+        setEditing(null);
+        refetch();
+      }
     } finally {
       setBusy(false);
     }
