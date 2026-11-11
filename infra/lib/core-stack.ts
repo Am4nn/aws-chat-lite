@@ -21,6 +21,7 @@ import { addMcpConnections } from "./mcp-connections.js";
 import { addMcpServer } from "./mcp-server.js";
 import { addOAuth } from "./oauth.js";
 import { addSandbox } from "./sandbox.js";
+import { addOps } from "./ops.js";
 
 /** Path to a handler file in services/src */
 export const servicePath = (file: string) =>
@@ -99,6 +100,7 @@ export class CoreStack extends Stack {
     new CfnOutput(this, "TableName", { value: this.table.tableName });
     new CfnOutput(this, "StreamUrl", { value: streamUrl });
     new CfnOutput(this, "McpBaseUrl", { value: this.publicApiUrl });
+    if (props.config.prod) addOps(this, props.config.prod.alertEmail);
   }
 
   /** Adds a route; JWT-protected unless `public`. */
