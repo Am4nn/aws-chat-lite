@@ -1,7 +1,10 @@
+import { mcpServerOf } from "../mcp/client/names.js";
 import { modelInfo, type Provider } from "../models/catalog.js";
 import type { ToolCall, ToolSpec } from "../models/gateway.js";
+import { mcpTaint, type TaintSource } from "../models/privacy.js";
 import { LANGUAGES, MAX_TIMEOUT_SEC } from "../sandbox/sandbox.js";
 import { findTool, roomTools, type RoomMcp } from "../tools/index.js";
+import type { Tool } from "../tools/types.js";
 
 export const FAKE_TOOLS: ToolSpec[] = [
   {
@@ -47,6 +50,19 @@ export function toolsFor(model: string, served: Provider, room: RoomMcp & { gith
 export function mayRun(model: string, served: Provider, name: string, { roomId, mcp }: RoomMcp): boolean {
   const signedIn = mcp.map((c) => ({ ...c, status: "connected" as const }));
   return toolsFor(model, served, { roomId, github: true, mcp: signedIn }).some((t) => t.name === name);
+}
+
+/**
+ * Whether a call waits for a member's approval. A write always does. A web or MCP call sends its input out, so text
+ * injected into private content could have the model carry that content out in it: such a call asks once the thread
+ * holds any private content but what this same MCP server returned itself. `taint` is the thread's, with whatever
+ * the model's turn saw that the stored taint may lag behind.
+ */
+export function asksFirst(tool: Pick<Tool, "spec" | "kind" | "write">, taint: TaintSource[]): boolean {
+  if (tool.write) return true;
+  if (tool.kind === "github") return false;
+  const own = tool.kind === "mcp" ? mcpTaint(mcpServerOf(tool.spec.name)) : undefined;
+  return taint.some((t) => t !== own);
 }
 
 const firstLine = (code: unknown) => String(code ?? "").split("\n").map((l) => l.trim()).find(Boolean) ?? "";

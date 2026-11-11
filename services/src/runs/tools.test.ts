@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { McpConnection } from "../threads/types.js";
-import { FAKE_TOOLS, mayRun, runTool, SANDBOX_TOOL, toolDetail, toolsFor } from "./tools.js";
+import { findTool } from "../tools/index.js";
+import { asksFirst, FAKE_TOOLS, mayRun, runTool, SANDBOX_TOOL, toolDetail, toolsFor } from "./tools.js";
 
 const conn = (status: McpConnection["status"]): McpConnection => ({
   name: "test", url: "http://127.0.0.1:4710/mcp", auth: "oauth", status, toolCount: 1, toolsAt: "2026-11-11T00:00:00Z", addedBy: "aman",
@@ -118,5 +119,35 @@ describe("toolsFor", () => {
       },
       required: ["language", "code"],
     });
+  });
+});
+
+describe("asksFirst", () => {
+  const echo = { name: "echo", description: "Repeats the text.", inputSchema: { type: "object" }, readOnly: true };
+  const room = { roomId: "r1", mcp: [{ ...conn("connected"), tools: [echo, conn("connected").tools[0]!] }, { ...conn("connected"), name: "other" }] };
+  const tool = (name: string) => findTool(name, room)!;
+
+  it("asks before every write, whatever the thread holds", () => {
+    expect(asksFirst(tool("mcp__test__add_note"), [])).toBe(true);
+    expect(asksFirst(tool("mcp__test__add_note"), ["mcp:test"])).toBe(true);
+    expect(asksFirst(tool("github_comment"), [])).toBe(true);
+  });
+
+  it("lets a read-only MCP call go without asking on a clean thread, or one holding only that server's own output", () => {
+    expect(asksFirst(tool("mcp__test__echo"), [])).toBe(false);
+    expect(asksFirst(tool("mcp__test__echo"), ["mcp:test"])).toBe(false);
+  });
+
+  it.each([["github"], ["attachment"], ["sandbox"], ["mcp:other"]] as const)(
+    "asks before a read-only MCP call once the thread holds %s, since its input leaves for the server", (source) => {
+      expect(asksFirst(tool("mcp__test__echo"), [source])).toBe(true);
+      expect(asksFirst(tool("mcp__test__echo"), ["mcp:test", source])).toBe(true);
+    },
+  );
+
+  it("asks before a web call on any private thread, MCP output included; a GitHub read never asks", () => {
+    expect(asksFirst(tool("web_fetch"), [])).toBe(false);
+    expect(asksFirst(tool("web_fetch"), ["mcp:test"])).toBe(true);
+    expect(asksFirst(tool("github_read_file"), ["attachment"])).toBe(false);
   });
 });

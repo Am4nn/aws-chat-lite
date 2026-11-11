@@ -85,6 +85,15 @@ describe("beginAuthorization", () => {
     expect(server.registrations).toBe(2);
   });
 
+  it("registers again when the known client was registered for another return address", async () => {
+    const server = await start();
+    const { pending } = await begin(server);
+    const elsewhere = { ...pending.client, redirect_uris: ["http://localhost:3100/bff/mcp/callback"] };
+    const { pending: again } = await begin(server, { issuer: pending.issuer, client: elsewhere });
+    expect(server.registrations).toBe(2);
+    expect(again.client.client_id).not.toBe(pending.client.client_id);
+  });
+
   it("explains a server that doesn't take new clients", async () => {
     const server = await start({ registration: false });
     await expect(begin(server)).rejects.toThrow("127.0.0.1 doesn't let new apps sign up, so chat-lite can't connect to it.");

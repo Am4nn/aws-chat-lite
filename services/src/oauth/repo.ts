@@ -2,9 +2,10 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { DeleteCommand, GetCommand, PutCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { User } from "../lib/auth.js";
 import { bestEffort } from "../lib/best-effort.js";
-import { conditionFailed, docClient, queryAll, tableName } from "../lib/db.js";
+import { conditionFailed, docClient, queryAll, tableName, transactionConflict } from "../lib/db.js";
 import { Conflict, NotFound, ValidationError } from "../lib/errors.js";
 import { countTowardsRate } from "../lib/rate.js";
+import { userActive } from "../lib/users.js";
 import type { McpApp, Scope } from "../threads/types.js";
 import {
   OAuthError, grantIdOf, hashOf, issuer, newSecret, parseScope, redirectMatches, siteUrl, validRedirectUri, verifyPkce,
@@ -19,6 +20,8 @@ const MAX_REDIRECT_URIS = 10;
 const MAX_CLIENT_NAME = 100;
 const PER_HOUR = { register: 20, authorize: 60 };
 const LAST_USED_EVERY_MS = 60_000;
+/** How long the refresh token a rotation just replaced reads as a race rather than a leak. */
+const REUSE_GRACE_SEC = 30;
 /** Used, expired or never issued all read the same, as a 404, so the consent page can say so without telling them apart. */
 const REQUEST_EXPIRED = "This sign-in request expired. Start again from your app.";
 
@@ -64,9 +67,10 @@ function backToClient(redirectUri: string, params: Record<string, unknown>) {
 /**
  * An OAuth 2.1 authorization server for MCP clients. Sign-in and consent happen on the web app's consent page, so this
  * never sees a password. Every client is public (PKCE instead of a secret), and every token is opaque: only its
- * SHA-256 hash is stored, all on one grant item per app, so revoking an app is deleting that item.
+ * SHA-256 hash is stored, all on one grant item per app, so revoking an app is deleting that item. `accountActive`
+ * says whether the user's account still exists.
  */
-export function oauthRepo() {
+export function oauthRepo(accountActive: (username: string) => Promise<boolean> = userActive) {
   const db = docClient();
   const TableName = tableName();
 
@@ -143,7 +147,9 @@ export function oauthRepo() {
 
   /**
    * Refresh tokens rotate, and the old one stops working. One presented again means it leaked (RFC 9700 §4.14), so the
-   * whole grant goes. The scope never changes on refresh.
+   * whole grant goes, unless the rotation that replaced it happened moments ago: then it is one client refreshing
+   * twice at once, and only the loser is refused. A refresh also ends the grant of an account deleted or disabled
+   * since, so an app can keep a user's access an hour at most after that. The scope never changes on refresh.
    */
   async function refresh(form: URLSearchParams) {
     const token = form.get("refresh_token") ?? "";
@@ -155,11 +161,16 @@ export function oauthRepo() {
       await deleteGrant(grantId);
       return invalidGrant();
     };
-    if (hashOf(token) !== grant.refreshHash) throw await revoked();
+    const presented = hashOf(token);
+    if (presented !== grant.refreshHash) {
+      if (presented === grant.prevRefreshHash && nowSec() - Number(grant.rotatedAt) <= REUSE_GRACE_SEC) throw invalidGrant();
+      throw await revoked();
+    }
     const client = await getClient(form.get("client_id"));
     if (!client) throw invalidClient();
     if (client.clientId !== grant.clientId) throw invalidGrant();
     checkResource(form.get("resource"));
+    if (!(await accountActive(String(grant.username)))) throw await revoked();
 
     const tokens = newTokens(grantId);
     const { accessHash, accessExp, refreshHash, ttl } = tokens.hashes;
@@ -169,16 +180,19 @@ export function oauthRepo() {
           {
             Update: {
               TableName, Key: grantKey(grantId),
-              UpdateExpression: "SET accessHash = :ah, accessExp = :ae, refreshHash = :rh, #ttl = :ttl",
+              UpdateExpression: "SET accessHash = :ah, accessExp = :ae, refreshHash = :rh, prevRefreshHash = :old, rotatedAt = :now, #ttl = :ttl",
               ConditionExpression: "refreshHash = :old", ExpressionAttributeNames: TTL_NAME,
-              ExpressionAttributeValues: { ":ah": accessHash, ":ae": accessExp, ":rh": refreshHash, ":ttl": ttl, ":old": hashOf(token) },
+              ExpressionAttributeValues: {
+                ":ah": accessHash, ":ae": accessExp, ":rh": refreshHash, ":ttl": ttl, ":old": presented, ":now": nowSec(),
+              },
             },
           },
           touchClient(client.clientId),
         ],
       }));
     } catch (e) {
-      if (conditionFailed(e)) throw await revoked();
+      // The token matched when read, so another refresh with it got there first.
+      if (conditionFailed(e) || transactionConflict(e)) throw invalidGrant();
       throw e;
     }
     return tokenResponse(tokens, grant.scopes);
@@ -207,28 +221,29 @@ export function oauthRepo() {
     },
 
     /**
-     * A bad client or redirect URI is answered here and never redirected, since sending an error to an unverified
-     * URI would make this an open redirector. Every later fault goes back to the client.
+     * Every fault is answered here as an error page, never redirected: anyone can register any https address, so a
+     * registered redirect URI is still untrusted, and an instant redirect to it would make this an open redirector
+     * (RFC 9700 §4.11.2). The user only goes back to the client after choosing on the consent page, which names it.
      */
-    async startRequest(q: Record<string, string | undefined>, ip: string): Promise<{ consent: string } | { redirect: string } | { error: string; status: number }> {
+    async startRequest(q: Record<string, string | undefined>, ip: string): Promise<{ consent: string } | { error: string; status: number }> {
       await hit("authorize", ip);
+      const refuse = (error: string) => ({ error, status: 400 });
       const client = await getClient(q.client_id);
-      if (!client) return { error: "This app isn't registered with chat-lite, or its registration expired.", status: 400 };
+      if (!client) return refuse("This app isn't registered with chat-lite, or its registration expired.");
       const redirectUri = q.redirect_uri;
       if (!redirectUri || !redirectMatches(client.redirectUris as string[], redirectUri)) {
-        return { error: "This redirect URI isn't registered for the app.", status: 400 };
+        return refuse("This redirect URI isn't registered for the app.");
       }
-      const refuse = (error: string, description: string) => ({ redirect: backToClient(redirectUri, { error, error_description: description, state: q.state }) });
-      if (q.response_type !== "code") return refuse("unsupported_response_type", "Only response_type=code is supported.");
+      if (q.response_type !== "code") return refuse("Only response_type=code is supported.");
       if (q.code_challenge_method !== "S256" || !/^[A-Za-z0-9_-]{43}$/.test(q.code_challenge ?? "")) {
-        return refuse("invalid_request", "A PKCE code_challenge with method S256 is required.");
+        return refuse("A PKCE code_challenge with method S256 is required.");
       }
       let scopes: Scope[];
       try {
         scopes = parseScope(q.scope);
         checkResource(q.resource);
       } catch (e) {
-        if (e instanceof OAuthError) return refuse(e.code, e.message);
+        if (e instanceof OAuthError) return refuse(e.message);
         throw e;
       }
       const requestId = randomBytes(16).toString("base64url");

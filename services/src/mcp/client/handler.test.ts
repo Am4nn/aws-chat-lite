@@ -198,7 +198,7 @@ describe("remote servers that fail", () => {
     expect(answers.map((a) => a.status)).toEqual([502, 502, 502]);
     expect(answers[0]!.body.error).toMatch(/^127\.0\.0\.1 didn't answer: .*ECONNREFUSED/);
     expect(answers[1]!.body.error).toBe("127.0.0.1 doesn't let new apps sign up, so chat-lite can't connect to it.");
-    expect(answers[2]!.body.error).toBe("127.0.0.1 sent sign-in details chat-lite can't read.");
+    expect(answers[2]!.body.error).toBe("127.0.0.1 sent an answer chat-lite can't read.");
   });
 });
 

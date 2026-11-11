@@ -52,7 +52,9 @@ export async function beginAuthorization(
   if (!metadata) throw new UserError(`${host} doesn't say how to sign in, so chat-lite can't connect to it.`);
   const issuer = metadata.issuer;
 
-  let client = known?.issuer === issuer ? known.client : undefined;
+  // A client registered for another of the site's return addresses would be refused at the authorize page.
+  const reusable = known?.issuer === issuer && "redirect_uris" in known.client && known.client.redirect_uris.includes(redirectUri);
+  let client = reusable ? known.client : undefined;
   if (!client) {
     if (!metadata.registration_endpoint) throw new UserError(`${host} doesn't let new apps sign up, so chat-lite can't connect to it.`);
     client = await registerClient(info.authorizationServerUrl, {
