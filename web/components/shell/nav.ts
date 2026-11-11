@@ -1,3 +1,7 @@
+/** The sidebar's order, threads above chats, so a switch between the two lists moves the way the eye does. */
+export const navOrder = (threads: { threadId: string }[], chats: { chatId: string }[]) =>
+  [...threads.map((t) => t.threadId), ...chats.map((c) => c.chatId)];
+
 /** Content enters from the direction the user moved through the list. */
 export const direction = (prevIndex: number, nextIndex: number): "up" | "down" => (nextIndex < prevIndex ? "up" : "down");
 

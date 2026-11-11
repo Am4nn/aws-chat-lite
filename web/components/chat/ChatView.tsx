@@ -3,21 +3,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type DragEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Archive, Hash, Paperclip } from "lucide-react";
+import { Hash, Paperclip } from "lucide-react";
 import { errorText } from "@/lib/client/bff";
 import { excerpt } from "@/lib/client/format";
 import { useLive, useLiveStatus } from "@/lib/client/LiveProvider";
 import { canEditLast, withReaction } from "@/lib/client/messageRules";
-import { addPending, dropPending, failPending, newestSeq, updateMessage, type PendingMessage } from "@/lib/client/timeline";
+import { addPending, dropPending, failPending, keyOf, newestSeq, updateMessage, type PendingMessage } from "@/lib/client/timeline";
 import { useTimeZone } from "@/lib/client/useTimeZone";
 import { dur, instant } from "@/lib/motion";
 import type { Attachment, Me, Member, Message, Reaction, Role } from "@/lib/types";
 import { useToast } from "@/components/overlays/Toast";
+import { ArchivedNotice } from "./ArchivedNotice";
 import { Composer, type ComposerMode } from "./Composer";
 import { MessageList } from "./MessageList";
 import type { Row, RowActions, RowContext } from "./MessageRow";
 import { TypingLine } from "./TypingLine";
-import { keyOf, useChatTimeline } from "./useChatTimeline";
+import { useChatTimeline } from "./useChatTimeline";
 import { useUploads } from "./useUploads";
 
 const READ_DEBOUNCE_MS = 1000;
@@ -91,7 +92,7 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
   const deliver = useCallback(async (p: PendingMessage) => {
     try {
       const message = await live.request("send", {
-        roomId, chatId, clientId: p.clientId, text: p.text, replyToSeq: p.replyTo?.seq,
+        roomId, chatId, clientId: p.clientId, text: p.text, replyToSeq: p.replyTo?.seq, threadId: p.threadId,
         attachments: p.attachments.map(({ key, name, size, type }) => ({ key, name, size, type })),
       }) as Message;
       apply([message]);
@@ -115,7 +116,7 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
     if (hasNewer) void showLatest();
     const quoted = mode?.kind === "reply" ? mode.message : undefined;
     queue({
-      text, attachments: uploads.take(),
+      text, attachments: uploads.take(), threadId: mode?.kind === "thread" ? mode.threadId : undefined,
       replyTo: quoted && { seq: quoted.seq, authorName: quoted.authorName, excerpt: excerpt(quoted.text) },
     });
   }
@@ -144,6 +145,7 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
       }
     },
     reply: (m: Message) => setMode({ kind: "reply", message: m }),
+    replyInThread: (threadId: string) => setMode({ kind: "thread", threadId }),
     edit: (m: Message) => setMode({ kind: "edit", message: m }),
     async remove(m: Message) {
       try {
@@ -158,7 +160,7 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
       const failed = latest.current.pending.find((p) => p.clientId === clientId);
       if (!failed) return;
       setTimeline((t) => dropPending(t, clientId));
-      queue({ text: failed.text, attachments: failed.attachments, replyTo: failed.replyTo });
+      queue({ text: failed.text, attachments: failed.attachments, replyTo: failed.replyTo, threadId: failed.threadId });
     },
     discard(clientId: string) {
       const failed = latest.current.pending.find((p) => p.clientId === clientId);
@@ -208,14 +210,7 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
       />
       <TypingLine roomId={roomId} chatId={chatId} meId={me.userId} />
       {archived
-        ? (
-          <div className="mx-auto w-full max-w-[836px] px-4 pb-5 sm:px-7">
-            <div className="flex h-[54px] items-center gap-2.5 rounded-2xl border border-line bg-surface-1 px-[18px] text-[13.5px] text-text-3">
-              <Archive aria-hidden="true" size={15} />
-              This room is archived.
-            </div>
-          </div>
-        )
+        ? <ArchivedNotice />
         : (
           <Composer
             members={members} meId={me.userId} mode={mode} uploads={uploads} onModeChange={setMode}

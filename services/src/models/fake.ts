@@ -1,5 +1,6 @@
 import type { ModelMessage, ModelProvider, ModelRequest, ProviderChunk, StopReason } from "./gateway.js";
 import { NAME_PROMPT } from "./gateway.js";
+import { sleep as wait } from "../lib/sleep.js";
 import { ROUTER_PROMPT } from "./picks.js";
 
 const BODY_WORDS =
@@ -16,9 +17,12 @@ const stripDirectives = (text: string) =>
   text.replace(/\b(tools|words|drop):\d+|\broute:\S+|\b(slow|fail|cutoff|refuse)\b/g, " ");
 const firstWords = (text: string, n: number) => text.split(/\s+/).filter(Boolean).slice(0, n).join(" ");
 
-const charsOf = (m: ModelMessage) => (m.role === "tool" ? m.output.length : m.text.length);
+const charsOf = (m: ModelMessage) => {
+  if (m.role === "tool") return m.output.length;
+  return m.text.length + (m.role === "assistant" && m.toolCalls ? JSON.stringify(m.toolCalls).length : 0);
+};
 
-export function fakeModel({ sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms)) } = {}): ModelProvider {
+export function fakeModel({ sleep = wait } = {}): ModelProvider {
   return { stream: (req) => run(req, sleep) };
 }
 
@@ -86,6 +90,10 @@ async function* run(req: ModelRequest, sleep: (ms: number) => Promise<void>): As
   for (const text of drop === undefined ? pieces : pieces.slice(0, drop + 1)) {
     if (req.signal?.aborted) {
       yield* finish("aborted");
+      return;
+    }
+    if (outputChars / 4 >= req.maxTokens) {
+      yield* finish("max_tokens");
       return;
     }
     await sleep(slow ? 150 : 15);

@@ -3,15 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { bff, errorText } from "@/lib/client/bff";
 import { useLive, useLiveEvent } from "@/lib/client/LiveProvider";
-import { applyMessages, newestSeq, skipsAhead, type Timeline } from "@/lib/client/timeline";
+import { applyMessages, keyOf, newestSeq, skipsAhead, type Timeline } from "@/lib/client/timeline";
 import type { Message } from "@/lib/types";
 import { useToast } from "@/components/overlays/Toast";
 import type { Jump } from "./MessageList";
 
 const PAGE = 50;
-
-/** Rows keep one identity from pending to stored, so a sent message doesn't re-enter when its ack lands. */
-export const keyOf = (m: { clientId?: string; seq?: number }) => (m.clientId ? `c:${m.clientId}` : `s:${m.seq}`);
 
 const startsAtFirst = (messages: Message[]) => (messages[0]?.seq ?? 1) <= 1;
 

@@ -5,6 +5,9 @@ export default defineConfig({
   test: {
     include: ["src/**/*.int.test.ts"],
     testTimeout: 20000,
+    // Floci applies DynamoDB writes one at a time, each rewriting its whole store, so files run side by side only
+    // queue behind each other's writes and their timings depend on which other files happen to be running.
+    fileParallelism: false,
     env: {
       AWS_ENDPOINT_URL: "http://localhost:4566",
       AWS_ACCESS_KEY_ID: "test",

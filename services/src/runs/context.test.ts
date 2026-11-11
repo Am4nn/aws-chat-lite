@@ -20,7 +20,7 @@ describe("buildContext", () => {
     const run = events(
       { type: "run.started", pick: "auto", startedBy: "aman" },
       started(1), finished(1), { type: "usage", model: "fake", job: "run", inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0, costMicros: 18 },
-      { type: "text", text: "a " }, { type: "text", text: "b" },
+      { type: "text", text: "a ", turn: 1 }, { type: "text", text: "b", turn: 1 },
     );
     expect(buildContext(prior, run)).toEqual([
       { role: "user", author: "aman", text: "hi" },
@@ -49,7 +49,7 @@ describe("buildContext", () => {
 
   it("a model.turn gives the assistant message it belongs to the provider's own content", () => {
     const content = [{ type: "text", text: "a" }, { type: "tool_use", id: "call-1" }];
-    const run = events({ type: "text", text: "a" }, { type: "model.turn", model: "m", content }, started(1), finished(1));
+    const run = events({ type: "text", text: "a", turn: 1 }, { type: "model.turn", model: "m", content, turn: 1 }, started(1), finished(1));
     expect(buildContext([message(1, "u1", "aman", "go")], run)).toEqual([
       { role: "user", author: "aman", text: "go" },
       { role: "assistant", text: "a", native: { model: "m", content }, toolCalls: [call(1)] },
@@ -79,23 +79,49 @@ describe("buildContext", () => {
   });
 
   it("text before a tool call stays in the same assistant message", () => {
-    const run = events({ type: "text", text: "Let me look." }, started(1), finished(1));
+    const run = events({ type: "text", text: "Let me look.", turn: 1 }, started(1), finished(1));
     expect(buildContext([], run).slice(0, 1)).toEqual([{ role: "assistant", text: "Let me look.", toolCalls: [call(1)] }]);
+  });
+});
+
+describe("a failed attempt's writes", () => {
+  // Turn 2 wrote "Half an" and failed; its retry reset the turn and answered again.
+  const run = events(
+    { type: "text", text: "Let me look.", turn: 1 }, started(1), finished(1),
+    { type: "text", text: "\n\nHalf an", turn: 2 },
+    { type: "steer", messageSeq: 2, authorName: "ravi", text: "more" },
+    { type: "text.reset", turn: 2 },
+    { type: "text", text: "\n\nWhole answer.", turn: 2 },
+  );
+  it("is left out of the answer", () => {
+    expect(answerOf(run)).toEqual({ text: "Let me look.\n\nWhole answer.", final: "Whole answer." });
+  });
+  it("is left out of what the model sees, while the steer read in that attempt stays", () => {
+    expect(buildContext([], run).slice(2)).toEqual([
+      { role: "user", author: "ravi", text: "more" },
+      { role: "assistant", text: "\n\nWhole answer." },
+    ]);
+  });
+  it("lose their native turn too, so the retry's own is what goes back to the model", () => {
+    const native = (content: string): RunEventBody => ({ type: "model.turn", model: "m", content, turn: 1 });
+    const retried = [{ type: "text", text: "a", turn: 1 }, native("first"), { type: "text.reset", turn: 1 }, { type: "text", text: "b", turn: 1 }] as RunEventBody[];
+    expect(buildContext([], events(...retried))).toEqual([{ role: "assistant", text: "b" }]);
+    expect(buildContext([], events(...retried, native("second")))[0]).toMatchObject({ native: { content: "second" } });
   });
 });
 
 describe("answerOf", () => {
   it("joins every text event, and takes the final turn's text for the summary", () => {
     const run = events(
-      { type: "text", text: "Let me look." }, started(1), finished(1),
-      { type: "text", text: "\n\nFirst answer." },
+      { type: "text", text: "Let me look.", turn: 1 }, started(1), finished(1),
+      { type: "text", text: "\n\nFirst answer.", turn: 1 },
       { type: "steer", messageSeq: 2, authorName: "ravi", text: "more" },
-      { type: "text", text: "\n\nSecond " }, { type: "text", text: "answer." },
+      { type: "text", text: "\n\nSecond ", turn: 1 }, { type: "text", text: "answer.", turn: 1 },
     );
     expect(answerOf(run)).toEqual({ text: "Let me look.\n\nFirst answer.\n\nSecond answer.", final: "Second answer." });
   });
 
   it("a run that ends during a step has no final text", () => {
-    expect(answerOf(events({ type: "text", text: "Looking." }, started(1)))).toEqual({ text: "Looking.", final: "" });
+    expect(answerOf(events({ type: "text", text: "Looking.", turn: 1 }, started(1)))).toEqual({ text: "Looking.", final: "" });
   });
 });

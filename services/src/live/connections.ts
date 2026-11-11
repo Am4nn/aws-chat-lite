@@ -9,6 +9,13 @@ type Connection = User & { roomIds?: Set<string> };
 const CONN_TTL_SEC = 3 * 3600;
 const expiry = () => Math.floor(Date.now() / 1000) + CONN_TTL_SEC;
 
+/**
+ * API Gateway gives a $connect integration up to 29 s, and until it returns, a post to the new socket answers Gone
+ * although the socket is opening. A Gone that soon after connecting proves nothing; a socket that did close that
+ * soon still gets its $disconnect.
+ */
+const CONNECTING_MS = 30_000;
+
 const connKey = (connId: string) => ({ pk: `CONN#${connId}`, sk: "META" });
 const userConnKey = (userId: string, connId: string) => ({ pk: `USER#${userId}`, sk: `CONN#${connId}` });
 const roomConnKey = (roomId: string, connId: string) => ({ pk: `ROOM#${roomId}`, sk: `CONN#${connId}` });
@@ -37,7 +44,10 @@ export async function saveConnection(connId: string, user: User, roomIds: string
   const ttl = expiry();
   const { userId, username } = user;
   await Promise.all([
-    db.send(new PutCommand({ TableName, Item: { ...connKey(connId), userId, username, ttl, ...(roomIds.length > 0 && { roomIds: new Set(roomIds) }) } })),
+    db.send(new PutCommand({
+      TableName,
+      Item: { ...connKey(connId), userId, username, ttl, connectedAt: Date.now(), ...(roomIds.length > 0 && { roomIds: new Set(roomIds) }) },
+    })),
     db.send(new PutCommand({ TableName, Item: { ...userConnKey(userId, connId), ttl } })),
     ...roomIds.map((roomId) => db.send(new PutCommand({ TableName, Item: { ...roomConnKey(roomId, connId), userId, ttl } }))),
   ]);
@@ -67,11 +77,21 @@ export async function subscribe(connId: string, userId: string, roomId: string):
 /**
  * Deletes the socket's items. Both $disconnect and a failed post (Gone) can get here for the same socket; only the
  * caller whose delete removed the connection item gets it back, so whatever follows (the presence count) runs once.
+ * After a Gone, a socket still inside its connect window is kept.
  */
-export async function forgetConnection(connId: string): Promise<{ userId: string; roomIds: string[] } | undefined> {
+export async function forgetConnection(connId: string, { gone = false } = {}): Promise<{ userId: string; roomIds: string[] } | undefined> {
   const db = docClient();
   const TableName = tableName();
-  const { Attributes } = await db.send(new DeleteCommand({ TableName, Key: connKey(connId), ReturnValues: "ALL_OLD" }));
+  let Attributes;
+  try {
+    ({ Attributes } = await db.send(new DeleteCommand({
+      TableName, Key: connKey(connId), ReturnValues: "ALL_OLD",
+      ...(gone && { ConditionExpression: "connectedAt < :opened", ExpressionAttributeValues: { ":opened": Date.now() - CONNECTING_MS } }),
+    })));
+  } catch (e) {
+    if (conditionFailed(e)) return undefined;
+    throw e;
+  }
   if (!Attributes) return undefined;
   const { userId, roomIds } = Attributes as Connection;
   const rooms = [...(roomIds ?? [])];

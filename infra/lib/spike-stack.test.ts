@@ -1,21 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { App } from "aws-cdk-lib";
-import { Template, Match } from "aws-cdk-lib/assertions";
-import { SpikeStack } from "./spike-stack.js";
-import { loadConfig } from "./config.js";
-
-let cached: Template | undefined;
-const template = () => {
-  if (cached) return cached;
-  const app = new App();
-  const config = loadConfig("local", { AWS_ENDPOINT_URL: "http://localhost:4566" });
-  const stack = new SpikeStack(app, "cl-local-spike", { config, env: { account: "000000000000", region: "us-east-1" } });
-  return (cached = Template.fromStack(stack));
-};
+import { Match } from "aws-cdk-lib/assertions";
+import { spikeTemplate } from "./test-templates.js";
 
 describe("SpikeStack", () => {
   it("has a WebSocket API with $connect, $disconnect and $default routes", () => {
-    const t = template();
+    const t = spikeTemplate();
     t.hasResourceProperties("AWS::ApiGatewayV2::Api", { ProtocolType: "WEBSOCKET" });
     for (const RouteKey of ["$connect", "$disconnect", "$default"]) {
       t.hasResourceProperties("AWS::ApiGatewayV2::Route", { RouteKey });
@@ -23,15 +12,15 @@ describe("SpikeStack", () => {
   });
 
   it("has a streaming Function URL for SSE", () => {
-    template().hasResourceProperties("AWS::Lambda::Url", { InvokeMode: "RESPONSE_STREAM", AuthType: "NONE" });
+    spikeTemplate().hasResourceProperties("AWS::Lambda::Url", { InvokeMode: "RESPONSE_STREAM", AuthType: "NONE" });
   });
 
   it("has a durable function", () => {
-    template().hasResourceProperties("AWS::Lambda::Function", { DurableConfig: Match.objectLike({ ExecutionTimeout: Match.anyValue() }) });
+    spikeTemplate().hasResourceProperties("AWS::Lambda::Function", { DurableConfig: Match.objectLike({ ExecutionTimeout: Match.anyValue() }) });
   });
 
   it("lets EventBridge Scheduler invoke the scheduled target, in its own group", () => {
-    const t = template();
+    const t = spikeTemplate();
     t.hasResourceProperties("AWS::IAM::Role", {
       AssumeRolePolicyDocument: Match.objectLike({
         Statement: Match.arrayWith([Match.objectLike({ Principal: { Service: "scheduler.amazonaws.com" } })]),
@@ -44,6 +33,6 @@ describe("SpikeStack", () => {
   });
 
   it("has no VPC resources", () => {
-    expect(Object.values(template().toJSON().Resources).some((r: any) => String(r.Type).startsWith("AWS::EC2::"))).toBe(false);
+    expect(Object.values(spikeTemplate().toJSON().Resources).some((r: any) => String(r.Type).startsWith("AWS::EC2::"))).toBe(false);
   });
 });

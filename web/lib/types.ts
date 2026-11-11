@@ -15,6 +15,8 @@ export type RoomView = {
   me: { role: Role };
   chats: Chat[];
   members: Member[];
+  threads: ThreadSummary[];
+  budget: Budget;
   defaultModel: ModelPick;
   models: ModelOption[];
 };
@@ -53,6 +55,7 @@ export type LiveEvent =
   | { type: "room.updated"; roomId: string }
   | { type: "run.updated"; roomId: string; thread: ThreadSummary; lastSeq: number; budget: Budget }
   | { type: "thread.updated"; roomId: string; thread: ThreadSummary }
+  | { type: "budget.updated"; roomId: string; budget: Budget }
   | { type: "pong" };
 
 export const isAdmin = (role: Role) => role === "owner" || role === "admin";
@@ -92,9 +95,10 @@ export type Budget = { spentMicros: number; capMicros: number; month: string; re
 type RunEventBody =
   | { type: "run.started"; pick: ModelPick; startedBy: string }
   | { type: "routed"; model: string; by: "pick" | "default" | "auto" }
-  | { type: "model.turn"; model: string; content: unknown }
+  | { type: "model.turn"; model: string; content: unknown; turn: number }
   | { type: "steer"; messageSeq: number; authorName: string; text: string }
-  | { type: "text"; text: string }
+  | { type: "text"; text: string; turn: number }
+  | { type: "text.reset"; turn: number }
   | { type: "step.started"; step: number; call: { id: string; name: string; input: Record<string, unknown> }; detail: string }
   | { type: "step.finished"; step: number; output: string; ms: number; ok: boolean }
   | { type: "usage"; model: string; job: "route" | "name" | "run"; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; costMicros: number }

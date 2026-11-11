@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import type { User } from "../lib/auth.js";
 import { conditionFailed, docClient, failedAt, tableName } from "../lib/db.js";
 import { Conflict, NotFound } from "../lib/errors.js";
 import { requireMember } from "../chat/membership.js";
@@ -9,7 +10,6 @@ import { broadcastToRoom } from "../live/broadcast.js";
 import { PROVISIONAL, isNumberedName, summary, threadName, threadSk, uniqueCandidates } from "./model.js";
 import type { ThreadSummary } from "./types.js";
 
-interface User { userId: string; username: string }
 type Item = Record<string, unknown>;
 
 const roomKey = (roomId: string) => `ROOM#${roomId}`;

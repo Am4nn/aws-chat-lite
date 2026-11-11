@@ -3,7 +3,7 @@
 import { useRef, useState, type ReactNode, type Ref } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Bell, BellOff, Bot, Hash, LogOut, MoreHorizontal, Plus, Search } from "lucide-react";
+import { Bell, BellOff, Hash, LogOut, MoreHorizontal, Plus, Search } from "lucide-react";
 import { chatBadge } from "@/lib/client/badges";
 import { useClickOutside } from "@/lib/client/useClickOutside";
 import { useEscape } from "@/lib/client/useEscape";
@@ -11,14 +11,11 @@ import { dur, easeOut, instant, spring } from "@/lib/motion";
 import type { Chat, Me } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
 
-const ROOM_BUDGET = 3;
-
-export function Sidebar({ chats, me, roomId, canAddChat, switcher, activeChatId, newChatIds, onPalette, onNewChat, onMute, onSignOut }: {
-  chats: Chat[]; me: Me; roomId: string; canAddChat: boolean; switcher: ReactNode; activeChatId?: string; newChatIds: Set<string>;
+export function Sidebar({ chats, me, roomId, canAddChat, switcher, threads, budget, activeChatId, newChatIds, onPalette, onNewChat, onMute, onSignOut }: {
+  chats: Chat[]; me: Me; roomId: string; canAddChat: boolean; switcher: ReactNode; threads: ReactNode; budget: ReactNode;
+  activeChatId?: string; newChatIds: Set<string>;
   onPalette: () => void; onNewChat: () => void; onMute: (chat: Chat, muted: boolean) => void; onSignOut: () => void;
 }) {
-  const spent = 0;
-
   return (
     <nav aria-label="Room" className="flex w-[272px] shrink-0 flex-col gap-5 overflow-y-auto border-r border-line bg-surface-1 px-3 py-4">
       {switcher}
@@ -32,16 +29,10 @@ export function Sidebar({ chats, me, roomId, canAddChat, switcher, activeChatId,
         <kbd className="ml-auto whitespace-nowrap rounded-[5px] border border-line-strong px-1.5 font-mono text-[11px]">Ctrl K</kbd>
       </button>
 
-      <section>
-        <h2 className="px-2.5 pb-1.5 text-[11.5px] font-semibold text-text-3">Agent threads</h2>
-        <div className="flex items-center gap-2.5 rounded-[10px] px-2.5 py-2 text-[12.5px] leading-snug text-text-3">
-          <Bot aria-hidden="true" size={15} className="shrink-0" />
-          Agent work will appear here as threads.
-        </div>
-      </section>
+      {threads}
 
       <section>
-        <div className="flex items-center px-2.5 pb-1.5">
+        <div className="flex h-[30px] items-center pb-1.5 pl-2.5">
           <h2 className="text-[11.5px] font-semibold text-text-3">Chats</h2>
           {canAddChat && (
             <button onClick={onNewChat} aria-label="New chat" className="ml-auto grid size-6 place-items-center rounded-md text-text-3 transition-[background-color,color,transform] hover:bg-surface-3 hover:text-text active:scale-90">
@@ -60,16 +51,7 @@ export function Sidebar({ chats, me, roomId, canAddChat, switcher, activeChatId,
       </section>
 
       <div className="mt-auto flex flex-col gap-3">
-        <div className="flex flex-col gap-2 rounded-xl bg-surface-2 px-3 py-2.5">
-          <div className="flex items-baseline text-xs text-text-2">
-            Room budget
-            <span className="ml-auto font-mono text-text">${spent.toFixed(2)}</span>
-            <span className="font-mono text-text-3">&nbsp;/ ${ROOM_BUDGET}</span>
-          </div>
-          <span className="block h-1 overflow-hidden rounded-full bg-[#1c2225]">
-            <span className="block h-1 bg-lime transition-[width] duration-500" style={{ width: `${(spent / ROOM_BUDGET) * 100}%` }} />
-          </span>
-        </div>
+        {budget}
         <div className="flex items-center gap-2.5 px-1.5">
           <Avatar name={me.username} />
           <span className="truncate text-[13px]">{me.username}</span>
@@ -83,7 +65,7 @@ export function Sidebar({ chats, me, roomId, canAddChat, switcher, activeChatId,
 }
 
 /**
- * The active row's highlight is one shared element that glides between rows instead of jumping. The row's menu
+ * The active row's highlight is one shared element that glides between rows, the thread list's included, instead of jumping. The row's menu
  * button keeps its slot when hidden, so badges never move when the pointer arrives.
  */
 function ChatRow({ chat, roomId, active, fresh, onMute }: { chat: Chat; roomId: string; active: boolean; fresh: boolean; onMute: (muted: boolean) => void }) {
@@ -100,7 +82,7 @@ function ChatRow({ chat, roomId, active, fresh, onMute }: { chat: Chat; roomId: 
         }`}
       >
         {active && (
-          <motion.span layoutId="chat-highlight" transition={spring.glide} className="absolute inset-0 -z-10 rounded-[10px] bg-surface-3 shadow-[inset_0_0_0_1px_#20272a]" />
+          <motion.span layoutId="nav-highlight" transition={spring.glide} className="absolute inset-0 -z-10 rounded-[10px] bg-surface-3 shadow-[inset_0_0_0_1px_#20272a]" />
         )}
         <Hash aria-hidden="true" size={14} className="shrink-0 text-text-3" />
         <span className="truncate">{chat.name}</span>
