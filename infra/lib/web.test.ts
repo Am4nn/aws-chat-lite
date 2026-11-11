@@ -47,11 +47,11 @@ describe("the site behind CloudFront", () => {
 
   it("has one behaviour per asset path, run stream and API path", () => {
     expect(site().CacheBehaviors.map((b: any) => b.PathPattern).sort())
-      .toEqual(["/_next/static/*", "/favicon.ico", "/icons/*", "/runs/*/stream", ...API_PATHS].sort());
+      .toEqual(["/_next/static/*", "/sw.js", "/pcm-worklet.js", "/icons/*", "/runs/*/stream", ...API_PATHS].sort());
   });
 
   it("static and public assets come from the web bucket through origin access control", () => {
-    for (const path of ["/_next/static/*", "/favicon.ico", "/icons/*"]) {
+    for (const path of ["/_next/static/*", "/sw.js", "/pcm-worklet.js", "/icons/*"]) {
       expect(behaviour(path), path).toMatchObject({ CachePolicyId: CACHING_OPTIMIZED, ViewerProtocolPolicy: "redirect-to-https" });
       expect(originOf(behaviour(path)).OriginAccessControlId, path).toBeDefined();
     }
@@ -102,6 +102,8 @@ describe("the site behind CloudFront", () => {
     expect(template("aws").toJSON().Resources[logGroupId].Properties).toEqual({ LogGroupName: "/aws/lambda/cl-aws-web", RetentionInDays: 30 });
   });
 
+  // The service worker comes from the public deploy: a browser checks it for updates on every load, so it must never
+  // sit in a cache for long.
   it("assets deploy with the right cache headers and never delete what an open page may still load", () => {
     const deploys = Object.values(template("aws").findResources("Custom::CDKBucketDeployment")).map((d: any) => d.Properties);
     expect(deploys).toHaveLength(2);

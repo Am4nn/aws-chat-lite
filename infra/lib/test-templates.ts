@@ -25,10 +25,10 @@ export const TEST_CONTEXT = {
 const configFor = (stage: Stage, env: NodeJS.ProcessEnv = {}) =>
   loadConfig(stage, { ...(stage === "local" && { AWS_ENDPOINT_URL: "http://localhost:4566" }), ...env }, TEST_CONTEXT);
 
-/** A stand-in for the OpenNext build: a server entry point plus a hashed bundle, a public file and a public directory. */
+/** A stand-in for the OpenNext build: a server entry point plus a hashed bundle, the public files and a public directory. */
 function fakeWebBuild(): WebBuild {
   const root = mkdtempSync(join(tmpdir(), "cl-web-build-"));
-  for (const file of ["server/index.mjs", "assets/_next/static/app.js", "assets/favicon.ico", "assets/icons/a.png"]) {
+  for (const file of ["server/index.mjs", "assets/_next/static/app.js", "assets/sw.js", "assets/pcm-worklet.js", "assets/icons/a.png"]) {
     mkdirSync(dirname(join(root, file)), { recursive: true });
     writeFileSync(join(root, file), "");
   }
