@@ -24,7 +24,7 @@ export type RoomFiles = {
 
 /**
  * The room's files: fetched once, then kept current by `files.updated` from the socket (fetched again after a
- * reconnect, which may have missed some). Updates that land while a fetch is out are applied again on top of its
+ * reconnect, which may have missed some, and when a change was too big to send). Updates that land while a fetch is out are applied again on top of its
  * answer, which may have been read before them, and only the latest fetch is kept.
  */
 export function useRoomFiles(roomId: string): RoomFiles {
@@ -62,7 +62,11 @@ export function useRoomFiles(roomId: string): RoomFiles {
   }
 
   useEffect(() => { void load(); }, [roomId]);
-  useLiveEvent("files.updated", (e) => { if (e.roomId === roomId) apply(e); });
+  useLiveEvent("files.updated", (e) => {
+    if (e.roomId !== roomId) return;
+    if ("refetch" in e) void load();
+    else apply(e);
+  });
   useLiveEvent("reconnected", () => { void load(); });
 
   async function uploadOne(file: File) {

@@ -14,6 +14,9 @@ describe("applyFilesUpdate", () => {
     const next = applyFilesUpdate([file("a", { v: 1 }), file("c")], { files: [file("a", { v: 2 }), file("b")], deleted: ["c"] });
     expect(next.map((f) => [f.path, f.v])).toEqual([["a", 2], ["b", 1]]);
   });
+  it("keeps the newer version when an older one arrives late (a slow upload answer after the socket's update)", () => {
+    expect(applyFilesUpdate([file("a", { v: 3 })], { files: [file("a", { v: 2 })], deleted: [] }).map((f) => f.v)).toEqual([3]);
+  });
 });
 
 describe("authorLabel", () => {
@@ -28,6 +31,10 @@ describe("screenUploads", () => {
   it("asks before replacing a file the room already has", () => {
     expect(screenUploads([{ name: "a.txt", size: 5 }, { name: "n.txt", size: 5 }], [file("a.txt")], 10))
       .toEqual({ upload: ["n.txt"], replace: ["a.txt"], refused: [] });
+  });
+
+  it("takes one of two picked files with the same name", () => {
+    expect(screenUploads([{ name: "a.txt", size: 5 }, { name: "a.txt", size: 9 }], [], 0)).toEqual({ upload: ["a.txt"], replace: [], refused: [] });
   });
 
   it("refuses a file over 25 MB", () => {

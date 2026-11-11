@@ -224,7 +224,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
                 {activeThread.runId && <RunCapsule key={activeThread.threadId} thread={activeThread} />}
               </>
             )}
-            isPrivate={!!activeThread?.taint.length}
+            taint={activeThread?.taint}
             onMenu={() => setOverlay("nav")} onSearch={openSearch} onTogglePanel={togglePanel}
           />
           <div className="relative min-h-0 flex-1 overflow-hidden">

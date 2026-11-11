@@ -58,6 +58,7 @@ export type LiveEvent =
   | { type: "thread.updated"; roomId: string; thread: ThreadSummary }
   | { type: "budget.updated"; roomId: string; budget: Budget }
   | { type: "files.updated"; roomId: string; files: RoomFile[]; deleted: string[] }
+  | { type: "files.updated"; roomId: string; refetch: true }
   | { type: "pong" };
 
 export const isAdmin = (role: Role) => role === "owner" || role === "admin";
@@ -114,4 +115,5 @@ export type RunEvent = RunEventBody & { seq: number; at: string };
 // Room files: mirrors services/src/workspace/types.ts.
 export type FileAuthor = { kind: "member"; userId: string; name: string } | { kind: "thread"; threadId: string; number: number };
 export type RoomFile = { path: string; size: number; contentType: string; v: number; updatedAt: string; updatedBy: FileAuthor };
+/** A long list ends with an "…and N more" entry. */
 export type FilesSynced = { written: string[]; deleted: string[]; notes: string[] };
