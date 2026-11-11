@@ -20,6 +20,9 @@ export type RoomView = {
   defaultModel: ModelPick;
   models: ModelOption[];
   sandboxInternet: boolean;
+  /** The built-in @agent first. */
+  agents: Agent[];
+  timeZone: string;
 };
 
 export type Reaction = "thumbs" | "heart" | "joy" | "tada" | "eyes" | "check";
@@ -59,6 +62,7 @@ export type LiveEvent =
   | { type: "budget.updated"; roomId: string; budget: Budget }
   | { type: "files.updated"; roomId: string; files: RoomFile[]; deleted: string[] }
   | { type: "files.updated"; roomId: string; refetch: true }
+  | { type: "agents.changed" | "memory.changed" | "schedules.changed"; roomId: string }
   | { type: "pong" };
 
 export const isAdmin = (role: Role) => role === "owner" || role === "admin";
@@ -72,6 +76,7 @@ export type ThreadSummary = {
   threadId: string;
   number: number;
   name: string;
+  agentId: string;
   status: ThreadStatus;
   rev: number;
   runId?: string;
@@ -112,10 +117,13 @@ type RunEventBody =
   | ({ type: "files.synced"; step: number } & FilesSynced)
   | { type: "approval.requested"; step: number; call: { id: string; name: string; input: Record<string, unknown> }; title: string; expiresAt: string }
   | { type: "approval.settled"; step: number; decision: Exclude<ApprovalStatus, "pending">; by?: string }
-  | { type: "usage"; model: string; job: "route" | "name" | "run" | "sandbox"; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; costMicros: number }
+  | { type: "usage"; model: string; job: "route" | "name" | "run" | "sandbox"; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; costMicros: number; ms?: number }
+  | { type: "helper.started"; step: number; agentId: string; agentName: string; task: string; model: string }
+  | { type: "helper.finished"; step: number; status: RunEndStatus; summary: string; steps: number; ms: number; costMicros: number }
   | { type: "run.finished"; status: RunEndStatus; reason?: string; ms: number; steps: number; costMicros: number };
 
-export type RunEvent = RunEventBody & { seq: number; at: string };
+/** `lane` is absent (0) for the thread's own agent and n for the nth helper it delegated to. */
+export type RunEvent = RunEventBody & { seq: number; at: string; lane?: number };
 
 // Tools and approvals: mirrors services/src/threads/types.ts.
 export type Source = { title: string; url: string };
@@ -137,7 +145,34 @@ export type McpConnection = {
 };
 export type McpApp = { grantId: string; clientName: string; scopes: Scope[]; createdAt: string; lastUsedAt: string };
 export type AuditKind = "asked" | "tool" | "approved" | "denied" | "expired" | "cancelled" | "connected" | "disconnected" | "timeout";
-export type AuditEntry = { id: string; at: string; actor: string; kind: AuditKind; threadNumber?: number; tool?: string; detail: string };
+export type AuditEntry = {
+  id: string; at: string; actor: string; kind: AuditKind; threadNumber?: number; tool?: string; detail: string; agent?: string;
+};
+
+// Agents, memory and schedules: mirrors services/src/threads/types.ts.
+export type ToolKind = "sandbox" | "web" | "github" | "mcp";
+export type AgentModel = ModelPick | "room";
+export type Agent = {
+  agentId: string; name: string; instructions: string; tools: ToolKind[]; model: AgentModel;
+  builtIn: boolean; createdBy: string; createdByName: string; createdAt: string; updatedAt: string;
+};
+export type MemoryEntry = {
+  memoryId: string; text: string; private: boolean;
+  source: { kind: "agent"; agent: string; threadNumber: number } | { kind: "member"; username: string };
+  createdAt: string; updatedAt: string; updatedBy: string;
+};
+export type Weekday = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
+export type Cadence =
+  | { kind: "hours"; every: 1 | 2 | 3 | 4 | 6 | 8 | 12; minute: number }
+  | { kind: "daily" | "weekdays"; time: string }
+  | { kind: "weekly"; day: Weekday; time: string };
+export type Schedule = {
+  scheduleId: string; agentId: string; title: string; prompt: string; cadence: Cadence; chatId: string;
+  enabled: boolean; createdBy: string; createdByName: string; createdAt: string;
+  /** For an enabled schedule only. */
+  nextAt?: string;
+  lastRun?: { at: string; threadNumber?: number; skipped?: string };
+};
 
 // Room files: mirrors services/src/workspace/types.ts.
 export type FileAuthor = { kind: "member"; userId: string; name: string } | { kind: "thread"; threadId: string; number: number };

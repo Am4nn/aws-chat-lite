@@ -41,21 +41,22 @@ describe("roomTools", () => {
 });
 
 describe("toolEnv in fake mode", () => {
+  const room = { roomId: "r1", threadNumber: 1, agentName: "agent", tainted: false };
   it("answers web search with two sources", async () => {
-    const env = await toolEnv("fake");
+    const env = { ...await toolEnv("fake"), room };
     const result = await findTool("web_search", noMcp)!.run({ query: "q" }, env);
     expect(result.ok).toBe(true);
     expect(result.sources).toHaveLength(2);
   });
 
   it("runs the GitHub tools against the canned App, signed with its own key", async () => {
-    const env = await toolEnv("fake", github);
+    const env = { ...await toolEnv("fake", github), room };
     const result = await findTool("github_read_file", noMcp)!.run({ path: "README.md" }, env);
     expect(result).toMatchObject({ ok: true, output: expect.stringContaining("# Playground") });
   });
 
   it("fetches pages without the network, still refusing private addresses", async () => {
-    const env = await toolEnv("fake");
+    const env = { ...await toolEnv("fake"), room };
     expect((await findTool("web_fetch", noMcp)!.run({ url: "https://example.com/" }, env)).output).toContain("Fake page");
     expect((await findTool("web_fetch", noMcp)!.run({ url: "http://169.254.169.254/" }, env)).ok).toBe(false);
   });

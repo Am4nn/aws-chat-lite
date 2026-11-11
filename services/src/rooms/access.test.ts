@@ -16,6 +16,8 @@ const MATRIX: [Action, Role, Role | undefined, boolean][] = [
   ["setModel", "owner", undefined, true], ["setModel", "admin", undefined, true], ["setModel", "member", undefined, false],
   ["manageConnections", "owner", undefined, true], ["manageConnections", "admin", undefined, true], ["manageConnections", "member", undefined, false],
   ["setSandbox", "owner", undefined, true], ["setSandbox", "admin", undefined, true], ["setSandbox", "member", undefined, false],
+  ["manageAgents", "owner", undefined, true], ["manageAgents", "admin", undefined, true], ["manageAgents", "member", undefined, false],
+  ["setTimeZone", "owner", undefined, true], ["setTimeZone", "admin", undefined, true], ["setTimeZone", "member", undefined, false],
   ["leave", "owner", undefined, false], ["leave", "admin", undefined, true], ["leave", "member", undefined, true],
 ];
 

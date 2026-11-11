@@ -4,7 +4,7 @@ import { BffError } from "./bff";
 import { decider, needsYouToast, remaining, settledLine } from "./approvals";
 
 const th = (o: Partial<ThreadSummary>): ThreadSummary => ({
-  roomId: "r", threadId: "t1", number: 1, name: "pr-check", status: "running", rev: 1, steps: 0, costMicros: 0,
+  roomId: "r", threadId: "t1", number: 1, name: "pr-check", agentId: "agent", status: "running", rev: 1, steps: 0, costMicros: 0,
   createdBy: "u", lastActivityAt: "2026-11-11T10:00:00Z", archived: false, taint: [], ...o,
 });
 

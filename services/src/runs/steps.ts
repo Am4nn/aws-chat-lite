@@ -14,7 +14,7 @@ import { isNumberedName } from "../threads/model.js";
 import { threadsRepo } from "../threads/repo.js";
 import type { RunEndStatus, RunEvent, Source } from "../threads/types.js";
 import { findTool, toolEnv } from "../tools/index.js";
-import type { Tool, ToolResult } from "../tools/types.js";
+import type { Tool, ToolEnv, ToolResult } from "../tools/types.js";
 import { sandboxCostMicros } from "../workspace/limits.js";
 import { runSandbox } from "../workspace/session.js";
 import type { FilesSynced } from "../workspace/types.js";
@@ -54,6 +54,10 @@ export const models = () => (shared ??= gateway());
 
 /** The room's connections, with its id, as the tool lookups take them. */
 export const roomConnections = async (roomId: string) => ({ roomId, ...await connectionsRepo().get(roomId) });
+
+/** The thread a tool call is made for, as the tools see it. */
+export const toolRoom = (run: Run, tainted: boolean): ToolEnv["room"] =>
+  ({ roomId: run.roomId, threadNumber: run.number, agentName: "agent", tainted });
 
 /** Null when the run is already over (its start failed after the invoke was accepted). */
 export async function load(runId: string): Promise<{ run: Run; provisional: boolean } | null> {
@@ -381,7 +385,10 @@ function unapproved(settled: Approval | undefined): string {
  * or the MCP server took the first try. GitHub data and MCP output taint the thread before any of it is logged.
  */
 async function runRoomTool(run: RoutedRun, tool: Tool, call: ToolCall, { room, settled, started, rerun, envOf }: RoomCall): Promise<ToolResult> {
-  const env = await envOf(process.env.TOOL_MODE, room.github ?? undefined);
+  const [transport, thread] = await Promise.all([
+    envOf(process.env.TOOL_MODE, room.github ?? undefined), threadsRepo().threadById(run.roomId, run.threadId),
+  ]);
+  const env = { ...transport, room: toolRoom(run, !!thread?.taint.length) };
   const input = settled?.call.input ?? call.input;
   const refused = tool.check?.(input, env);
   if (refused) return { ok: false, output: refused };

@@ -54,7 +54,10 @@ describe.skipIf(!process.env.REAL_TOOLS)("tools against the real services", () =
       githubAppId: process.env.GITHUB_APP_ID,
       githubPrivateKey: readFileSync(resolve(ROOT, process.env.GITHUB_APP_PRIVATE_KEY_PATH ?? ""), "utf8"),
     };
-    env = { fetch, fetchPage: (url) => fetchPage(url), keys, mcpCall: () => Promise.reject(new Error("No MCP servers in this suite.")) };
+    env = {
+      fetch, fetchPage: (url) => fetchPage(url), keys, mcpCall: () => Promise.reject(new Error("No MCP servers in this suite.")),
+      room: { roomId: "r1", threadNumber: 1, agentName: "agent", tainted: false },
+    };
   });
 
   afterAll(async () => {

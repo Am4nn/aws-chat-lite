@@ -38,8 +38,11 @@ const fakeFetch: typeof fetch = (input, init) => {
 // Both modes call MCP servers for real: locally that is the test server on this machine.
 const mcpCall = mcpCaller(mcpRepo);
 
-/** Fake mode answers as GitHub and Tavily and serves canned pages, so every real code path runs without the network. */
-export async function toolEnv(mode = process.env.TOOL_MODE, github?: GitHubConnection): Promise<ToolEnv> {
+/**
+ * Fake mode answers as GitHub and Tavily and serves canned pages, so every real code path runs without the network.
+ * The run adds the thread the call is made for.
+ */
+export async function toolEnv(mode = process.env.TOOL_MODE, github?: GitHubConnection): Promise<Omit<ToolEnv, "room">> {
   if (mode === "live") return { fetch, fetchPage, keys: await toolKeys(), github, mcpCall };
   return { fetch: fakeFetch, fetchPage: fakePage, keys: fakeKeys(), github, mcpCall };
 }

@@ -41,6 +41,8 @@ export function applyRunEvent(v: RunView, e: RunEvent): RunView {
     case "routed":
       return { ...next, model: e.model };
     case "model.turn":
+    case "helper.started":
+    case "helper.finished":
       return next;
     case "steer":
       return { ...next, items: [...v.items, { kind: "steer", messageSeq: e.messageSeq, authorName: e.authorName, text: e.text, at: e.at }] };

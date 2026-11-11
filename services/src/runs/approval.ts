@@ -9,7 +9,7 @@ import type { ApprovalStatus } from "../threads/types.js";
 import { DEAD_AFTER_MS } from "./model.js";
 import { notifyRun } from "./notify.js";
 import { runsRepo, type Run } from "./repo.js";
-import { limitsReached, models, roomConnections } from "./steps.js";
+import { limitsReached, models, roomConnections, toolRoom } from "./steps.js";
 import { mayRun } from "./tools.js";
 
 /*
@@ -34,7 +34,7 @@ export async function gateOf(run: Run & { model: string }, call: ToolCall, taint
   const privateThread = async () => tainted || !!(await threadsRepo().threadById(run.roomId, run.threadId))?.taint.length;
   if (!(tool.write || (tool.kind === "web" && await privateThread())) || await limitsReached(run)) return { asks: false };
   const { github, approvalTimeoutSec } = room;
-  const env = await toolEnv(process.env.TOOL_MODE, github ?? undefined);
+  const env = { ...await toolEnv(process.env.TOOL_MODE, github ?? undefined), room: toolRoom(run, tainted) };
   if (tool.check?.(call.input, env)) return { asks: false };
   const input = tool.kind === "github" ? { ...call.input, repo: repoOf(call.input, github ?? undefined) } : call.input;
   return { asks: true, timeoutSec: approvalTimeoutSec, title: tool.ask!(input, env), input };
