@@ -17,6 +17,10 @@ describe("parsePick", () => {
 describe("resolvePick", () => {
   it("turns a DeepSeek default into Auto on a private thread", () =>
     expect(resolvePick(undefined, "deepseek-flash", ["attachment"])).toEqual({ pick: "auto", by: "default" }));
+  it("keeps an Auto default on a private thread", () =>
+    expect(resolvePick(undefined, "auto", ["attachment"])).toEqual({ pick: "auto", by: "default" }));
+  it("passes a DeepSeek pick through, leaving the refusal to the caller", () =>
+    expect(resolvePick("deepseek-flash", "auto", ["attachment"])).toEqual({ pick: "deepseek-flash", by: "pick" }));
   it("uses the room default", () => expect(resolvePick(undefined, "opus", [])).toEqual({ pick: "opus", by: "default" }));
   it("prefers the sender's pick", () => expect(resolvePick("haiku", "opus", [])).toEqual({ pick: "haiku", by: "pick" }));
 });
@@ -26,10 +30,10 @@ describe("modelIdOf", () => {
 });
 
 describe("parseRoute", () => {
-  it.each(["haiku", "Haiku.", "  haiku\n"])("sends %j to Haiku", (reply) =>
+  it.each(["haiku", "Haiku.", "haiku!", "  haiku\n"])("sends %j to Haiku", (reply) =>
     expect(parseRoute(reply)).toBe("claude-haiku-5-5"),
   );
-  it.each(["sonnet", "opus", "fable", "deepseek", "", "haiku or sonnet"])("sends %j to Sonnet", (reply) =>
+  it.each(["sonnet", "opus", "fable", "deepseek", "", "haiku or sonnet", "hai ku"])("sends %j to Sonnet", (reply) =>
     expect(parseRoute(reply)).toBe("claude-sonnet-5-5"),
   );
 });

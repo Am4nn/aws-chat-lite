@@ -48,6 +48,16 @@ describe("modelOptions", () => {
     expect(options[0]).toMatchObject({ price: "" });
     expect(options[0]).not.toHaveProperty("id");
   });
+  it("shows two decimals unless the price is whole", () =>
+    expect(modelOptions("aws").map((o) => o.price)).toEqual([
+      "",
+      "$2 / $10",
+      "$0.10 / $0.50",
+      "$4 / $20",
+      "$8 / $40",
+      "$0.30 / $1.20",
+      "$1.32 / $3.96",
+    ]));
   it("marks both DeepSeeks as not private", () =>
     expect(
       modelOptions("aws")
@@ -58,6 +68,10 @@ describe("modelOptions", () => {
 
 describe("jobs", () => {
   it("runs small jobs on Haiku", () => expect(ROUTER_MODEL).toBe("claude-haiku-5-5"));
-  it("sizes each job", () => expect(JOBS.run.maxTokens).toBe(16_000));
+  it("sizes each job", () => {
+    expect(JOBS.run).toEqual({ maxTokens: 16_000, effort: "medium", cache: true });
+    expect(JOBS.route).toEqual({ maxTokens: 1024, effort: "low", cache: false });
+    expect(JOBS.name).toEqual({ maxTokens: 1024, effort: "low", cache: false });
+  });
   it("knows its models", () => expect(modelInfo("fake").provider).toBe("fake"));
 });

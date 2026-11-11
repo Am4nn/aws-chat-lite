@@ -1,4 +1,4 @@
-import { MODELS, modelInfo, type ModelPick } from "./catalog.js";
+import { modelInfo, pickInfo, type ModelPick } from "./catalog.js";
 
 /** Why a thread is private. The set only grows; a new source adds one word below. */
 export type TaintSource = "attachment";
@@ -15,7 +15,7 @@ export const mergeTaint = (...lists: TaintSource[][]): TaintSource[] => [...new 
 
 export function pickRefusal(pick: ModelPick | undefined, taint: TaintSource[]): string | null {
   if (!pick || pick === "auto" || taint.length === 0) return null;
-  const model = Object.values(MODELS).find((m) => m.pick === pick);
+  const model = pickInfo(pick);
   return model && !model.privateOk ? PICK_REFUSED : null;
 }
 

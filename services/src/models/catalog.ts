@@ -31,7 +31,7 @@ export type ModelOption = {
 export type TokenUsage = { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number };
 
 export const ROUTER_MODEL = "claude-haiku-5-5";
-export const NAMING_MODEL = ROUTER_MODEL;
+export const NAMING_MODEL = "claude-haiku-5-5";
 
 export const JOBS: Record<"run" | "route" | "name", { maxTokens: number; effort: "low" | "medium"; cache: boolean }> = {
   run: { maxTokens: 16_000, effort: "medium", cache: true },
@@ -130,35 +130,25 @@ export function priceMicros(id: string, u: TokenUsage): number {
   return Math.ceil(nano / 1000);
 }
 
-const usd = (nanoPerToken: number) => `$${nanoPerToken / 1000}`;
+const usd = (nanoPerToken: number) => {
+  const dollars = nanoPerToken / 1000;
+  return `$${Number.isInteger(dollars) ? dollars : dollars.toFixed(2)}`;
+};
+
+export const pickInfo = (pick: Exclude<ModelPick, "auto">): ModelInfo | undefined =>
+  Object.values(MODELS).find((m) => m.pick === pick);
+
+const toOption = (m: ModelInfo): ModelOption => ({
+  pick: m.pick,
+  id: m.id,
+  label: m.label,
+  short: m.short,
+  price: `${usd(m.price.input)} / ${usd(m.price.output)}`,
+  privateOk: m.privateOk,
+});
 
 /** The picker, in display order; Fake exists only on the local stage. */
 export function modelOptions(stage: string): ModelOption[] {
-  const real = Object.values(MODELS)
-    .filter((m) => m.pick !== "fake")
-    .map((m) => ({
-      pick: m.pick,
-      id: m.id,
-      label: m.label,
-      short: m.short,
-      price: `${usd(m.price.input)} / ${usd(m.price.output)}`,
-      privateOk: m.privateOk,
-    }));
-  const fake = MODELS.fake!;
-  return [
-    { pick: "auto", label: "Auto", short: "Auto", price: "", privateOk: true },
-    ...real,
-    ...(stage === "local"
-      ? [
-          {
-            pick: fake.pick,
-            id: fake.id,
-            label: fake.label,
-            short: fake.short,
-            price: `${usd(fake.price.input)} / ${usd(fake.price.output)}`,
-            privateOk: true,
-          },
-        ]
-      : []),
-  ];
+  const models = Object.values(MODELS).filter((m) => m.pick !== "fake" || stage === "local");
+  return [{ pick: "auto", label: "Auto", short: "Auto", price: "", privateOk: true }, ...models.map(toOption)];
 }

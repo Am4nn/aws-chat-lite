@@ -1,5 +1,5 @@
 import { ValidationError } from "../lib/errors.js";
-import { MODELS, modelOptions, type ModelPick } from "./catalog.js";
+import { modelOptions, pickInfo, type ModelPick } from "./catalog.js";
 import { type TaintSource } from "./privacy.js";
 
 export const ROUTER_PROMPT =
@@ -19,19 +19,19 @@ export function resolvePick(
   taint: TaintSource[],
 ): { pick: ModelPick; by: "pick" | "default" } {
   if (pick) return { pick, by: "pick" };
-  const blocked = taint.length > 0 && !Object.values(MODELS).find((m) => m.pick === roomDefault)?.privateOk;
-  return { pick: blocked && roomDefault !== "auto" ? "auto" : roomDefault, by: "default" };
+  const blocked = taint.length > 0 && roomDefault !== "auto" && !pickInfo(roomDefault)?.privateOk;
+  return { pick: blocked ? "auto" : roomDefault, by: "default" };
 }
 
 export function modelIdOf(pick: Exclude<ModelPick, "auto">): string {
-  const model = Object.values(MODELS).find((m) => m.pick === pick);
+  const model = pickInfo(pick);
   if (!model) throw new Error(`Unknown pick ${pick}`);
   return model.id;
 }
 
-export const routerInput = (text: string) => text.slice(0, 4000);
+export const routerInput = (text: string) => Array.from(text).slice(0, 4000).join("");
 
 /** Auto only ever chooses between these two; any other reply means Sonnet. */
 export function parseRoute(reply: string): "claude-haiku-5-5" | "claude-sonnet-5-5" {
-  return reply.toLowerCase().replace(/[^a-z]/g, "") === "haiku" ? "claude-haiku-5-5" : "claude-sonnet-5-5";
+  return reply.trim().toLowerCase().replace(/^\W+|\W+$/g, "") === "haiku" ? "claude-haiku-5-5" : "claude-sonnet-5-5";
 }
