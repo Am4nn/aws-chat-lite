@@ -7,10 +7,16 @@ type Assistant = Extract<ModelMessage, { role: "assistant" }>;
 /** The model can't open files, so a message names its attachments for it. */
 const withAttachments = (text: string, names: string[] = []) => [text, ...names.map((name) => `[attached: ${name}]`)].join("\n");
 
-/** The log without what failed attempts wrote: a `text.reset` voids the text and native turn its turn wrote before it. */
-function withoutVoided(events: RunEvent[]): RunEvent[] {
+/** Whether an event is in a lane: one with no lane is the thread's own agent's (lane 0). */
+export const inLane = (lane: number) => (e: RunEvent) => (e.lane ?? 0) === lane;
+
+/**
+ * One lane of the log, without what failed attempts wrote: a `text.reset` voids the text and native turn its turn
+ * wrote before it. Each lane counts its own turns, so a reset only voids its own lane's.
+ */
+function withoutVoided(events: RunEvent[], lane: number): RunEvent[] {
   let kept: RunEvent[] = [];
-  for (const e of events) {
+  for (const e of events.filter(inLane(lane))) {
     if (e.type === "text.reset") kept = kept.filter((k) => !((k.type === "text" || k.type === "model.turn") && k.turn === e.turn));
     else kept.push(e);
   }
@@ -18,16 +24,24 @@ function withoutVoided(events: RunEvent[]): RunEvent[] {
 }
 
 /**
- * What the model sees: the thread before the run, then the run so far, rebuilt from its event log. The log is the
- * source of truth, so a model step that is retried sees exactly what members saw stream, less any attempt voided.
- *
- * The context starts at a member's message: providers reject one that opens with an assistant turn.
+ * The thread before the run, as the model reads it. It starts at a member's message: providers reject a context that
+ * opens with an assistant turn.
  */
-export function buildContext(prior: Message[], events: RunEvent[]): ModelMessage[] {
+export function threadMessages(prior: Message[]): ModelMessage[] {
   const from = prior.findIndex((m) => m.authorId !== "agent");
-  const messages: ModelMessage[] = (from < 0 ? [] : prior.slice(from)).map((m) =>
+  return (from < 0 ? [] : prior.slice(from)).map((m) =>
     m.authorId === "agent" ? { role: "assistant", text: m.text } : { role: "user", author: m.authorName, text: withAttachments(m.text, m.attachments.map((a) => a.name)) },
   );
+}
+
+/**
+ * What one lane's model sees: how its work opened (the thread before the run, or a helper's task), then that lane of
+ * the run so far, rebuilt from the event log. The log is the source of truth, so a model step that is retried sees
+ * exactly what members saw stream, less any attempt voided. The main lane sees a helper's work only as its delegate
+ * call's result.
+ */
+export function buildContext(opening: ModelMessage[], events: RunEvent[], lane = 0): ModelMessage[] {
+  const messages = [...opening];
   const calls = new Map<number, ToolCall>();
   // The assistant message this run is writing; a tool result or a steer ends it.
   let current: Assistant | undefined;
@@ -36,7 +50,7 @@ export function buildContext(prior: Message[], events: RunEvent[]): ModelMessage
     return current;
   };
 
-  for (const e of withoutVoided(events)) {
+  for (const e of withoutVoided(events, lane)) {
     if (e.type === "text") {
       assistant().text += e.text;
     } else if (e.type === "model.turn") {
@@ -57,13 +71,13 @@ export function buildContext(prior: Message[], events: RunEvent[]): ModelMessage
 }
 
 /**
- * The run's answer: every text event in order (what viewers saw stream, less any attempt voided), and the final turn's text, the part
- * after the last tool step or steer, which the thread's card summarizes.
+ * A lane's answer: every text event in order (what viewers saw stream, less any attempt voided), and the final turn's
+ * text, the part after the last tool step or steer, which the thread's card (or the helper's step) summarizes.
  */
-export function answerOf(events: RunEvent[]): { text: string; final: string } {
+export function answerOf(events: RunEvent[], lane = 0): { text: string; final: string } {
   let text = "";
   let final = "";
-  for (const e of withoutVoided(events)) {
+  for (const e of withoutVoided(events, lane)) {
     if (e.type === "text") {
       text += e.text;
       final += e.text;

@@ -8,8 +8,8 @@ import { threadsRepo } from "../threads/repo.js";
 import type { ApprovalStatus } from "../threads/types.js";
 import { DEAD_AFTER_MS } from "./model.js";
 import { notifyRun } from "./notify.js";
-import { runsRepo, type Run } from "./repo.js";
-import { limitsReached, models, roomConnections, toolRoom, type RoutedRun } from "./steps.js";
+import { runsRepo } from "./repo.js";
+import { laneOf, limitsReached, models, roomConnections, toolRoom, type RoutedRun } from "./steps.js";
 import { mayRun } from "./tools.js";
 
 /*
@@ -46,7 +46,7 @@ export async function gateOf(run: RoutedRun, call: ToolCall, tainted: boolean): 
  * already asked to stop, and then wakes the wait itself, since nothing else will.
  */
 export async function requestApproval(
-  run: Run, call: ToolCall, step: number, gate: { timeoutSec: number; title: string; input: Record<string, unknown> }, callbackId: string,
+  run: RoutedRun, call: ToolCall, step: number, gate: { timeoutSec: number; title: string; input: Record<string, unknown> }, callbackId: string,
 ): Promise<void> {
   const runs = runsRepo();
   const approvals = approvalsRepo();
@@ -58,7 +58,7 @@ export async function requestApproval(
   if (item.status !== "pending") return wakeRun(callbackId);
   const { title, expiresAt } = item;
   const requested = (await runs.allEvents(run.runId)).find((e) => e.type === "approval.requested" && e.step === step)
-    ?? await (await runs.eventWriter(run.runId)).append({ type: "approval.requested", step, call: item.call, title, expiresAt });
+    ?? await (await runs.eventWriter(run.runId, laneOf(run))).append({ type: "approval.requested", step, call: item.call, title, expiresAt });
   const deadAt = new Date(Date.parse(expiresAt) + DEAD_AFTER_MS).toISOString();
   const { thread, stopRequestedBy } = await runs.markWaiting(run, { step, title, expiresAt }, deadAt);
   await notifyRun(run.roomId, thread, requested.seq);
@@ -69,12 +69,12 @@ export async function requestApproval(
  * Once the wait is over, by a decision, a stop or the timeout: the approval item says which (one still pending
  * expires now). It is logged and audited once, and the thread goes back to running.
  */
-export async function settleApproval(run: Run, step: number): Promise<Approval> {
+export async function settleApproval(run: RoutedRun, step: number): Promise<Approval> {
   const runs = runsRepo();
   const item = await approvalsRepo().settle(run.runId, step);
   const decision = item.status as Exclude<ApprovalStatus, "pending">;
   const settled = (await runs.allEvents(run.runId)).find((e) => e.type === "approval.settled" && e.step === step)
-    ?? await (await runs.eventWriter(run.runId)).append({ type: "approval.settled", step, decision, by: item.by });
+    ?? await (await runs.eventWriter(run.runId, laneOf(run))).append({ type: "approval.settled", step, decision, by: item.by });
   await auditRepo().record(run.roomId, {
     id: `${run.runId}#${settled.seq}`, at: settled.at, actor: item.by ?? "agent", kind: decision, threadNumber: run.number,
     tool: item.call.name, detail: item.title,
