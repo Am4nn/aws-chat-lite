@@ -19,8 +19,10 @@ describe("auditLine", () => {
     .toBe('"Comment on #3 in o/r?" was cancelled (run stopped) in #4'));
   it("connected", () => expect(auditLine(entry({ kind: "connected", threadNumber: undefined, detail: "o/a, o/b" })))
     .toBe("bea connected o/a, o/b"));
-  it("disconnected", () => expect(auditLine(entry({ kind: "disconnected", threadNumber: undefined, detail: "GitHub" })))
-    .toBe("bea disconnected GitHub"));
+  it("disconnected", () => {
+    expect(auditLine(entry({ kind: "disconnected", actor: "aman", threadNumber: undefined, detail: "GitHub" }))).toBe("aman disconnected GitHub");
+    expect(auditLine(entry({ kind: "disconnected", actor: "aman", threadNumber: undefined, detail: "MCP test" }))).toBe("aman disconnected MCP test");
+  });
   it("timeout", () => expect(auditLine(entry({ kind: "timeout", threadNumber: undefined, detail: "30 min" })))
     .toBe("bea set the approval timeout to 30 min"));
 });

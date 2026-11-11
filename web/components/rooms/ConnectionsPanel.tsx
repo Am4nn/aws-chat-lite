@@ -7,15 +7,18 @@ import { bff, errorText } from "@/lib/client/bff";
 import { formatWait } from "@/lib/client/format";
 import { useLiveEvent } from "@/lib/client/LiveProvider";
 import { swap } from "@/lib/motion";
-import type { GitHubConnection } from "@/lib/types";
+import type { GitHubConnection, McpConnection } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { Hint } from "@/components/ui/Hint";
 import { Spinner } from "@/components/ui/Spinner";
 import { useToast } from "@/components/overlays/Toast";
 import { ActivityLog } from "./ActivityLog";
+import { McpServers } from "./McpServers";
 import { RepoPicker, type Installation, type RepoPick } from "./RepoPicker";
 
-type Connections = { github: GitHubConnection | null; approvalTimeoutMin: number; canManage: boolean; installUrl: string | null };
+type Connections = {
+  github: GitHubConnection | null; mcp: McpConnection[]; approvalTimeoutMin: number; canManage: boolean; installUrl: string | null;
+};
 type Mode = { kind: "view" } | { kind: "confirmDisconnect" } | { kind: "pick"; installations: Installation[] | null };
 
 /**
@@ -52,6 +55,12 @@ export function ConnectionsPanel({ roomId, archived }: { roomId: string; archive
         <h2 className="text-[11.5px] font-semibold text-text-3">GitHub</h2>
         {data
           ? <GitHubSection roomId={roomId} data={data} manage={manage} onChange={(github) => changed({ github })} />
+          : <div className="flex h-9 items-center justify-center text-text-3"><Spinner /></div>}
+      </section>
+      <section className="flex flex-col gap-2">
+        <h2 className="text-[11.5px] font-semibold text-text-3">MCP servers</h2>
+        {data
+          ? <McpServers roomId={roomId} servers={data.mcp} manage={manage} onChange={(mcp) => changed({ mcp })} />
           : <div className="flex h-9 items-center justify-center text-text-3"><Spinner /></div>}
       </section>
       <section className="flex flex-col gap-2">

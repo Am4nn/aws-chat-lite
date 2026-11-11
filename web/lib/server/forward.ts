@@ -44,6 +44,10 @@ const ROUTES: [method: string, pattern: string][] = [
   ["POST", "/oauth/requests/:x/decision"],
   ["GET", "/me/apps"],
   ["DELETE", "/me/apps/:x"],
+  ["POST", "/rooms/:x/connections/mcp"],
+  ["POST", "/rooms/:x/connections/mcp/:x/reconnect"],
+  ["POST", "/rooms/:x/connections/mcp/:x/refresh"],
+  ["DELETE", "/rooms/:x/connections/mcp/:x"],
 ];
 
 const SEGMENT = /^[A-Za-z0-9_-]+$/;

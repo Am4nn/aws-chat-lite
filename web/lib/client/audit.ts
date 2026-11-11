@@ -18,7 +18,7 @@ export function auditLine(e: AuditEntry): string {
     case "connected":
       return `${e.actor} connected ${e.detail}`;
     case "disconnected":
-      return `${e.actor} disconnected GitHub`;
+      return `${e.actor} disconnected ${e.detail}`;
     case "timeout":
       return `${e.actor} set the approval timeout to ${e.detail}`;
   }
