@@ -12,7 +12,7 @@ import { runsRepo, type Run } from "./repo.js";
 import { startOrSteer } from "./start.js";
 import { answerOf } from "./context.js";
 import { DEAD_AFTER_MS } from "./model.js";
-import { modelTurn, nameThread, routeRun, toolStep } from "./steps.js";
+import { failRun, modelTurn, nameThread, routeRun, toolStep } from "./steps.js";
 
 // Failures injected into this process's table calls, against DynamoDB on Floci (npm run deploy:local first). The run
 // loop's step bodies are called directly: a durable retry runs the same body again with the same input, so calling
@@ -106,6 +106,15 @@ describe("run steps and starts under injected failures", () => {
     expect(await count(run.runId, "steer")).toBe(1);
   });
 
+  it("a steer's files are named on its steer event, so the model hears of them", async () => {
+    const { owner, roomId, thread: t, run } = await runningThread("go tools:1");
+    const file = { key: `rooms/${roomId}/u/f/log.txt`, name: "log.txt", size: 1, type: "text/plain" };
+    await chatRepo().send(owner, { roomId, chatId: t.threadId, clientId: `k${++clients}`, text: "and this" }, { text: "and this", attachments: [file] });
+    await modelTurn(run, 1);
+    const steers = (await runs.allEvents(run.runId)).filter((e) => e.type === "steer");
+    expect(steers).toEqual([expect.objectContaining({ text: "and this", attachments: ["log.txt"] })]);
+  });
+
   it("a model turn that fails after streaming, before its usage is recorded, answers once and charges once", async () => {
     const { roomId, run } = await runningThread("go tools:0 words:5");
     fail(usageWrite);
@@ -167,6 +176,29 @@ describe("run steps and starts under injected failures", () => {
     expect(await modelTurn(run, 1)).toEqual(turn);
     expect(await count(run.runId, "usage")).toBe(1);
     expect(await spent(roomId)).toBe(turn.costMicros);
+  });
+
+  it.each([
+    ["its native turn", "go tools:1", "model.turn"],
+    ["the length note", "look cutoff", "text"],
+  ])("a model turn whose %s can't be logged charges that call, then charges the retry once", async (_what, text, type) => {
+    const { roomId, run } = await runningThread(text);
+    fail(puts(type));
+    await expect(modelTurn(run, 1)).rejects.toThrow("injected failure");
+    expect(await count(run.runId, "usage")).toBe(1);
+    const turn = await modelTurn(run, 1);
+    expect(await count(run.runId, "usage")).toBe(2);
+    expect(await spent(roomId)).toBe(turn.costMicros);
+  });
+
+  it("a run that fails closes with the cost its usage events add up to, even when the stored total lags", async () => {
+    const { roomId, run } = await runningThread("go tools:0 words:5");
+    fail(costProgress);
+    await expect(modelTurn(run, 1)).rejects.toThrow("injected failure");
+    expect((await runs.getRun(run.runId))!.costMicros).toBe(0);
+    await failRun(run.runId);
+    expect(await runs.getRun(run.runId)).toMatchObject({ status: "failed", costMicros: await spent(roomId) });
+    expect(await spent(roomId)).toBeGreaterThan(0);
   });
 
   it("a tool turn retried after its usage failed to record voids the first attempt's native turn", async () => {
@@ -242,6 +274,14 @@ describe("run steps and starts under injected failures", () => {
     expect(started).toBe(true);
     expect(await runs.getRun(runId)).toMatchObject({ status: "failed", reason: "The run couldn't start." });
     expect(await activeRunOf(roomId, t.number)).toBeUndefined();
+  });
+
+  it("a start reads the room default with a consistent read, so a default set a moment ago applies", async () => {
+    const { owner, roomId, thread: t, message } = await thread("go tools:0 words:3");
+    const send = vi.spyOn(docClient(), "send");
+    await startOrSteer(owner, roomId, t.threadId, message);
+    const reads = send.mock.calls.map(([c]) => c).filter((c) => c instanceof GetCommand && c.input.Key?.pk === `ROOM#${roomId}` && c.input.Key?.sk === "META");
+    expect(reads.map((c) => (c as GetCommand).input.ConsistentRead)).toEqual([true]);
   });
 
   it("a start that loses a transaction race once tries again and starts the run", async () => {

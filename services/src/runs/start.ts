@@ -4,6 +4,7 @@ import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dy
 import type { User } from "../lib/auth.js";
 import { docClient, failedAt, tableName, transactionConflict } from "../lib/db.js";
 import { NotFound } from "../lib/errors.js";
+import { roomKey } from "../lib/keys.js";
 import type { Message } from "../chat/model.js";
 import type { ModelPick } from "../models/catalog.js";
 import { resolvePick } from "../models/picks.js";
@@ -20,10 +21,10 @@ const CLAIM_ATTEMPTS = 5;
 
 let lambda: LambdaClient | undefined;
 
-/** A room that never set a default model uses Auto. */
+/** A room that never set a default model uses Auto. Read consistently, so a default an admin just set applies. */
 async function roomDefaultModel(roomId: string): Promise<ModelPick> {
   const { Item } = await docClient().send(new GetCommand({
-    TableName: tableName(), Key: { pk: `ROOM#${roomId}`, sk: "META" },
+    TableName: tableName(), Key: { pk: roomKey(roomId), sk: "META" }, ConsistentRead: true,
     ProjectionExpression: "#m", ExpressionAttributeNames: { "#m": "defaultModel" },
   }));
   return (Item?.defaultModel as ModelPick | undefined) ?? "auto";
@@ -85,7 +86,7 @@ export async function startOrSteer(
   const taint = messageTaint(message);
   const adds = threadAdds(taint);
   const chosen = resolvePick(pick, roomDefault, mergeTaint(thread.taint, taint));
-  const key = { pk: `ROOM#${roomId}`, sk: threadSk(thread.number) };
+  const key = { pk: roomKey(roomId), sk: threadSk(thread.number) };
   const now = new Date();
   const startedAt = now.toISOString();
   const deadAt = new Date(now.getTime() - DEAD_AFTER_MS).toISOString();
@@ -102,9 +103,9 @@ export async function startOrSteer(
     { Put: { TableName, Item: { pk: `RUN#${run.runId}`, sk: "META", ...run }, ConditionExpression: "attribute_not_exists(pk)" } },
     {
       Update: {
-        TableName, Key: key, UpdateExpression: `${start.UpdateExpression} REMOVE endedAt, currentStep, model ${adds.clause}`,
+        TableName, Key: key, UpdateExpression: `${start.UpdateExpression} REMOVE endedAt, currentStep, #model ${adds.clause}`,
         ConditionExpression: "attribute_not_exists(activeRunId) OR #startedAt < :deadAt",
-        ExpressionAttributeNames: { ...start.ExpressionAttributeNames, ...adds.names },
+        ExpressionAttributeNames: { ...start.ExpressionAttributeNames, ...adds.names, "#model": "model" },
         ExpressionAttributeValues: { ...start.ExpressionAttributeValues, ...adds.values, ":deadAt": deadAt },
       },
     },

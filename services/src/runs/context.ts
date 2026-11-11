@@ -5,7 +5,7 @@ import type { RunEvent } from "../threads/types.js";
 type Assistant = Extract<ModelMessage, { role: "assistant" }>;
 
 /** The model can't open files, so a message names its attachments for it. */
-const withAttachments = (m: Message) => [m.text, ...m.attachments.map((a) => `[attached: ${a.name}]`)].join("\n");
+const withAttachments = (text: string, names: string[] = []) => [text, ...names.map((name) => `[attached: ${name}]`)].join("\n");
 
 /** The log without what failed attempts wrote: a `text.reset` voids the text and native turn its turn wrote before it. */
 function withoutVoided(events: RunEvent[]): RunEvent[] {
@@ -26,7 +26,7 @@ function withoutVoided(events: RunEvent[]): RunEvent[] {
 export function buildContext(prior: Message[], events: RunEvent[]): ModelMessage[] {
   const from = prior.findIndex((m) => m.authorId !== "agent");
   const messages: ModelMessage[] = (from < 0 ? [] : prior.slice(from)).map((m) =>
-    m.authorId === "agent" ? { role: "assistant", text: m.text } : { role: "user", author: m.authorName, text: withAttachments(m) },
+    m.authorId === "agent" ? { role: "assistant", text: m.text } : { role: "user", author: m.authorName, text: withAttachments(m.text, m.attachments.map((a) => a.name)) },
   );
   const calls = new Map<number, ToolCall>();
   // The assistant message this run is writing; a tool result or a steer ends it.
@@ -49,7 +49,7 @@ export function buildContext(prior: Message[], events: RunEvent[]): ModelMessage
       messages.push({ role: "tool", toolCallId: calls.get(e.step)?.id ?? "", output: e.output, isError: !e.ok });
       current = undefined;
     } else if (e.type === "steer") {
-      messages.push({ role: "user", author: e.authorName, text: e.text });
+      messages.push({ role: "user", author: e.authorName, text: withAttachments(e.text, e.attachments) });
       current = undefined;
     }
   }

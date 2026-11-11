@@ -2,13 +2,14 @@ import { budgetRepo } from "../budget/repo.js";
 import { sleep } from "../lib/sleep.js";
 import { JOBS, NAMING_MODEL, ROUTER_MODEL } from "../models/catalog.js";
 import { gateway } from "../models/index.js";
-import { NAME_PROMPT, type ModelChunk, type ModelRequest, type ToolCall } from "../models/gateway.js";
+import { NAME_PROMPT, type ModelChunk, type ModelGateway, type ModelRequest, type ToolCall } from "../models/gateway.js";
 import { modelIdOf, parseRoute, ROUTER_PROMPT, routerInput } from "../models/picks.js";
 import { mergeTaint, messageTaint, runRefusal } from "../models/privacy.js";
 import { isNumberedName } from "../threads/model.js";
 import { threadsRepo } from "../threads/repo.js";
 import type { RunEndStatus, RunEvent } from "../threads/types.js";
 import { answerOf, buildContext } from "./context.js";
+import { finishRun } from "./finish.js";
 import { endReason, stoppedBy } from "./model.js";
 import { notifyRun } from "./notify.js";
 import { runsRepo, type Run } from "./repo.js";
@@ -33,6 +34,10 @@ type Writer = Awaited<ReturnType<ReturnType<typeof runsRepo>["eventWriter"]>>;
 type Usage = Extract<ModelChunk, { type: "usage" }>;
 /** A run once its model is settled. */
 type RoutedRun = Run & { model: string };
+
+let shared: ModelGateway | undefined;
+/** One gateway per container, so its SDK clients keep their connections alive from one call to the next. */
+const models = () => (shared ??= gateway());
 
 /** Null when the run is already over (its start failed after the invoke was accepted). */
 export async function load(runId: string): Promise<{ run: Run; provisional: boolean } | null> {
@@ -98,7 +103,7 @@ type Call = { text: string; toolCalls: ToolCall[]; usage?: Usage; end?: Extract<
 async function callModel(request: ModelRequest, onText?: (text: string) => void): Promise<Call> {
   const call: Call = { text: "", toolCalls: [], failed: false };
   try {
-    for await (const chunk of gateway().stream(request)) {
+    for await (const chunk of models().stream(request)) {
       if (chunk.type === "text") {
         call.text += chunk.text;
         onText?.(chunk.text);
@@ -190,7 +195,10 @@ async function readSteers(run: Run, events: RunEvent[], writer: Writer): Promise
         if (!overHoles) return;
         warnHoles(run.threadId, seenSeq + 1, m.seq - 1);
       }
-      if (m.seq > steered) events.push(await writer.append({ type: "steer", messageSeq: m.seq, authorName: m.authorName, text: m.text }));
+      if (m.seq > steered) {
+        const attachments = m.attachments.length ? { attachments: m.attachments.map((a) => a.name) } : {};
+        events.push(await writer.append({ type: "steer", messageSeq: m.seq, authorName: m.authorName, text: m.text, ...attachments }));
+      }
       seenSeq = m.seq;
     }
   };
@@ -259,7 +267,7 @@ async function stream(
   const flusher = setInterval(() => flush().catch((e) => { failure ??= e; stop.abort(); }), FLUSH_MS);
 
   // Real models get no tools yet, and the fake's tool names are ones only the fake accepts.
-  const tools = gateway().servedBy(run.model) === "fake" ? FAKE_TOOLS : [];
+  const tools = models().servedBy(run.model) === "fake" ? FAKE_TOOLS : [];
   let call: Call;
   try {
     call = await callModel(
@@ -272,19 +280,27 @@ async function stream(
   await flush().catch((e) => { failure ??= e; });
   const stopper = stop.stoppedBy();
   const spent = costOf(events);
+  // The provider billed the attempt, dropped or not, so it is charged before the step is retried. A writer refuses
+  // every append after one fails, so then the charge goes through a fresh one, which starts after the last event that
+  // landed.
+  const chargeAndRetry = async (error: unknown, logFailed: boolean): Promise<never> => {
+    if (call.usage) {
+      const charger = logFailed ? await runsRepo().eventWriter(run.runId) : writer;
+      await recordCall(run, charger, { model: run.model, job: "run" }, call.usage, { costMicros: spent + call.usage.costMicros });
+    }
+    throw error;
+  };
   // A model may reject its stream once aborted; a stop is not an error. A call that dropped before showing anything
   // is tried again, as is one whose text didn't all reach the log; a drop after text ends the run instead, since a
   // fresh answer would replace the one members were already reading.
-  if (failure || (call.failed && !wrote && !stopper)) {
-    // The provider billed the attempt, dropped or not, so it is charged before the retry. A writer refuses every append
-    // after one fails, so the charge goes through a fresh one, which starts after the last event that landed.
-    if (call.usage) {
-      const fresh = failure ? await runsRepo().eventWriter(run.runId) : writer;
-      await recordCall(run, fresh, { model: run.model, job: "run" }, call.usage, { costMicros: spent + call.usage.costMicros });
-    }
-    throw failure ?? call.error;
+  if (failure || (call.failed && !wrote && !stopper)) return chargeAndRetry(failure ?? call.error, !!failure);
+  const cutOff = !stopper && !call.failed && call.end?.stop === "max_tokens";
+  try {
+    if (call.end?.native) await writer.append({ type: "model.turn", ...call.end.native, turn });
+    if (cutOff) await writer.append({ type: "text", text: LENGTH_NOTE, turn });
+  } catch (e) {
+    return chargeAndRetry(e, true);
   }
-  if (call.end?.native) await writer.append({ type: "model.turn", ...call.end.native, turn });
   const settle = (result: Pick<Turn, "toolCalls" | "end">) => {
     const turnResult = { ...result, seenSeq, costMicros: spent + (call.usage?.costMicros ?? 0) };
     if (!call.usage) return turnResult;
@@ -293,12 +309,20 @@ async function stream(
   if (stopper) return settle({ toolCalls: [], end: stoppedBy(stopper) });
   if (call.failed) return settle({ toolCalls: [], end: { status: "failed", reason: DROPPED } });
   if (call.end?.stop === "refusal") return settle({ toolCalls: [], end: { status: "failed", reason: REFUSED } });
-  if (call.end?.stop === "max_tokens") {
-    // The tool calls of a cut-off turn may be cut off too, so none of them runs.
-    await writer.append({ type: "text", text: LENGTH_NOTE, turn });
-    return settle({ toolCalls: [], end: { status: "done" } });
-  }
+  // The tool calls of a cut-off turn may be cut off too, so none of them runs.
+  if (cutOff) return settle({ toolCalls: [], end: { status: "done" } });
   return settle({ toolCalls: call.toolCalls });
+}
+
+/**
+ * Ends a run that hit an error it couldn't get past. Its cost is summed from its usage events: the total stored on
+ * the run is written after each charge commits, so a failure in between leaves it short of what the room paid.
+ */
+export async function failRun(runId: string) {
+  const runs = runsRepo();
+  const [run, events] = await Promise.all([runs.getRun(runId), runs.allEvents(runId)]);
+  if (!run) return null;
+  return finishRun({ ...run, costMicros: costOf(events) }, { status: "failed", reason: "The agent hit an error." }, { seenSeq: run.seenSeq, force: true });
 }
 
 /**

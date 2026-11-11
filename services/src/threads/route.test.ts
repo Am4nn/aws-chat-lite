@@ -85,6 +85,15 @@ describe("routeSend: the model pick", () => {
     expect(startOrSteer).toHaveBeenCalledWith(me, "r", "t1", expect.objectContaining({ seq: 1 }), undefined);
   });
 
+  it("a file delivered by tag reaches the thread's run on the copy, which makes the thread private", async () => {
+    chat.send.mockImplementation(async (_u, i: { chatId: string }, admitted?: { attachments: unknown[] }) =>
+      ({ roomId: "r", chatId: i.chatId, seq: 1, attachments: admitted?.attachments ?? [] }));
+    threads.threadByTag.mockResolvedValue({ threadId: "t2", number: 2, taint: [] });
+    const { route } = await send({ text: "#2 see this", attachments: [file] });
+    await route();
+    expect(startOrSteer).toHaveBeenCalledWith(me, "r", "t2", expect.objectContaining({ chatId: "t2", attachments: [file] }), undefined);
+  });
+
   it("an allowed pick is handed to the run", async () => {
     const { route } = await send({ chatId: "t1", model: "sonnet" });
     await route();

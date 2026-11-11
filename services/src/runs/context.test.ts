@@ -73,6 +73,11 @@ describe("buildContext", () => {
     ]);
   });
 
+  it("a steer names its attachments the same way", () => {
+    const run = events({ type: "steer", messageSeq: 2, authorName: "ravi", text: "and this", attachments: ["log.txt"] });
+    expect(buildContext([message(1, "u1", "aman", "go")], run)[1]).toEqual({ role: "user", author: "ravi", text: "and this\n[attached: log.txt]" });
+  });
+
   it("starts at the first member message: older agent answers before it are left out", () => {
     const prior = [message(1, "agent", "agent", "old answer"), message(2, "u1", "aman", "go")];
     expect(buildContext(prior, [])).toEqual([{ role: "user", author: "aman", text: "go" }]);

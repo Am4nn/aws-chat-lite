@@ -40,7 +40,11 @@ export function gateway(env: Record<string, string | undefined> = process.env, p
   const providerOf = async (model: string): Promise<ModelProvider> => {
     const provider = servedBy(model);
     if (provider === "fake") return fake;
-    live ??= providers ? Promise.resolve(providers) : modelKeys(env).then(liveProviders);
+    // A gateway lives as long as its container, so a failed key read must not stay cached for good.
+    live ??= providers ? Promise.resolve(providers) : modelKeys(env).then(liveProviders).catch((e) => {
+      live = undefined;
+      throw e;
+    });
     return (await live)[provider];
   };
 
