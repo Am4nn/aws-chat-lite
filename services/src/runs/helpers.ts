@@ -40,10 +40,10 @@ const stepEvent = (events: RunEvent[], type: RunEvent["type"], step: number) =>
 /**
  * The delegate step's start, which a retry repeats without logging anything twice. It logs the main lane's step, then
  * either refuses an agent the room doesn't have (the run's own agent is not among `others`, and one deleted since the
- * run started is gone) or hands the task to the named one, read in full now: the next lane, and the helper's model, picked as a new run's would be from the agent's own model, Auto
- * routing on the task, kept off models that may not see the private content the thread or the delegating turn holds
- * (`taint`, which the thread's stored one can lag behind). The handover is the helper's run, which starts at the
- * delegate step's number, so its steps follow on from it.
+ * run started is gone) or hands the task to the named one, read in full now: the next lane, and the helper's model,
+ * picked as a new run's would be from the agent's own model, Auto routing on the task, kept off models that may not
+ * see the private content the thread or the delegating turn holds (`taint`, which the thread's stored one can lag
+ * behind). The handover is the helper's run, which starts at the delegate step's number, so its steps follow on.
  */
 export async function startHelper(
   run: RoutedRun, call: ToolCall, taint: TaintSource[],
