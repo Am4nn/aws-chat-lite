@@ -30,19 +30,24 @@ describe("toolKeysSecret", () => {
     writeFileSync(path, text);
     return path;
   };
-  const env = (path: string) => `TAVILY_API_KEY=t\nGITHUB_APP_ID=42\nGITHUB_APP_SLUG=my-app\nGITHUB_APP_PRIVATE_KEY_PATH=${path}\nOTHER=x\n`;
+  const env = (path: string) =>
+    `TAVILY_API_KEY=t\nGITHUB_APP_ID=42\nGITHUB_APP_SLUG=my-app\nGITHUB_APP_PRIVATE_KEY_PATH=${path}\n` +
+    `GITHUB_APP_CLIENT_ID=Iv1.c\nGITHUB_APP_CLIENT_SECRET=cs\nOTHER=x\n`;
   const read = (path: string) => readFileSync(path, "utf8");
 
-  it("takes the three keys from .env and the App's private key from the file it names", () => {
+  it("takes the five keys from .env and the App's private key from the file it names", () => {
     expect(JSON.parse(toolKeysSecret(env(pemFile(pem)), read))).toEqual({
       TAVILY_API_KEY: "t", GITHUB_APP_ID: "42", GITHUB_APP_SLUG: "my-app", GITHUB_APP_PRIVATE_KEY: pem,
+      GITHUB_APP_CLIENT_ID: "Iv1.c", GITHUB_APP_CLIENT_SECRET: "cs",
     });
-    expect(TOOL_KEY_NAMES).toEqual(["TAVILY_API_KEY", "GITHUB_APP_ID", "GITHUB_APP_SLUG", "GITHUB_APP_PRIVATE_KEY"]);
+    expect(TOOL_KEY_NAMES).toEqual([
+      "TAVILY_API_KEY", "GITHUB_APP_ID", "GITHUB_APP_SLUG", "GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_CLIENT_ID", "GITHUB_APP_CLIENT_SECRET",
+    ]);
   });
 
   it("names a missing key, a missing file, and a file that isn't a private key, without echoing it", () => {
     expect(() => toolKeysSecret("TAVILY_API_KEY=t\nGITHUB_APP_ID=42\n", read)).toThrow(
-      ".env is missing GITHUB_APP_SLUG, GITHUB_APP_PRIVATE_KEY_PATH",
+      ".env is missing GITHUB_APP_SLUG, GITHUB_APP_PRIVATE_KEY_PATH, GITHUB_APP_CLIENT_ID, GITHUB_APP_CLIENT_SECRET",
     );
     expect(() => toolKeysSecret(env(join(tmpdir(), "no-such-dir-cl", "app.pem")), read)).toThrow(/GITHUB_APP_PRIVATE_KEY_PATH/);
     const notAKey = "not-a-key-c0ffee";

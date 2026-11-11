@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { githubCall, installationToken, listInstallations } from "./github/app.js";
+import { appJwt, githubCall, installationToken } from "./github/app.js";
 import { findTool } from "./index.js";
 import type { ToolEnv, ToolResult } from "./types.js";
 import { fetchPage } from "./web/fetch.js";
@@ -91,9 +91,10 @@ describe.skipIf(!process.env.REAL_TOOLS)("tools against the real services", () =
   });
 
   it("finds the App's installation on the playground and reads the repo", async () => {
-    const installation = (await listInstallations(env)).find((i) => i.repos.includes(REPO));
-    expect(installation, `The App isn't installed on ${REPO}.`).toBeDefined();
-    env = { ...env, github: { installationId: installation!.id, account: installation!.account, repos: [REPO], addedBy: "live", addedAt: "" } };
+    const jwt = appJwt(env.keys.githubAppId!, env.keys.githubPrivateKey!);
+    const installation = await githubCall(env, jwt, "GET", `/repos/${REPO}/installation`).catch(() => null);
+    expect(installation, `The App isn't installed on ${REPO}.`).not.toBeNull();
+    env = { ...env, github: { installationId: installation.id, account: installation.account.login, repos: [REPO], addedBy: "live", addedAt: "" } };
 
     expect(await run("github_read_file", { path: "README.md" })).toMatchObject({ ok: true });
     expect((await run("github_list", { kind: "issues", state: "all" })).ok).toBe(true);

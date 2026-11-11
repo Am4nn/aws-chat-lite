@@ -82,15 +82,3 @@ export async function installationToken(env: GitHubEnv, installationId: number, 
     throw e;
   }
 }
-
-export async function listInstallations(env: GitHubEnv): Promise<{ id: number; account: string; repos: string[] }[]> {
-  const jwt = jwtOf(env);
-  const installations: { id: number; account: { login: string } }[] = await githubCall(env, jwt, "GET", "/app/installations?per_page=100");
-  return Promise.all(
-    installations.map(async ({ id, account }) => {
-      const { token } = await githubCall(env, jwt, "POST", `/app/installations/${id}/access_tokens`, { permissions: { metadata: "read" } });
-      const { repositories } = await githubCall(env, token, "GET", "/installation/repositories?per_page=100");
-      return { id, account: account.login, repos: repositories.map((r: { full_name: string }) => r.full_name) };
-    }),
-  );
-}

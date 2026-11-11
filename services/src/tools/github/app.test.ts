@@ -1,7 +1,7 @@
 import { generateKeyPairSync, verify } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { fakeKeys, recordGitHub } from "../fake-github.js";
-import { appJwt, githubCall, installationToken, listInstallations } from "./app.js";
+import { appJwt, githubCall, installationToken } from "./app.js";
 
 describe("appJwt", () => {
   it("signs RS256 claims that verify with the public key and live for ten minutes", () => {
@@ -77,12 +77,5 @@ describe("githubCall", () => {
     const down = { keys: {}, fetch: (async () => { calls++; throw failing("UND_ERR_CONNECT_TIMEOUT"); }) as typeof fetch };
     await expect(githubCall(down, "t", "GET", "/repos/o/r", undefined)).rejects.toThrow("fetch failed");
     expect(calls).toBe(3);
-  });
-});
-
-describe("listInstallations", () => {
-  it("lists each installation with the repos it can reach", async () => {
-    const { fetch } = recordGitHub();
-    expect(await listInstallations({ keys: fakeKeys(), fetch })).toEqual([{ id: 1, account: "fake-org", repos: ["fake-org/playground"] }]);
   });
 });
