@@ -6,7 +6,7 @@ describe("workspacePath", () => {
   it.each(["a.txt", "data/2026 report (v2).csv", "it's 'x'.txt"])("accepts %s", (p) => expect(workspacePath(p)).toBe(p));
 
   it.each([
-    "../x", "a/../../b", "/etc/passwd", "a\b", "a/./b", "x:y", " a", "a ", "a/ b", "", "a".repeat(201),
+    "../x", "a/../../b", "/etc/passwd", String.raw`a\b`, "a\u0008", "a/./b", "x:y", " a", "a ", "a/ b", "", "a".repeat(201),
     "a/b/c/d/e/f/g/h/i", "a\u0000", "a//b", `it's "x".txt`, "x".repeat(101), 42, undefined,
   ])("rejects %j", (p) => {
     expect(() => workspacePath(p)).toThrow(ValidationError);

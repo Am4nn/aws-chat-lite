@@ -78,7 +78,8 @@ describe("dockerSandbox", () => {
     expect(result.stderr).toBe("x\nkilled (likely out of memory)");
     const late = fakeDocker(async (args) => {
       if (args[0] !== "exec") return {};
-      await new Promise((r) => setTimeout(r, 1000));
+      // Past the 1 s limit with room to spare: a timer can fire a millisecond early against Date.now().
+      await new Promise((r) => setTimeout(r, 1100));
       return { code: 137 };
     });
     expect(await late.sandbox.exec(ID, exec)).toMatchObject({ exitCode: 137, timedOut: true });

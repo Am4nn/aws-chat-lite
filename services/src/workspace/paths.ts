@@ -6,7 +6,7 @@ const MAX_LENGTH = 200;
 const MAX_SEGMENTS = 8;
 const MAX_SEGMENT = 100;
 // Characters Windows and S3 tooling choke on, plus control characters.
-const FORBIDDEN = /[\:*?"<>|\u0000-\u001f\u007f]/;
+const FORBIDDEN = /[\\:*?"<>|\u0000-\u001f\u007f]/;
 
 /** Validates a room file path: relative, POSIX, case-sensitive. */
 export function workspacePath(raw: unknown): string {
