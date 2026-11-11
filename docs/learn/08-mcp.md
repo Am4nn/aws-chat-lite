@@ -2,9 +2,9 @@
 
 ## What we built
 - **chat-lite as an MCP client, per room.** In the room panel's Connections tab, owners and admins add up to 5 remote MCP servers by URL (Streamable HTTP, signed in with OAuth, the way Claude.ai connectors work). Each server's tools join the room's agents as `mcp__<name>__<tool>`:
-  - a tool the server marks `readOnlyHint` runs freely;
+  - a tool the server marks `readOnlyHint` runs freely, unless the thread already holds private content from another source (an attachment, GitHub, the sandbox or another MCP server); then it asks too, because its arguments leave for that server;
   - every other tool waits for a member's Approve on step 7's card, titled `Run <tool> on <name>?`;
-  - every MCP tool that ran adds `mcp` to the thread's taint, so DeepSeek is never offered MCP tools or the threads they touched.
+  - every MCP tool that ran adds `mcp:<name>` to the thread's taint, so DeepSeek is never offered MCP tools or the threads they touched. The UI shows it as `MCP tool output`.
 
   Members see each server, its status (`connected`, or amber `needs reconnecting`) and every tool labelled `read-only` or `asks first`. Admins also get `Reconnect`, `Refresh tools` and `Remove`.
 - **chat-lite as an MCP server.** `POST /mcp` lets Claude Code, Claude Desktop or Claude.ai sign in as a chat-lite user and use five tools, only in rooms that user belongs to:
@@ -17,7 +17,7 @@
   - **As a client:**
     - A adds the test server from the panel, passes its sign-in and lands back on the room with `Connected test`; B, a member, saw `None yet.` and no `Add MCP server`;
     - both see the tools labelled `read-only` / `asks first`, and B gets no buttons;
-    - `call:mcp__test__echo` runs without asking and taints the thread with `mcp`;
+    - `call:mcp__test__echo` runs without asking and taints the thread with `mcp:test`;
     - `call:mcp__test__add_note` waits: B gets `needs you`, the card `Run add_note on test?`, then Approve;
     - Activity lists the connection, both tool runs and the approval;
     - a stored sign-in that won't open marks the server `needs reconnecting` until A's `Reconnect`;
@@ -97,8 +97,10 @@ Both of our sides speak all five. The client side uses the SDK's helpers (`disco
 Rules worth knowing:
 - every client is public (`none` + PKCE); a requested secret method is replaced in the response, as RFC 7591 allows;
 - redirect URIs are `https:`, or `http:` on a loopback host where any port matches (RFC 8252 §7.3, for desktop apps that pick a free port);
-- an unknown client or redirect gets an error page, never a redirect, so the authorize endpoint can't be used as an open redirector;
+- every authorize fault is a 400 error page, never a redirect: an unknown client or redirect URI, and also a bad `response_type`, PKCE or `resource` from a registered one. Under DCR anyone can register any https URI, so redirecting even a known client's errors would make the endpoint an open redirector, which RFC 9700 §4.11.2 forbids for untrusted URIs;
 - per source IP and hour, `register` gets 20 and `authorize` 60, then 429 `{"error":"slow_down"}`.
+
+**Least privilege on a single table: `dynamodb:LeadingKeys`.** `cl-<stage>-oauth` is public and unauthenticated, so it doesn't get the read/write on the whole table the other Lambdas have. Its policy allows `GetItem`, `PutItem`, `UpdateItem`, `DeleteItem` and `ConditionCheckItem` only where every partition key matches `OAUTHCLIENT#*`, `OAUTHREQ#*`, `OAUTHCODE#*`, `OAUTHGRANT#*` or `RATE#oauth#*` (`ForAllValues:StringLike` on `dynamodb:LeadingKeys`, plus a `Null: false` check, since `ForAllValues` over a missing key is true). The `Query` on `gsi1` is unconditioned: `LeadingKeys` doesn't reliably cover an index's key, and that index is only read here. A bug in the authorization server then can't read rooms or messages through the table.
 
 **Opaque tokens, hashed, on one grant item.** chat-lite's tokens are random strings (`cl_at_<grantId>_<43 chars>`, `cl_rt_…`, `cl_code_…`), not JWTs. Only their SHA-256 hashes are stored, all on one `OAUTHGRANT#<grantId>` item (access hash, its expiry, refresh hash, scopes, user). The trade-off:
 - **for:** revoking an app is deleting one item, effective on the next request. A leaked table holds no usable token;
@@ -107,6 +109,8 @@ Rules worth knowing:
 **Refresh rotation with reuse detection, and the race it causes.** Every refresh returns a new refresh token and retires the old one. Presenting a retired one means two parties hold the same token, so the server revokes the whole grant (OAuth 2.1's advice for public clients); the same goes for a code used twice.
 - **The catch on our client side.** Two runs in one room may refresh the same expired token at once. The loser presents a token the winner just rotated, and gets `invalid_grant` (or, on a strict server, the grant dies).
 - **The rule.** `withFreshAuth` reloads the stored tokens on `invalid_grant`. Only if the version is unchanged (after a 0.5 s grace, because the winner's save may still be in flight) does it mark the connection `needs_auth`. The store's `save` is conditional on the version it read, so the loser can't write over the winner. There is no lock.
+- **The same race on our own server.** Claude Code can refresh twice at once too, so the grant keeps the previous refresh hash and when it was replaced (`prevRefreshHash`, `rotatedAt`). A token replaced within the last 30 s gets `invalid_grant` without a revoke: that is a race, not theft. Later than that, it revokes as above. A rotation write that loses its condition (or a `TransactionConflict`) doesn't revoke either.
+- **The person behind the grant.** Each refresh asks Cognito (`AdminGetUser`). A deleted or disabled account's grant is deleted there, so its app is out within the access token's hour instead of sliding on for 30 days at a time.
 
 **OAuth CSRF, and binding the callback to the initiator.** The `state` parameter stops a forged callback, but only if the callback checks who is finishing. Ours goes through the BFF (`/bff/mcp/callback`) with the admin's own session:
 - the flow item `MCPFLOW#<state>` records the admin who started it, and is taken with one conditional `DeleteItem`, so it is used once even when the user check then fails;
@@ -124,7 +128,8 @@ Rules worth knowing:
 - every resolved address is checked inside the socket's `lookup`, and an IP literal is checked before any lookup runs;
 - redirects are never followed (a 302 to `http://127.0.0.1/` is an error, not a request);
 - each answer may be at most 2 MB, with a 10 s deadline (60 s for a tool call);
-- the browser-bound `authorization_endpoint` follows the same scheme rule, so `javascript:` never reaches `location.assign`.
+- the browser-bound `authorization_endpoint` follows the same scheme rule, so `javascript:` never reaches `location.assign`;
+- a remote's error reaches a run or a toast as one short line: an OAuth error by its code, an HTTP error by its status, an unreadable answer by fixed copy, anything else cut at 200 characters. Error bodies can quote what we sent (a refresh token, the bearer) and run to 2 MB, more than a run event's DynamoDB item holds.
 
 The only exception is `MCP_LOCAL_HOSTS`, set on the local stage only (an infra test pins it absent on aws), so Floci can reach the test server over `http:`.
 
@@ -133,7 +138,8 @@ The only exception is `MCP_LOCAL_HOSTS`, set on the local stage only (an infra t
 - **tool poisoning:** instructions hidden in a tool's description.
 
 Our defences:
-- **The snapshot.** The tool list is the one the admin saw at connect time, at most 40 tools, each description cut to 1,000 characters and any schema over 10,000 characters dropped. New tools wait for `Refresh tools`.
+- **The snapshot.** The tool list is the one the admin saw at connect time, at most 40 tools, each description cut to 1,000 characters and any schema over 10,000 characters dropped, and it stops before 300 KB so it fits its DynamoDB item. New tools wait for `Refresh tools`.
+- **Names checked.** A name outside the MCP spec's `^[A-Za-z0-9_.-]{1,128}$` is dropped, and only the first tool per `mcp__<name>__<tool>` is kept: `a.b` and `a_b` map to the same name, and one duplicate name makes the model API refuse every turn in the room. The approval card only ever shows a name that passed.
 - **No free pass for writes.** A call to a tool not in the snapshot is unknown, and anything without `readOnlyHint: true` asks.
 - **What can still go wrong.** A server that lies at connect time still gets its write run unasked. The admin saw `read-only` beside it when connecting.
 
@@ -151,6 +157,11 @@ Membership is checked again on every call, so someone removed from a room loses 
 | Every page sends `frame-ancestors 'none'` + `X-Frame-Options: DENY`, not only `/consent` and `/apps` | A later feature that frames the app (an embed) needs its own path exempted |
 | Opaque tokens, hashed on one grant item; no JWTs | One `GetItem` per MCP request; no offline verification |
 | DCR only, both ways; no Client ID Metadata Documents | Servers that accept only CIMD or pre-registered clients can't be connected, and CIMD-only clients can't connect to us |
+| Every authorize fault is an error page, even with a registered redirect URI | A client sees our error page instead of its own `error=` callback |
+| A read-only MCP call asks first when the thread holds private content from any other source; taint is per server (`mcp:<name>`) | A server can echo its own earlier output back to itself unasked (no new exposure) |
+| A refresh token replaced within 30 s is `invalid_grant` without a revoke | A thief who replays within 30 s of the real client's refresh is refused but doesn't end the grant |
+| A refresh asks Cognito whether the account still exists and is enabled; access tokens aren't re-checked | A deleted account's app keeps its access token for up to an hour |
+| The OAuth Lambda's table access is limited by `dynamodb:LeadingKeys`; its `gsi1` query is unconditioned | It can read memberships and grant hashes through the index |
 | Every chat-lite client is public (`none` + PKCE) | A client that ignores the response and sends a secret gets `invalid_client` |
 | Two scopes, `rooms:read` and `rooms:write`; a read-only token doesn't see the write tools | Per-room scopes would need a room picker on consent |
 | Posts made over MCP appear as the user, with no "via app" label | Members can't tell a person from their Claude Code |
@@ -186,6 +197,8 @@ One Sonnet thread on Floci (`deploy:local -- --live-models`, 2026-11-11), with t
 - **The token key.** Floci's CloudFormation honours `GenerateSecretString` (64 letters and digits). A Floci reset makes a new key, so every stored MCP sign-in becomes unopenable and reads as `needs reconnecting`. The smoke uses exactly that to check `Reconnect`.
 - **DynamoDB runs the token store's writes as written:** `ADD #version` inside a transaction, the conditional save on `#version`, and a `DeleteItem` with `ReturnValues: ALL_OLD` under a TTL condition.
 - **`host.docker.internal`.** From Floci's Lambdas it reaches the test server, which binds `127.0.0.1` only. From the host it resolves to the LAN address, so tests on the host map it to 127.0.0.1 with a `lookup`.
+- **Cognito's `AdminGetUser` works from Floci's Lambdas.** A deployed refresh keeps an enabled account's grant and drops a disabled one's (pinned in `mcp/server/mcp.int.test.ts`), so no local substitute is needed.
+- **IAM isn't enforced,** so the OAuth Lambda's `LeadingKeys` scope can't be seen working locally.
 - **The rate limit counts Floci's source IP,** which is the same for every caller on this machine, so the smoke clears the `RATE#oauth#…` items before it counts to 21.
 - Details are in the [Floci compatibility report](floci-compat.md).
 
@@ -199,7 +212,8 @@ One Sonnet thread on Floci (`deploy:local -- --live-models`, 2026-11-11), with t
 - **Tokens sealed with one derived key,** not per-item KMS data keys.
 - **MCP tools only for `privateOk` models,** so a room on DeepSeek has none.
 - **A second 401 in one call** reads `<name> didn't answer: Unauthorized` rather than the reconnect copy.
-- **A crafted `?mcp=` link** can show a toast with any text (React renders it as text, so it's spoofing, not XSS).
+- **The `?mcp=` / `?mcpError=` toast shows only in a tab that started a flow.** The panel sets a `sessionStorage` mark before it leaves for the remote's sign-in, and the room shows the toast only when the mark is there, then clears it. A crafted link opens the room with no toast. A tab that started a flow and never came back could still show one from a crafted link (text only, so spoofing, not XSS).
+- **`dynamodb:LeadingKeys` isn't checked on Floci,** which enforces no IAM; an infra test pins the policy until the aws deploy shows it working.
 
 ## How big companies do it
 - **Claude.ai connectors:** a user or an org admin adds a remote MCP server by URL; Claude.ai runs discovery, DCR and PKCE server-side, keeps the tokens, and shows each tool's read or write permission, with "always allow" per tool. Our rooms work the same way, minus "always allow".
