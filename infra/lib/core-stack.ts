@@ -180,9 +180,12 @@ export class CoreStack extends Stack {
     fn.addToRolePolicy(new iam.PolicyStatement({ actions: ["lambda:SendDurableExecutionCallbackSuccess"], resources: [arn, `${arn}:*`] }));
   }
 
-  /** Lets `fn` queue a push: an asynchronous invoke of the push worker, so nothing waits on push services. */
+  /**
+   * Lets `fn` queue a push: an asynchronous invoke of the push worker, so nothing waits on push services. It is called
+   * by name, so the grant leaves out the versions and aliases CDK's grantInvoke adds.
+   */
   allowPush(fn: NodejsFunction) {
-    this.push.grantInvoke(fn);
+    fn.addToRolePolicy(new iam.PolicyStatement({ actions: ["lambda:InvokeFunction"], resources: [this.push.functionArn] }));
     fn.addEnvironment("PUSH_FN_NAME", this.push.functionName);
   }
 
