@@ -73,8 +73,10 @@ describe("storedAttachment", () => {
     expect((send.mock.calls[0][0] as HeadObjectCommand).input).toEqual({ Bucket: "cl-test-files", Key: declared.key });
   });
 
-  it("refuses a file that was never uploaded", async () => {
-    vi.spyOn(S3Client.prototype, "send").mockImplementation((async () => { throw Object.assign(new Error("nf"), { name: "NotFound" }); }) as never);
-    await expect(storedAttachment(declared)).rejects.toBeInstanceOf(ValidationError);
+  it("refuses a file that was never uploaded, whether S3 says 404 or (without ListBucket, as on AWS) 403", async () => {
+    for (const name of ["NotFound", "Forbidden"]) {
+      vi.spyOn(S3Client.prototype, "send").mockImplementation((async () => { throw Object.assign(new Error("no"), { name }); }) as never);
+      await expect(storedAttachment(declared), name).rejects.toThrow(new ValidationError("That upload isn't there; try again."));
+    }
   });
 });

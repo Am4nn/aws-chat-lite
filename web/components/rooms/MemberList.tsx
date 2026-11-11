@@ -7,6 +7,7 @@ import { MoreHorizontal } from "lucide-react";
 import { lastSeenText } from "@/lib/client/badges";
 import { bff, errorText } from "@/lib/client/bff";
 import { useClickOutside } from "@/lib/client/useClickOutside";
+import { useEscape } from "@/lib/client/useEscape";
 import { dur, easeOut, spring } from "@/lib/motion";
 import type { Member, Role } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
@@ -113,11 +114,17 @@ export function MemberList({ roomId, members, myRole, myUserId }: { roomId: stri
 
 function MemberMenu({ open, onToggle, name, children }: { open: boolean; onToggle: (open: boolean) => void; name: string; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
   useClickOutside(ref, open, () => onToggle(false));
+  useEscape(open, () => {
+    onToggle(false);
+    button.current?.focus();
+  });
 
   return (
     <div ref={ref} className="relative">
       <button
+        ref={button}
         aria-label={`Actions for ${name}`}
         aria-haspopup="menu"
         aria-expanded={open}

@@ -13,6 +13,6 @@ export default async function RoomLayout({ children, params }: { children: React
     serverApi<Me>("/me"),
     readerTimeZone(),
   ]);
-  if (!view) return <RoomGone rooms={rooms} />;
+  if (!view) return <RoomGone roomId={roomId} rooms={rooms} />;
   return <RoomShell view={view} rooms={rooms} me={me} serverTimeZone={timeZone}>{children}</RoomShell>;
 }
