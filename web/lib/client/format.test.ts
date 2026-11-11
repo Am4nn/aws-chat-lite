@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { answerParagraphs, budgetFill, clockTime, dayKey, dayLabel, excerpt, fileSize, formatElapsed, formatStepTime, formatUsd, matchSnippet, resetsOn, shortWhen, splitHeadline, streamWords, typingText } from "./format";
+import { answerParagraphs, budgetFill, clockTime, dayKey, dayLabel, excerpt, fileSize, formatElapsed, formatStepTime, formatUsd, formatWait, matchSnippet, resetsOn, shortWhen, splitHeadline, streamWords, timeAgo, typingText } from "./format";
 
 describe("format", () => {
   it("formatElapsed", () => {
@@ -124,5 +124,25 @@ describe("answerParagraphs", () => {
 describe("resetsOn", () => {
   it("names the UTC day the budget resets, whatever the reader's zone", () => {
     expect(resetsOn("2026-12-01T00:00:00.000Z")).toBe("Dec 1");
+  });
+});
+
+describe("formatWait", () => {
+  it("hours, minutes, or under a minute", () => {
+    expect(formatWait(7200)).toBe("2 h");
+    expect(formatWait(5400)).toBe("1 h 30 min");
+    expect(formatWait(2700)).toBe("45 min");
+    expect(formatWait(30)).toBe("under a minute");
+  });
+});
+
+describe("timeAgo", () => {
+  const now = Date.parse("2026-11-11T12:00:00Z");
+  const ago = (ms: number) => new Date(now - ms).toISOString();
+  it("counts minutes, hours, then days", () => {
+    expect(timeAgo(ago(20_000), now)).toBe("just now");
+    expect(timeAgo(ago(5 * 60_000), now)).toBe("5m ago");
+    expect(timeAgo(ago(3 * 3_600_000), now)).toBe("3h ago");
+    expect(timeAgo(ago(2 * 86_400_000), now)).toBe("2d ago");
   });
 });

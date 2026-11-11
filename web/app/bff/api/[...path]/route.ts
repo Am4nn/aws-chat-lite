@@ -12,7 +12,9 @@ async function forward(req: NextRequest, { params }: { params: Promise<{ path: s
   const res = await callApi(`${path}${req.nextUrl.search}`, token, {
     method: req.method, body: req.method === "GET" ? undefined : await req.text(),
   });
-  return new NextResponse((await res.text()) || "{}", {
+  // A 204 must have no body (the Response constructor throws on one); every other answer is JSON, even an empty one.
+  const body = res.status === 204 ? null : (await res.text()) || "{}";
+  return new NextResponse(body, {
     status: res.status, headers: { "content-type": "application/json", "cache-control": "no-store" },
   });
 }

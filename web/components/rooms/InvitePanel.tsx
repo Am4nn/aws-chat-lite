@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Copy, Link2, RefreshCw } from "lucide-react";
 import { bff, bffOrNull, errorText } from "@/lib/client/bff";
-import { dur, easeOut } from "@/lib/motion";
+import { swap } from "@/lib/motion";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { useToast } from "@/components/overlays/Toast";
@@ -12,8 +12,6 @@ import { expiresIn, inviteUrl } from "./invite";
 
 type Invite = { code: string; expiresAt: number };
 type State = { kind: "loading" } | { kind: "none" } | { kind: "active"; invite: Invite } | { kind: "confirmRevoke"; invite: Invite };
-
-const fade = { initial: { opacity: 0, y: 6 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0, y: -6 }, transition: { duration: dur.fast, ease: easeOut } };
 
 /** One reusable link per room. Rotating replaces it (the old link stops working); revoking removes it. */
 export function InvitePanel({ roomId }: { roomId: string }) {
@@ -57,17 +55,17 @@ export function InvitePanel({ roomId }: { roomId: string }) {
       <p className="text-[12.5px] leading-relaxed text-text-3">Anyone with the link can join as a member for 7 days.</p>
       <AnimatePresence mode="wait" initial={false}>
         {state.kind === "loading" && (
-          <motion.div key="loading" {...fade} className="flex h-20 items-center justify-center text-text-3"><Spinner /></motion.div>
+          <motion.div key="loading" {...swap} className="flex h-20 items-center justify-center text-text-3"><Spinner /></motion.div>
         )}
         {state.kind === "none" && (
-          <motion.div key="none" {...fade}>
+          <motion.div key="none" {...swap}>
             <Button variant="primary" onClick={create} disabled={busy} className="w-full">
               {busy ? <Spinner /> : <Link2 aria-hidden="true" size={15} />} Create invite link
             </Button>
           </motion.div>
         )}
         {(state.kind === "active" || state.kind === "confirmRevoke") && (
-          <motion.div key={`link-${state.invite.code}`} {...fade} className="flex flex-col gap-3">
+          <motion.div key={`link-${state.invite.code}`} {...swap} className="flex flex-col gap-3">
             <div className="rounded-xl border border-line-strong bg-surface-2 p-3">
               <p className="truncate font-mono text-[12px] text-text-2">/invite/{state.invite.code}</p>
               <p className="mt-1 text-[11.5px] text-text-3">Expires in {expiresIn(state.invite.expiresAt, Math.floor(Date.now() / 1000))}</p>
