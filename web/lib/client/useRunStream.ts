@@ -9,7 +9,7 @@ import { openRunStream } from "./runStream";
  * A run's events, read over its resumable stream while `runId` is set. A live run is published at most once per
  * animation frame, however fast its events come, so a burst of text renders (and animates) as one batch. Any other
  * run is a replay, published once its last event arrives so its rows appear together. `unavailable`: the server
- * refused the stream (the run is gone, or I left the room), so it will never fill in.
+ * refused the stream (the run is gone, or I left the room) or its events can't be shown, so it will never fill in.
  */
 export function useRunStream(runId: string | undefined, live: boolean): { run: RunView; unavailable: boolean } {
   const [view, setView] = useState(emptyRun);
