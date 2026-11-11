@@ -25,28 +25,32 @@ const runs = runsRepo();
 const user = (name: string) => ({ userId: randomUUID(), username: name });
 let clients = 0;
 
-/** A run with its whole event log already written (run.finished last), written straight to the table. */
-async function finishedRun(texts: string[]) {
+/**
+ * A run with its event log already written straight to the table: finished (run.finished last), or `dead`, still
+ * marked running 131 minutes after it started, with no run.finished.
+ */
+async function storedRun(texts: string[], { dead = false } = {}) {
   const owner = user("owner");
   const { roomId } = await roomsRepo().createRoom(owner, "Streams");
   const { thread, message } = await threadsRepo().createThread(owner, roomId, { text: "go", clientId: `k${++clients}` });
   const run: Run = {
-    runId: randomUUID(), roomId, threadId: thread.threadId, number: thread.number, status: "done", model: "fake",
-    startedBy: owner.username, startedAt: new Date().toISOString(), firstSeq: message.seq, seenSeq: message.seq, steps: 0, costMicros: 0,
+    runId: randomUUID(), roomId, threadId: thread.threadId, number: thread.number, status: dead ? "running" : "done",
+    model: "fake", startedBy: owner.username, startedAt: new Date(Date.now() - (dead ? 131 * 60_000 : 0)).toISOString(), firstSeq: message.seq, seenSeq: message.seq, steps: 0, costMicros: 0,
   };
   await docClient().send(new PutCommand({ TableName: tableName(), Item: { pk: `RUN#${run.runId}`, sk: "META", ...run } }));
   const writer = await runs.eventWriter(run.runId);
   await writer.append({ type: "run.started", model: "fake", startedBy: owner.username });
   for (const text of texts) await writer.append({ type: "text", text });
-  await writer.append({ type: "run.finished", status: "done", ms: 5, steps: 0, costMicros: 0 });
+  if (!dead) await writer.append({ type: "run.finished", status: "done", ms: 5, steps: 0, costMicros: 0 });
   return { owner, roomId, run };
 }
 
 let server: ReturnType<typeof startStreamServer>;
 let base: string;
-beforeAll(() => {
+beforeAll(async () => {
   server = startStreamServer(0);
-  base = `http://localhost:${(server.address() as AddressInfo).port}`;
+  await new Promise((r) => server.once("listening", r));
+  base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 });
 afterAll(() => { server.closeAllConnections(); server.close(); });
 
@@ -79,13 +83,13 @@ async function read(url: string, opts: { lastEventId?: number; dropWhen?: (event
 
 describe("stream tickets on Floci", () => {
   it("only a member of the run's room gets a ticket", async () => {
-    const { run } = await finishedRun(["hi"]);
+    const { run } = await storedRun(["hi"]);
     await expect(issueStreamTicket(user("stranger"), run.runId)).rejects.toBeInstanceOf(NotFound);
     await expect(issueStreamTicket(user("stranger"), randomUUID())).rejects.toBeInstanceOf(NotFound);
   });
 
   it("a ticket opens its own run's stream, once", async () => {
-    const { owner, roomId, run } = await finishedRun(["hi"]);
+    const { owner, roomId, run } = await storedRun(["hi"]);
     const { ticket } = await issueStreamTicket(owner, run.runId);
     expect(await consumeStreamTicket(ticket, randomUUID())).toBeNull();
     expect(await consumeStreamTicket(ticket, run.runId)).toEqual({ userId: owner.userId, roomId });
@@ -95,7 +99,7 @@ describe("stream tickets on Floci", () => {
 
 describe("local stream server on Floci", () => {
   it("streams a finished run's every event and closes; Last-Event-ID: 2 starts from 3", async () => {
-    const { owner, run } = await finishedRun(["Hello ", "world."]);
+    const { owner, run } = await storedRun(["Hello ", "world."]);
     const all = await read(await streamUrl(owner, run.runId));
     expect(all.res.status).toBe(200);
     expect(all.res.headers.get("content-type")).toBe("text/event-stream");
@@ -107,14 +111,33 @@ describe("local stream server on Floci", () => {
   });
 
   it("a used or missing ticket is a 401; a preflight gets the CORS headers", async () => {
-    const { owner, run } = await finishedRun(["hi"]);
+    const { owner, run } = await storedRun(["hi"]);
     const url = await streamUrl(owner, run.runId);
     await read(url);
-    expect((await fetch(url)).status).toBe(401);
+    const used = await fetch(url);
+    expect(used.status).toBe(401);
+    expect(used.headers.get("content-type")).toBe("application/json");
+    expect(await used.json()).toEqual({ error: expect.any(String) });
     expect((await fetch(`${base}/runs/${run.runId}/stream`)).status).toBe(401);
     const preflight = await fetch(url, { method: "OPTIONS" });
     expect(preflight.status).toBe(204);
     expect(preflight.headers.get("access-control-allow-headers")).toBe("last-event-id");
+  });
+
+  it("a member removed after the ticket was issued gets a 404 at connect", async () => {
+    const { owner, roomId, run } = await storedRun(["hi"]);
+    const member = user("member");
+    await roomsRepo().acceptInvite((await roomsRepo().rotateInvite(roomId, owner.userId)).code, member);
+    const url = await streamUrl(member, run.runId);
+    await roomsRepo().removeMember(roomId, owner.userId, member.userId);
+    expect((await fetch(url)).status).toBe(404);
+  });
+
+  it("a dead run streams what is left; once nothing is, a reconnect gets 410", async () => {
+    const { owner, run } = await storedRun(["hi"], { dead: true });
+    const resumed = await read(await streamUrl(owner, run.runId), { lastEventId: 1, dropWhen: (events) => events.length >= 1 });
+    expect(resumed.events.map((e) => e.seq)).toEqual([2]);
+    expect((await fetch(await streamUrl(owner, run.runId), { headers: { "last-event-id": "2" } })).status).toBe(410);
   });
 
   it("a live answer dropped mid-stream and resumed with Last-Event-ID equals the stored answer exactly", async () => {

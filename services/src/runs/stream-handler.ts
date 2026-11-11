@@ -1,5 +1,5 @@
 import type { LambdaFunctionURLEvent } from "aws-lambda";
-import { STREAM_HEADERS, runIdFromPath, streamRun } from "./stream.js";
+import { headersFor, refuse, runIdFromPath, streamRun } from "./stream.js";
 
 /** Provided by the Lambda Node.js runtime for response streaming. */
 declare const awslambda: {
@@ -12,16 +12,12 @@ export const handler = awslambda.streamifyResponse(async (event: LambdaFunctionU
   let out: NodeJS.WritableStream = stream;
   const sink = {
     // The status and headers go out in the prelude, so they are fixed once the first byte is written.
-    status: (statusCode: number) => { out = awslambda.HttpResponseStream.from(stream, { statusCode, headers: STREAM_HEADERS }); },
+    status: (statusCode: number) => { out = awslambda.HttpResponseStream.from(stream, { statusCode, headers: headersFor(statusCode) }); },
     write: (chunk: string) => { out.write(chunk); },
     end: () => { out.end(); },
   };
   const runId = runIdFromPath(event.rawPath);
-  if (!runId) {
-    sink.status(404);
-    sink.end();
-    return;
-  }
+  if (!runId) return refuse(sink, 404, "No such route.");
   // A client that hangs up closes the stream; stop polling then instead of at the stream's time limit.
   const gone = new AbortController();
   stream.on("close", () => gone.abort());

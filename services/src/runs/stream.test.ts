@@ -1,21 +1,31 @@
 import { describe, it, expect } from "vitest";
 import type { RunEvent, RunEventBody } from "../threads/types.js";
+import type { Run } from "./repo.js";
 import { streamRun, type StreamDeps } from "./stream.js";
 
 const at = "2026-11-11T00:00:00.000Z";
 const finished: RunEventBody = { type: "run.finished", status: "done", ms: 10, steps: 0, costMicros: 0 };
 const event = (seq: number, body: RunEventBody = { type: "text", text: `w${seq} ` }) => ({ ...body, seq, at }) as RunEvent;
 
+const iso = (ms: number) => new Date(ms).toISOString();
+const MIN = 60_000;
+
 /**
- * A run log on a fake clock: each event becomes visible at its `visibleAt` ms, `sleep` only moves the clock, and the
- * ticket "good" belongs to member u1 of room r1.
+ * A run log on a fake clock that starts at 0: each event becomes visible at its `visibleAt` ms, `sleep` only moves
+ * the clock, and the ticket "good" belongs to member u1 of room r1. The run is running, started at 0, unless `run`
+ * says otherwise.
  */
-function fakeRun(log: { event: RunEvent; visibleAt?: number }[], opts: { memberUntilMs?: number } = {}) {
+function fakeRun(
+  log: { event: RunEvent; visibleAt?: number }[],
+  opts: { memberUntilMs?: number; run?: { status: Run["status"]; startedAt: string; endedAt?: string } } = {},
+) {
   let now = 0;
+  const run = { status: "running" as const, startedAt: iso(0), ...opts.run };
   const deps: StreamDeps = {
     consume: async (ticket, runId) => (ticket === "good" && runId === "run1" ? { userId: "u1", roomId: "r1" } : null),
     events: async (_runId, after) => log.filter((l) => (l.visibleAt ?? 0) <= now && l.event.seq > after).map((l) => l.event),
     isMember: async () => now < (opts.memberUntilMs ?? Infinity),
+    getRun: async () => run,
     nowMs: () => now,
     sleep: async (ms) => { now += ms; },
   };
@@ -100,15 +110,50 @@ describe("streamRun", () => {
     expect(out.endedAt).toBe(1000);
   });
 
-  it("a bad ticket, or one for another run, is a 401 and nothing else", async () => {
+  it("a bad ticket, or one for another run, is a 401 with a short JSON reason", async () => {
     for (const req of [{ runId: "run1", ticket: "bad" }, { runId: "run2", ticket: "good" }]) {
       const { deps, now } = fakeRun([{ event: event(1, finished) }]);
       const { out, sink } = recorder(now);
       await streamRun(req, sink, deps);
       expect(out.status).toBe(401);
-      expect(out.writes).toEqual([]);
+      expect(out.writes.map((w) => JSON.parse(w.text))).toEqual([{ error: expect.any(String) }]);
       expect(out.endedAt).toBe(0);
     }
+  });
+
+  it("a member removed after the ticket was issued is refused at connect: 404, no events", async () => {
+    const { deps, now } = fakeRun([{ event: event(1) }], { memberUntilMs: 0 });
+    const { out, sink } = recorder(now);
+    await streamRun({ runId: "run1", ticket: "good" }, sink, deps);
+    expect(out.status).toBe(404);
+    expect(out.writes.map((w) => JSON.parse(w.text))).toEqual([{ error: expect.any(String) }]);
+    expect(out.endedAt).toBe(0);
+  });
+
+  it("a run that died without run.finished, with nothing past the cursor, is a 410 at connect", async () => {
+    const { deps, now } = fakeRun([{ event: event(1) }], { run: { status: "running", startedAt: iso(-131 * MIN) } });
+    const { out, sink } = recorder(now);
+    await streamRun({ runId: "run1", ticket: "good", lastEventId: "1" }, sink, deps);
+    expect(out.status).toBe(410);
+    expect(out.writes.map((w) => JSON.parse(w.text))).toEqual([{ error: expect.any(String) }]);
+  });
+
+  it("a dead run's stream sends what is left, then ends at the next 30 s check", async () => {
+    const { deps, now } = fakeRun([{ event: event(1) }], { run: { status: "running", startedAt: iso(-131 * MIN) } });
+    const { out, sink } = recorder(now);
+    await streamRun({ runId: "run1", ticket: "good" }, sink, deps);
+    expect(out.status).toBe(200);
+    expect(ids(out.writes)).toEqual(["1"]);
+    expect(out.endedAt).toBe(30_000);
+  });
+
+  it("a run closed without run.finished gets 30 s for it to land, then its stream ends", async () => {
+    const { deps, now } = fakeRun([{ event: event(1) }], { run: { status: "done", startedAt: iso(-MIN), endedAt: iso(0) } });
+    const { out, sink } = recorder(now);
+    await streamRun({ runId: "run1", ticket: "good" }, sink, deps);
+    expect(out.status).toBe(200);
+    expect(ids(out.writes)).toEqual(["1"]);
+    expect(out.endedAt).toBe(30_000);
   });
 
   it("a drop mid-answer and a resume with Last-Event-ID show the answer exactly once", async () => {

@@ -168,10 +168,9 @@ export function chatRepo() {
         TableName, Item: { ...messageKey(at, seq), ...message, textLower: text.toLowerCase() },
         ConditionExpression: "attribute_not_exists(sk)",
       }));
-      await Promise.all([
-        readOwnMessage(at, user.userId, seq),
-        opts.copy ? undefined : countMentions(at, notified(message, members, user.userId)),
-      ]);
+      const writes = [readOwnMessage(at, user.userId, seq)];
+      if (!opts.copy) writes.push(countMentions(at, notified(message, members, user.userId)));
+      await Promise.all(writes);
       return withUrls(message);
     },
 

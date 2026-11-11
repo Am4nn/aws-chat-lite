@@ -1,5 +1,5 @@
 import { createServer, type Server } from "node:http";
-import { STREAM_HEADERS, runIdFromPath, streamRun } from "./stream.js";
+import { headersFor, refuse, runIdFromPath, streamRun } from "./stream.js";
 
 /** The same CORS the Function URL is given: any origin, since the ticket is the auth and no cookies travel. */
 const CORS = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET", "access-control-allow-headers": "last-event-id" };
@@ -15,18 +15,15 @@ export function startStreamServer(port = 4600): Server {
       res.writeHead(204, CORS).end();
       return;
     }
-    const runId = req.method === "GET" ? runIdFromPath(url.pathname) : undefined;
-    if (!runId) {
-      res.writeHead(404, CORS).end();
-      return;
-    }
-    const gone = new AbortController();
-    res.on("close", () => gone.abort());
     const sink = {
-      status: (code: number) => { res.writeHead(code, { ...STREAM_HEADERS, ...CORS }).flushHeaders(); },
+      status: (code: number) => { res.writeHead(code, { ...headersFor(code), ...CORS }).flushHeaders(); },
       write: (chunk: string) => { res.write(chunk); },
       end: () => { res.end(); },
     };
+    const runId = req.method === "GET" ? runIdFromPath(url.pathname) : undefined;
+    if (!runId) return refuse(sink, 404, "No such route.");
+    const gone = new AbortController();
+    res.on("close", () => gone.abort());
     const lastEventId = req.headers["last-event-id"];
     try {
       await streamRun({
@@ -39,5 +36,6 @@ export function startStreamServer(port = 4600): Server {
       res.end();
     }
   });
-  return server.listen(port);
+  // Loopback only: the stream is for this machine's browser, and the tickets would otherwise be open to the network.
+  return server.listen(port, "127.0.0.1");
 }
