@@ -123,3 +123,22 @@ describe("mention pushes", () => {
     expect(pushed).toEqual([]);
   });
 });
+
+describe("send", () => {
+  const keysWritten = (send: ReturnType<typeof fakeTable>) =>
+    writes(send).filter((c) => c instanceof UpdateCommand).map((c) => String((c as UpdateCommand).input.Key?.sk));
+  const post = (opts?: { system?: boolean }) =>
+    chatRepo().send(me, { ...at, clientId: "k1", text: "Morning digest" }, { text: "Morning digest", attachments: [] }, opts);
+
+  it("marks a member's own message read for them", async () => {
+    const send = fakeTable({}, () => ({ Attributes: { lastSeq: 5 } }));
+    expect(await post()).toMatchObject({ seq: 5 });
+    expect(keysWritten(send)).toContain("READ#u1#c1");
+  });
+
+  it("moves no read marker for a message the server posts in its own name", async () => {
+    const send = fakeTable({}, () => ({ Attributes: { lastSeq: 5 } }));
+    expect(await post({ system: true })).toMatchObject({ seq: 5, authorName: "ann" });
+    expect(keysWritten(send).some((k) => k.startsWith("READ#"))).toBe(false);
+  });
+});

@@ -101,7 +101,8 @@ export type ThreadSummary = {
 // Model choice: mirrors services/src/models/catalog.ts and privacy.ts.
 export type ModelPick = "auto" | "sonnet" | "haiku" | "opus" | "fable" | "deepseek-flash" | "deepseek-pro" | "fake";
 export type ModelOption = { pick: ModelPick; id?: string; label: string; short: string; price: string; privateOk: boolean };
-export type TaintSource = "attachment" | "github" | "mcp" | "sandbox";
+/** MCP output is recorded per server, as `mcp:<name>`. */
+export type TaintSource = "attachment" | "github" | "sandbox" | `mcp:${string}`;
 
 export type Budget = { spentMicros: number; capMicros: number; month: string; resetsAt: string };
 
@@ -110,7 +111,7 @@ export type Aspect = "1:1" | "3:4" | "4:3" | "9:16" | "16:9";
 export type GeneratedImage = { path: string; aspect: Aspect };
 
 type RunEventBody =
-  | { type: "run.started"; pick: ModelPick; startedBy: string }
+  | { type: "run.started"; pick: ModelPick; startedBy: string; agentName: string }
   | { type: "routed"; model: string; by: "pick" | "default" | "auto" }
   | { type: "model.turn"; model: string; content: unknown; turn: number }
   | { type: "steer"; messageSeq: number; authorName: string; text: string; attachments?: Attachment[] }
@@ -134,7 +135,7 @@ export type Source = { title: string; url: string };
 export type ApprovalStatus = "pending" | "approved" | "denied" | "expired" | "cancelled";
 export type GitHubConnection = { installationId: number; account: string; repos: string[]; addedBy: string; addedAt: string };
 export type Scope = "rooms:read" | "rooms:write";
-export type McpToolInfo = { name: string; title?: string; description: string; inputSchema: object; readOnly: boolean };
+export type McpToolInfo = { name: string; description: string; inputSchema: object; readOnly: boolean };
 export type McpConnection = {
   name: string;
   url: string;

@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "../chat/model.js";
 import type { RunEvent, RunEventBody } from "../threads/types.js";
-import { answerOf, buildContext } from "./context.js";
+import { answerOf, buildContext, threadMessages } from "./context.js";
 
 const message = (seq: number, authorId: string, authorName: string, text: string): Message => ({
   roomId: "r", chatId: "t", seq, authorId, authorName, text, createdAt: "2026-11-11T00:00:00.000Z",
   attachments: [], reactions: {}, mentions: [], everyone: false,
 });
-const events = (...bodies: RunEventBody[]): RunEvent[] =>
+const events = (...bodies: (RunEventBody & { lane?: number })[]): RunEvent[] =>
   bodies.map((b, i) => ({ ...b, seq: i + 1, at: "2026-11-11T00:00:00.000Z" }) as RunEvent);
 
 const call = (n: number) => ({ id: `call-${n}`, name: "fake.lookup", input: { query: "q" } });
@@ -18,11 +18,11 @@ describe("buildContext", () => {
   it("prior messages, then tool calls, their results and the merged answer text", () => {
     const prior = [message(1, "u1", "aman", "hi"), message(2, "agent", "agent", "earlier answer")];
     const run = events(
-      { type: "run.started", pick: "auto", startedBy: "aman" },
+      { type: "run.started", pick: "auto", startedBy: "aman", agentName: "agent" },
       started(1), finished(1), { type: "usage", model: "fake", job: "run", inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0, costMicros: 18 },
       { type: "text", text: "a ", turn: 1 }, { type: "text", text: "b", turn: 1 },
     );
-    expect(buildContext(prior, run)).toEqual([
+    expect(buildContext(threadMessages(prior), run)).toEqual([
       { role: "user", author: "aman", text: "hi" },
       { role: "assistant", text: "earlier answer" },
       { role: "assistant", text: "", toolCalls: [call(1)] },
@@ -37,7 +37,7 @@ describe("buildContext", () => {
       { type: "steer", messageSeq: 2, authorName: "ravi", text: "also check prod" },
       started(2), finished(2),
     );
-    expect(buildContext([message(1, "u1", "aman", "go")], run)).toEqual([
+    expect(buildContext(threadMessages([message(1, "u1", "aman", "go")]), run)).toEqual([
       { role: "user", author: "aman", text: "go" },
       { role: "assistant", text: "", toolCalls: [call(1)] },
       { role: "tool", toolCallId: "call-1", output: "out 1", isError: true },
@@ -50,10 +50,27 @@ describe("buildContext", () => {
   it("a model.turn gives the assistant message it belongs to the provider's own content", () => {
     const content = [{ type: "text", text: "a" }, { type: "tool_use", id: "call-1" }];
     const run = events({ type: "text", text: "a", turn: 1 }, { type: "model.turn", model: "m", content, turn: 1 }, started(1), finished(1));
-    expect(buildContext([message(1, "u1", "aman", "go")], run)).toEqual([
+    expect(buildContext(threadMessages([message(1, "u1", "aman", "go")]), run)).toEqual([
       { role: "user", author: "aman", text: "go" },
       { role: "assistant", text: "a", native: { model: "m", content }, toolCalls: [call(1)] },
       { role: "tool", toolCallId: "call-1", output: "out 1", isError: false },
+    ]);
+  });
+
+  it("a turn's later calls, run after its earlier results and an approval, stay on that turn's assistant message", () => {
+    const content = [{ type: "tool_use", id: "call-1" }, { type: "tool_use", id: "call-2" }];
+    const run = events(
+      { type: "model.turn", model: "m", content, turn: 1 }, started(1), finished(1),
+      { type: "approval.requested", step: 2, call: call(2), title: "t", expiresAt: "2026-11-11T01:00:00.000Z" },
+      { type: "approval.settled", step: 2, decision: "approved", by: "aman" },
+      started(2), finished(2), { type: "text", text: "done", turn: 2 },
+    );
+    expect(buildContext(threadMessages([message(1, "u1", "aman", "go")]), run)).toEqual([
+      { role: "user", author: "aman", text: "go" },
+      { role: "assistant", text: "", native: { model: "m", content }, toolCalls: [call(1), call(2)] },
+      { role: "tool", toolCallId: "call-1", output: "out 1", isError: false },
+      { role: "tool", toolCallId: "call-2", output: "out 2", isError: false },
+      { role: "assistant", text: "done" },
     ]);
   });
 
@@ -62,26 +79,26 @@ describe("buildContext", () => {
       { type: "routed", model: "claude-sonnet-5-5", by: "auto" },
       { type: "usage", model: "claude-haiku-5-5", job: "route", inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0, costMicros: 1 },
     );
-    expect(buildContext([message(1, "u1", "aman", "go")], run)).toEqual([{ role: "user", author: "aman", text: "go" }]);
+    expect(buildContext(threadMessages([message(1, "u1", "aman", "go")]), run)).toEqual([{ role: "user", author: "aman", text: "go" }]);
   });
 
   it("a prior message names each of its attachments on a line of its own", () => {
     const file = (name: string) => ({ key: `k/${name}`, name, size: 1, type: "application/pdf" });
     const prior = [{ ...message(1, "u1", "aman", "see this"), attachments: [file("report.pdf"), file("notes.pdf")] }];
-    expect(buildContext(prior, [])).toEqual([
+    expect(buildContext(threadMessages(prior), [])).toEqual([
       { role: "user", author: "aman", text: "see this\n[attached: report.pdf]\n[attached: notes.pdf]" },
     ]);
   });
 
   it("a steer names its attachments the same way", () => {
     const run = events({ type: "steer", messageSeq: 2, authorName: "ravi", text: "and this", attachments: [{ key: "k/log.txt", name: "log.txt", size: 1, type: "text/plain" }] });
-    expect(buildContext([message(1, "u1", "aman", "go")], run)[1]).toEqual({ role: "user", author: "ravi", text: "and this\n[attached: log.txt]" });
+    expect(buildContext(threadMessages([message(1, "u1", "aman", "go")]), run)[1]).toEqual({ role: "user", author: "ravi", text: "and this\n[attached: log.txt]" });
   });
 
   it("an image attachment goes along as an image part, without its bytes; every file is still named", () => {
     const png = { key: "k/shot.png", name: "shot.png", size: 9, type: "image/png", url: "https://s3/shot.png" };
     const pdf = { key: "k/report.pdf", name: "report.pdf", size: 1, type: "application/pdf" };
-    expect(buildContext([{ ...message(1, "u1", "aman", "what is this"), attachments: [png, pdf] }], [])).toEqual([{
+    expect(buildContext(threadMessages([{ ...message(1, "u1", "aman", "what is this"), attachments: [png, pdf] }]), [])).toEqual([{
       role: "user", author: "aman", text: "what is this\n[attached: shot.png]\n[attached: report.pdf]",
       images: [{ name: "shot.png", mediaType: "image/png", key: "k/shot.png", size: 9 }],
     }]);
@@ -89,14 +106,14 @@ describe("buildContext", () => {
 
   it("a steer's image attachment goes along as an image part", () => {
     const run = events({ type: "steer", messageSeq: 2, authorName: "ravi", text: "and this", attachments: [{ key: "k/a.webp", name: "a.webp", size: 3, type: "image/webp" }] });
-    expect(buildContext([message(1, "u1", "aman", "go")], run)[1]).toEqual({
+    expect(buildContext(threadMessages([message(1, "u1", "aman", "go")]), run)[1]).toEqual({
       role: "user", author: "ravi", text: "and this\n[attached: a.webp]", images: [{ name: "a.webp", mediaType: "image/webp", key: "k/a.webp", size: 3 }],
     });
   });
 
   it("starts at the first member message: older agent answers before it are left out", () => {
     const prior = [message(1, "agent", "agent", "old answer"), message(2, "u1", "aman", "go")];
-    expect(buildContext(prior, [])).toEqual([{ role: "user", author: "aman", text: "go" }]);
+    expect(buildContext(threadMessages(prior), [])).toEqual([{ role: "user", author: "aman", text: "go" }]);
   });
 
   it("text before a tool call stays in the same assistant message", () => {
@@ -152,5 +169,53 @@ describe("answerOf", () => {
     });
     const run = events(started(1), drew(1, "images/7-1-fox.png"), started(2), finished(2), started(3), drew(3, "images/7-3-owl.png"));
     expect(answerOf(run).images).toEqual([{ path: "images/7-1-fox.png", aspect: "1:1" }, { path: "images/7-3-owl.png", aspect: "1:1" }]);
+  });
+});
+
+describe("lanes", () => {
+  const inLane = (lane: number, body: RunEventBody) => ({ ...body, lane });
+  const delegated = { id: "call-1", name: "delegate", input: { agent: "researcher", task: "find docs" } };
+  // The main agent delegates step 1; its helper, in lane 1, looks something up in step 2, then answers.
+  const run = events(
+    { type: "text", text: "Asking.", turn: 1 },
+    { type: "step.started", step: 1, call: delegated, detail: "researcher: find docs" },
+    inLane(1, { type: "helper.started", step: 1, agentId: "a1", agentName: "researcher", task: "find docs", model: "m" }),
+    inLane(1, { type: "text", text: "Half", turn: 1 }),
+    inLane(1, { type: "text.reset", turn: 1 }),
+    inLane(1, started(2)), inLane(1, finished(2)),
+    inLane(1, { type: "text", text: "Found 3 docs.", turn: 2 }),
+    inLane(1, { type: "helper.finished", step: 1, status: "done", summary: "Found 3 docs.", steps: 1, ms: 9, costMicros: 4 }),
+    { type: "step.finished", step: 1, output: "Found 3 docs.", ms: 10, ok: true },
+    { type: "text", text: "\n\nThe researcher found 3 docs.", turn: 2 },
+  );
+
+  it("the main context has the delegate call and its result, and none of the helper's own steps or text", () => {
+    expect(buildContext(threadMessages([message(1, "u1", "aman", "go")]), run)).toEqual([
+      { role: "user", author: "aman", text: "go" },
+      { role: "assistant", text: "Asking.", toolCalls: [delegated] },
+      { role: "tool", toolCallId: "call-1", output: "Found 3 docs.", isError: false },
+      { role: "assistant", text: "\n\nThe researcher found 3 docs." },
+    ]);
+  });
+
+  it("a helper's context is its task, then its own lane, where a reset voids only its own turn", () => {
+    const task = { role: "user" as const, author: "lead", text: "find docs" };
+    expect(buildContext([task], run, 1)).toEqual([
+      task,
+      { role: "assistant", text: "", toolCalls: [call(2)] },
+      { role: "tool", toolCallId: "call-2", output: "out 2", isError: false },
+      { role: "assistant", text: "Found 3 docs." },
+    ]);
+  });
+
+  it("each lane's answer is its own text", () => {
+    expect(answerOf(run)).toEqual({ text: "Asking.\n\nThe researcher found 3 docs.", final: "The researcher found 3 docs.", images: [] });
+    expect(answerOf(run, 1)).toEqual({ text: "Found 3 docs.", final: "Found 3 docs.", images: [] });
+  });
+
+  it("an image a helper drew shows under the main answer", () => {
+    const image = { path: "images/7-1-2-fox.png", aspect: "1:1" as const };
+    const drew = run.map((e) => (e.type === "step.finished" && e.step === 2 ? { ...e, image } : e));
+    expect(answerOf(drew).images).toEqual([image]);
   });
 });

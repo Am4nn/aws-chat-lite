@@ -93,7 +93,7 @@ export async function modelChecks(stamp: number, owner: Person, guest: Person) {
   await A.keyboard.press("Enter");
   const haiku = await pillSays(A, "Haiku 5.5");
   await send(A, "tools:0 hi");
-  const answered = await footerMatches(A, /^Haiku 5\.5 · <?\$\d+\.\d\d · \d+:\d\d$/);
+  const answered = await footerMatches(A, /^Haiku 5\.5 · <?\$\d+\.\d\d · \d+:\d\d · Map$/);
   check(startsAuto && haiku && answered, `the pill starts on Auto; Haiku picked with the keyboard answers the next message ("${await footer(A)}")`);
   await settled(picked.number);
 

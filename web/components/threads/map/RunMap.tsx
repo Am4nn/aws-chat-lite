@@ -19,11 +19,11 @@ const STAGGER_S = 0.15;
 const MAX_DELAY_S = 1.5;
 
 /** A thread's Map page: the run named in the address, else its latest, which the thread's live status keeps current. */
-export function ThreadMap({ thread: initial, runId, agentName }: { thread: ThreadSummary; runId?: string; agentName: string }) {
+export function ThreadMap({ thread: initial, runId }: { thread: ThreadSummary; runId?: string }) {
   const thread = useThreads().byId(initial.threadId) ?? initial;
   const shown = runId ?? thread.runId;
   if (!shown) return <p className="p-7 text-[13.5px] text-text-3">Nothing has run here yet.</p>;
-  return <RunMap key={shown} runId={shown} agentName={agentName} live={isLive(thread.status) && shown === thread.runId} />;
+  return <RunMap key={shown} runId={shown} live={isLive(thread.status) && shown === thread.runId} />;
 }
 
 /**
@@ -31,11 +31,11 @@ export function ThreadMap({ thread: initial, runId, agentName }: { thread: Threa
  * with a card per step. It scrolls inside its own box, so a phone never scrolls the page sideways, and the lane
  * labels stay in view. Replay draws it in again from the start.
  */
-export function RunMap({ runId, agentName, live }: { runId: string; agentName: string; live: boolean }) {
+export function RunMap({ runId, live }: { runId: string; live: boolean }) {
   const { run, unavailable } = useRunStream(runId, live);
   const running = live && run.status === "running";
   const now = useNow(running);
-  const map = useMemo(() => runMap(run.events, now, agentName), [run.events, now, agentName]);
+  const map = useMemo(() => runMap(run.events, now), [run.events, now]);
   const [replays, setReplays] = useState(0);
 
   if (unavailable) return <p className="p-7 text-[13.5px] text-text-3">This run&apos;s steps couldn&apos;t be loaded.</p>;
@@ -64,7 +64,7 @@ export function RunMap({ runId, agentName, live }: { runId: string; agentName: s
         </button>
       </div>
       <div className="relative min-h-0 flex-1 overflow-auto overscroll-contain">
-        <MapCanvas key={replays} map={map} runId={runId} agentName={agentName} live={live} />
+        <MapCanvas key={replays} map={map} runId={runId} live={live} />
       </div>
     </div>
   );
@@ -74,7 +74,7 @@ export function RunMap({ runId, agentName, live }: { runId: string; agentName: s
  * The lanes, edges and cards. The cards there on the first paint drop in one after another; one that arrives later
  * drops in alone. Remounting (Replay) starts the cascade over.
  */
-function MapCanvas({ map, runId, agentName, live }: { map: Layout; runId: string; agentName: string; live: boolean }) {
+function MapCanvas({ map, runId, live }: { map: Layout; runId: string; live: boolean }) {
   const { picked, pick } = useContext(StepPick);
   const [first, setFirst] = useState<string[] | null>(null);
   if (!first && map.nodes.length) setFirst(map.nodes.map((n) => n.id));
@@ -93,7 +93,7 @@ function MapCanvas({ map, runId, agentName, live }: { map: Layout; runId: string
       ))}
       <MapEdges edges={map.edges} width={map.width} height={map.height} delayOf={delayOf} />
       {map.nodes.map((n) => (
-        <MapNode key={n.id} node={n} selected={n.id === selected} delay={delayOf(n.id)} onPick={() => pick({ runId, nodeId: n.id, agentName, live })} />
+        <MapNode key={n.id} node={n} selected={n.id === selected} delay={delayOf(n.id)} onPick={() => pick({ runId, nodeId: n.id, live })} />
       ))}
     </div>
   );

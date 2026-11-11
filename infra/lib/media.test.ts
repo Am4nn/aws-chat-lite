@@ -82,7 +82,7 @@ describe("media: push and voice", () => {
     const push = fnNamed("cl-local-push").logicalId;
     const senders = Object.values(template().findResources("AWS::Lambda::Function"))
       .filter((f: any) => f.Properties.Environment?.Variables?.PUSH_FN_NAME).map((f: any) => f.Properties.FunctionName);
-    expect(senders.sort()).toEqual(["cl-local-live", "cl-local-mcp", "cl-local-run", "cl-local-threads"]);
+    expect(senders.sort()).toEqual(["cl-local-live", "cl-local-mcp", "cl-local-run", "cl-local-schedule-fire", "cl-local-threads"]);
     for (const name of senders) {
       expect(fnNamed(name).props.Environment.Variables.PUSH_FN_NAME, name).toEqual({ Ref: push });
       const invokes = statementsOf(fnNamed(name)).filter((s: any) => [s.Action].flat().includes("lambda:InvokeFunction"));

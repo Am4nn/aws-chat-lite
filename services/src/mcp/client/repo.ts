@@ -1,8 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { DeleteCommand, GetCommand, PutCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
-import { StreamableHTTPError } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { OAuthError } from "@modelcontextprotocol/sdk/server/auth/errors.js";
 import { auditItem } from "../../audit/repo.js";
 import { connectionsRepo, mcpConnKey, mcpConnections, withoutKeys } from "../../connections/repo.js";
 import type { User } from "../../lib/auth.js";
@@ -14,6 +12,7 @@ import { cut } from "../../tools/cut.js";
 import type { AuditKind, McpConnection } from "../../threads/types.js";
 import { guardedFetch } from "./fetch.js";
 import { MAX_MCP_SERVERS } from "./limits.js";
+import { needsReconnecting, noSuchServer, remoteFailure } from "./messages.js";
 import { beginAuthorization, completeAuthorization, revokeRemote, withFreshAuth } from "./oauth.js";
 import { listRemoteTools, probe } from "./remote.js";
 import { SealError, seal, tokenKey, unseal } from "./seal.js";
@@ -37,9 +36,9 @@ const flowKey = (state: string) => ({ pk: `MCPFLOW#${state}`, sk: "META" });
 /** The tokens are sealed to their room and connection, so a blob copied into another item won't open there. */
 const authAad = (roomId: string, name: string) => `${roomId}#${name}`;
 
-const unknownServer = (name: string) => new NotFound(`This room has no MCP server called ${name}.`);
+const unknownServer = (name: string) => new NotFound(noSuchServer(name));
 const nameTaken = (name: string) => new Conflict(`This room already has an MCP server called ${name}.`);
-const needsReconnect = (name: string) => new Conflict(`${name} needs reconnecting. An admin can reconnect it in the room panel.`);
+const needsReconnect = (name: string) => new Conflict(needsReconnecting(name));
 
 /** A finish that failed after its flow was found: the browser is sent back to that room with the error. */
 export class FlowFailed extends Error {
@@ -48,10 +47,7 @@ export class FlowFailed extends Error {
   }
 }
 
-/**
- * Remote servers fail in many shapes: bad metadata (the SDK's schema errors), OAuth error answers, HTTP errors and
- * socket errors. The admin gets one line naming the host; a URL we refused stays a 400.
- */
+/** Remote servers fail in many shapes; the admin gets one line naming the host, and a URL we refused stays a 400. */
 async function fromRemote<T>(host: string, name: string, work: () => Promise<T>): Promise<T> {
   try {
     return await work();
@@ -59,12 +55,7 @@ async function fromRemote<T>(host: string, name: string, work: () => Promise<T>)
     if (e instanceof NeedsAuth || e instanceof UnauthorizedError) throw needsReconnect(name);
     if (e instanceof ValidationError) throw e;
     if (e instanceof UserError) throw new Upstream(e.message);
-    if (e instanceof OAuthError) throw new Upstream(`${host} refused chat-lite's sign-in (${e.errorCode}).`);
-    // Its message quotes the server's answer body, which could echo what we sent.
-    if (e instanceof StreamableHTTPError) throw new Upstream(`${host} answered with status ${e.code}.`);
-    if ((e as Error).name === "ZodError") throw new Upstream(`${host} sent sign-in details chat-lite can't read.`);
-    const message = (e as Error).message;
-    throw new Upstream(message ? `${host} didn't answer: ${cut(message, 200)}` : `${host} didn't answer.`);
+    throw new Upstream(remoteFailure(host, e));
   }
 }
 
@@ -194,7 +185,7 @@ export function mcpRepo(deps: Deps = liveDeps()) {
     const { href, hostname } = url;
     const probed = await fromRemote(hostname, name, () => probe(href, deps.fetch));
     if (probed.auth === "none") {
-      const listed = await fromRemote(hostname, name, () => listRemoteTools(href, undefined, deps.fetch));
+      const listed = await fromRemote(hostname, name, () => listRemoteTools(name, href, undefined, deps.fetch));
       return { connection: await saveConnected(user, roomId, { name, url: href, auth: "none", ...listed }, { reconnect }) };
     }
     // Reusing the client registered before saves a registration, and keeps the server's list of our clients short.
@@ -258,7 +249,7 @@ export function mcpRepo(deps: Deps = liveDeps()) {
         const pending = JSON.parse(unseal(await deps.key(), flow.pending, flow.state)) as PendingAuth;
         const { auth, listed } = await fromRemote(host, flow.name, async () => {
           const auth = await completeAuthorization(pending, code, deps.fetch);
-          return { auth, listed: await listRemoteTools(flow.url, auth.tokens.access_token, deps.fetch) };
+          return { auth, listed: await listRemoteTools(flow.name, flow.url, auth.tokens.access_token, deps.fetch) };
         });
         const server: Server = { name: flow.name, url: flow.url, auth: "oauth", ...listed };
         return { roomId: flow.roomId, connection: await saveConnected(user, flow.roomId, server, { reconnect: flow.reconnect, auth }) };
@@ -270,7 +261,7 @@ export function mcpRepo(deps: Deps = liveDeps()) {
     async refreshTools(user: User, roomId: string, name: string): Promise<McpConnection> {
       await connections.requireManager(roomId, user.userId, { writing: true });
       const conn = await existing(roomId, name);
-      const list = (bearer?: string) => listRemoteTools(conn.url, bearer, deps.fetch);
+      const list = (bearer?: string) => listRemoteTools(name, conn.url, bearer, deps.fetch);
       const { tools, toolCount } = await fromRemote(new URL(conn.url).hostname, name, () =>
         conn.auth === "oauth" ? withFreshAuth(tokenStore(roomId, name), deps.fetch, list) : list());
       try {

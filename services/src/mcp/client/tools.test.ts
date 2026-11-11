@@ -1,3 +1,5 @@
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ToolEnv } from "../../tools/types.js";
 import type { McpConnection } from "../../threads/types.js";
@@ -5,7 +7,7 @@ import { startMcpTestServer } from "../testing/server.js";
 import { guardedFetch } from "./fetch.js";
 import { completeAuthorization, beginAuthorization } from "./oauth.js";
 import { listRemoteTools, probe } from "./remote.js";
-import { mcpCaller, mcpServerOf, mcpTool, mcpToolName } from "./tools.js";
+import { mcpCaller, mcpTool } from "./tools.js";
 import type { StoredAuth, TokenStore } from "./types.js";
 
 const echo = { name: "echo", description: "Repeats the text.", inputSchema: { type: "object" }, readOnly: true };
@@ -14,26 +16,6 @@ const addNote = { name: "add_note", description: "Saves a note.", inputSchema: {
 const testConnection = (o: Partial<McpConnection> = {}): McpConnection => ({
   name: "test", url: "http://127.0.0.1:4710/mcp", auth: "oauth", status: "connected", tools: [echo, addNote], toolCount: 2,
   toolsAt: "2026-11-11T00:00:00Z", addedBy: "aman", addedAt: "2026-11-11T00:00:00Z", ...o,
-});
-
-describe("mcpToolName", () => {
-  it("prefixes the server's name and keeps only characters a model's tool name may hold", () => {
-    expect(mcpToolName("test", "add note!")).toBe("mcp__test__add_note_");
-    expect(mcpToolName("my-server", "get-issue_2")).toBe("mcp__my-server__get-issue_2");
-  });
-
-  it("cuts a name over 64 characters and ends it with a hash of the tool's own name", () => {
-    const long = "x".repeat(70);
-    const name = mcpToolName("test", long);
-    expect(name).toHaveLength(64);
-    expect(name).toMatch(/^mcp__test__x+_[0-9a-f]{8}$/);
-    expect(mcpToolName("test", `${"x".repeat(69)}y`)).not.toBe(name);
-  });
-
-  it("names the server back from a tool name, a cut one included", () => {
-    expect(mcpServerOf(mcpToolName("my-server", "add__note"))).toBe("my-server");
-    expect(mcpServerOf(mcpToolName("test", "x".repeat(70)))).toBe("test");
-  });
 });
 
 describe("mcpTool", () => {
@@ -87,7 +69,7 @@ describe("mcpCaller", () => {
       auth = await completeAuthorization(pending, code, f);
     }
     const bearer = auth?.tokens.access_token;
-    const { tools, toolCount } = await listRemoteTools(server.url, bearer, f);
+    const { tools, toolCount } = await listRemoteTools("test", server.url, bearer, f);
     const conn = testConnection({ url: server.url, auth: o.auth ?? "oauth", tools, toolCount });
     const store: TokenStore = {
       load: async () => auth && { auth, version: 1 },
@@ -125,6 +107,35 @@ describe("mcpCaller", () => {
     const unknown = await call({ roomId: "r1", name: "test" }, "nope", {});
     expect(unknown.ok).toBe(false);
     expect(unknown.output).toMatch(/^test didn't answer: .*There's no tool called nope\.$/);
+  });
+
+  it("keeps a remote failure to one short line, so an answer echoing a token never reaches the run", async () => {
+    vi.stubEnv("MCP_LOCAL_HOSTS", "127.0.0.1");
+    const refreshToken = "rt-secret-refresh-token";
+    const accessToken = "at-secret-access-token";
+    // Just under the fetch's 2 MB cap, so the whole body reaches the SDK, which quotes it in its errors.
+    const echo = (secret: string) => `<html>${secret} `.repeat(1_900_000 / (secret.length + 7));
+    const listener = http.createServer((req, res) => {
+      const body = req.url === "/token" ? echo(refreshToken) : echo(String(req.headers.authorization));
+      res.writeHead(500, { "content-type": "text/html" }).end(body);
+    });
+    await new Promise<void>((r) => listener.listen(0, "127.0.0.1", r));
+    servers.push({ close: () => new Promise((r) => listener.close(() => r())) });
+    const origin = `http://127.0.0.1:${(listener.address() as AddressInfo).port}`;
+    const auth = (expiresAt: number): StoredAuth => ({
+      issuer: origin, client: { client_id: "c1" }, expiresAt,
+      metadata: { issuer: origin, authorization_endpoint: `${origin}/authorize`, token_endpoint: `${origin}/token`, response_types_supported: ["code"] },
+      tokens: { access_token: accessToken, token_type: "Bearer", refresh_token: refreshToken },
+    });
+    const callWith = (stored: StoredAuth) => mcpCaller(() => ({
+      get: async () => testConnection({ url: `${origin}/mcp` }),
+      tokenStore: () => ({ load: async () => ({ auth: stored, version: 1 }), save: async () => true, markNeedsAuth: async () => {} }),
+    }))({ roomId: "r1", name: "test" }, "echo", {});
+
+    const refused = await callWith(auth(0));
+    expect(refused).toEqual({ ok: false, output: "test refused chat-lite's sign-in (server_error)." });
+    const failed = await callWith(auth(Date.now() + 3_600_000));
+    expect(failed).toEqual({ ok: false, output: "test answered with status 500." });
   });
 
   it("says when the room no longer has the server", async () => {

@@ -12,26 +12,28 @@ const conn = (status: McpConnection["status"]): McpConnection => ({
 const noMcp = { roomId: "r1", mcp: [] };
 const names = (opts: { github: boolean; privateOk: boolean; mcp?: McpConnection[] }) =>
   roomTools({ roomId: "r1", mcp: [], ...opts }).map((t) => t.spec.name);
+const memory = ["memory_save", "memory_update", "memory_forget"];
 const github = { installationId: 1, account: "fake-org", repos: ["fake-org/playground"], addedBy: "aman", addedAt: "2026-11-11T00:00:00Z" };
 
 describe("roomTools", () => {
-  it("offers the web tools always and GitHub's only with a connection and a model that may see private content", () => {
-    expect(names({ github: false, privateOk: true })).toEqual(["web_search", "web_fetch"]);
-    expect(names({ github: true, privateOk: false })).toEqual(["web_search", "web_fetch"]);
+  it("offers the web and memory tools always and GitHub's only with a connection and a model that may see private content", () => {
+    expect(names({ github: false, privateOk: true })).toEqual(["web_search", "web_fetch", ...memory]);
+    expect(names({ github: true, privateOk: false })).toEqual(["web_search", "web_fetch", ...memory]);
     const all = names({ github: true, privateOk: true });
     expect(all.filter((n) => n.startsWith("github_"))).toHaveLength(9);
   });
 
   it("offers a signed-in MCP server's tools, only to a model that may see private content", () => {
     expect(names({ github: false, privateOk: true, mcp: [conn("connected")] })).toEqual([
-      "web_search", "web_fetch", "mcp__test__echo", "mcp__test__add_note",
+      "web_search", "web_fetch", "mcp__test__echo", "mcp__test__add_note", ...memory,
     ]);
     expect(names({ github: true, privateOk: false, mcp: [conn("connected")] }).some((n) => n.startsWith("mcp__"))).toBe(false);
     expect(names({ github: false, privateOk: true, mcp: [conn("needs_auth")] }).some((n) => n.startsWith("mcp__"))).toBe(false);
   });
 
-  it("finds a tool by name, a room's MCP tools included", () => {
+  it("finds a tool by name, the memory tools and a room's MCP tools included", () => {
     expect(findTool("github_comment", noMcp)?.write).toBe(true);
+    expect(findTool("memory_save", noMcp)).toMatchObject({ kind: "memory", write: false });
     expect(findTool("sandbox_run", noMcp)).toBeUndefined();
     expect(findTool("mcp__test__echo", noMcp)).toBeUndefined();
     const room = { roomId: "r1", mcp: [conn("needs_auth")] };

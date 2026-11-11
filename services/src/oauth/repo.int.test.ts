@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { docClient, tableName } from "../lib/db.js";
 import { NotFound } from "../lib/errors.js";
 import { roomsRepo } from "../rooms/repo.js";
 import { oauthRepo } from "./repo.js";
@@ -7,7 +9,8 @@ import { oauthRepo } from "./repo.js";
 // Runs against DynamoDB on Floci: npm run floci:up && npm run deploy:local, then npm -w services run test:int
 Object.assign(process.env, { MCP_BASE_URL: "http://api.test", SITE_URL: "http://localhost:3000" });
 
-const repo = oauthRepo();
+// These users exist only in this file; the Cognito check is pinned in lib/users.int.test.ts.
+const repo = oauthRepo(async () => true);
 const RESOURCE = "http://api.test/mcp";
 // A fresh address per call, so these tests never share a rate-limit window.
 const ip = () => `test-${randomUUID()}`;
@@ -62,13 +65,31 @@ describe("OAuth authorization server on Floci", () => {
     expect(await repo.verifyAccess(first.access_token)).toBeNull();
   });
 
-  it("a rotated refresh token presented again is invalid_grant, and the newest tokens die with the grant", async () => {
+  it("a rotated refresh token presented again after the grace is invalid_grant, and the newest tokens die with the grant", async () => {
     const s = await signIn();
     const first = await exchange(s);
     const second = await refresh(s, first.refresh_token);
+    const [app] = await repo.listApps(s.user.userId);
+    await docClient().send(new UpdateCommand({
+      TableName: tableName(), Key: { pk: `OAUTHGRANT#${app!.grantId}`, sk: "META" }, UpdateExpression: "SET rotatedAt = :then",
+      ExpressionAttributeValues: { ":then": Math.floor(Date.now() / 1000) - 60 },
+    }));
     await expect(refresh(s, first.refresh_token)).rejects.toMatchObject({ code: "invalid_grant" });
     expect(await repo.verifyAccess(second.access_token)).toBeNull();
     await expect(refresh(s, second.refresh_token)).rejects.toMatchObject({ code: "invalid_grant" });
+  });
+
+  it("one client refreshing twice at once keeps its grant: one refresh wins, the other is refused", async () => {
+    const s = await signIn();
+    const first = await exchange(s);
+    const answers = await Promise.allSettled([refresh(s, first.refresh_token), refresh(s, first.refresh_token)]);
+    const won = answers.flatMap((a) => (a.status === "fulfilled" ? [a.value] : []));
+    expect(won).toHaveLength(1);
+    expect(answers.find((a) => a.status === "rejected")).toMatchObject({ reason: { code: "invalid_grant" } });
+    expect(await repo.verifyAccess(won[0]!.access_token)).toMatchObject({ user: s.user });
+    await expect(refresh(s, first.refresh_token)).rejects.toMatchObject({ code: "invalid_grant" });
+    expect(await repo.verifyAccess(won[0]!.access_token)).not.toBeNull();
+    expect(await refresh(s, won[0]!.refresh_token)).toMatchObject({ token_type: "Bearer" });
   });
 
   it("a wrong verifier, another redirect_uri or another resource is refused, and the code still works after", async () => {

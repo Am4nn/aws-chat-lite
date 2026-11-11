@@ -32,7 +32,7 @@ async function runningThread(startedAt = new Date().toISOString()) {
   const { roomId } = await roomsRepo().createRoom(owner, "Runs");
   const { thread, message } = await threadsRepo().createThread(owner, roomId, { text: "go", clientId: `k${++clients}` });
   const run: Run = {
-    runId: randomUUID(), roomId, threadId: thread.threadId, number: thread.number, status: "running", model: "fake",
+    runId: randomUUID(), roomId, threadId: thread.threadId, number: thread.number, agentId: "agent", status: "running", model: "fake",
     pick: "auto", pickBy: "default", startedBy: owner.username, startedAt, deadAt: new Date(Date.parse(startedAt) + 7_800_000).toISOString(),
     firstSeq: message.seq, seenSeq: message.seq, steps: 0, costMicros: 0,
   };
@@ -238,7 +238,7 @@ describe("startOrSteer: the model pick and the thread's taint, on Floci", () => 
     expect(started).toBe(true);
     expect(await taintOf(roomId, thread.threadId)).toEqual(["attachment"]);
     expect(await runs.getRun(runId)).toMatchObject({ pick: "auto", pickBy: "default" });
-    expect((await runs.allEvents(runId))[0]).toMatchObject({ type: "run.started", pick: "auto", startedBy: "owner" });
+    expect((await runs.allEvents(runId))[0]).toMatchObject({ type: "run.started", pick: "auto", startedBy: "owner", agentName: "agent" });
   });
 
   it("a pick sent with the message is the run's pick", async () => {

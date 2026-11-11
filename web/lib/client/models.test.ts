@@ -23,6 +23,10 @@ describe("pickMenu", () => {
     expect(m.privateNote).toBe(true);
   });
 
+  it("disables DeepSeek on a thread with one server's MCP output", () => {
+    expect(pickMenu(models, { ...state, taint: ["mcp:notes"] }).privateNote).toBe(true);
+  });
+
   it("disables nothing without taint", () => {
     const m = pickMenu(models, state);
     expect(m.items.some((i) => i.disabled)).toBe(false);
@@ -111,5 +115,9 @@ describe("taintHint", () => {
     expect(taintHint(["sandbox"])).toBe("Private: has sandbox files, so DeepSeek is off.");
     expect(taintHint(["github"])).toBe("Private: has GitHub data, so DeepSeek is off.");
     expect(taintHint(["attachment", "sandbox"])).toBe("Private: has attachments and sandbox files, so DeepSeek is off.");
+  });
+  it("names MCP output once, however many servers it came from", () => {
+    expect(taintHint(["mcp:notes"])).toBe("Private: has MCP tool output, so DeepSeek is off.");
+    expect(taintHint(["github", "mcp:a", "mcp:b"])).toBe("Private: has GitHub data and MCP tool output, so DeepSeek is off.");
   });
 });

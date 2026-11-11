@@ -29,7 +29,7 @@ export function makeHandler(
     try {
       switch (event.routeKey) {
         case "POST /rooms/{roomId}/threads": {
-          const input = { text: body.text, clientId: idOf(body.clientId, "clientId"), model: body.model };
+          const input = { text: body.text, clientId: idOf(body.clientId, "clientId"), model: body.model, agentId: body.agentId };
           return json(201, await start(callerFromEvent(event), params.roomId!, input));
         }
         case "PATCH /rooms/{roomId}/threads/{threadId}": {

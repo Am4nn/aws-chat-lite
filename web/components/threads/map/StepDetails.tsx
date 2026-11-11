@@ -23,11 +23,11 @@ const STATUS: Record<MapNode["status"], { label: string; tone: string }> = {
  * The room panel's view of a step picked on the Map: when it started, how long it took, its share of the tokens and
  * cost, and what it returned. A step waiting on a member can be approved or denied from here.
  */
-export function StepDetails({ runId, nodeId, agentName, live }: PickedStep) {
+export function StepDetails({ runId, nodeId, live }: PickedStep) {
   const reduced = useReducedMotion();
   const { run } = useRunStream(runId, live);
   const now = useNow(live && run.status === "running");
-  const map = runMap(run.events, now, agentName);
+  const map = runMap(run.events, now);
   const node = map.nodes.find((n) => n.id === nodeId);
   if (!node) return null;
   const status = STATUS[node.status];

@@ -15,9 +15,10 @@ import type { RunEvent } from "../threads/types.js";
 import { gateOf } from "./approval.js";
 import { finishRun } from "./finish.js";
 import { DEAD_AFTER_MS } from "./model.js";
+import { BUILT_IN } from "../agents/model.js";
 import { runsRepo, type Run } from "./repo.js";
 import { startOrSteer } from "./start.js";
-import { toolStep } from "./steps.js";
+import { toolStep, type RoutedRun } from "./steps.js";
 import { requestStop } from "./stop.js";
 
 // Runs against the deployed run function on Floci, in fake model and tool modes: npm run deploy:local, then this file.
@@ -187,15 +188,15 @@ describe("approvals in the run loop, on Floci", { timeout: 60_000 }, () => {
   });
 
   // These call the tool step directly, in this process, on a run that is stored but not executing.
-  async function storedRun(at: Awaited<ReturnType<typeof room>>): Promise<Run & { model: string }> {
+  async function storedRun(at: Awaited<ReturnType<typeof room>>): Promise<RoutedRun> {
     const { thread, message } = await threadsRepo().createThread(at.aman, at.roomId, { text: "x", clientId: `k${++clients}` });
     const run: Run & { model: string } = {
-      runId: randomUUID(), roomId: at.roomId, threadId: thread.threadId, number: thread.number, status: "running", model: "fake",
+      runId: randomUUID(), roomId: at.roomId, threadId: thread.threadId, number: thread.number, agentId: "agent", status: "running", model: "fake",
       pick: "auto", pickBy: "default", startedBy: "aman", startedAt: new Date().toISOString(),
       deadAt: new Date(Date.now() + 7_800_000).toISOString(), firstSeq: message.seq, seenSeq: message.seq, steps: 0, costMicros: 0,
     };
     await docClient().send(new PutCommand({ TableName: tableName(), Item: { pk: `RUN#${run.runId}`, sk: "META", ...run } }));
-    return run;
+    return { ...run, agent: BUILT_IN, others: [] };
   }
 
   it("a write step found already started is never run again: the model is told it may have happened", async () => {
@@ -218,7 +219,7 @@ describe("approvals in the run loop, on Floci", { timeout: 60_000 }, () => {
     const at = await room();
     const run = await storedRun(at);
     const call = { id: "call-1", name: "github_comment", input: { repo: "other/x", number: 1, body: "b" } };
-    expect(await gateOf(run, call, false)).toEqual({ asks: false });
+    expect(await gateOf(run, call, [])).toEqual({ asks: false });
     await toolStep(run, call);
     const [step] = await eventsOf(run.runId, "step.finished");
     expect(step).toMatchObject({ ok: false, output: expect.stringMatching(/^other\/x isn't connected to this room\./) });
@@ -228,7 +229,7 @@ describe("approvals in the run loop, on Floci", { timeout: 60_000 }, () => {
     const at = await room();
     const run = await storedRun(at);
     const call = { id: "call-1", name: "github_comment", input: { number: 1, body: "b" } };
-    const gate = await gateOf(run, call, false);
+    const gate = await gateOf(run, call, []);
     expect(gate).toMatchObject({ asks: true, title: COMMENT_TITLE, input: { number: 1, body: "b", repo: "fake-org/playground" } });
     await docClient().send(new UpdateCommand({
       TableName: tableName(), Key: { pk: `ROOM#${at.roomId}`, sk: "CONN#github" }, UpdateExpression: "SET repos = :r",
@@ -251,11 +252,11 @@ describe("approvals in the run loop, on Floci", { timeout: 60_000 }, () => {
     const run = await storedRun(at);
     const fetchCall = { id: "call-1", name: "web_fetch", input: { url: "https://example.com/?d=secret" } };
     const searchCall = { id: "call-2", name: "web_search", input: { query: "acme payroll" } };
-    expect(await gateOf(run, fetchCall, false)).toEqual({ asks: false });
+    expect(await gateOf(run, fetchCall, [])).toEqual({ asks: false });
     // The turn saw private content the thread doesn't show yet.
-    expect(await gateOf(run, searchCall, true)).toMatchObject({ asks: true, title: 'Search the web for "acme payroll"?' });
+    expect(await gateOf(run, searchCall, ["attachment"])).toMatchObject({ asks: true, title: 'Search the web for "acme payroll"?' });
     await threadsRepo().addTaint(at.roomId, run.number, ["github"]);
-    expect(await gateOf(run, fetchCall, false)).toMatchObject({
+    expect(await gateOf(run, fetchCall, [])).toMatchObject({
       asks: true, title: "Fetch https://example.com/?d=secret?", input: fetchCall.input,
     });
 

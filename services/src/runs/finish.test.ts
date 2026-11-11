@@ -28,7 +28,7 @@ vi.mock("./notify.js", () => ({ notifyRun: async () => {} }));
 vi.mock("../push/enqueue.js", () => ({ enqueuePush: async (job: unknown) => void fake.pushed.push(job) }));
 
 const run: Run = {
-  runId: "RUN", roomId: "R", threadId: "T", number: 7, status: "running", pick: "auto", pickBy: "default", model: "fake",
+  runId: "RUN", roomId: "R", threadId: "T", number: 7, agentId: "agent", status: "running", pick: "auto", pickBy: "default", model: "fake",
   startedBy: "aman", startedById: "u-aman", startedAt: "2026-11-11T10:00:00.000Z", deadAt: "2026-11-11T11:00:00.000Z",
   firstSeq: 1, seenSeq: 1, steps: 1, costMicros: 10,
 };

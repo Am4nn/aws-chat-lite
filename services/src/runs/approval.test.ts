@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RunEvent } from "../threads/types.js";
 import { requestApproval } from "./approval.js";
-import type { Run } from "./repo.js";
+import type { RoutedRun } from "./steps.js";
 
 const fake = vi.hoisted(() => ({ events: [] as RunEvent[], pushed: [] as unknown[] }));
 
@@ -27,7 +27,7 @@ vi.mock("./repo.js", () => ({
 vi.mock("./notify.js", () => ({ notifyRun: async () => {} }));
 vi.mock("../push/enqueue.js", () => ({ enqueuePush: async (job: unknown) => void fake.pushed.push(job) }));
 
-const run = { runId: "RUN", roomId: "R", threadId: "T", number: 7 } as Run;
+const run = { runId: "RUN", roomId: "R", threadId: "T", number: 7 } as RoutedRun;
 const call = { id: "c1", name: "github_comment", input: { number: 1 } };
 const gate = { timeoutSec: 600, title: "Comment on #1 in fake-org/playground?", input: { number: 1, repo: "fake-org/playground" } };
 

@@ -17,8 +17,8 @@ const BODILESS = [204, 205, 304];
  * A `fetch` for talking to remote MCP and OAuth servers, which are chosen by admins and point us at further URLs.
  * Every address it connects to must be public (except `localHosts`, which `lookup` still resolves), checked in the
  * socket lookup so DNS rebinding can't slip past. It never follows a redirect: a 3xx goes back to the caller, so a
- * server can't bounce us to a private address. `timeoutMs` is a deadline for the whole exchange, answer included, so a server that drips bytes
- * can't hold the caller either.
+ * server can't bounce us to a private address. `timeoutMs` is a deadline for the whole exchange, answer included,
+ * so a server that drips bytes can't hold the caller either.
  */
 export function guardedFetch({ localHosts = [], lookup, timeoutMs = REQUEST_TIMEOUT_MS, maxBytes = MAX_ANSWER_BYTES }: Options = {}): typeof fetch {
   const checkedLookup = guardedLookup(lookup);

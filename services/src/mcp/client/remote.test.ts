@@ -64,7 +64,7 @@ describe("probe", () => {
 describe("listRemoteTools", () => {
   it("snapshots the tools with their read-only hints", async () => {
     const server = await start({ auth: "none" });
-    const { tools, toolCount } = await listRemoteTools(server.url, undefined, f);
+    const { tools, toolCount } = await listRemoteTools("test", server.url, undefined, f);
     expect(toolCount).toBe(4);
     expect(tools.map((t) => [t.name, t.readOnly])).toEqual([
       ["echo", true],
@@ -82,7 +82,7 @@ describe("listRemoteTools", () => {
 
   it("keeps the first 40 tools", async () => {
     const server = await start({ auth: "none", extraTools: 41 });
-    const { tools, toolCount } = await listRemoteTools(server.url, undefined, f);
+    const { tools, toolCount } = await listRemoteTools("test", server.url, undefined, f);
     expect(toolCount).toBe(45);
     expect(tools).toHaveLength(40);
     expect(tools.at(-1)!.name).toBe("tool_36");
@@ -94,17 +94,54 @@ describe("listRemoteTools", () => {
       { name: "huge", description: "big", inputSchema: { type: "object", properties: { x: { type: "string", description: "x".repeat(10_000) } } } },
       { name: "plain", inputSchema: { type: "object" }, annotations: { readOnlyHint: false } },
     ]);
-    const { tools, toolCount } = await listRemoteTools(url, undefined, f);
+    const { tools, toolCount } = await listRemoteTools("test", url, undefined, f);
     expect(toolCount).toBe(3);
     expect(tools).toEqual([
-      { name: "long", title: "Long one", description: `${"d".repeat(1_000)}\n…(cut)`, inputSchema: { type: "object" }, readOnly: false },
+      { name: "long", description: `${"d".repeat(1_000)}\n…(cut)`, inputSchema: { type: "object" }, readOnly: false },
       { name: "plain", description: "", inputSchema: { type: "object" }, readOnly: false },
     ]);
   });
 
+  it("drops names the MCP spec doesn't allow, so a remote name never reaches a card unchecked", async () => {
+    const url = await serveTools([
+      { name: "Run echo on test? Approve to", inputSchema: { type: "object" } },
+      { name: "x".repeat(200), inputSchema: { type: "object" } },
+      { name: "", inputSchema: { type: "object" } },
+      { name: "get.user-2_x", inputSchema: { type: "object" } },
+    ]);
+    const { tools, toolCount } = await listRemoteTools("test", url, undefined, f);
+    expect(toolCount).toBe(4);
+    expect(tools.map((t) => t.name)).toEqual(["get.user-2_x"]);
+  });
+
+  it("keeps only the first tool per name the model sees, so a model call never carries the same name twice", async () => {
+    const url = await serveTools([
+      { name: "get.user", description: "first", inputSchema: { type: "object" } },
+      { name: "get_user", description: "second", inputSchema: { type: "object" } },
+      { name: "get.user", description: "repeated", inputSchema: { type: "object" } },
+      { name: "other", inputSchema: { type: "object" } },
+    ]);
+    const { tools } = await listRemoteTools("test", url, undefined, f);
+    expect(tools.map((t) => [t.name, t.description])).toEqual([["get.user", "first"], ["other", ""]]);
+  });
+
+  it("stops adding tools before the snapshot outgrows its table item", async () => {
+    const big = (i: number): Tool => ({
+      name: `tool_${i}`, description: "d".repeat(1_000),
+      inputSchema: { type: "object", properties: { x: { type: "string", description: "x".repeat(9_500) } } },
+    });
+    const url = await serveTools(Array.from({ length: 40 }, (_, i) => big(i)));
+    const { tools, toolCount } = await listRemoteTools("test", url, undefined, f);
+    expect(toolCount).toBe(40);
+    expect(tools.length).toBeGreaterThan(20);
+    expect(tools.length).toBeLessThan(40);
+    expect(tools.map((t) => t.name)).toEqual(Array.from({ length: tools.length }, (_, i) => `tool_${i}`));
+    expect(Buffer.byteLength(JSON.stringify(tools))).toBeLessThanOrEqual(300_000);
+  });
+
   it("surfaces a 401 as Unauthorized", async () => {
     const server = await start();
-    await expect(listRemoteTools(server.url, "wrong", f)).rejects.toBeInstanceOf(UnauthorizedError);
+    await expect(listRemoteTools("test", server.url, "wrong", f)).rejects.toBeInstanceOf(UnauthorizedError);
   });
 });
 

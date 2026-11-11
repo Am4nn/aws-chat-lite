@@ -14,6 +14,7 @@
     "stream-local": "tsx src/stream-local.ts",
     "sandbox-local": "tsx src/sandbox-local.ts",
     "mcp-test-local": "tsx src/mcp-test-local.ts",
+    "schedule-fire": "tsx src/fire-schedule.ts",
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
@@ -27,6 +28,7 @@
     "@aws-sdk/client-ssm": "^3.1163.0",
     "@aws-sdk/client-sts": "^3.1163.0",
     "@aws-sdk/lib-dynamodb": "^3.1163.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@smithy/eventstream-codec": "^4.5.2",
     "@smithy/util-utf8": "^4.5.2",
     "ws": "^8"
