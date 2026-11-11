@@ -15,7 +15,7 @@ export type Approval = {
   /** The exact input that runs once approved, so what the card shows is what executes. */
   call: ToolCall;
   title: string;
-  /** The durable wait's callback; a retried wait gets a new one. */
+  /** The durable wait's callback. A retried submitter is handed the same one, so it is stored once. */
   callbackId: string;
   expiresAt: string;
   requestedAt: string;
@@ -59,7 +59,7 @@ export function approvalsRepo() {
   }
 
   return {
-    /** Idempotent per step: a retried request finds its item and, while it is still pending, takes the new callback. */
+    /** Idempotent per step: a retried request gets the item the first one stored, decided or not. */
     async open(a: Omit<Approval, "status" | "by" | "requestedAt">): Promise<Approval> {
       const item: Approval = { ...a, requestedAt: new Date().toISOString(), status: "pending" };
       try {
@@ -67,16 +67,6 @@ export function approvalsRepo() {
           TableName, Item: { ...approvalKey(a.runId, a.step), ...item }, ConditionExpression: "attribute_not_exists(sk)",
         }));
         return item;
-      } catch (e) {
-        if (!conditionFailed(e)) throw e;
-      }
-      try {
-        const { Attributes } = await db.send(new UpdateCommand({
-          TableName, Key: approvalKey(a.runId, a.step), UpdateExpression: "SET callbackId = :cb",
-          ConditionExpression: "#status = :pending", ExpressionAttributeNames: names,
-          ExpressionAttributeValues: { ":cb": a.callbackId, ":pending": "pending" }, ReturnValues: "ALL_NEW",
-        }));
-        return withoutKeys(Attributes!);
       } catch (e) {
         if (!conditionFailed(e)) throw e;
         return (await get(a.runId, a.step))!;
@@ -112,9 +102,12 @@ export function approvalsRepo() {
       return settled;
     },
 
-    /** A stop while waiting. Returns the callback to wake the run with, or undefined when it was already decided. */
+    /**
+     * A stop while waiting cancels the approval unless it was decided first. Either way it returns the callback, since
+     * the run must wake to read the stop, and waking a callback that already completed does no harm.
+     */
     async cancel(runId: string, step: number, by: string): Promise<string | undefined> {
-      return (await close(runId, step, "cancelled", by))?.callbackId;
+      return ((await close(runId, step, "cancelled", by)) ?? (await get(runId, step)))?.callbackId;
     },
   };
 }

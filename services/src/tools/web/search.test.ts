@@ -12,6 +12,9 @@ const env = (fetchImpl: typeof fetch, tavilyKey?: string): ToolEnv => ({
 const status = (code: number): typeof fetch => async () => new Response("no", { status: code });
 
 describe("webSearch", () => {
+  it("names the query in its approval title, for a thread with private content", () => {
+    expect(webSearch.ask!({ query: "acme payroll" }, env(fetch))).toBe('Search the web for "acme payroll"?');
+  });
   it("sends the key and query, and cites every result", async () => {
     const calls: { url: string; init: RequestInit }[] = [];
     const fake: typeof fetch = async (url, init) => {

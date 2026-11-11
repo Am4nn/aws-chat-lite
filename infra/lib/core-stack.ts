@@ -72,8 +72,10 @@ export class CoreStack extends Stack {
     addFiles(this, files);
     // A message sent in a thread over the socket starts or steers its run.
     this.allowRunStart(this.live.liveFn);
-    // Stopping a run that waits on an approval wakes it, and so does a decision.
+    // A stop wakes a run waiting on an approval, as does a decision through the API; a run that finds its approval
+    // already decided, or a stop already flagged, wakes itself.
     this.allowRunCallback(this.live.liveFn);
+    this.allowRunCallback(this.runs.runFn);
     const threadsFn = addThreads(this);
     this.allowBroadcast(threadsFn);
     this.allowRunStart(threadsFn);
@@ -122,10 +124,13 @@ export class CoreStack extends Stack {
 
   /**
    * Lets `fn` wake a run that is waiting on a durable callback. A durable execution's ARN is the run function's
-   * qualified ARN plus the execution's path, hence the `:*`.
+   * qualified ARN plus the execution's path, hence the `:*`. The ARN is built from the function's fixed name: the run
+   * function wakes itself too, and its own `functionArn` in its own role policy would be a dependency cycle.
    */
   allowRunCallback(fn: NodejsFunction) {
-    const arn = this.runs.runFn.functionArn;
+    const arn = this.formatArn({
+      service: "lambda", resource: "function", resourceName: `${this.stageConfig.prefix}-run`, arnFormat: ArnFormat.COLON_RESOURCE_NAME,
+    });
     fn.addToRolePolicy(new iam.PolicyStatement({ actions: ["lambda:SendDurableExecutionCallbackSuccess"], resources: [arn, `${arn}:*`] }));
   }
 

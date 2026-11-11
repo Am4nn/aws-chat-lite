@@ -12,6 +12,7 @@ export const webSearch: Tool = {
   kind: "web",
   write: false,
   detail: (input) => String(input.query ?? ""),
+  ask: (input) => `Search the web for "${input.query}"?`,
   check: (input) => (typeof input.query === "string" && input.query.trim() ? null : "A query is required."),
   async run(input, env) {
     const key = env.keys.tavilyKey;

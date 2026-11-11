@@ -88,9 +88,16 @@ describe("summary", () => {
     expect(t).not.toHaveProperty("currentStep");
   });
 
-  it("goes by deadAt, not the start, so a run that waited on an approval still reads live, and a waiting one always does", () => {
+  it("goes by deadAt, not the start, so a run that waited on an approval still reads live", () => {
     const later = new Date(now + 60_000).toISOString();
     expect(summary({ ...stored, status: "running", startedAt: "2026-11-10T00:00:00Z", deadAt: later }, now).status).toBe("running");
-    expect(summary({ ...stored, status: "waiting", deadAt: new Date(now - 1).toISOString() }, now).status).toBe("waiting");
+    expect(summary({ ...stored, status: "waiting", deadAt: later }, now).status).toBe("waiting");
+  });
+
+  it("shows a waiting run past its deadAt as failed too, without its approval: the expiry would have woken a live one", () => {
+    const approval = { step: 1, title: "Comment?", expiresAt: "2026-11-10T00:00:00Z" };
+    const t = summary({ ...stored, status: "waiting", approval, deadAt: new Date(now - 1).toISOString() }, now);
+    expect(t).toMatchObject({ status: "failed", summary: "The run stopped responding." });
+    expect(t).not.toHaveProperty("approval");
   });
 });

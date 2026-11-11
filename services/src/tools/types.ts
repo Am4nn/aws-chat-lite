@@ -14,7 +14,7 @@ export type Tool = {
   detail(input: Record<string, unknown>): string;
   /** An error before any approval is asked, or null. */
   check?(input: Record<string, unknown>, env: ToolEnv): string | null;
-  /** Write tools: the approval title. */
+  /** The approval title, for a call that waits on one: every write, and a web call in a thread with private content. */
   ask?(input: Record<string, unknown>, env: ToolEnv): string;
   run(input: Record<string, unknown>, env: ToolEnv): Promise<ToolResult>;
 };

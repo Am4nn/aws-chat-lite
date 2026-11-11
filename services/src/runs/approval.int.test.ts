@@ -13,6 +13,8 @@ import { toolEnv } from "../tools/index.js";
 import { threadsRepo } from "../threads/repo.js";
 import type { RunEvent } from "../threads/types.js";
 import { gateOf } from "./approval.js";
+import { finishRun } from "./finish.js";
+import { DEAD_AFTER_MS } from "./model.js";
 import { runsRepo, type Run } from "./repo.js";
 import { startOrSteer } from "./start.js";
 import { toolStep } from "./steps.js";
@@ -98,6 +100,7 @@ describe("approvals in the run loop, on Floci", { timeout: 60_000 }, () => {
     expect((await finished(runId)).status).toBe("done");
 
     const [requested] = await eventsOf(runId, "approval.requested");
+    expect(requested.type === "approval.requested" && requested.call.input).toMatchObject({ repo: "fake-org/playground" });
     expect(await eventsOf(runId, "approval.settled")).toMatchObject([{ step: 1, decision: "approved", by: "bea" }]);
     const steps = await eventsOf(runId, "step.finished");
     expect(steps).toMatchObject([{ step: 1, ok: true }]);
@@ -108,6 +111,9 @@ describe("approvals in the run loop, on Floci", { timeout: 60_000 }, () => {
     expect(after).not.toHaveProperty("approval");
     const kinds = (await auditRepo().list(at.roomId)).entries.map((e) => e.kind);
     expect(kinds.sort()).toEqual(["approved", "asked", "tool"]);
+    // Once the wait is over, the run's dead time is its own clock again, not the approval's expiry plus a margin.
+    const ended = (await runs.getRun(runId))!;
+    expect(Date.parse(ended.deadAt) - Date.parse(ended.startedAt) - (ended.pausedMs ?? 0)).toBe(DEAD_AFTER_MS);
   });
 
   it("of an approve and a deny at once, one wins, the other gets a 409, and the write runs at most once", async () => {
@@ -156,6 +162,17 @@ describe("approvals in the run loop, on Floci", { timeout: 60_000 }, () => {
     expect(await approvalsRepo().settle(runId, 1)).toMatchObject({ status: "cancelled", by: "bea" });
   });
 
+  it("a stop still wakes a run whose approval was decided but whose wake was lost", async () => {
+    const at = await room();
+    const { thread, runId } = await startRun("go call:github_comment", at);
+    await waiting(at.roomId, thread.threadId);
+    await decideApproval(at.bea, runId, 1, "approve", async () => {});
+    const stoppedAt = Date.now();
+    await requestStop(at.aman, at.roomId, thread.threadId);
+    expect((await finished(runId, 10_000)).status).toBe("stopped");
+    expect(Date.now() - stoppedAt).toBeLessThan(5_000);
+  });
+
   it("reads need no approval: a search cites its sources, a GitHub read taints the thread", async () => {
     const at = await room();
     const search = await startRun("go call:web_search", at);
@@ -201,10 +218,82 @@ describe("approvals in the run loop, on Floci", { timeout: 60_000 }, () => {
     const at = await room();
     const run = await storedRun(at);
     const call = { id: "call-1", name: "github_comment", input: { repo: "other/x", number: 1, body: "b" } };
-    expect(await gateOf(run, call)).toEqual({ write: false });
+    expect(await gateOf(run, call, false)).toEqual({ asks: false });
     await toolStep(run, call);
     const [step] = await eventsOf(run.runId, "step.finished");
     expect(step).toMatchObject({ ok: false, output: expect.stringMatching(/^other\/x isn't connected to this room\./) });
+  });
+
+  it("a write runs on the repo its approval named, so a connection changed during the wait refuses it", async () => {
+    const at = await room();
+    const run = await storedRun(at);
+    const call = { id: "call-1", name: "github_comment", input: { number: 1, body: "b" } };
+    const gate = await gateOf(run, call, false);
+    expect(gate).toMatchObject({ asks: true, title: COMMENT_TITLE, input: { number: 1, body: "b", repo: "fake-org/playground" } });
+    await docClient().send(new UpdateCommand({
+      TableName: tableName(), Key: { pk: `ROOM#${at.roomId}`, sk: "CONN#github" }, UpdateExpression: "SET repos = :r",
+      ExpressionAttributeValues: { ":r": ["fake-org/other"] },
+    }));
+    const github = recordGitHub();
+    const approved = {
+      runId: run.runId, roomId: at.roomId, threadId: run.threadId, step: 1, call: { ...call, input: gate.asks ? gate.input : {} },
+      title: COMMENT_TITLE, callbackId: "cb", expiresAt: new Date(Date.now() + 60_000).toISOString(), requestedAt: new Date().toISOString(),
+      status: "approved" as const, by: "bea",
+    };
+    await toolStep(run, call, approved, async (mode, conn) => ({ ...await toolEnv(mode, conn), fetch: github.fetch }));
+    const [step] = await eventsOf(run.runId, "step.finished");
+    expect(step).toMatchObject({ ok: false, output: "fake-org/playground isn't connected to this room. Connected: fake-org/other." });
+    expect(github.calls).toEqual([]);
+  });
+
+  it("web calls are free in a thread without private content and wait for a member in one with it", async () => {
+    const at = await room();
+    const run = await storedRun(at);
+    const fetchCall = { id: "call-1", name: "web_fetch", input: { url: "https://example.com/?d=secret" } };
+    const searchCall = { id: "call-2", name: "web_search", input: { query: "acme payroll" } };
+    expect(await gateOf(run, fetchCall, false)).toEqual({ asks: false });
+    // The turn saw private content the thread doesn't show yet.
+    expect(await gateOf(run, searchCall, true)).toMatchObject({ asks: true, title: 'Search the web for "acme payroll"?' });
+    await threadsRepo().addTaint(at.roomId, run.number, ["github"]);
+    expect(await gateOf(run, fetchCall, false)).toMatchObject({
+      asks: true, title: "Fetch https://example.com/?d=secret?", input: fetchCall.input,
+    });
+
+    const denied = {
+      runId: run.runId, roomId: at.roomId, threadId: run.threadId, step: 1, call: fetchCall, title: "Fetch https://example.com/?d=secret?",
+      callbackId: "cb", expiresAt: new Date(Date.now() + 60_000).toISOString(), requestedAt: new Date().toISOString(),
+      status: "denied" as const, by: "bea",
+    };
+    const fetched: string[] = [];
+    await toolStep(run, fetchCall, denied, async (mode, conn) => ({
+      ...await toolEnv(mode, conn), fetchPage: async (url) => { fetched.push(url); throw new Error("fetched"); },
+    }));
+    const [step] = await eventsOf(run.runId, "step.finished");
+    expect(step).toMatchObject({ ok: false, output: expect.stringMatching(/^Denied by bea./) });
+    expect(fetched).toEqual([]);
+  });
+
+  it("a skip note is logged only by the close that ends the run, so it never lands mid-answer", async () => {
+    const at = await room();
+    const run = await storedRun(at);
+    const writer = await runs.eventWriter(run.runId);
+    await writer.append({ type: "text", text: "Working on it.", turn: 1 });
+    const call = { id: "call-1", name: "github_comment", input: { number: 1, body: "b" } };
+    await writer.append({ type: "approval.requested", step: 1, call, title: COMMENT_TITLE, expiresAt: new Date().toISOString() });
+    await writer.append({ type: "approval.settled", step: 1, decision: "expired" });
+    // A member writes after the run's last read, so a close that isn't forced comes back "unread".
+    await docClient().send(new UpdateCommand({
+      TableName: tableName(), Key: { pk: `CHAT#${run.threadId}`, sk: "META" }, UpdateExpression: "ADD lastSeq :one",
+      ExpressionAttributeValues: { ":one": 1 },
+    }));
+    expect(await finishRun(run, { status: "done" }, { seenSeq: run.seenSeq, force: false })).toBe("unread");
+    expect((await eventsOf(run.runId, "text")).map((e) => e.type === "text" && e.text)).toEqual(["Working on it."]);
+
+    expect(await finishRun(run, { status: "done" }, { seenSeq: run.seenSeq, force: true })).toBe("closed");
+    const note = `
+
+(Skipped because no one approved in time: ${COMMENT_TITLE})`;
+    expect((await eventsOf(run.runId, "text")).map((e) => e.type === "text" && e.text)).toEqual(["Working on it.", note]);
   });
 
   it("a GitHub call in a room with no connection is refused by the tool, before any approval", async () => {

@@ -6,7 +6,7 @@ import { LAST_SEQ, forReaders, seqKey, type Message, type StoredMessage } from "
 import type { ModelPick } from "../models/catalog.js";
 import { summary, threadSk } from "../threads/model.js";
 import type { RunEndStatus, RunEvent, RunEventBody, ThreadSummary } from "../threads/types.js";
-import { eventSk } from "./model.js";
+import { DEAD_AFTER_MS, eventSk } from "./model.js";
 
 /** A run's META item: one durable execution answering one thread message (plus any steers it reads). */
 export type Run = {
@@ -268,7 +268,8 @@ export function runsRepo() {
 
     /**
      * Back to running once the approval settles. The wait joins the run's paused time only while the run still waits on
-     * that step, so a retried settle can't count it twice.
+     * that step, so a retried settle can't count it twice. The dead time comes back from the approval's expiry to what
+     * the run's own clock allows, which leaves out only the time it really waited.
      */
     async doneWaiting(run: Run, step: number, waitedMs: number): Promise<ThreadSummary | null> {
       try {
@@ -279,12 +280,18 @@ export function runsRepo() {
       } catch (e) {
         if (!conditionFailed(e)) throw e;
       }
+      const pausedMs = (await getRun(run.runId))?.pausedMs ?? 0;
+      const deadAt = new Date(Date.parse(run.startedAt) + pausedMs + DEAD_AFTER_MS).toISOString();
       const owned = whileOwned(run);
-      return threadUpdate(new UpdateCommand({
-        TableName, Key: threadKey(run), UpdateExpression: "SET #status = :running REMOVE approval ADD #rev :one",
-        ConditionExpression: owned.ConditionExpression, ExpressionAttributeNames: { "#status": "status", "#rev": "rev" },
-        ExpressionAttributeValues: { ":running": "running", ...owned.values, ":one": 1 }, ReturnValues: "ALL_NEW",
-      }));
+      const [, thread] = await Promise.all([
+        db.send(new UpdateCommand({ TableName, Key: runKey(run.runId), ...setFields({ deadAt }) })),
+        threadUpdate(new UpdateCommand({
+          TableName, Key: threadKey(run), UpdateExpression: "SET #status = :running, #deadAt = :deadAt REMOVE approval ADD #rev :one",
+          ConditionExpression: owned.ConditionExpression, ExpressionAttributeNames: { "#status": "status", "#deadAt": "deadAt", "#rev": "rev" },
+          ExpressionAttributeValues: { ":running": "running", ":deadAt": deadAt, ...owned.values, ":one": 1 }, ReturnValues: "ALL_NEW",
+        })),
+      ]);
+      return thread;
     },
 
     /**

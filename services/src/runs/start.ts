@@ -110,7 +110,7 @@ export async function startOrSteer(
       },
     },
   ];
-  // An approval only ever moves a run's `deadAt` later, so only a run that started this long ago can be dead.
+  // A run's `deadAt` is never earlier than its start plus this, so only a run that started this long ago can be dead.
   const deadLine = new Date(now.getTime() - DEAD_AFTER_MS).toISOString();
   const last = thread.runId && (thread.startedAt ?? "") < deadLine ? await runs.getRun(thread.runId) : undefined;
   const failed = setFields({ status: "failed", reason: DEAD_REASON, endedAt: startedAt });

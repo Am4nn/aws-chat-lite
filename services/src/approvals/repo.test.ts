@@ -66,13 +66,13 @@ describe("open", () => {
     expect(put.input.ConditionExpression).toBe("attribute_not_exists(sk)");
   });
 
-  it("points a pending item at the retried wait's callback", async () => {
+  it("hands a retried request the item it already put, never writing it again", async () => {
     const send = fakeTable((c) => {
       if (c instanceof PutCommand) throw failed;
-      return { Attributes: { ...request, status: "pending" } };
+      return { Item: { ...request, callbackId: "cb1", status: "pending" } };
     });
-    expect(await approvalsRepo().open(request)).toMatchObject({ callbackId: "cb2" });
-    expect(updates(send)[0].input).toMatchObject({ UpdateExpression: "SET callbackId = :cb", ConditionExpression: "#status = :pending" });
+    expect(await approvalsRepo().open(request)).toMatchObject({ callbackId: "cb1", status: "pending" });
+    expect(updates(send)).toEqual([]);
   });
 
   it("returns an item decided already as it is", async () => {
@@ -81,5 +81,17 @@ describe("open", () => {
       throw failed;
     });
     expect(await approvalsRepo().open(request)).toMatchObject({ status: "approved", by: "aman" });
+  });
+});
+
+describe("cancel", () => {
+  it("returns the callback whether or not the stop won, so the waiting run always wakes to read it", async () => {
+    fakeTable(() => ({ Attributes: { ...stored, status: "cancelled" } }));
+    expect(await approvalsRepo().cancel("run1", 3, "bea")).toBe("cb1");
+    fakeTable((c) => {
+      if (c instanceof GetCommand) return { Item: stored };
+      throw failed;
+    });
+    expect(await approvalsRepo().cancel("run1", 3, "bea")).toBe("cb1");
   });
 });

@@ -66,13 +66,13 @@ describe("approvals on Floci", () => {
     expect(await reasonOf(approvals.decide(aman, runId, 1, "approve"))).toEqual(new Conflict("This run was stopped."));
   });
 
-  it("a reopened approval takes the retried wait's callback", async () => {
+  it("a reopened approval is the one already stored", async () => {
     const { roomId, runId } = await pending();
     const again = await approvals.open({
       runId, roomId, threadId: "t", step: 1, title: "x", callbackId: "cb-2", call: { id: "c", name: "n", input: {} },
       expiresAt: new Date().toISOString(),
     });
-    expect(again).toMatchObject({ callbackId: "cb-2", title: "Comment on #1 in fake-org/playground?", status: "pending" });
+    expect(again).toMatchObject({ callbackId: "cb-1", title: "Comment on #1 in fake-org/playground?", status: "pending" });
   });
 
   it("refuses someone outside the room", async () => {

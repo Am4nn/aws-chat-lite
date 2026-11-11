@@ -18,7 +18,7 @@ const WAIT_MARGIN_SEC = 5;
  * crash or a timeout the execution replays finished steps from their results and carries on where it stopped. The
  * loop's own state (cursor, steps, cost) is rebuilt from those results, which is why every step returns it.
  *
- * A write tool first waits on a durable callback for a member's decision. The execution is suspended meanwhile, so
+ * A write, or a web call in a thread with private content, first waits on a durable callback for a member's decision. The execution is suspended meanwhile, so
  * the wait costs no compute; a decision, a stop or the timeout wakes it, and the approval item says which.
  */
 export async function runLoop({ runId }: { runId: string }, ctx: DurableContext): Promise<void> {
@@ -44,9 +44,9 @@ export async function runLoop({ runId }: { runId: string }, ctx: DurableContext)
         continue;
       }
       for (const call of turn.toolCalls) {
-        const gate = await step(`gate-${i}-${call.id}`, () => gateOf(run, call));
+        const gate = await step(`gate-${i}-${call.id}`, () => gateOf(run, call, !!turn.tainted));
         let settled: Approval | undefined;
-        if (gate.write) {
+        if (gate.asks) {
           const n = run.steps + 1;
           try {
             const ask = (callbackId: string) => requestApproval(run, call, n, gate, callbackId);
@@ -58,7 +58,8 @@ export async function runLoop({ runId }: { runId: string }, ctx: DurableContext)
           }
           settled = await step(`settle-${i}-${call.id}`, () => settleApproval(run, n));
         }
-        const result = await step(`tool-${i}-${call.id}`, () => toolStep(run, call, settled));
+        // An approved call runs, and is logged, as the approval stored it: with its repo pinned.
+        const result = await step(`tool-${i}-${call.id}`, () => toolStep(run, settled?.call ?? call, settled));
         run = { ...run, steps: result.steps, costMicros: result.costMicros };
         if (result.end) {
           await close(`close-${i}`, result.end, true);

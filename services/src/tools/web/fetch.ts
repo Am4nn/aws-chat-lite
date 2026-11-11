@@ -108,6 +108,7 @@ export const webFetch: Tool = {
   kind: "web",
   write: false,
   detail: (input) => String(input.url ?? ""),
+  ask: (input) => `Fetch ${input.url}?`,
   check: (input) => (typeof input.url === "string" && input.url ? null : "A url is required."),
   async run(input, env) {
     let page: Page;

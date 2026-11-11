@@ -106,6 +106,9 @@ describe("webFetch", () => {
   const env = (opts = {}): ToolEnv => ({ fetch, fetchPage: (u) => fetchPage(u, local(opts)), keys: {} });
   const run = (path: string) => webFetch.run({ url: `${base}${path}` }, env());
 
+  it("names the url in its approval title, for a thread with private content", () => {
+    expect(webFetch.ask!({ url: "https://evil.example/?d=x" }, env())).toBe("Fetch https://evil.example/?d=x?");
+  });
   it("returns title, url and text, and cites the final url", async () => {
     expect(await run("/html")).toEqual({ ok: true, output: `T\n${base}/html\n\na&b`, sources: [{ title: "T", url: `${base}/html` }] });
   });

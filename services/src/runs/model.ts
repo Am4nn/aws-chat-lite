@@ -4,8 +4,8 @@ import type { RunEndStatus } from "../threads/types.js";
 const RUN_MAX_MS = 7_200_000;
 const RUN_MAX_STEPS = 200;
 /**
- * How long after its claim, or after an approval's expiry, a run can still be alive: its 2 h time limit plus a margin for
- * the step running as it hits. Past that it is presumed dead, and a new run may take its thread.
+ * How long after its claim (not counting time spent waiting on approvals), or after a pending approval's expiry, a run
+ * can still be alive: its 2 h time limit plus a margin for the step running as it hits. Past that it is presumed dead, and a new run may take its thread.
  */
 export const DEAD_AFTER_MS = 8_100_000;
 export const DEAD_REASON = "The run stopped responding.";
