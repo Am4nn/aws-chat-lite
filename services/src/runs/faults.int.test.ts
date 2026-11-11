@@ -280,7 +280,8 @@ describe("run steps and starts under injected failures", () => {
     const { owner, roomId, thread: t, message } = await thread("go tools:0 words:3");
     const send = vi.spyOn(docClient(), "send");
     await startOrSteer(owner, roomId, t.threadId, message);
-    const reads = send.mock.calls.map(([c]) => c).filter((c) => c instanceof GetCommand && c.input.Key?.pk === `ROOM#${roomId}` && c.input.Key?.sk === "META");
+    const reads = send.mock.calls.map(([c]) => c)
+      .filter((c) => c instanceof GetCommand && c.input.Key?.pk === `ROOM#${roomId}` && Object.values(c.input.ExpressionAttributeNames ?? {}).includes("defaultModel"));
     expect(reads.map((c) => (c as GetCommand).input.ConsistentRead)).toEqual([true]);
   });
 
