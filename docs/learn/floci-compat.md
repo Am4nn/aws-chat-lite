@@ -39,6 +39,7 @@ chat-lite needs, exercises each one through the AWS SDK, then destroys it.
 - WebSocket `$disconnect` after a clean client `close()` reaches the Lambda anywhere from about 1 s to over 20 s later on Floci (closing the page is prompt), so offline presence can lag locally.
 - Floci's GSI queries see writes at once, and no run has raised `TransactionConflict`, so GSI lag and clashing concurrent transactions don't show up locally.
 - Floci doesn't roll back a failed stack update ("Rollback is not implemented"): the stack stays `UPDATE_ROLLBACK_FAILED`, and `ContinueUpdateRollback` doesn't clear it. Delete the stack and deploy again (Floci data is disposable).
+- Every checkout deploys the same `cl-local-core` stack to the one Floci, so the stack runs whatever was deployed last, and deleting it (the rollback fix above) also deletes its user pool, so signed-in sessions and test users vanish. Deploy right before an int or smoke run, and run one checkout's suites at a time.
 
 <!-- aws:start -->
 ## Real AWS (Sydney)
