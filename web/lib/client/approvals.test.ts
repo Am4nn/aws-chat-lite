@@ -27,6 +27,8 @@ describe("settledLine", () => {
     expect(settledLine({ status: "expired" })).toBe("Skipped: no one approved in time");
     expect(settledLine({ status: "cancelled", by: "bea" })).toBe("Cancelled: the run was stopped");
   });
+  it("says when the run stopped before an approved call could run", () =>
+    expect(settledLine({ status: "approved", by: "bea", stoppedFirst: true })).toBe("Approved by bea (run stopped first)"));
   it("calls me you", () => expect(settledLine({ status: "approved", by: "aman" }, "aman")).toBe("Approved by you"));
 });
 

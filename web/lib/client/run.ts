@@ -7,6 +7,8 @@ export type RunItem =
   | {
     kind: "approval"; step: number; title: string; call: { id: string; name: string; input: Record<string, unknown> }; expiresAt: string;
     status: ApprovalStatus; by?: string;
+    /** Approved, but the run was stopped before the call's step began, so it never ran. */
+    stoppedFirst?: true;
   };
 
 export type ApprovalItem = Extract<RunItem, { kind: "approval" }>;
@@ -75,8 +77,13 @@ export function applyRunEvent(v: RunView, e: RunEvent): RunView {
       return next;
     case "usage":
       return { ...next, costMicros: v.costMicros + e.costMicros };
-    case "run.finished":
-      return { ...next, status: e.status, reason: e.reason, costMicros: e.costMicros, endedAt: e.at };
+    case "run.finished": {
+      const ran = (step: number) => v.items.some((i) => i.kind === "step" && i.step === step);
+      const items = e.status !== "stopped" ? v.items : v.items.map((i) =>
+        i.kind === "approval" && i.status === "approved" && !ran(i.step) ? { ...i, stoppedFirst: true as const } : i,
+      );
+      return { ...next, items, status: e.status, reason: e.reason, costMicros: e.costMicros, endedAt: e.at };
+    }
   }
 }
 

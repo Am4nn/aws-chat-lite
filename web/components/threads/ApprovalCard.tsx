@@ -24,7 +24,7 @@ type Props = {
 };
 
 /**
- * A write the agent wants to make, waiting for any member. Details shows the exact input that will run. A decision
+ * A write the agent wants to make, or a web call from a thread with private content, waiting for any member. Details shows the exact input that will run. A decision
  * shows at once; the card then shrinks into a one-line record of how it settled, which the run's own
  * `approval.settled` confirms (or, after a 409, supplies).
  */
@@ -44,7 +44,8 @@ export function ApprovalCard({ runId, approval: a, meName, enter }: Props) {
   const mine = local && "decision" in local
     ? { status: local.decision === "approve" ? "approved" as const : "denied" as const, by: meName }
     : null;
-  const settled = a.status === "pending" ? mine : { status: a.status, by: a.by };
+  const settled = a.status === "pending" ? mine : { status: a.status, by: a.by, stoppedFirst: a.stoppedFirst };
+  const kind = a.call.name.startsWith("web_") ? "web call from a private thread" : "write action";
   const conflict = local && "conflict" in local ? local.conflict : null;
 
   return (
@@ -83,7 +84,7 @@ export function ApprovalCard({ runId, approval: a, meName, enter }: Props) {
                 <div className="min-w-[180px] flex-1">
                   <p className="break-words text-[14px] font-semibold">{a.title}</p>
                   <p role={conflict ? "status" : undefined} className="text-[12.5px] text-[#b9ae93]" suppressHydrationWarning>
-                    {conflict ?? `write action · anyone in the room can approve · expires in ${remaining(a.expiresAt, now)}`}
+                    {conflict ?? `${kind} · anyone in the room can approve · expires in ${remaining(a.expiresAt, now)}`}
                   </p>
                 </div>
                 <div className="flex shrink-0 gap-2 max-sm:basis-full max-sm:justify-end">

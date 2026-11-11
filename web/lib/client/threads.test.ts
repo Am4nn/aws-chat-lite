@@ -51,8 +51,10 @@ describe("dead runs", () => {
     expect(threadMeta(dead, now).text).toBe("failed");
   });
 
-  it("never reads a waiting run as dead", () => {
-    expect(settleDeadRuns([th({ status: "waiting", deadAt: at(-1) })], now)[0].status).toBe("waiting");
+  it("reads a waiting run past its deadAt as failed too, but not before", () => {
+    const [dead, alive] = settleDeadRuns([th({ status: "waiting", deadAt: at(-1) }), th({ status: "waiting", deadAt: at(1) })], now);
+    expect([dead.status, alive.status]).toEqual(["failed", "waiting"]);
+    expect(nextRunDeadline([th({ status: "waiting", deadAt: at(3) })], now)).toBe(now + 3 * 60_000);
   });
 
   it("lets a dead run leave the live count and archive", () => {

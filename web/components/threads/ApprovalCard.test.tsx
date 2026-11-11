@@ -19,6 +19,11 @@ describe("ApprovalCard", () => {
     expect(out).toMatch(/>Approve</);
   });
 
+  it("calls a gated web call what it is, not a write", () => {
+    const fetch = { ...approval, title: "Fetch https://e.example/?", call: { id: "c", name: "web_fetch", input: { url: "https://e.example/" } } };
+    expect(html(fetch)).toContain("web call from a private thread · anyone in the room can approve");
+  });
+
   it("shows exactly what will run under Details, as JSON", () => {
     const out = html(approval);
     expect(out).toContain("Details");

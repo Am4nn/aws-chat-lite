@@ -6,18 +6,18 @@ const IDLE_ARCHIVE_MS = 7 * 24 * 3600_000;
 /** A run is live while it works and while it waits on a member: either way it will still write. */
 export const isLive = (status: ThreadStatus) => status === "running" || status === "waiting";
 
-// A run still "running" past the server's deadAt died without closing, and the server already reads it as failed. A
-// waiting run never is: its deadAt lies past the approval's expiry, which wakes it.
+// A live run past the server's deadAt died without closing, and the server already reads it as failed. A waiting run's
+// deadAt lies past its approval's expiry, which would have woken it.
 const deadAt = (t: ThreadSummary) => Date.parse(t.deadAt ?? "");
-const isDead = (t: ThreadSummary, nowMs: number) => t.status === "running" && nowMs >= deadAt(t);
+const isDead = (t: ThreadSummary, nowMs: number) => isLive(t.status) && nowMs >= deadAt(t);
 
 /** The threads as of `nowMs`: a run that outlived its deadAt reads as failed, so it stops showing live and can archive. */
 export const settleDeadRuns = (list: ThreadSummary[], nowMs: number): ThreadSummary[] =>
   list.map((t) => (isDead(t, nowMs) ? { ...t, status: "failed" } : t));
 
-/** When the next running run reaches its deadAt (Infinity when none will), so the list can be settled again then. */
+/** When the next live run reaches its deadAt (Infinity when none will), so the list can be settled again then. */
 export const nextRunDeadline = (list: ThreadSummary[], nowMs: number) =>
-  Math.min(...list.filter((t) => t.status === "running" && !isDead(t, nowMs)).map(deadAt).filter(Number.isFinite));
+  Math.min(...list.filter((t) => isLive(t.status) && !isDead(t, nowMs)).map(deadAt).filter(Number.isFinite));
 
 /** Budget frames can arrive out of order, so spend never goes back within a month; a new month starts over. */
 export function mergeBudget(prev: Budget, next: Budget): Budget {

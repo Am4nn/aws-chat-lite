@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { FolderGit2, Hourglass, Pencil } from "lucide-react";
 import { bff, errorText } from "@/lib/client/bff";
@@ -13,10 +13,9 @@ import { Hint } from "@/components/ui/Hint";
 import { Spinner } from "@/components/ui/Spinner";
 import { useToast } from "@/components/overlays/Toast";
 import { ActivityLog } from "./ActivityLog";
+import { RepoPicker, type Installation, type RepoPick } from "./RepoPicker";
 
 type Connections = { github: GitHubConnection | null; approvalTimeoutMin: number; canManage: boolean; installUrl: string | null };
-type Installation = { id: number; account: string; repos: string[] };
-type RepoPick = { installationId: number; repos: string[] };
 type Mode = { kind: "view" } | { kind: "confirmDisconnect" } | { kind: "pick"; installations: Installation[] | null };
 
 /**
@@ -56,10 +55,11 @@ export function ConnectionsPanel({ roomId, archived }: { roomId: string; archive
           : <div className="flex h-9 items-center justify-center text-text-3"><Spinner /></div>}
       </section>
       <section className="flex flex-col gap-2">
-        <h2 className="flex items-center text-[11.5px] font-semibold text-text-3">
-          Approvals
+        {/* The hint sits beside the heading, not in it, so the heading's accessible name is just "Approvals". */}
+        <div className="flex items-center">
+          <h2 className="text-[11.5px] font-semibold text-text-3">Approvals</h2>
           <Hint place="below" text="After this, the action is skipped and the run finishes with a note." />
-        </h2>
+        </div>
         {data && <ApprovalTimeout roomId={roomId} minutes={data.approvalTimeoutMin} manage={manage} onChange={(approvalTimeoutMin) => changed({ approvalTimeoutMin })} />}
       </section>
       <ActivityLog roomId={roomId} version={version} />
@@ -161,55 +161,19 @@ function GitHubSection({ roomId, data, manage, onChange }: {
   );
 }
 
-/** Repos come from one installation, so ticking one from another installation starts the pick over there. */
-function RepoPicker({ installations, initial, busy, onCancel, onSave }: {
-  installations: Installation[]; initial?: RepoPick; busy: boolean; onCancel: () => void; onSave: (pick: RepoPick) => void;
-}) {
-  const [pick, setPick] = useState<RepoPick | null>(initial ? { installationId: initial.installationId, repos: initial.repos } : null);
-
-  function toggle(installationId: number, repo: string) {
-    setPick((p) => {
-      if (p?.installationId !== installationId) return { installationId, repos: [repo] };
-      const repos = p.repos.includes(repo) ? p.repos.filter((r) => r !== repo) : [...p.repos, repo];
-      return { installationId, repos };
-    });
-  }
-
-  if (installations.length === 0) return <p className="text-[12.5px] text-text-3">The App isn&apos;t installed on any account yet.</p>;
-
-  return (
-    <div className="flex flex-col gap-3">
-      {installations.map((inst) => (
-        <fieldset key={inst.id} className="flex flex-col">
-          <legend className="mb-1 text-[11.5px] text-text-3">{inst.account}</legend>
-          {inst.repos.map((repo) => (
-            <label key={repo} className="flex h-8 cursor-pointer items-center gap-2.5 rounded-lg px-2 transition-colors hover:bg-surface-2">
-              <input
-                type="checkbox"
-                checked={pick?.installationId === inst.id && pick.repos.includes(repo)}
-                onChange={() => toggle(inst.id, repo)}
-                className="size-3.5 shrink-0 accent-lime"
-              />
-              <span className="truncate font-mono text-[12px] text-text-2">{repo}</span>
-            </label>
-          ))}
-        </fieldset>
-      ))}
-      <div className="flex justify-end gap-2">
-        <Button onClick={onCancel}>Cancel</Button>
-        <Button variant="primary" onClick={() => pick && onSave(pick)} disabled={busy || !pick?.repos.length}>{busy && <Spinner />}Save</Button>
-      </div>
-    </div>
-  );
-}
-
 function ApprovalTimeout({ roomId, minutes, manage, onChange }: { roomId: string; minutes: number; manage: boolean; onChange: (minutes: number) => void }) {
   const toast = useToast();
   const [draft, setDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Set by Escape, so the blur that follows doesn't save what was just cancelled.
+  const cancelled = useRef(false);
 
+  /**
+   * Saves on blur, which is how the field is left on a phone: iOS shows a number pad with no return key, and its Done
+   * button blurs the field. Enter blurs too, so there is one way to save.
+   */
   async function save() {
-    if (!draft?.trim() || Number(draft) === minutes) return setDraft(null);
+    if (cancelled.current || !draft?.trim() || Number(draft) === minutes) return setDraft(null);
     setSaving(true);
     try {
       const res = await bff<{ approvalTimeoutMin: number }>(`/bff/api/rooms/${roomId}/approval-timeout`, { method: "PUT", body: { minutes: Number(draft) } });
@@ -223,10 +187,11 @@ function ApprovalTimeout({ roomId, minutes, manage, onChange }: { roomId: string
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") void save();
+    if (e.key === "Enter") e.currentTarget.blur();
     if (e.key === "Escape") {
       // Handled here, so the phone overlay around the panel stays open.
       e.preventDefault();
+      cancelled.current = true;
       setDraft(null);
     }
   }
@@ -247,7 +212,7 @@ function ApprovalTimeout({ roomId, minutes, manage, onChange }: { roomId: string
               disabled={saving}
               onChange={(e) => setDraft(e.target.value.replace(/\D/g, ""))}
               onKeyDown={onKeyDown}
-              onBlur={() => !saving && setDraft(null)}
+              onBlur={() => void save()}
               className="h-6 w-12 rounded-md border border-[#36403f] bg-ink px-1 text-right font-mono text-xs text-text tabular-nums outline-none disabled:opacity-60"
             />
             min
@@ -255,7 +220,10 @@ function ApprovalTimeout({ roomId, minutes, manage, onChange }: { roomId: string
         )}
       {manage && draft === null && (
         <button
-          onClick={() => setDraft(String(minutes))}
+          onClick={() => {
+            cancelled.current = false;
+            setDraft(String(minutes));
+          }}
           aria-label="Change the approval timeout"
           title="Change the approval timeout"
           className="-mr-1.5 ml-auto grid size-6 place-items-center rounded-md text-text-3 transition-[background-color,color,transform] hover:bg-surface-3 hover:text-text active:scale-90"

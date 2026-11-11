@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Ban, Check, Clock, Link2, MessageSquare, Timer, Unplug, Wrench, X, type LucideIcon } from "lucide-react";
-import { auditLine } from "@/lib/client/audit";
+import { auditLine, auditMayHaveChanged } from "@/lib/client/audit";
 import { bff, errorText } from "@/lib/client/bff";
 import { timeAgo } from "@/lib/client/format";
+import { useLiveEvent } from "@/lib/client/LiveProvider";
 import { useNow } from "@/lib/client/useNow";
-import type { AuditEntry, AuditKind } from "@/lib/types";
+import type { AuditEntry, AuditKind, ThreadSummary } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { useToast } from "@/components/overlays/Toast";
@@ -20,14 +21,25 @@ const ICONS: Record<AuditKind, LucideIcon> = {
 
 const CLOCK_TICK_MS = 60_000;
 
-/** The room's log, newest first. A new `version` (the room changed) starts again from the newest page. */
+/**
+ * The room's log, newest first. A new `version` (the room changed), or a run update that may carry entries of its
+ * own (asked, approvals, tools), starts again from the newest page.
+ */
 export function ActivityLog({ roomId, version }: { roomId: string; version: number }) {
   const toast = useToast();
   const now = useNow(true, CLOCK_TICK_MS);
   const [page, setPage] = useState<Page | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [runNews, setRunNews] = useState(0);
+  const threads = useRef(new Map<string, ThreadSummary>());
   const path = `/bff/api/rooms/${roomId}/audit`;
   const next = page?.next;
+
+  useLiveEvent("run.updated", (e) => {
+    if (e.roomId !== roomId) return;
+    if (auditMayHaveChanged(threads.current.get(e.thread.threadId), e.thread)) setRunNews((n) => n + 1);
+    threads.current.set(e.thread.threadId, e.thread);
+  });
 
   useEffect(() => {
     let current = true;
@@ -35,7 +47,7 @@ export function ActivityLog({ roomId, version }: { roomId: string; version: numb
       .then((p) => current && setPage(p))
       .catch((e) => toast(errorText(e), "error"));
     return () => { current = false; };
-  }, [path, version, toast]);
+  }, [path, version, runNews, toast]);
 
   async function loadMore(before: string) {
     setLoadingMore(true);

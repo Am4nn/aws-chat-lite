@@ -106,6 +106,14 @@ describe("applyRunEvent: approvals and sources", () => {
     expect(settledLine(settled.items[0] as Parameters<typeof settledLine>[0])).toBe("Approved by bea");
   });
 
+  it("an approval the stop beat to its step says so, and one whose step ran doesn't", () => {
+    const settled = ev(2, { type: "approval.settled", step: 1, decision: "approved", by: "bea" });
+    const stopped = ev(3, { type: "run.finished", status: "stopped", reason: "Stopped by aman.", ms: 1, steps: 0, costMicros: 0 });
+    expect(run(asked, settled, stopped).items[0]).toMatchObject({ status: "approved", stoppedFirst: true });
+    const ran = run(asked, settled, ev(3, { type: "step.started", step: 1, call, detail: "" }), { ...stopped, seq: 4 } as RunEvent);
+    expect(ran.items[0]).not.toHaveProperty("stoppedFirst");
+  });
+
   it("an approval is its own row, in event order", () => {
     const v = run(ev(1, { type: "step.started", step: 1, call, detail: "" }), ev(2, { type: "step.finished", step: 1, output: "", ms: 1, ok: true }), { ...asked, seq: 3, step: 2 } as RunEvent);
     expect(runRows(v, [], []).map((r) => r.key)).toEqual(["step:1", "approval:2"]);

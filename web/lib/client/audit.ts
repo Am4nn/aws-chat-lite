@@ -1,4 +1,4 @@
-import type { AuditEntry } from "../types";
+import type { AuditEntry, ThreadSummary } from "../types";
 
 /** One row of the room's activity log. */
 export function auditLine(e: AuditEntry): string {
@@ -23,3 +23,10 @@ export function auditLine(e: AuditEntry): string {
       return `${e.actor} set the approval timeout to ${e.detail}`;
   }
 }
+
+/**
+ * Whether a run's update may come with new log entries: it asked (the thread starts waiting), its approval settled
+ * (waiting ends), it ended, or a tool it ran returned (the step clears). A cost or a step starting adds none.
+ */
+export const auditMayHaveChanged = (prev: ThreadSummary | undefined, next: ThreadSummary) =>
+  prev?.status !== next.status || (!!prev.currentStep && !next.currentStep);

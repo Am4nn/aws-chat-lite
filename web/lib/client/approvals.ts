@@ -6,11 +6,11 @@ import { formatWait } from "./format";
 export const remaining = (expiresAt: string, nowMs: number) => formatWait(Math.max(0, Math.floor((Date.parse(expiresAt) - nowMs) / 1000)));
 
 /** How an approval ended, in one line; I am "you". */
-export function settledLine(a: { status: Exclude<ApprovalStatus, "pending">; by?: string }, meName?: string): string {
+export function settledLine(a: { status: Exclude<ApprovalStatus, "pending">; by?: string; stoppedFirst?: true }, meName?: string): string {
   const who = a.by === meName ? "you" : a.by;
   switch (a.status) {
     case "approved":
-      return `Approved by ${who}`;
+      return `Approved by ${who}${a.stoppedFirst ? " (run stopped first)" : ""}`;
     case "denied":
       return `Denied by ${who}`;
     case "expired":
