@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Check, ChevronDown, Lock } from "lucide-react";
 import { bff, errorText } from "@/lib/client/bff";
-import { nextEnabled, pickMenu, pillLabel } from "@/lib/client/models";
+import { nextEnabled, pickMenu, pillLabel, shownPick } from "@/lib/client/models";
 import { useModels } from "@/lib/client/ModelsProvider";
 import { useClickOutside } from "@/lib/client/useClickOutside";
 import { useEscape } from "@/lib/client/useEscape";
@@ -17,17 +17,21 @@ const LOCKED_HINT = "The running agent keeps its model.";
 const PRIVATE_HINT = "It has attachments. Private content never goes to DeepSeek.";
 
 /**
- * The composer's model choice. `taint`: the thread's, which turns DeepSeek off. `locked`: a run is live here, and a
- * run keeps the model it started with.
+ * The composer's model choice. `value`: the chat's own pick, if it has one; without it the pill shows what the room
+ * default resolves to. `taint`: the thread's, which turns DeepSeek off. `locked`: a run is live here, and a run keeps
+ * the model it started with.
  */
 export function ModelPill({ value, onChange, taint, locked = false }: {
-  value: ModelPick; onChange: (pick: ModelPick) => void; taint: TaintSource[]; locked?: boolean;
+  value?: ModelPick; onChange: (pick: ModelPick) => void; taint: TaintSource[]; locked?: boolean;
 }) {
   const reduced = useReducedMotion();
   const toast = useToast();
   const phone = useIsPhone();
   const { roomId, models, roomDefault, canSetDefault } = useModels();
-  const menu = pickMenu(models, { value, roomDefault, taint, isAdmin: canSetDefault });
+  const shown = shownPick(models, value, roomDefault, taint);
+  const menu = pickMenu(models, { value: shown, roomDefault, taint, isAdmin: canSetDefault });
+  // The room-default button is the last arrow stop after the model rows.
+  const stops = menu.canSetDefault ? [...menu.items, { disabled: false }] : menu.items;
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const root = useRef<HTMLDivElement>(null);
@@ -68,7 +72,7 @@ export function ModelPill({ value, onChange, taint, locked = false }: {
     close(true);
     try {
       // The room hears room.updated, which brings the new default to every member's pill, this one included.
-      await bff(`/bff/api/rooms/${roomId}/model`, { method: "PUT", body: { model: value } });
+      await bff(`/bff/api/rooms/${roomId}/model`, { method: "PUT", body: { model: shown } });
     } catch (e) {
       toast(errorText(e), "error");
     }
@@ -77,17 +81,17 @@ export function ModelPill({ value, onChange, taint, locked = false }: {
   function onKeyDown(e: KeyboardEvent) {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
-      focusItem(nextEnabled(menu.items, active, e.key === "ArrowDown" ? 1 : -1));
+      focusItem(nextEnabled(stops, active, e.key === "ArrowDown" ? 1 : -1));
     } else if (e.key === "Enter" && document.activeElement === items.current[active]) {
       e.preventDefault();
-      choose(menu.items[active]!.pick);
+      items.current[active]!.click();
     } else if (e.key === "Tab") {
       close(false);
     }
   }
 
   const fade = reduced ? instant : { duration: 0.15, ease: easeOut };
-  const label = pillLabel(models, value, phone);
+  const label = pillLabel(models, shown, phone);
 
   return (
     <div ref={root} className="relative shrink-0 self-center">
@@ -152,10 +156,14 @@ export function ModelPill({ value, onChange, taint, locked = false }: {
             ))}
             {menu.canSetDefault && (
               <button
+                ref={(el) => { items.current[menu.items.length] = el; }}
+                role="menuitem"
+                tabIndex={active === menu.items.length ? 0 : -1}
                 onClick={makeDefault}
-                className="mt-1 flex h-9 w-full items-center rounded-lg border-t border-line px-2.5 text-left text-[12.5px] text-text-2 transition-colors hover:bg-surface-3 hover:text-text"
+                onMouseEnter={() => setActive(menu.items.length)}
+                className="mt-1 flex h-9 w-full items-center rounded-lg border-t border-line px-2.5 text-left text-[12.5px] text-text-2 outline-none transition-[color,background,transform] hover:bg-surface-3 hover:text-text focus-visible:bg-surface-3 focus-visible:text-text active:scale-[0.98]"
               >
-                Make {pillLabel(models, value, false)} the room default
+                Make {pillLabel(models, shown, false)} the room default
               </button>
             )}
           </motion.div>

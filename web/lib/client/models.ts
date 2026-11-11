@@ -16,6 +16,16 @@ export function pickMenu(models: ModelOption[], s: MenuState) {
   return { items, privateNote: items.some((i) => i.disabled), canSetDefault: s.isAdmin && s.value !== s.roomDefault };
 }
 
+/**
+ * What a send from this chat runs on: its own pick, else the room default. The server turns a default that may not
+ * see private content into Auto, so the pill shows Auto too.
+ */
+export function shownPick(models: ModelOption[], own: ModelPick | undefined, roomDefault: ModelPick, taint: TaintSource[]): ModelPick {
+  if (own) return own;
+  const blocked = taint.length > 0 && !models.find((m) => m.pick === roomDefault)?.privateOk;
+  return blocked ? "auto" : roomDefault;
+}
+
 export function nextEnabled(items: { disabled: boolean }[], from: number, dir: 1 | -1): number {
   const n = items.length;
   for (let step = 1; step <= n; step++) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ModelOption } from "../types";
-import { footerText, liveFooter, modelLabel, nextEnabled, pickMenu, pillLabel } from "./models";
+import { footerText, liveFooter, modelLabel, nextEnabled, pickMenu, pillLabel, shownPick } from "./models";
 
 const o = (pick: ModelOption["pick"], label: string, short: string, id: string | undefined, privateOk = true): ModelOption => ({
   pick, id, label, short, price: id ? "$2 / $10" : "", privateOk,
@@ -50,12 +50,32 @@ describe("nextEnabled", () => {
     expect(nextEnabled(items, 4, 1)).toBe(0);
     expect(nextEnabled(items, 0, -1)).toBe(4);
   });
+
+  it("stays put when every item is disabled", () => {
+    expect(nextEnabled([{ disabled: true }, { disabled: true }], 1, 1)).toBe(1);
+  });
+});
+
+describe("shownPick", () => {
+  it("is the chat's own pick when it has one", () => {
+    expect(shownPick(models, "deepseek-pro", "opus", ["attachment"])).toBe("deepseek-pro");
+  });
+
+  it("is the room default otherwise, and Auto when that default can't see private content", () => {
+    expect(shownPick(models, undefined, "deepseek-flash", [])).toBe("deepseek-flash");
+    expect(shownPick(models, undefined, "deepseek-flash", ["attachment"])).toBe("auto");
+    expect(shownPick(models, undefined, "opus", ["attachment"])).toBe("opus");
+  });
 });
 
 describe("labels", () => {
   it("pillLabel uses the short name on a phone", () => {
     expect(pillLabel(models, "deepseek-flash", true)).toBe("DS Flash");
     expect(pillLabel(models, "sonnet", false)).toBe("Sonnet 5.5");
+  });
+
+  it("pillLabel falls back to the pick itself", () => {
+    expect(pillLabel(models.slice(0, 1), "opus", false)).toBe("opus");
   });
 
   it("modelLabel falls back to the id", () => {

@@ -79,6 +79,12 @@ describe("routeSend: the model pick", () => {
     expect(chat.send).toHaveBeenCalledTimes(1);
   });
 
+  it("a send with no pick, even in a private thread, is handed on without one, for the room default to resolve", async () => {
+    const { route } = await send({ chatId: "t1" });
+    await route();
+    expect(startOrSteer).toHaveBeenCalledWith(me, "r", "t1", expect.objectContaining({ seq: 1 }), undefined);
+  });
+
   it("an allowed pick is handed to the run", async () => {
     const { route } = await send({ chatId: "t1", model: "sonnet" });
     await route();

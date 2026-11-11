@@ -34,8 +34,11 @@ export function ModelsProvider({ view, children }: { view: RoomView; children: R
   return <ModelsContext.Provider value={value}>{children}</ModelsContext.Provider>;
 }
 
-/** The chat's model: the room default until someone here picks one. */
-export function useModelPick(chatId: string): [ModelPick, (model: ModelPick) => void] {
-  const { picks, roomDefault, pick } = useModels();
-  return [picks[chatId] ?? roomDefault, useCallback((model: ModelPick) => pick(chatId, model), [pick, chatId])];
+/**
+ * The model this chat picked, if it has. Until then a send names no model, so the server applies the room default
+ * and its privacy rule.
+ */
+export function useModelPick(chatId: string): [ModelPick | undefined, (model: ModelPick) => void] {
+  const { picks, pick } = useModels();
+  return [picks[chatId], useCallback((model: ModelPick) => pick(chatId, model), [pick, chatId])];
 }
