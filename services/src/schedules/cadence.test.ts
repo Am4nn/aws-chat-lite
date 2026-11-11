@@ -54,6 +54,11 @@ describe("nextFire", () => {
     expect(iso(nextFire(daily9, NEW_YORK, first))).toBe("2026-03-08T13:00:00.000Z");
   });
 
+  it("skips a time the clocks skip, as Scheduler does: daily 02:30 in New York has no fire on 2026-03-08", () => {
+    const first = nextFire({ kind: "daily", time: "02:30" }, NEW_YORK, ms("2026-03-07T12:00:00Z"));
+    expect(iso(first)).toBe("2026-03-09T06:30:00.000Z");
+  });
+
   it("weekly on Monday, from a Wednesday, is the next Monday", () => {
     expect(iso(nextFire({ kind: "weekly", day: "mon", time: "09:00" }, KOLKATA, ms("2026-11-11T06:00:00Z")))).toBe("2026-11-16T03:30:00.000Z");
   });

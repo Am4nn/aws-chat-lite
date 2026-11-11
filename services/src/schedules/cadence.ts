@@ -62,7 +62,12 @@ function firesOn(c: Cadence, tz: string, dayMs: number): number[] {
   else if (c.kind === "weekdays" && (weekday === 0 || weekday === 6)) times = [];
   else if (c.kind === "weekly" && WEEKDAYS[weekday] !== c.day) times = [];
   else times = [hourMinute(c.time)];
-  return times.map(([h, mi]) => fromZoned({ ...day, h, mi }, tz)).sort((a, b) => a - b);
+  // Scheduler skips a wall-clock time the clocks jump over, so such a time has no fire that day.
+  return times
+    .map(([h, mi]) => ({ h, mi, at: fromZoned({ ...day, h, mi }, tz) }))
+    .filter(({ h, mi, at }) => { const shown = zonedParts(at, tz); return shown.h === h && shown.mi === mi; })
+    .map(({ at }) => at)
+    .sort((a, b) => a - b);
 }
 
 /** Local calendar days from the one `ms` falls on, `step` days at a time, as midnights read as UTC. */
