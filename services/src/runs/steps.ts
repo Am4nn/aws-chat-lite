@@ -409,7 +409,8 @@ const hasChanges = (s: FilesSynced) => s.written.length + s.deleted.length + s.n
 
 type Outcome = { output: string; ok: boolean; synced?: FilesSynced; sources?: Source[]; ms?: number };
 type Room = Awaited<ReturnType<typeof roomConnections>>;
-type RoomCall = { room: Room; settled?: Approval; started: RunEvent; rerun: boolean; envOf: typeof toolEnv };
+/** `tainted`: the turn saw private content, which can be ahead of the thread's stored taint. */
+type RoomCall = { room: Room; settled?: Approval; started: RunEvent; rerun: boolean; envOf: typeof toolEnv; tainted: boolean };
 
 /** What the model is told in place of a write's result when it wasn't approved. */
 function unapproved(settled: Approval | undefined): string {
@@ -430,11 +431,11 @@ function unapproved(settled: Approval | undefined): string {
  * approval showed. A write never runs twice: a retry that finds its step already started can't know whether GitHub
  * or the MCP server took the first try. GitHub data and MCP output taint the thread before any of it is logged.
  */
-async function runRoomTool(run: RoutedRun, tool: Tool, call: ToolCall, { room, settled, started, rerun, envOf }: RoomCall): Promise<ToolResult> {
+async function runRoomTool(run: RoutedRun, tool: Tool, call: ToolCall, { room, settled, started, rerun, envOf, tainted }: RoomCall): Promise<ToolResult> {
   const [transport, thread] = await Promise.all([
     envOf(process.env.TOOL_MODE, room.github ?? undefined), threadsRepo().threadById(run.roomId, run.threadId),
   ]);
-  const env = { ...transport, room: toolRoom(run, !!thread?.taint.length) };
+  const env = { ...transport, room: toolRoom(run, tainted || !!thread?.taint.length) };
   const input = settled?.call.input ?? call.input;
   const refused = tool.check?.(input, env);
   if (refused) return { ok: false, output: refused };
@@ -473,7 +474,7 @@ async function runCall(run: RoutedRun, call: ToolCall, offered: boolean, step: n
  * that finds the step finished but unbilled only bills it. A write comes with its settled approval.
  */
 export async function toolStep(
-  run: RoutedRun, call: ToolCall, settled?: Approval, envOf = toolEnv,
+  run: RoutedRun, call: ToolCall, settled?: Approval, envOf = toolEnv, tainted = false,
 ): Promise<StepResult> {
   const end = await limitsReached(run);
   if (end) return { steps: run.steps, costMicros: run.costMicros, end };
@@ -499,7 +500,7 @@ export async function toolStep(
   const currentStep = run.helper ? `${run.agent.name} › ${call.name}` : call.name;
   await notifyRun(run.roomId, await runs.progress(run, { steps: step, currentStep }), started.seq);
   const t0 = Date.now();
-  const result = await runCall(run, call, offered, step, { room, settled, started, rerun: !!before, envOf });
+  const result = await runCall(run, call, offered, step, { room, settled, started, rerun: !!before, envOf, tainted });
   const { output, ok, synced, sources } = result;
   const ms = result.ms ?? Date.now() - t0;
   if (synced && hasChanges(synced) && !logged("files.synced")) await writer.append({ type: "files.synced", step, ...synced });

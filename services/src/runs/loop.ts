@@ -102,7 +102,7 @@ async function toolCall(run: RoutedRun, call: ToolCall, i: number, tainted: bool
     settled = await step(`settle-${i}-${call.id}`, () => settleApproval(run, n));
   }
   // An approved call runs, and is logged, as the approval stored it: with its repo pinned.
-  return step(`tool-${i}-${call.id}`, () => toolStep(run, settled?.call ?? call, settled));
+  return step(`tool-${i}-${call.id}`, () => toolStep(run, settled?.call ?? call, settled, undefined, tainted));
 }
 
 /**
