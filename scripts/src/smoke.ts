@@ -48,6 +48,8 @@ async function main() {
     await signUp(guestPage, guest);
 
     await grantCreator(ownerPage, owner);
+    const reserved = await bff(await person(browser), "/bff/auth/signup", "POST", { username: "everyone", password: "password1" });
+    check(reserved.status === 400 && reserved.body.error === "That username is reserved.", "the username \"everyone\" is refused at sign-up");
 
     check((await bff(guestPage, "/bff/api/rooms", "POST", { name: "nope" })).status === 403, "a non-creator can't create a room (403)");
     const room = await bff(ownerPage, "/bff/api/rooms", "POST", { name: `smoke ${stamp}` });

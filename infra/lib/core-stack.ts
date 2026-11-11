@@ -1,7 +1,8 @@
 import { fileURLToPath } from "node:url";
-import { Stack, StackProps, RemovalPolicy, CfnOutput, Duration } from "aws-cdk-lib";
+import { ArnFormat, Stack, StackProps, RemovalPolicy, CfnOutput, Duration } from "aws-cdk-lib";
 import { Construct } from "constructs";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
@@ -75,9 +76,18 @@ export class CoreStack extends Stack {
     });
   }
 
-  /** Lets `fn` post to open sockets (API Gateway's management API). */
+  /**
+   * Lets `fn` post to open sockets (API Gateway's management API). POST only, where CDK's own grant allows every
+   * method: nothing here reads a connection's details or closes one.
+   */
   allowBroadcast(fn: NodejsFunction) {
-    this.live.stage.grantManagementApiAccess(fn);
+    fn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ["execute-api:ManageConnections"],
+      resources: [this.formatArn({
+        service: "execute-api", resource: this.live.wsApi.apiId, arnFormat: ArnFormat.SLASH_RESOURCE_NAME,
+        resourceName: `${this.live.stage.stageName}/POST/@connections/*`,
+      })],
+    }));
     fn.addEnvironment("WS_CALLBACK_URL", this.stageConfig.isLocal ? `http://${this.flociWsEndpoint()}` : this.live.stage.callbackUrl);
   }
 

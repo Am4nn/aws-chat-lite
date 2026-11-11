@@ -36,9 +36,11 @@ describe("live WebSocket API", () => {
     });
   });
 
-  it("has all 11 route keys", () => {
-    const keys = Object.values(template().findResources("AWS::ApiGatewayV2::Route")).map((r: any) => r.Properties.RouteKey);
-    for (const k of ROUTE_KEYS) expect(keys, k).toContain(k);
+  it("has exactly its 11 route keys", () => {
+    const [wsApi] = Object.keys(template().findResources("AWS::ApiGatewayV2::Api", { Properties: { ProtocolType: "WEBSOCKET" } }));
+    const keys = Object.values(template().findResources("AWS::ApiGatewayV2::Route"))
+      .filter((r: any) => r.Properties.ApiId.Ref === wsApi).map((r: any) => r.Properties.RouteKey);
+    expect(keys.sort()).toEqual([...ROUTE_KEYS].sort());
   });
 
   it("deploys to the stage live", () => {
@@ -49,6 +51,12 @@ describe("live WebSocket API", () => {
     const actions = liveStatements().flatMap((s: any) => [s.Action].flat());
     expect(actions).toContain("execute-api:ManageConnections");
     expect(actions).toContain("dynamodb:PutItem");
+  });
+
+  it("may post only to the live stage's connections", () => {
+    const manage = liveStatements().filter((s: any) => [s.Action].flat().includes("execute-api:ManageConnections"));
+    expect(manage).toHaveLength(1);
+    expect(JSON.stringify(manage[0].Resource)).toMatch(/\/live\/POST\/@connections\/\*"/);
   });
 
   it("the live Lambda posts back through the API's own Floci host locally", () => {
