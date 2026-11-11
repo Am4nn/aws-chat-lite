@@ -42,9 +42,15 @@ describe("message versions", () => {
     expect(update.ExpressionAttributeValues).toMatchObject({ ":v": 0 });
   });
 
+  it("a delete returns the stored message, so a reaction racing it can't leave two broadcasts with one version", async () => {
+    const send = fakeTable(stored({ v: 1 }), () => ({ Attributes: stored({ v: 3, deleted: "self", reactions: { heart: new Set(["u2"]) } }) }));
+    expect(await chatRepo().remove(me, { ...at, seq: 1 })).toMatchObject({ deleted: "self", v: 3 });
+    expect((writes(send)[0] as UpdateCommand).input.ReturnValues).toBe("ALL_NEW");
+  });
+
   it("a delete and a reaction each bump the version", async () => {
     const send = fakeTable(stored({ v: 1 }), (c) => ({ Attributes: { ...stored({ v: 2 }), reactions: { thumbs: new Set(["u1"]) } }, c }));
-    expect(await chatRepo().remove(me, { ...at, seq: 1 })).toMatchObject({ deleted: "self", v: 2 });
+    await chatRepo().remove(me, { ...at, seq: 1 });
     await chatRepo().react(me, { ...at, seq: 1, reaction: "thumbs", on: true });
     const [del, react] = writes(send) as UpdateCommand[];
     expect(del.input.UpdateExpression).toContain("ADD v :one");

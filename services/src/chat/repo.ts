@@ -209,15 +209,17 @@ export function chatRepo() {
       const deleted = deleteMode(msg, user.userId, role, Date.now());
       if (!deleted) throw new Forbidden("You can delete only your own messages, for 15 minutes.");
       try {
-        await db.send(new UpdateCommand({
+        // The stored result, not the copy read above: a reaction landing in between also moved `v`.
+        const { Attributes } = await db.send(new UpdateCommand({
           TableName, Key: messageKey(at, input.seq), UpdateExpression: "SET deleted = :d ADD v :one",
           ConditionExpression: "attribute_not_exists(deleted)", ExpressionAttributeValues: { ":d": deleted, ":one": 1 },
+          ReturnValues: "ALL_NEW",
         }));
+        return toMessage(Attributes!);
       } catch (e) {
         if (conditionFailed(e)) throw new Conflict("That message is already deleted.");
         throw e;
       }
-      return toMessage({ ...msg, deleted, v: (msg.v ?? 0) + 1 });
     },
 
     /** Set ADD/DELETE make a double tap harmless: adding someone twice or removing someone absent changes nothing. */

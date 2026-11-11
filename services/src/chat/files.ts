@@ -71,7 +71,8 @@ export async function storedAttachment(a: Attachment): Promise<Attachment> {
     const head = await objects().send(new HeadObjectCommand({ Bucket: bucket(), Key: a.key }));
     return { ...a, size: Number(head.ContentLength), type: head.ContentType ?? "application/octet-stream" };
   } catch (e) {
-    if ((e as Error).name === "NotFound") throw new ValidationError(`${a.name} hasn't finished uploading.`);
+    // S3 answers a missing key with 403, not 404, to a caller without ListBucket (as this Lambda is on AWS).
+    if (["NotFound", "Forbidden"].includes((e as Error).name)) throw new ValidationError("That upload isn't there; try again.");
     throw e;
   }
 }
