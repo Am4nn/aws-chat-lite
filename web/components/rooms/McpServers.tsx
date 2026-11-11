@@ -8,6 +8,7 @@ import { keptLine, toolLabel } from "@/lib/client/mcp";
 import { dur, easeOut, instant } from "@/lib/motion";
 import type { McpConnection } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
+import { panelInput } from "@/components/ui/Field";
 import { Hint } from "@/components/ui/Hint";
 import { Spinner } from "@/components/ui/Spinner";
 import { useToast } from "@/components/overlays/Toast";
@@ -205,7 +206,7 @@ function FormField({ id, label, hint, ...input }: InputHTMLAttributes<HTMLInputE
       </div>
       <input
         id={id} {...input}
-        className="h-10 rounded-[10px] border border-line-strong bg-ink px-3 text-[13px] text-text outline-none transition-colors placeholder:text-text-3 hover:border-[#2c3437] focus:border-lime/60"
+        className={`${panelInput} h-10`}
       />
     </div>
   );

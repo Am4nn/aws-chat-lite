@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type DragEvent, type ReactNode } from "react";
+import { useRef, useState, type DragEvent } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Download, FileText, Trash2, Upload } from "lucide-react";
 import { bff, errorText } from "@/lib/client/bff";
@@ -14,7 +14,9 @@ import { Modal } from "@/components/overlays/Modal";
 import { useToast } from "@/components/overlays/Toast";
 import { Button } from "@/components/ui/Button";
 import { Hint } from "@/components/ui/Hint";
+import { RowButton } from "@/components/ui/RowButton";
 import { Spinner } from "@/components/ui/Spinner";
+import { Switch } from "@/components/ui/Switch";
 import type { RoomFiles } from "./useRoomFiles";
 
 const INTERNET_HINT = "Off: code can't reach the internet. On: pip install and git clone work. Applies to new runs.";
@@ -148,18 +150,6 @@ function FileRow({ file, fresh, meta, onDownload, onDelete }: {
   );
 }
 
-/** Shown on hover or keyboard focus, and always on touch screens, which have no hover. */
-function RowButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
-  return (
-    <button
-      onClick={onClick} aria-label={label} title={label}
-      className="grid size-7 shrink-0 place-items-center rounded-md text-text-3 opacity-0 transition-[opacity,background-color,color] hover:bg-surface-3 hover:text-text focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
-    >
-      {children}
-    </button>
-  );
-}
-
 /**
  * Whether code in this room's sandbox reaches the internet. An admin's switch moves at once and moves back if the
  * server refuses; the room view brings everyone else the change.
@@ -189,17 +179,7 @@ function InternetRow({ roomId, internet, canSwitch }: { roomId: string; internet
       Sandbox internet
       <Hint text={INTERNET_HINT} below />
       {canSwitch
-        ? (
-          <button
-            role="switch" aria-checked={on} aria-label="Sandbox internet" onClick={toggle}
-            className={`relative ml-auto h-[18px] w-[30px] shrink-0 rounded-full border transition-colors duration-150 ${on ? "border-lime bg-lime" : "border-line-strong bg-surface-3"}`}
-          >
-            <span
-              aria-hidden="true"
-              className={`absolute left-px top-px size-[14px] rounded-full transition-transform duration-150 ease-[cubic-bezier(.2,.9,.2,1)] motion-reduce:transition-none ${on ? "translate-x-3 bg-lime-ink" : "bg-text-3"}`}
-            />
-          </button>
-        )
+        ? <Switch on={on} label="Sandbox internet" onToggle={toggle} className="ml-auto" />
         : <span className="ml-auto font-mono text-text-3">{on ? "on" : "off"}</span>}
     </div>
   );

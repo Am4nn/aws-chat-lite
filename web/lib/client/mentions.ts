@@ -23,6 +23,22 @@ export function parseMentions(text: string, members: Mentionable[]) {
   return { mentions: [...ids], everyone: found.some((f) => f.name === "everyone") };
 }
 
+type MentionOption = { name: string; kind: "agent" | "everyone" | "member" };
+
+const MENTION_OPTIONS = 6;
+
+/** The `@` list for what was typed: the room's agents first, then everyone, then the other people. */
+export function mentionOptions(query: string, { agents, members, meId }: {
+  agents: { name: string }[]; members: Mentionable[]; meId: string;
+}): MentionOption[] {
+  const all: MentionOption[] = [
+    ...agents.map((a) => ({ name: a.name, kind: "agent" as const })),
+    { name: "everyone", kind: "everyone" },
+    ...members.filter((m) => m.userId !== meId).map((m) => ({ name: m.username, kind: "member" as const })),
+  ];
+  return all.filter((o) => o.name.toLowerCase().startsWith(query.toLowerCase())).slice(0, MENTION_OPTIONS);
+}
+
 /**
  * The `@name` being typed just before the caret, for autocomplete: `start` is where the `@` sits. Inside a code span,
  * or right after a word character (an email), it isn't a mention.

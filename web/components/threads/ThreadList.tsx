@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef } from "react";
+import { useContext, useRef } from "react";
 import Link from "next/link";
 import { motion } from "motion/react";
 import { Bot, Plus } from "lucide-react";
+import { agentLabel, RoomAgentsContext } from "@/lib/client/agents";
 import { liveCount, sidebarThreads, stateText, threadMeta } from "@/lib/client/threads";
 import { useThreads } from "@/lib/client/ThreadsProvider";
 import { useNow } from "@/lib/client/useNow";
@@ -15,7 +16,8 @@ const IDLE_TICK_MS = 60_000;
 
 /**
  * The sidebar's agent threads, newest activity first, each with its live state. Its selection highlight is the same
- * element as the chat list's, so it glides across both lists.
+ * element as the chat list's, so it glides across both lists. A thread names its agent unless that is @agent, which
+ * most threads are answered by.
  */
 export function ThreadList({ roomId, activeThreadId, canCreate, timeZone }: {
   roomId: string; activeThreadId?: string; canCreate: boolean; timeZone: string;
@@ -27,6 +29,7 @@ export function ThreadList({ roomId, activeThreadId, canCreate, timeZone }: {
   const shown = sidebarThreads(threads, now);
   // Threads that appear after the page loaded (just started) get a one-time entrance.
   const initial = useRef(new Set(threads.map((t) => t.threadId)));
+  const agents = useContext(RoomAgentsContext);
 
   return (
     <section>
@@ -58,7 +61,7 @@ export function ThreadList({ roomId, activeThreadId, canCreate, timeZone }: {
             {shown.map((t) => (
               <ThreadRow
                 key={t.threadId} thread={t} href={`/r/${roomId}/t/${t.number}`} active={t.threadId === activeThreadId}
-                fresh={!initial.current.has(t.threadId)} meta={threadMeta(t, now, timeZone)}
+                fresh={!initial.current.has(t.threadId)} meta={threadMeta(t, now, timeZone)} agent={agentLabel(t.agentId, agents)}
               />
             ))}
           </ul>
@@ -67,8 +70,8 @@ export function ThreadList({ roomId, activeThreadId, canCreate, timeZone }: {
   );
 }
 
-function ThreadRow({ thread: t, href, active, fresh, meta }: {
-  thread: ThreadSummary; href: string; active: boolean; fresh: boolean; meta: ReturnType<typeof threadMeta>;
+function ThreadRow({ thread: t, href, active, fresh, meta, agent }: {
+  thread: ThreadSummary; href: string; active: boolean; fresh: boolean; meta: ReturnType<typeof threadMeta>; agent: string;
 }) {
   return (
     <li className={fresh ? "animate-[row-in_.45s_cubic-bezier(.2,.9,.2,1)_both] motion-reduce:animate-none" : ""}>
@@ -84,6 +87,7 @@ function ThreadRow({ thread: t, href, active, fresh, meta }: {
         )}
         <span className="grid size-4 shrink-0 place-items-center"><ThreadStatusIcon status={t.status} /></span>
         <span className="truncate">{t.name}</span>
+        {agent !== "@agent" && <span className="-ml-1 shrink-0 font-mono text-[11.5px] font-normal text-text-3">{agent}</span>}
         <span
           suppressHydrationWarning
           className={`ml-auto shrink-0 font-mono text-[11px] font-normal tabular-nums ${meta.tone === "live" ? "text-lime" : meta.tone === "waiting" ? "text-amber" : "text-text-3"}`}

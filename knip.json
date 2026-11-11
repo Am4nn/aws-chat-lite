@@ -3,8 +3,7 @@
   // The shared agent, memory and schedule types are committed before the code that imports them. Drop a file's line
   // once every one of its types has an importer.
   "ignoreIssues": {
-    "services/src/threads/types.ts": ["types"],
-    "web/lib/types.ts": ["types"]
+    "services/src/threads/types.ts": ["types"]
   },
   "workspaces": {
     "infra": {

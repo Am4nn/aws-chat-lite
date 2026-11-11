@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { Budget, RoomView, ThreadSummary } from "../types";
+import { RoomAgentsContext } from "./agents";
 import { useLiveEvent } from "./LiveProvider";
 import { RoomTagsContext } from "./roomTags";
 import { applyThreadUpdate, mergeBudget, nextRunDeadline, settleDeadRuns } from "./threads";
@@ -29,7 +30,7 @@ export function useThreads(): Threads {
  * The room's threads and agent budget: the server's view, kept current by the socket. Every write bumps a thread's
  * `rev`, so a late or repeated event, or a server render older than an event already applied, never wins. A run that
  * died without closing reads as failed once it passes the server's cutoff, even while the page stays open. It also
- * resolves `#tags` in messages against the room's threads and chats.
+ * resolves `#tags` in messages against the room's threads and chats, and hands the room's agents to everything in it.
  */
 export function ThreadsProvider({ view, children }: { view: RoomView; children: ReactNode }) {
   const router = useRouter();
@@ -80,7 +81,9 @@ export function ThreadsProvider({ view, children }: { view: RoomView; children: 
   const tags = useMemo(() => ({ roomId, threads, chats: view.chats }), [roomId, threads, view.chats]);
   return (
     <ThreadsContext value={value}>
-      <RoomTagsContext value={tags}>{children}</RoomTagsContext>
+      <RoomTagsContext value={tags}>
+        <RoomAgentsContext value={view.agents}>{children}</RoomAgentsContext>
+      </RoomTagsContext>
     </ThreadsContext>
   );
 }

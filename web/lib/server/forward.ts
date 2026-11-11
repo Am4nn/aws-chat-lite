@@ -48,6 +48,19 @@ const ROUTES: [method: string, pattern: string][] = [
   ["POST", "/rooms/:x/connections/mcp/:x/reconnect"],
   ["POST", "/rooms/:x/connections/mcp/:x/refresh"],
   ["DELETE", "/rooms/:x/connections/mcp/:x"],
+  ["GET", "/rooms/:x/agents"],
+  ["POST", "/rooms/:x/agents"],
+  ["PATCH", "/rooms/:x/agents/:x"],
+  ["DELETE", "/rooms/:x/agents/:x"],
+  ["POST", "/rooms/:x/agents/:x/copy"],
+  ["GET", "/rooms/:x/memory"],
+  ["PATCH", "/rooms/:x/memory/:x"],
+  ["DELETE", "/rooms/:x/memory/:x"],
+  ["GET", "/rooms/:x/schedules"],
+  ["POST", "/rooms/:x/schedules"],
+  ["PATCH", "/rooms/:x/schedules/:x"],
+  ["DELETE", "/rooms/:x/schedules/:x"],
+  ["PUT", "/rooms/:x/timezone"],
 ];
 
 const SEGMENT = /^[A-Za-z0-9_-]+$/;

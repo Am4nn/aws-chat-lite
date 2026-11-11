@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mentionQuery, parseMentions } from "./mentions";
+import { mentionOptions, mentionQuery, parseMentions } from "./mentions";
 
 const members = [{ userId: "u1", username: "alice" }, { userId: "u2", username: "bob" }];
 
@@ -30,5 +30,17 @@ describe("mentionQuery", () => {
     expect(mentionQuery("mail x@al")).toBeNull();
     expect(mentionQuery("@alice ")).toBeNull();
     expect(mentionQuery("see `@al")).toBeNull();
+  });
+});
+
+describe("mentionOptions", () => {
+  const agents = [{ name: "agent" }, { name: "reviewer" }];
+  it("lists the room's agents first, then everyone, then people other than me", () => {
+    expect(mentionOptions("", { agents, members, meId: "u2" })).toEqual([
+      { name: "agent", kind: "agent" }, { name: "reviewer", kind: "agent" }, { name: "everyone", kind: "everyone" }, { name: "alice", kind: "member" },
+    ]);
+  });
+  it("narrows by what was typed, ignoring case", () => {
+    expect(mentionOptions("R", { agents, members, meId: "u2" })).toEqual([{ name: "reviewer", kind: "agent" }]);
   });
 });

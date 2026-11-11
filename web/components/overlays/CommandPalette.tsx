@@ -8,18 +8,19 @@ import { dur, easeOut } from "@/lib/motion";
 
 export type PaletteItem = { id: string; group: string; label: string; hint?: string; icon: ReactNode; run: () => void };
 
-const ASK = /^@agent\s+\S/i;
+const ASK = /^@([\w-]+)\s+\S/;
 
 /**
- * Ctrl K: one place to jump anywhere or run an action. Typing filters every group at once, and typing "@agent …"
- * offers to start a thread with it (`onAsk`).
+ * Ctrl K: one place to jump anywhere or run an action. Typing filters every group at once, and typing "@<agent> …"
+ * for one of the room's agents offers to start a thread with it (`onAsk`).
  */
-export function CommandPalette({ open, onClose, items, onAsk }: {
-  open: boolean; onClose: () => void; items: PaletteItem[]; onAsk?: (text: string) => void;
+export function CommandPalette({ open, onClose, items, agentNames, onAsk }: {
+  open: boolean; onClose: () => void; items: PaletteItem[]; agentNames: string[]; onAsk?: (text: string) => void;
 }) {
   const groups = [...new Set(items.map((i) => i.group))];
   const [query, setQuery] = useState("");
-  const ask = onAsk && ASK.test(query.trim()) ? query.trim() : null;
+  const asked = ASK.exec(query.trim())?.[1].toLowerCase();
+  const ask = onAsk && asked && agentNames.includes(asked) ? query.trim() : null;
   // Each opening starts empty, however it was closed (Esc, a pick, or Ctrl K again).
   const [shownOpen, setShownOpen] = useState(open);
   if (open !== shownOpen) {
