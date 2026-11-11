@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { DeleteCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
+import type { User } from "../lib/auth.js";
 import { conditionFailed, docClient, tableName } from "../lib/db.js";
 
 /**
@@ -8,8 +9,6 @@ import { conditionFailed, docClient, tableName } from "../lib/db.js";
  * worthless.
  */
 const TICKET_TTL_SEC = 60;
-
-interface User { userId: string; username: string }
 
 const ticketKey = (ticket: string) => ({ pk: `WSTICKET#${ticket}`, sk: "META" });
 

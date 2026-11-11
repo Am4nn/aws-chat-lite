@@ -8,7 +8,7 @@
   - the six reactions 👍 ❤️ 😂 🎉 👀 ✅;
   - quote-replies (no sub-threads);
   - edit and delete within 15 minutes, plus admin removal at any time. Nothing is really deleted: every earlier version stays in DynamoDB;
-  - light markdown: bold, italic, code, links, mentions and #tags.
+  - light markdown: bold, italic, code, http(s) links and mentions.
 - **Files up to 10 MB,** uploaded straight from the browser to S3. Images preview inline; anything else downloads.
 - **Unread and mention badges** in the sidebar, mute per chat, and a mention dot on the room switcher.
 - **Presence:** a static online dot, or "last seen 5m ago".

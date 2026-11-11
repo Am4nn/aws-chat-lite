@@ -7,8 +7,8 @@ export function typingText(names: string[]): string {
 
 /** The quote a reply shows, cut the way the server cuts it so a pending reply looks the same once stored. */
 export function excerpt(text: string): string {
-  const flat = text.replace(/\s+/g, " ").trim();
-  return flat.length > 140 ? `${flat.slice(0, 140)}…` : flat;
+  const chars = Array.from(text.replace(/\s+/g, " ").trim());
+  return chars.length > 140 ? `${chars.slice(0, 140).join("")}…` : chars.join("");
 }
 
 export function fileSize(bytes: number): string {

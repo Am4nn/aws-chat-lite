@@ -2,14 +2,16 @@ import { randomUUID } from "node:crypto";
 import {
   DeleteCommand, GetCommand, QueryCommand, TransactWriteCommand, UpdateCommand, type TransactWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
+import type { User } from "../lib/auth.js";
 import { batchGet, conditionFailed, docClient, failedAt, queryAll, tableName } from "../lib/db.js";
 import { Conflict, Forbidden, Gone, NotFound, ValidationError } from "../lib/errors.js";
+import { counterKey, memberKey, roomKey } from "../lib/keys.js";
+import { findMember, requireMember } from "../chat/membership.js";
 import { isOnline, type Presence } from "../live/presence.js";
 import { can, type Action, type Role } from "./access.js";
 import { chatName, roomName } from "./model.js";
 import { INVITE_TTL_SEC, inviteState, newInviteCode } from "./invites.js";
 
-interface User { userId: string; username: string }
 interface RoomView {
   room: { roomId: string; name: string; ownerId: string; archived: boolean };
   me: { role: Role };
@@ -19,11 +21,8 @@ interface RoomView {
 
 const nowSec = () => Math.floor(Date.now() / 1000);
 const nowIso = () => new Date().toISOString();
-const roomKey = (roomId: string) => `ROOM#${roomId}`;
-const memberKey = (roomId: string, userId: string) => ({ pk: roomKey(roomId), sk: `MEMBER#${userId}` });
 const roomInviteKey = (roomId: string) => ({ pk: roomKey(roomId), sk: "INVITE" });
 const inviteKey = (code: string) => ({ pk: `INVITE#${code}`, sk: "META" });
-const counterKey = (chatId: string) => ({ pk: `CHAT#${chatId}`, sk: "META" });
 const presenceKey = (userId: string) => ({ pk: `USER#${userId}`, sk: "PRESENCE" });
 /** The id at the end of a key such as `CHAT#<id>` or `READ#<userId>#<chatId>` (ids never contain "#"). */
 const lastPart = (key: unknown) => String(key).slice(String(key).lastIndexOf("#") + 1);
@@ -65,25 +64,11 @@ export function roomsRepo() {
   const db = docClient();
   const TableName = tableName();
 
-  /**
-   * Role reads are strongly consistent (base-table reads allow it, at twice the read cost) so that someone removed a
-   * moment ago is refused at once, and someone who just joined is let in at once.
-   */
-  async function membership(roomId: string, userId: string) {
-    const { Item } = await db.send(new GetCommand({ TableName, Key: memberKey(roomId, userId), ConsistentRead: true }));
-    return Item as { role: Role; archived?: boolean } | undefined;
-  }
-
-  /**
-   * The caller's role, or NotFound when they aren't in the room; Forbidden when the role can't do `action` (on a
-   * member with role `target`). A `writing` action is refused in an archived room, which is read-only.
-   */
+  /** The caller's role, as `requireMember` reads it; Forbidden when it can't do `action` (on a member with role `target`). */
   async function requireRole(roomId: string, userId: string, action: Action, opts: { target?: Role; writing?: boolean } = {}) {
-    const member = await membership(roomId, userId);
-    if (!member) throw new NotFound("Room not found.");
-    if (opts.writing && member.archived) throw new Gone("This room is archived.");
-    if (!can(action, member.role, opts.target)) throw new Forbidden("Your role in this room can't do that.");
-    return member.role;
+    const role = await requireMember(roomId, userId, opts);
+    if (!can(action, role, opts.target)) throw new Forbidden("Your role in this room can't do that.");
+    return role;
   }
 
   async function roomMeta(roomId: string) {
@@ -234,7 +219,7 @@ export function roomsRepo() {
 
     async setRole(roomId: string, actorId: string, targetId: string, role: unknown) {
       if (role !== "admin" && role !== "member") throw new ValidationError("Role must be admin or member.");
-      const target = (await membership(roomId, targetId))?.role;
+      const target = (await findMember(roomId, targetId))?.role;
       // The caller's own access is checked before revealing whether the target is in the room.
       await requireRole(roomId, actorId, "setRole", { target: target ?? "member" });
       if (!target) throw new NotFound("Not a member of this room.");
@@ -253,7 +238,7 @@ export function roomsRepo() {
     },
 
     async removeMember(roomId: string, actorId: string, targetId: string) {
-      const target = (await membership(roomId, targetId))?.role;
+      const target = (await findMember(roomId, targetId))?.role;
       await requireRole(roomId, actorId, "removeMember", { target: target ?? "member" });
       if (!target) throw new NotFound("Not a member of this room.");
       try {
@@ -298,9 +283,7 @@ export function roomsRepo() {
      * isn't a member; deleting the subscriptions saves the room's fan-out from reading them.
      */
     async leaveRoom(roomId: string, userId: string) {
-      const member = await membership(roomId, userId);
-      if (!member) throw new NotFound("Room not found.");
-      if (!can("leave", member.role)) throw new Forbidden("The owner can't leave their own room.");
+      if (!can("leave", await requireMember(roomId, userId))) throw new Forbidden("The owner can't leave their own room.");
       await db.send(new DeleteCommand({ TableName, Key: memberKey(roomId, userId) }));
       const subscriptions = await queryAll({
         KeyConditionExpression: "pk = :p AND begins_with(sk, :c)", FilterExpression: "userId = :u",

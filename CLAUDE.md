@@ -13,5 +13,5 @@
 
 ## Process
 - Tests first (TDD). The full suite stays green.
-- After each step's code is written: a cleanup pass against these rules, then the final review. The pass starts with the tools (`npm run check`: knip for unused files, exports and dependencies; `tsc --noEmit`; lint), then a fresh reviewer reads the whole diff plus older code it touches.
+- After each step's code is written: a cleanup pass against these rules, then the final review. The pass starts with the tools (`npm run check`: knip for unused files, exports and dependencies, then `tsc --noEmit` in every workspace), then a fresh reviewer reads the whole diff plus older code it touches.
 - Secrets never enter git: `.env*` and `infra/cdk.context.json` are ignored; scan staged diffs before every commit.

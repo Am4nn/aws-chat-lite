@@ -1,6 +1,8 @@
 import { GetCommand, PutCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import type { User } from "../lib/auth.js";
 import { conditionFailed, docClient, failedAt, tableName } from "../lib/db.js";
 import { Conflict, Forbidden, NotFound, ValidationError } from "../lib/errors.js";
+import { counterKey, memberKey, roomKey } from "../lib/keys.js";
 import { withUrls } from "./files.js";
 import { requireMember } from "./membership.js";
 import { notified, parseMentions } from "./mentions.js";
@@ -9,16 +11,12 @@ import {
   seqKey, validAttachment, versionKey, type Attachment, type Message, type Reaction, type StoredMessage,
 } from "./model.js";
 
-interface User { userId: string; username: string }
 /** Where a message lives: every chat belongs to exactly one room. */
 interface ChatRef { roomId: string; chatId: string }
 interface Cursor { before?: number; after?: number; around?: number }
 
-const roomKey = (roomId: string) => `ROOM#${roomId}`;
 const chatKey = (chatId: string) => `CHAT#${chatId}`;
-const memberKey = (roomId: string, userId: string) => ({ pk: roomKey(roomId), sk: `MEMBER#${userId}` });
 const readKey = (at: ChatRef, userId: string) => ({ pk: roomKey(at.roomId), sk: `READ#${userId}#${at.chatId}` });
-const counterKey = (chatId: string) => ({ pk: chatKey(chatId), sk: "META" });
 const messageKey = (at: ChatRef, seq: number) => ({ pk: chatKey(at.chatId), sk: seqKey(seq) });
 
 const NEEDS_CONTENT = "A message needs text or an attachment.";

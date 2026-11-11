@@ -1,9 +1,9 @@
 import { broadcastToRoom, sendToConnection, sendToUser } from "../live/broadcast.js";
+import type { User } from "../lib/auth.js";
 import { UserError, ValidationError } from "../lib/errors.js";
 import { REACTIONS, seqNumber, type Message, type Reaction } from "./model.js";
 import { chatRepo, type ChatRepo } from "./repo.js";
 
-interface User { userId: string; username: string }
 type Frame = Record<string, unknown>;
 
 /** What a successful action answers its sender with, and how everyone else hears about it. */

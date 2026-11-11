@@ -10,6 +10,7 @@ describe("MessageText", () => {
   it("drops raw html", () => expect(html("<script>x</script>")).not.toContain("<script"));
   it("does not render headings", () => expect(html("# Title")).not.toContain("<h1"));
   it("refuses javascript: links", () => expect(html("[x](javascript:alert(1))")).not.toContain('href="javascript'));
+  it("links http(s) only, not mailto:", () => expect(html("[x](mailto:a@b.co)")).not.toContain("href"));
   it("opens http links safely in a new tab", () => {
     const out = html("[x](https://example.com)");
     expect(out).toContain('target="_blank"');
