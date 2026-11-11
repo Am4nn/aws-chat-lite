@@ -42,7 +42,7 @@ export type Source = { title: string; url: string };
 export type ApprovalStatus = "pending" | "approved" | "denied" | "expired" | "cancelled";
 export type GitHubConnection = { installationId: number; account: string; repos: string[]; addedBy: string; addedAt: string };
 export type Scope = "rooms:read" | "rooms:write";
-export type McpToolInfo = { name: string; title?: string; description: string; inputSchema: object; readOnly: boolean };
+export type McpToolInfo = { name: string; description: string; inputSchema: object; readOnly: boolean };
 export type McpConnection = {
   name: string;
   url: string;

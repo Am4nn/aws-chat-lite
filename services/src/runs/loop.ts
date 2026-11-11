@@ -3,6 +3,7 @@ import {
 } from "@aws/durable-execution-sdk-js";
 import type { Approval } from "../approvals/repo.js";
 import type { ToolCall } from "../models/gateway.js";
+import type { TaintSource } from "../models/privacy.js";
 import { gateOf, requestApproval, settleApproval } from "./approval.js";
 import { finishRun } from "./finish.js";
 import { finishHelper, startHelper } from "./helpers.js";
@@ -74,7 +75,7 @@ async function agentLoop(start: RoutedRun, ctx: DurableContext, close: Close): P
     for (const call of turn.toolCalls) {
       const result = run.others.length > 0 && call.name === DELEGATE
         ? await delegate(run, call, i, ctx)
-        : await toolCall(run, call, i, !!turn.tainted, ctx);
+        : await toolCall(run, call, i, turn.taint ?? [], ctx);
       run = { ...run, steps: result.steps, costMicros: result.costMicros };
       if (result.end) {
         await close(run, result.end, true, i);
@@ -85,9 +86,9 @@ async function agentLoop(start: RoutedRun, ctx: DurableContext, close: Close): P
 }
 
 /** A tool call, which first waits for a member's decision when its gate asks for one. */
-async function toolCall(run: RoutedRun, call: ToolCall, i: number, tainted: boolean, ctx: DurableContext): Promise<StepResult> {
+async function toolCall(run: RoutedRun, call: ToolCall, i: number, taint: TaintSource[], ctx: DurableContext): Promise<StepResult> {
   const step = laneStep(ctx, run);
-  const gate = await step(`gate-${i}-${call.id}`, () => gateOf(run, call, tainted));
+  const gate = await step(`gate-${i}-${call.id}`, () => gateOf(run, call, taint));
   let settled: Approval | undefined;
   if (gate.asks) {
     const n = run.steps + 1;
@@ -102,7 +103,7 @@ async function toolCall(run: RoutedRun, call: ToolCall, i: number, tainted: bool
     settled = await step(`settle-${i}-${call.id}`, () => settleApproval(run, n));
   }
   // An approved call runs, and is logged, as the approval stored it: with its repo pinned.
-  return step(`tool-${i}-${call.id}`, () => toolStep(run, settled?.call ?? call, settled, undefined, tainted));
+  return step(`tool-${i}-${call.id}`, () => toolStep(run, settled?.call ?? call, settled, undefined, taint));
 }
 
 /**

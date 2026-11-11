@@ -6,13 +6,13 @@ import { auditRepo } from "../audit/repo.js";
 import { budgetRepo } from "../budget/repo.js";
 import { connectionsRepo } from "../connections/repo.js";
 import { sleep } from "../lib/sleep.js";
-import { mcpServerOf } from "../mcp/client/tools.js";
+import { mcpServerOf } from "../mcp/client/names.js";
 import { memoryRepo } from "../memory/repo.js";
 import { JOBS, modelInfo, NAMING_MODEL, ROUTER_MODEL, type ModelPick } from "../models/catalog.js";
 import { gateway } from "../models/index.js";
 import { NAME_PROMPT, type ModelChunk, type ModelGateway, type ModelRequest, type ToolCall, type ToolSpec } from "../models/gateway.js";
 import { modelIdOf, parseRoute, ROUTER_PROMPT, routerInput } from "../models/picks.js";
-import { mergeTaint, messageTaint, runRefusal } from "../models/privacy.js";
+import { mcpTaint, mergeTaint, messageTaint, runRefusal, type TaintSource } from "../models/privacy.js";
 import { isNumberedName } from "../threads/model.js";
 import { threadsRepo } from "../threads/repo.js";
 import type { Agent, RunEndStatus, RunEvent, Source } from "../threads/types.js";
@@ -265,8 +265,8 @@ async function readSteers(run: Run, events: RunEvent[], writer: Writer): Promise
   return seenSeq;
 }
 
-/** `tainted`: the thread held private content when the model answered, which its tool calls' gates need. */
-type Turn = { toolCalls: ToolCall[]; seenSeq: number; costMicros: number; end?: End; tainted?: boolean };
+/** `taint`: the private content the thread held when the model answered, which its tool calls' gates need. */
+type Turn = { toolCalls: ToolCall[]; seenSeq: number; costMicros: number; end?: End; taint?: TaintSource[] };
 
 /**
  * One model call: the loop's `model-<turn>` step. First the limits, then the messages members sent since the run
@@ -311,14 +311,14 @@ export async function modelTurn(run: RoutedRun, turn: number): Promise<Turn> {
     helperOf: run.helper?.parent,
   });
   const opening = run.helper ? [{ role: "user" as const, author: run.helper.parent, text: run.helper.task }] : threadMessages(prior);
-  return stream(run, writer, buildContext(opening, events, lane), events, { turn, seenSeq, system, tools, tainted: taint.length > 0 });
+  return stream(run, writer, buildContext(opening, events, lane), events, { turn, seenSeq, system, tools, taint });
 }
 
 async function stream(
   run: RoutedRun, writer: Writer, messages: ReturnType<typeof buildContext>, events: RunEvent[],
-  at: { turn: number; seenSeq: number; system: string; tools: ToolSpec[]; tainted: boolean },
+  at: { turn: number; seenSeq: number; system: string; tools: ToolSpec[]; taint: TaintSource[] },
 ): Promise<Turn> {
-  const { turn, seenSeq, system, tools, tainted } = at;
+  const { turn, seenSeq, system, tools, taint } = at;
   const stop = watchStop(run.runId);
   let failure: unknown;
   let pending = "";
@@ -370,7 +370,7 @@ async function stream(
     return chargeAndRetry(e, true);
   }
   const settle = (result: Pick<Turn, "toolCalls" | "end">) => {
-    const turnResult = { ...result, seenSeq, costMicros: spent + (call.usage?.costMicros ?? 0), tainted };
+    const turnResult = { ...result, seenSeq, costMicros: spent + (call.usage?.costMicros ?? 0), taint };
     if (!call.usage) return turnResult;
     return recordCall(run, writer, { model: run.model, job: "run", step: laneName(run, `model-${turn}`) }, call.usage, turnResult);
   };
@@ -409,8 +409,8 @@ const hasChanges = (s: FilesSynced) => s.written.length + s.deleted.length + s.n
 
 type Outcome = { output: string; ok: boolean; synced?: FilesSynced; sources?: Source[]; ms?: number };
 type Room = Awaited<ReturnType<typeof roomConnections>>;
-/** `tainted`: the turn saw private content, which can be ahead of the thread's stored taint. */
-type RoomCall = { room: Room; settled?: Approval; started: RunEvent; rerun: boolean; envOf: typeof toolEnv; tainted: boolean };
+/** `taint`: the private content the turn saw, which can be ahead of the thread's stored taint. */
+type RoomCall = { room: Room; settled?: Approval; started: RunEvent; rerun: boolean; envOf: typeof toolEnv; taint: TaintSource[] };
 
 /** What the model is told in place of a write's result when it wasn't approved. */
 function unapproved(settled: Approval | undefined): string {
@@ -431,17 +431,18 @@ function unapproved(settled: Approval | undefined): string {
  * approval showed. A write never runs twice: a retry that finds its step already started can't know whether GitHub
  * or the MCP server took the first try. GitHub data and MCP output taint the thread before any of it is logged.
  */
-async function runRoomTool(run: RoutedRun, tool: Tool, call: ToolCall, { room, settled, started, rerun, envOf, tainted }: RoomCall): Promise<ToolResult> {
+async function runRoomTool(run: RoutedRun, tool: Tool, call: ToolCall, { room, settled, started, rerun, envOf, taint }: RoomCall): Promise<ToolResult> {
   const [transport, thread] = await Promise.all([
     envOf(process.env.TOOL_MODE, room.github ?? undefined), threadsRepo().threadById(run.roomId, run.threadId),
   ]);
-  const env = { ...transport, room: toolRoom(run, tainted || !!thread?.taint.length) };
+  const env = { ...transport, room: toolRoom(run, mergeTaint(taint, thread?.taint ?? []).length > 0) };
   const input = settled?.call.input ?? call.input;
   const refused = tool.check?.(input, env);
   if (refused) return { ok: false, output: refused };
   if ((tool.write || settled) && settled?.status !== "approved") return { ok: false, output: unapproved(settled) };
   if (tool.write && rerun) return { ok: false, output: unsure(tool.kind === "mcp" ? mcpServerOf(call.name) : "GitHub") };
-  if (tool.kind === "github" || tool.kind === "mcp") await threadsRepo().addTaint(run.roomId, run.number, [tool.kind]);
+  if (tool.kind === "github") await threadsRepo().addTaint(run.roomId, run.number, ["github"]);
+  if (tool.kind === "mcp") await threadsRepo().addTaint(run.roomId, run.number, [mcpTaint(mcpServerOf(call.name))]);
   await auditRepo().record(run.roomId, {
     id: `${run.runId}#${started.seq}`, at: started.at, actor: "agent", kind: "tool", threadNumber: run.number, tool: call.name,
     detail: tool.detail(input), agent: run.agent.name,
@@ -474,7 +475,7 @@ async function runCall(run: RoutedRun, call: ToolCall, offered: boolean, step: n
  * that finds the step finished but unbilled only bills it. A write comes with its settled approval.
  */
 export async function toolStep(
-  run: RoutedRun, call: ToolCall, settled?: Approval, envOf = toolEnv, tainted = false,
+  run: RoutedRun, call: ToolCall, settled?: Approval, envOf = toolEnv, taint: TaintSource[] = [],
 ): Promise<StepResult> {
   const end = await limitsReached(run);
   if (end) return { steps: run.steps, costMicros: run.costMicros, end };
@@ -500,7 +501,7 @@ export async function toolStep(
   const currentStep = run.helper ? `${run.agent.name} › ${call.name}` : call.name;
   await notifyRun(run.roomId, await runs.progress(run, { steps: step, currentStep }), started.seq);
   const t0 = Date.now();
-  const result = await runCall(run, call, offered, step, { room, settled, started, rerun: !!before, envOf, tainted });
+  const result = await runCall(run, call, offered, step, { room, settled, started, rerun: !!before, envOf, taint });
   const { output, ok, synced, sources } = result;
   const ms = result.ms ?? Date.now() - t0;
   if (synced && hasChanges(synced) && !logged("files.synced")) await writer.append({ type: "files.synced", step, ...synced });

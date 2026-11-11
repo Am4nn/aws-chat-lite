@@ -219,7 +219,7 @@ describe("approvals in the run loop, on Floci", { timeout: 60_000 }, () => {
     const at = await room();
     const run = await storedRun(at);
     const call = { id: "call-1", name: "github_comment", input: { repo: "other/x", number: 1, body: "b" } };
-    expect(await gateOf(run, call, false)).toEqual({ asks: false });
+    expect(await gateOf(run, call, [])).toEqual({ asks: false });
     await toolStep(run, call);
     const [step] = await eventsOf(run.runId, "step.finished");
     expect(step).toMatchObject({ ok: false, output: expect.stringMatching(/^other\/x isn't connected to this room\./) });
@@ -229,7 +229,7 @@ describe("approvals in the run loop, on Floci", { timeout: 60_000 }, () => {
     const at = await room();
     const run = await storedRun(at);
     const call = { id: "call-1", name: "github_comment", input: { number: 1, body: "b" } };
-    const gate = await gateOf(run, call, false);
+    const gate = await gateOf(run, call, []);
     expect(gate).toMatchObject({ asks: true, title: COMMENT_TITLE, input: { number: 1, body: "b", repo: "fake-org/playground" } });
     await docClient().send(new UpdateCommand({
       TableName: tableName(), Key: { pk: `ROOM#${at.roomId}`, sk: "CONN#github" }, UpdateExpression: "SET repos = :r",
@@ -252,11 +252,11 @@ describe("approvals in the run loop, on Floci", { timeout: 60_000 }, () => {
     const run = await storedRun(at);
     const fetchCall = { id: "call-1", name: "web_fetch", input: { url: "https://example.com/?d=secret" } };
     const searchCall = { id: "call-2", name: "web_search", input: { query: "acme payroll" } };
-    expect(await gateOf(run, fetchCall, false)).toEqual({ asks: false });
+    expect(await gateOf(run, fetchCall, [])).toEqual({ asks: false });
     // The turn saw private content the thread doesn't show yet.
-    expect(await gateOf(run, searchCall, true)).toMatchObject({ asks: true, title: 'Search the web for "acme payroll"?' });
+    expect(await gateOf(run, searchCall, ["attachment"])).toMatchObject({ asks: true, title: 'Search the web for "acme payroll"?' });
     await threadsRepo().addTaint(at.roomId, run.number, ["github"]);
-    expect(await gateOf(run, fetchCall, false)).toMatchObject({
+    expect(await gateOf(run, fetchCall, [])).toMatchObject({
       asks: true, title: "Fetch https://example.com/?d=secret?", input: fetchCall.input,
     });
 

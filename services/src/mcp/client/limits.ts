@@ -9,3 +9,5 @@ export const MAX_MCP_SERVERS = 5;
 export const MAX_MCP_TOOLS = 40;
 export const MAX_DESCRIPTION_CHARS = 1_000;
 export const MAX_SCHEMA_CHARS = 10_000;
+/** A DynamoDB item holds at most 400 KB, and the snapshot shares the connection's item. */
+export const MAX_SNAPSHOT_BYTES = 300_000;

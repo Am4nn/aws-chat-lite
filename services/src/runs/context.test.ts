@@ -57,6 +57,23 @@ describe("buildContext", () => {
     ]);
   });
 
+  it("a turn's later calls, run after its earlier results and an approval, stay on that turn's assistant message", () => {
+    const content = [{ type: "tool_use", id: "call-1" }, { type: "tool_use", id: "call-2" }];
+    const run = events(
+      { type: "model.turn", model: "m", content, turn: 1 }, started(1), finished(1),
+      { type: "approval.requested", step: 2, call: call(2), title: "t", expiresAt: "2026-11-11T01:00:00.000Z" },
+      { type: "approval.settled", step: 2, decision: "approved", by: "aman" },
+      started(2), finished(2), { type: "text", text: "done", turn: 2 },
+    );
+    expect(buildContext(threadMessages([message(1, "u1", "aman", "go")]), run)).toEqual([
+      { role: "user", author: "aman", text: "go" },
+      { role: "assistant", text: "", native: { model: "m", content }, toolCalls: [call(1), call(2)] },
+      { role: "tool", toolCallId: "call-1", output: "out 1", isError: false },
+      { role: "tool", toolCallId: "call-2", output: "out 2", isError: false },
+      { role: "assistant", text: "done" },
+    ]);
+  });
+
   it("routed and usage events add nothing", () => {
     const run = events(
       { type: "routed", model: "claude-sonnet-5-5", by: "auto" },

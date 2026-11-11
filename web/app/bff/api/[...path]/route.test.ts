@@ -21,4 +21,17 @@ describe("/bff/api/*", () => {
     api.callApi.mockResolvedValueOnce(new Response("", { status: 200 }));
     expect(await (await call(GET, "GET", "rooms/r1/invite")).json()).toEqual({});
   });
+
+  it("answers an API call that passes its deadline with a JSON 504", async () => {
+    api.callApi.mockRejectedValueOnce(new DOMException("The operation was aborted due to timeout", "TimeoutError"));
+    const res = await call(GET, "GET", "rooms/r1");
+    expect(res.status).toBe(504);
+    expect(await res.json()).toEqual({ error: "chat-lite took too long to answer; try again." });
+  });
+
+  it("answers a body that stops arriving before the deadline with the same 504", async () => {
+    const stalled = new ReadableStream({ start: (c) => c.error(new DOMException("The operation was aborted due to timeout", "TimeoutError")) });
+    api.callApi.mockResolvedValueOnce(new Response(stalled, { status: 200 }));
+    expect((await call(GET, "GET", "rooms/r1")).status).toBe(504);
+  });
 });
