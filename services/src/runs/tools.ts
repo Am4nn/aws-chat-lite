@@ -1,4 +1,4 @@
-import { mcpServerOf } from "../mcp/client/tools.js";
+import { mcpServerOf } from "../mcp/client/names.js";
 import { modelInfo, type Provider } from "../models/catalog.js";
 import type { ToolCall, ToolSpec } from "../models/gateway.js";
 import { mcpTaint, type TaintSource } from "../models/privacy.js";

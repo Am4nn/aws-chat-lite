@@ -4,7 +4,7 @@ import { auditRepo } from "../audit/repo.js";
 import { budgetRepo } from "../budget/repo.js";
 import { connectionsRepo } from "../connections/repo.js";
 import { sleep } from "../lib/sleep.js";
-import { mcpServerOf } from "../mcp/client/tools.js";
+import { mcpServerOf } from "../mcp/client/names.js";
 import { JOBS, NAMING_MODEL, ROUTER_MODEL } from "../models/catalog.js";
 import { gateway } from "../models/index.js";
 import { NAME_PROMPT, type ModelChunk, type ModelGateway, type ModelRequest, type ToolCall, type ToolSpec } from "../models/gateway.js";
