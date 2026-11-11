@@ -42,6 +42,9 @@ export function applyRunEvent(v: RunView, e: RunEvent): RunView {
           i.kind === "step" && i.step === e.step ? { ...i, status: e.ok ? "done" : "failed", output: e.output, ms: e.ms } : i,
         ),
       };
+    case "approval.requested":
+    case "approval.settled":
+      return next;
     case "usage":
       return { ...next, costMicros: v.costMicros + e.costMicros };
     case "run.finished":

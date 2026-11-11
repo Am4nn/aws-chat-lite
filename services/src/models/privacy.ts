@@ -1,9 +1,9 @@
 import { modelInfo, pickInfo, type ModelPick } from "./catalog.js";
 
 /** Why a thread is private. The set only grows; a new source adds one word below. */
-export type TaintSource = "attachment";
+export type TaintSource = "attachment" | "github";
 
-const TAINT_WORDS: Record<TaintSource, string> = { attachment: "attachments" };
+const TAINT_WORDS: Record<TaintSource, string> = { attachment: "attachments", github: "GitHub data" };
 const words = Object.values(TAINT_WORDS).join(", ");
 
 export const PICK_REFUSED = `This has private content (${words}), so DeepSeek is off here. Pick another model.`;
