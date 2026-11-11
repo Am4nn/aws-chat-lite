@@ -14,6 +14,7 @@
     "stream-local": "tsx src/stream-local.ts",
     "sandbox-local": "tsx src/sandbox-local.ts",
     "mcp-test-local": "tsx src/mcp-test-local.ts",
+    "schedule-fire": "tsx src/fire-schedule.ts",
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {

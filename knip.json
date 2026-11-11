@@ -31,7 +31,7 @@
     },
     "scripts": {
       "entry": [
-        "src/{floci-up,deploy-local,spike-check,spike-aws,grant,smoke,dev,stream-local,sandbox-local,mcp-test-local}.ts"
+        "src/{floci-up,deploy-local,spike-check,spike-aws,grant,smoke,dev,stream-local,sandbox-local,mcp-test-local,fire-schedule}.ts"
       ],
       "project": [
         "src/**/*.ts"
