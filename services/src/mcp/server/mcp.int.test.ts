@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { AdminCreateUserCommand, AdminDisableUserCommand, CognitoIdentityProviderClient } from "@aws-sdk/client-cognito-identity-provider";
 import { describe, expect, it } from "vitest";
 import { chatRepo } from "../../chat/repo.js";
 import type { User } from "../../lib/auth.js";
@@ -44,7 +45,7 @@ async function signIn(who: User) {
     }),
   });
   expect(token.status).toBe(200);
-  return (await token.json() as { access_token: string }).access_token;
+  return { clientId, ...await token.json() as { access_token: string; refresh_token: string } };
 }
 
 async function mcpClient(accessToken: string) {
@@ -54,6 +55,11 @@ async function mcpClient(accessToken: string) {
   }));
   return client;
 }
+
+const refresh = (clientId: string, refreshToken: string) => get("/oauth/token", {
+  method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
+  body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken, client_id: clientId }),
+});
 
 const textOf = (r: unknown) => ((r as CallToolResult).content[0] as { text: string }).text;
 const listTools = (token: string, headers: Record<string, string> = {}) => get("/mcp", {
@@ -75,7 +81,7 @@ describe("chat-lite as an MCP server, on Floci", () => {
     const aman = user("aman");
     const rooms = roomsRepo();
     const { roomId, generalChatId } = await rooms.createRoom(aman, "MCP");
-    const token = await signIn(aman);
+    const { access_token: token } = await signIn(aman);
     const client = await mcpClient(token);
 
     expect((await client.listTools()).tools.map((t) => t.name)).toEqual(["list_rooms", "list_room", "read_messages", "post_message", "start_thread"]);
@@ -98,7 +104,7 @@ describe("chat-lite as an MCP server, on Floci", () => {
     const rooms = roomsRepo();
     const { roomId } = await rooms.createRoom(aman, "Removal");
     await rooms.acceptInvite((await rooms.rotateInvite(roomId, aman.userId)).code, bea);
-    const client = await mcpClient(await signIn(bea));
+    const client = await mcpClient((await signIn(bea)).access_token);
     const read = () => client.callTool({ name: "read_messages", arguments: { room: roomId, chat: "general" } });
     expect((await read()).isError).toBeFalsy();
 
@@ -107,6 +113,22 @@ describe("chat-lite as an MCP server, on Floci", () => {
     expect(refused.isError).toBe(true);
     expect(textOf(refused)).toMatch(/^No room/);
     await client.close();
+  });
+
+  it("a refresh from the deployed token endpoint asks Cognito: an enabled account keeps its grant, a disabled one loses it", async () => {
+    const cognito = new CognitoIdentityProviderClient({});
+    const account = { UserPoolId: String(outputs["cl-local-core"].UserPoolId), Username: `mcp-${randomUUID().slice(0, 8)}` };
+    await cognito.send(new AdminCreateUserCommand({ ...account, MessageAction: "SUPPRESS" }));
+    const { clientId, refresh_token: first } = await signIn(user(account.Username));
+
+    const kept = await refresh(clientId, first);
+    expect(kept.status).toBe(200);
+    const { refresh_token: second } = await kept.json() as { refresh_token: string };
+
+    await cognito.send(new AdminDisableUserCommand(account));
+    const dropped = await refresh(clientId, second);
+    expect(dropped.status).toBe(400);
+    expect(await dropped.json()).toMatchObject({ error: "invalid_grant" });
   });
 
   it("without a token, says where to sign in; a browser on another site is refused", async () => {
