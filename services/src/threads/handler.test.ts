@@ -25,9 +25,9 @@ const me = { userId: "u1", username: "aman" };
 describe("threads handler", () => {
   it("POST /threads starts the thread from the body and answers it: 201", async () => {
     const { start, handle } = setup();
-    const res = await handle(ev("POST /rooms/{roomId}/threads", { params: { roomId: "r" }, body: { text: "hi", clientId: "k1", model: "haiku" } }));
+    const res = await handle(ev("POST /rooms/{roomId}/threads", { params: { roomId: "r" }, body: { text: "hi", clientId: "k1", model: "haiku", agentId: "a1" } }));
     expect(res.statusCode).toBe(201);
-    expect(start).toHaveBeenCalledWith(me, "r", { text: "hi", clientId: "k1", model: "haiku" });
+    expect(start).toHaveBeenCalledWith(me, "r", { text: "hi", clientId: "k1", model: "haiku", agentId: "a1" });
     expect(JSON.parse(res.body as string)).toEqual({ thread: { threadId: "t1", status: "running" }, message: { seq: 1 } });
   });
 
@@ -44,6 +44,14 @@ describe("threads handler", () => {
     const res = await handle(ev("POST /rooms/{roomId}/threads", { params: { roomId: "r" }, body: { text: "  ", clientId: "k1" } }));
     expect(res.statusCode).toBe(400);
     expect(JSON.parse(res.body as string)).toEqual({ error: "A new thread needs a first message." });
+  });
+
+  it("POST /threads for an agent the room doesn't have is a 404", async () => {
+    const { start, handle } = setup();
+    start.mockRejectedValueOnce(new NotFound("No such agent."));
+    const res = await handle(ev("POST /rooms/{roomId}/threads", { params: { roomId: "r" }, body: { text: "hi", clientId: "k1", agentId: "x" } }));
+    expect(res.statusCode).toBe(404);
+    expect(JSON.parse(res.body as string)).toEqual({ error: "No such agent." });
   });
 
   it("PATCH a thread's name: a bad name is a 400, a good one is passed on normalized", async () => {

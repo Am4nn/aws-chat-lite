@@ -133,11 +133,12 @@ export function chatRepo() {
 
     /**
      * A `copy` is the server's copy of a message already sent elsewhere (into the thread it was delivered to or
-     * started); the original counted its mentions, so the copy doesn't count them again.
+     * started); the original counted its mentions, so the copy doesn't count them again. A `system` message is one the
+     * server posts in a pseudo-author's name (a schedule's card), who has no read state to move.
      */
     async send(
       user: User, input: ChatRef & { clientId: string; text: unknown; replyToSeq?: number; attachments?: unknown }, admitted?: Admitted,
-      opts: { copy?: boolean } = {},
+      opts: { copy?: boolean; system?: boolean } = {},
     ): Promise<Message> {
       const at = { roomId: input.roomId, chatId: input.chatId };
       const { text, attachments } = admitted ?? await admit(user, input);
@@ -156,7 +157,7 @@ export function chatRepo() {
         TableName, Item: { ...messageKey(at, seq), ...message, textLower: text.toLowerCase() },
         ConditionExpression: "attribute_not_exists(sk)",
       }));
-      const writes = [readOwnMessage(at, user.userId, seq)];
+      const writes = opts.system ? [] : [readOwnMessage(at, user.userId, seq)];
       if (!opts.copy) writes.push(countMentions(at, notified(message, members, user.userId)));
       await Promise.all(writes);
       return withUrls(message);

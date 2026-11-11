@@ -25,7 +25,7 @@ export async function runLoop({ runId }: { runId: string }, ctx: DurableContext)
   try {
     const loaded = await step("load", () => load(runId));
     if (!loaded) return;
-    let run = { ...loaded.run, ...await step("route", () => routeRun(loaded.run)) };
+    let run = { ...loaded.run, agent: loaded.agent, others: loaded.others, ...await step("route", () => routeRun(loaded.run)) };
     const close = (name: string, end: { status: RunEndStatus; reason?: string }, force: boolean) =>
       step(name, () => finishRun(run, end, { seenSeq: run.seenSeq, force }));
 

@@ -34,7 +34,7 @@ async function storedRun(texts: string[], { dead = false } = {}) {
   const { roomId } = await roomsRepo().createRoom(owner, "Streams");
   const { thread, message } = await threadsRepo().createThread(owner, roomId, { text: "go", clientId: `k${++clients}` });
   const run: Run = {
-    runId: randomUUID(), roomId, threadId: thread.threadId, number: thread.number, status: dead ? "running" : "done",
+    runId: randomUUID(), roomId, threadId: thread.threadId, number: thread.number, agentId: "agent", status: dead ? "running" : "done",
     model: "fake", pick: "auto", pickBy: "default", startedBy: owner.username, startedAt: new Date(Date.now() - (dead ? 136 * 60_000 : 0)).toISOString(),
     deadAt: new Date(Date.now() + (dead ? -60_000 : 7_800_000)).toISOString(), firstSeq: message.seq, seenSeq: message.seq, steps: 0, costMicros: 0,
   };

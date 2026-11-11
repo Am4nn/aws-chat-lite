@@ -1,7 +1,9 @@
 import { modelInfo, type Provider } from "../models/catalog.js";
 import type { ToolCall, ToolSpec } from "../models/gateway.js";
 import { LANGUAGES, MAX_TIMEOUT_SEC } from "../sandbox/sandbox.js";
+import type { ToolKind } from "../threads/types.js";
 import { findTool, roomTools, type RoomMcp } from "../tools/index.js";
+import type { Tool } from "../tools/types.js";
 
 export const FAKE_TOOLS: ToolSpec[] = [
   {
@@ -27,16 +29,17 @@ export const SANDBOX_TOOL: ToolSpec = {
 };
 
 /**
- * The tools a model is offered. Sandbox output carries room files, so only a model that may see private content gets
- * the sandbox; the fake's tools are ones only the fake accepts; GitHub's need the room to be connected, and an MCP
- * server's a signed-in connection.
+ * The tools a model is offered: those of the kinds its agent may use, plus the room memory, which every agent shares.
+ * Sandbox output carries room files, so only a model that may see private content gets the sandbox; the fake's tools
+ * are ones only the fake accepts; GitHub's need the room to be connected, and an MCP server's a signed-in connection.
  */
-export function toolsFor(model: string, served: Provider, room: RoomMcp & { github: boolean }): ToolSpec[] {
+export function toolsFor(model: string, served: Provider, room: RoomMcp & { github: boolean }, kinds: ToolKind[]): ToolSpec[] {
   const privateOk = modelInfo(model).privateOk;
+  const allowed = (t: Tool) => t.kind === "memory" || kinds.includes(t.kind);
   return [
     ...(served === "fake" ? FAKE_TOOLS : []),
-    ...(privateOk ? [SANDBOX_TOOL] : []),
-    ...roomTools({ ...room, privateOk }).map((t) => t.spec),
+    ...(privateOk && kinds.includes("sandbox") ? [SANDBOX_TOOL] : []),
+    ...roomTools({ ...room, privateOk }).filter(allowed).map((t) => t.spec),
   ];
 }
 
@@ -44,9 +47,9 @@ export function toolsFor(model: string, served: Provider, room: RoomMcp & { gith
  * Whether a call may run: a tool its model could be offered were every room connection signed in. A room's missing or
  * signed-out connection is left to the tool's own check, which tells the model so, rather than calling the tool unknown.
  */
-export function mayRun(model: string, served: Provider, name: string, { roomId, mcp }: RoomMcp): boolean {
+export function mayRun(model: string, served: Provider, name: string, { roomId, mcp }: RoomMcp, kinds: ToolKind[]): boolean {
   const signedIn = mcp.map((c) => ({ ...c, status: "connected" as const }));
-  return toolsFor(model, served, { roomId, github: true, mcp: signedIn }).some((t) => t.name === name);
+  return toolsFor(model, served, { roomId, github: true, mcp: signedIn }, kinds).some((t) => t.name === name);
 }
 
 const firstLine = (code: unknown) => String(code ?? "").split("\n").map((l) => l.trim()).find(Boolean) ?? "";

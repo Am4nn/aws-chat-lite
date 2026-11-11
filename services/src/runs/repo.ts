@@ -14,6 +14,8 @@ export type Run = {
   roomId: string;
   threadId: string;
   number: number;
+  /** The room agent that answers: the thread's, or the built-in one once the thread's was deleted. */
+  agentId: string;
   status: "running" | RunEndStatus;
   /** What the run was asked to use: the message's own pick, or the room default. */
   pick: ModelPick;

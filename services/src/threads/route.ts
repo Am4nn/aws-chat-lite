@@ -1,6 +1,8 @@
+import { mentionedAgent } from "../agents/model.js";
+import { agentsRepo } from "../agents/repo.js";
 import type { User } from "../lib/auth.js";
 import { NotFound, ValidationError } from "../lib/errors.js";
-import { CODE, parseMentions } from "../chat/mentions.js";
+import { CODE } from "../chat/mentions.js";
 import type { Message } from "../chat/model.js";
 import { chatRepo, type Admitted } from "../chat/repo.js";
 import { broadcastToRoom } from "../live/broadcast.js";
@@ -22,8 +24,6 @@ interface SendInput {
 const TAG = /(?<!\w)#([a-z0-9-]{1,32})(?![\w-])/gi;
 /** A tag made only of digits is a thread number already; one with a letter is a name. */
 const isName = (tag: string) => /[a-z]/i.test(tag);
-
-export const mentionsAgent = (text: string) => parseMentions(text, [{ userId: "agent", username: "agent" }]).mentions.length > 0;
 
 /** The distinct `#name` tags outside code, lowercased as thread names are. */
 export function tagNames(text: string): string[] {
@@ -71,8 +71,9 @@ async function deliveryTarget(threads: ThreadsRepo, roomId: string, threadId: st
 /**
  * Stores a send and returns it with `route`, the hand-off to the agent, which the caller runs after acking the
  * sender. A message in a thread starts or steers its run. A people-chat message aimed at a thread is copied into it,
- * and one that mentions @agent starts a new thread; either way the original then points at the thread. The
- * sender has its ack by the time the hand-off runs, so a hand-off failure is logged and the message stands.
+ * and one that mentions a room agent starts a new thread for the first one it names; either way the original then
+ * points at the thread. The sender has its ack by the time the hand-off runs, so a hand-off failure is logged and the
+ * message stands.
  *
  * A message for the agent may pick its model. A pick that may not see private content is refused before anything is
  * stored when the message carries a file or its thread is already private; a message only people read needs no check.
@@ -87,7 +88,8 @@ export async function routeSend(user: User, input: SendInput): Promise<{ message
   const ownThread = await threads.threadById(roomId, chatId);
   const target = ownThread ? null : await deliveryTarget(threads, roomId, input.threadId, ready.text);
   const agentThread = ownThread ?? target;
-  if (agentThread || mentionsAgent(ready.text)) {
+  const mentioned = !agentThread && ready.text.includes("@") ? mentionedAgent(ready.text, await agentsRepo().list(roomId)) : null;
+  if (agentThread || mentioned) {
     const refusal = pickRefusal(pick, mergeTaint(agentThread?.taint ?? [], messageTaint(admitted)));
     if (refusal) throw new ValidationError(refusal);
   }
@@ -109,9 +111,9 @@ export async function routeSend(user: User, input: SendInput): Promise<{ message
         await broadcastToRoom(roomId, { type: "message.new", message: copy });
         await startOrSteer(user, roomId, target.threadId, copy, pick);
         await link(target.threadId, "delivered");
-      } else if (mentionsAgent(ready.text)) {
+      } else if (mentioned) {
         const started = await threads.createThread(user, roomId, {
-          text: ready.text, clientId: copyId, from: { chatId, seq: message.seq }, admitted: ready,
+          text: ready.text, clientId: copyId, from: { chatId, seq: message.seq }, admitted: ready, agentId: mentioned.agentId,
         });
         await startOrSteer(user, roomId, started.thread.threadId, started.message, pick);
         await link(started.thread.threadId, "started");
