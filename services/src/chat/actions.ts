@@ -1,6 +1,8 @@
 import { broadcastToRoom, sendToConnection, sendToUser } from "../live/broadcast.js";
+import { subscribe } from "../live/connections.js";
 import type { User } from "../lib/auth.js";
 import { UserError, ValidationError } from "../lib/errors.js";
+import { requireMember } from "./membership.js";
 import { REACTIONS, seqNumber, type Message, type Reaction } from "./model.js";
 import { chatRepo, type ChatRepo } from "./repo.js";
 
@@ -56,6 +58,14 @@ async function perform(connId: string, user: User, f: Frame): Promise<Outcome> {
       // The reader's other tabs clear their badge too; this tab already knows.
       const event = { type: "read", roomId, chatId, lastReadSeq };
       return { data: { lastReadSeq }, notify: () => sendToUser(user.userId, event, { exceptConnId: connId }) };
+    }
+    case "subscribe": {
+      // Sent whenever a room opens, so a room joined after the socket connected starts getting its events at once.
+      // The member read is consistent; the user's room index that $connect reads (gsi1) can lag behind a join.
+      const roomId = id(f.roomId, "roomId");
+      await requireMember(roomId, user.userId);
+      await subscribe(connId, user.userId, roomId);
+      return {};
     }
     default:
       throw new ValidationError("Unknown action.");

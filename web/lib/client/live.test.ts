@@ -51,6 +51,16 @@ describe("LiveSocket", () => {
     await expect(bad).rejects.toThrow("forbidden");
   });
 
+  it("drops a frame that isn't JSON and keeps handling the next one", async () => {
+    const live = await openSocket();
+    const ws = FakeSocket.all[0];
+    const onPong = vi.fn();
+    live.on("pong", onPong);
+    expect(() => ws.onmessage?.({ data: "{not json" })).not.toThrow();
+    ws.receive({ type: "pong" });
+    expect(onPong).toHaveBeenCalledOnce();
+  });
+
   it("rejects after 10 seconds without an ack", async () => {
     const live = await openSocket();
     const assertion = expect(live.request("edit", {})).rejects.toThrow();

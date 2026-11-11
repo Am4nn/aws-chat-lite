@@ -183,10 +183,13 @@ describe("chat repo on Floci", () => {
     expect(await item(`ROOM#${roomId}`, `MEMBER#${b.userId}`)).toMatchObject({ mentions: 0 });
   });
 
-  it("a removed member's send is NotFound", async () => {
+  it("a removed member's send, reaction and typing are all NotFound", async () => {
     const { owner, members: [b], at } = await room("bee");
+    const m = await say(owner, at);
     await rooms.removeMember(at.roomId, owner.userId, b.userId);
     await expect(say(b, at)).rejects.toBeInstanceOf(NotFound);
+    await expect(chat.react(b, { ...at, seq: m.seq, reaction: "thumbs", on: true })).rejects.toBeInstanceOf(NotFound);
+    await expect(chat.assertCanType(b.userId, at)).rejects.toBeInstanceOf(NotFound);
   });
 
   it("a send to an archived room is Gone", async () => {

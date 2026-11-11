@@ -1,5 +1,5 @@
 import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
-import { docClient, tableName } from "../lib/db.js";
+import { conditionFailed, docClient, tableName } from "../lib/db.js";
 
 /**
  * Clients ping every 4 minutes. A socket that dies without $disconnect leaves `conns` too high forever, so online
@@ -15,10 +15,10 @@ export function isOnline(p: { conns?: number; lastPing?: number } | undefined, n
 }
 
 /** `conns` is an atomic counter, so a user's tabs connecting and closing at once never lose an update. */
-async function update(userId: string, UpdateExpression: string, ExpressionAttributeValues: Record<string, unknown>) {
+async function update(userId: string, UpdateExpression: string, ExpressionAttributeValues: Record<string, unknown>, ConditionExpression?: string) {
   const { Attributes } = await docClient().send(new UpdateCommand({
     TableName: tableName(), Key: { pk: `USER#${userId}`, sk: "PRESENCE" },
-    UpdateExpression, ExpressionAttributeValues, ReturnValues: "ALL_NEW",
+    UpdateExpression, ExpressionAttributeValues, ConditionExpression, ReturnValues: "ALL_NEW",
   }));
   return Attributes as Presence;
 }
@@ -29,7 +29,17 @@ const seen = () => ({ ":now": Math.floor(Date.now() / 1000), ":iso": new Date().
 export const markConnected = (userId: string) =>
   update(userId, "ADD conns :one SET lastPing = :now, lastSeen = :iso", { ":one": 1, ...seen() });
 
-export const markDisconnected = (userId: string) =>
-  update(userId, "ADD conns :minusOne SET lastSeen = :iso", { ":minusOne": -1, ":iso": seen()[":iso"] });
+/**
+ * A count below zero would hide the user's next open tab, so the decrement only applies while some socket is counted.
+ * Undefined means it didn't apply: the user was already counted offline, so there is nothing to announce.
+ */
+export async function markDisconnected(userId: string): Promise<Presence | undefined> {
+  try {
+    return await update(userId, "ADD conns :minusOne SET lastSeen = :iso", { ":minusOne": -1, ":zero": 0, ":iso": seen()[":iso"] }, "conns > :zero");
+  } catch (e) {
+    if (conditionFailed(e)) return undefined;
+    throw e;
+  }
+}
 
 export const markPing = (userId: string) => update(userId, "SET lastPing = :now, lastSeen = :iso", seen());

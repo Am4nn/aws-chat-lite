@@ -5,7 +5,7 @@ import { useParams, usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Search } from "lucide-react";
 import { bff, bffOrNull, errorText } from "@/lib/client/bff";
-import { useLive, useLiveEvent } from "@/lib/client/LiveProvider";
+import { useLive, useLiveEvent, useLiveStatus } from "@/lib/client/LiveProvider";
 import { PHONE_QUERY, useIsPhone } from "@/lib/client/useIsPhone";
 import { isPaletteShortcut } from "@/lib/keys";
 import { enterFrom } from "@/lib/motion";
@@ -50,6 +50,7 @@ export function RoomShell({ view, rooms, me, children }: { view: RoomView; rooms
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
   const live = useLive();
+  const status = useLiveStatus();
   const { room } = view;
   const roomId = room.roomId;
   const badges = useBadges({ view, rooms, meId: me.userId, activeChatId: chatId });
@@ -57,11 +58,11 @@ export function RoomShell({ view, rooms, me, children }: { view: RoomView; rooms
   // The room I'm leaving or archiving from this tab, which navigates away by itself; its own events are ignored.
   const leaving = useRef<string>(undefined);
 
-  // The socket outlives room switches, so a room joined since it connected is subscribed to here; a socket that
-  // isn't open yet subscribes to every room when it connects.
+  // The socket outlives room switches and subscribes only to the rooms the user was in when it connected, so each
+  // room asks for its own events once the socket is open (again after every reconnect).
   useEffect(() => {
-    if (live.status === "open") live.request("subscribe", {}).catch(() => {});
-  }, [live, roomId]);
+    if (status === "open") live.request("subscribe", { roomId }).catch(() => {});
+  }, [live, status, roomId]);
 
   // Members, chats or the archive flag changed. The room view says whether I'm still in it; the server's answer
   // (not the event) decides, so a late or repeated event can't throw anyone out.

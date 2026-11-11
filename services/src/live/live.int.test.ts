@@ -8,6 +8,7 @@ import { roomsRepo } from "../rooms/repo.js";
 import { issueTicket, consumeTicket } from "./tickets.js";
 import { isOnline } from "./presence.js";
 import { broadcastToRoom, sendToUser } from "./broadcast.js";
+import { subscribe } from "./connections.js";
 
 // Runs against the deployed stack on Floci: npm run floci:up && npm run deploy:local, then npm -w services run test:int
 const outputs = JSON.parse(readFileSync(new URL("../../../infra/cdk.out/outputs-local.json", import.meta.url), "utf8"));
@@ -117,6 +118,12 @@ describe("live socket on Floci", () => {
 
     send(sb, { action: "send", requestId: "m2", roomId, chatId, clientId: "k2", text: "still here?" });
     expect(await sb.next((f) => f.type === "ack")).toMatchObject({ requestId: "m2", ok: false, error: expect.any(String) });
+    send(sb, { action: "react", requestId: "m3", roomId, chatId, seq: 1, reaction: "thumbs", on: true });
+    expect(await sb.next((f) => f.type === "ack" && f.requestId === "m3")).toMatchObject({ ok: false });
+    send(sb, { action: "typing", requestId: "m4", roomId, chatId });
+    expect(await sb.next((f) => f.type === "ack" && f.requestId === "m4")).toMatchObject({ ok: false });
+    await sleep(500);
+    expect(o.frames.some((f) => f.type === "typing")).toBe(false);
   });
 
   it("an unknown action is a failed ack", async () => {
@@ -155,14 +162,31 @@ describe("live socket on Floci", () => {
     expect(sb.frames.some((f) => f.n === 2)).toBe(false);
   });
 
-  it("subscribe picks up a room joined after connecting", async () => {
+  it("subscribe {roomId} picks up a room joined after connecting, at once", async () => {
+    const owner = user("owner");
     const u = user("late");
+    const { roomId } = await repo.createRoom(owner, "Joined later");
     const s = await signIn(u);
-    const { roomId } = await repo.createRoom(u, "Joined later");
-    send(s, { action: "subscribe", requestId: "s1" });
-    expect(await s.next((f) => f.type === "ack")).toEqual({ type: "ack", requestId: "s1", ok: true });
+    await repo.acceptInvite((await repo.rotateInvite(roomId, owner.userId)).code, u);
+    send(s, { action: "subscribe", requestId: "s1", roomId });
+    expect(await s.next((f) => f.type === "ack")).toMatchObject({ type: "ack", requestId: "s1", ok: true });
     await broadcastToRoom(roomId, { type: "room.updated", roomId });
     await s.next((f) => f.type === "room.updated" && f.roomId === roomId);
+  });
+
+  it("subscribe to a room you're not in is refused", async () => {
+    const { roomId } = await repo.createRoom(user("owner"), "Not yours");
+    const s = await signIn(user("outsider"));
+    send(s, { action: "subscribe", requestId: "s1", roomId });
+    expect(await s.next((f) => f.type === "ack")).toMatchObject({ requestId: "s1", ok: false });
+  });
+
+  it("a subscribe for a socket that's already gone writes nothing, so it can't be counted off twice", async () => {
+    const connId = `gone-${randomUUID()}`;
+    await subscribe(connId, "u-gone", "r-gone");
+    const read = (pk: string, sk: string) => docClient().send(new GetCommand({ TableName: tableName(), Key: { pk, sk }, ConsistentRead: true }));
+    expect((await read(`CONN#${connId}`, "META")).Item).toBeUndefined();
+    expect((await read("ROOM#r-gone", `CONN#${connId}`)).Item).toBeUndefined();
   });
 
   it("sendToUser reaches every tab the user has open", async () => {
