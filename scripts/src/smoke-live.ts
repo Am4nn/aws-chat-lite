@@ -2,7 +2,7 @@
  * Live chat between real browsers: delivery, typing, reactions, quotes, edits, deletes, files, the reconnect gap,
  * badges and mute, search, motion, the rate limit, removal, leave, archive and phone width.
  */
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Browser, ElementHandle, Page } from "puppeteer-core";
@@ -52,36 +52,47 @@ async function roomMenu(page: Page, item: string) {
   await page.evaluate((i) => ([...document.querySelectorAll("[role=menuitem]")] as HTMLElement[]).find((x) => x.textContent === i)?.click(), item);
 }
 
+/** Clicks a confirm dialog's button once the dialog has finished animating in. */
 async function confirmDialog(page: Page, action: string) {
-  await page.waitForSelector("[role=dialog]");
-  await sleep(300);
+  await until(page, () => {
+    const dialog = document.querySelector("[role=dialog]");
+    if (!dialog) return false;
+    const style = getComputedStyle(dialog);
+    return style.opacity === "1" && /^(none|matrix\(1, 0, 0, 1, 0, 0\))$/.test(style.transform);
+  });
   await page.evaluate((a) => ([...document.querySelectorAll("[role=dialog] button")] as HTMLElement[]).find((x) => x.textContent === a)?.click(), action);
 }
 
 /**
- * Samples the newest row containing the marker on every frame for 1.5 s and counts the frames where it was mid-entrance
- * (moved, or partly transparent). Sent as text, like the chat-switch sampler, because the TypeScript runner wraps named
- * functions in a helper that doesn't exist inside the browser.
+ * Samples the newest row containing the marker on every frame until 1.5 s after it first shows (6 s at most). It
+ * reports the frames the row was on screen (`seen`, so a row that never arrives can't pass as "still") and the frames
+ * where it was mid-entrance (`moving`: moved, or partly transparent). `__sampling` tells the test the sampler is
+ * running before anything is sent. Sent as text, like the chat-switch sampler, because the TypeScript runner wraps
+ * named functions in a helper that doesn't exist inside the browser.
  */
 const entranceFrames = (marker: string) => `new Promise((resolve) => {
-  let moving = 0;
+  let seen = 0, moving = 0, firstSeen = 0;
   const start = performance.now();
-  const sample = () => {
+  const sample = (now) => {
     const row = [...document.querySelectorAll("main [data-key]")].reverse().find((el) => el.innerText.includes(${JSON.stringify(marker)}));
     if (row) {
+      seen++;
+      firstSeen ||= now;
       const style = getComputedStyle(row);
       const opacity = Number(style.opacity);
       if (!/^(none|matrix\\(1, 0, 0, 1, 0, 0\\))$/.test(style.transform) || (opacity > 0 && opacity < 1)) moving++;
     }
-    if (performance.now() - start < 1500) requestAnimationFrame(sample); else resolve(moving);
+    if ((firstSeen && now - firstSeen > 1500) || now - start > 6000) { window.__sampling = false; resolve({ seen, moving }); }
+    else requestAnimationFrame(sample);
   };
+  window.__sampling = true;
   requestAnimationFrame(sample);
 })`;
 
 async function entrance(viewer: Page, sender: Page, roomId: string, chatId: string, text: string) {
   await viewer.bringToFront();
-  const frames = viewer.evaluate(entranceFrames(text)) as Promise<number>;
-  await sleep(100);
+  const frames = viewer.evaluate(entranceFrames(text)) as Promise<{ seen: number; moving: number }>;
+  await viewer.waitForFunction("window.__sampling === true");
   await say(sender, roomId, chatId, text);
   return frames;
 }
@@ -147,27 +158,30 @@ export async function liveChecks(stamp: number, owner: Person, guest: Person, th
   check(await shows(B, "hello everyone") && await shows(B, "(edited)"), "A edits within 15 minutes and B sees \"(edited)\"");
 
   await send(A, "this one goes away");
-  await shows(A, "this one goes away");
-  await sleep(300);
+  await until(A, () => [...document.querySelectorAll("main [data-seq]")].some((r) => (r as HTMLElement).innerText.includes("this one goes away")));
   await toolbar(A, "this one goes away", "Delete");
   await A.evaluate(() => ([...document.querySelectorAll("main [role=toolbar] button")] as HTMLElement[]).find((x) => x.innerText === "Delete?")?.click());
   check(await shows(B, "Message deleted"), "A deletes a message and B sees \"Message deleted\"");
 
   // Files: a screenshot as the image, and an 11 MB file the composer must refuse before uploading anything.
   const dir = mkdtempSync(join(tmpdir(), "cl-smoke-"));
-  await B.screenshot({ path: join(dir, "shot.png"), clip: { x: 0, y: 0, width: 400, height: 300 } });
-  writeFileSync(join(dir, "big.bin"), Buffer.alloc(11 * 1024 * 1024));
-  const input = (await A.$("input[type=file]")) as ElementHandle<HTMLInputElement>;
-  await input.uploadFile(join(dir, "shot.png"));
-  await until(A, () => document.querySelector('button[aria-label="Remove shot.png"]') && !document.querySelector("main")?.innerText.includes("uploading"), undefined, 10_000);
-  await A.click("textarea#composer");
-  await A.keyboard.press("Enter");
-  check(await until(B, () => {
-    const img = document.querySelector('main a[aria-label="Open shot.png"] img') as HTMLImageElement | null;
-    return img?.complete && img.naturalWidth > 0;
-  }, undefined, 10_000), "an image attachment uploads and shows inline for B");
-  await input.uploadFile(join(dir, "big.bin"));
-  check(await toastSays(A, "big.bin is over 10 MB.") && !(await A.$('button[aria-label="Remove big.bin"]')), "an 11 MB file is refused in the composer");
+  try {
+    await B.screenshot({ path: join(dir, "shot.png"), clip: { x: 0, y: 0, width: 400, height: 300 } });
+    writeFileSync(join(dir, "big.bin"), Buffer.alloc(11 * 1024 * 1024));
+    const input = (await A.$("input[type=file]")) as ElementHandle<HTMLInputElement>;
+    await input.uploadFile(join(dir, "shot.png"));
+    await until(A, () => document.querySelector('button[aria-label="Remove shot.png"]') && !document.querySelector("main")?.innerText.includes("uploading"), undefined, 10_000);
+    await A.click("textarea#composer");
+    await A.keyboard.press("Enter");
+    check(await until(B, () => {
+      const img = document.querySelector('main a[aria-label="Open shot.png"] img') as HTMLImageElement | null;
+      return img?.complete && img.naturalWidth > 0;
+    }, undefined, 10_000), "an image attachment uploads and shows inline for B");
+    await input.uploadFile(join(dir, "big.bin"));
+    check(await toastSays(A, "big.bin is over 10 MB.") && !(await A.$('button[aria-label="Remove big.bin"]')), "an 11 MB file is refused in the composer");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 
   // The reconnect gap: A stays offline until B's message is stored, so only the catch-up fetch can bring it.
   await A.evaluate(() => window.__live.ws.close());
@@ -182,8 +196,13 @@ export async function liveChecks(stamp: number, owner: Person, guest: Person, th
   await say(A, roomId, random, `@${guest.name} are you around?`);
   check(await badgeIs(B, "random", "@1 1"), "B, in another chat, sees a mention badge on #random");
   await B.click(`nav a[href="/r/${roomId}/c/${random}"]`);
-  await badgeIs(B, "random", "");
-  await sleep(2000);
+  const cleared = await badgeIs(B, "random", "");
+  // The read is sent once the chat has been on screen a moment; until the server has it, the next room view would
+  // bring the badge back.
+  const stored = await until(B, ([r, c]) => fetch(`/bff/api/rooms/${r}`).then((res) => res.json())
+    .then((v: { chats: { chatId: string; unread: number; mentions: number }[] }) => v.chats.some((x) => x.chatId === c && x.unread === 0 && x.mentions === 0)),
+  [roomId, random], 10_000);
+  check(cleared && stored, "opening #random clears its badges, and the server stores the read");
   await B.click(`nav a[href="/r/${roomId}/c/${general}"]`);
   const randomRow = (await B.evaluateHandle(() => [...document.querySelectorAll('nav[aria-label="Room"] li')]
     .find((li) => li.querySelector("a span.truncate")?.textContent === "random"))).asElement() as ElementHandle<Element>;
@@ -208,16 +227,16 @@ export async function liveChecks(stamp: number, owner: Person, guest: Person, th
   "searching \"hello\" finds the message, and clicking it flashes it");
 
   const rising = await entrance(B, A, roomId, general, "rising in");
-  check(rising >= 3, `a new message fades and rises in (${rising} frames in motion)`);
+  check(rising.seen > 0 && rising.moving >= 3, `a new message fades and rises in (${rising.moving} of ${rising.seen} frames in motion)`);
   await B.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "reduce" }]);
   const still = await entrance(B, A, roomId, general, "appearing at once");
-  check(still === 0, `with reduced motion a new message appears at once (${still} frames in motion)`);
+  check(still.seen > 0 && still.moving === 0, `with reduced motion a new message appears at once (${still.moving} of ${still.seen} frames in motion)`);
   await B.emulateMediaFeatures([]);
 
   // The fixed window counts per epoch minute, so start well inside one; a fresh user has sent nothing in it yet.
   const T = third.page;
   await T.goto(generalUrl, { waitUntil: "networkidle0" });
-  await socketOpen(T);
+  check(await socketOpen(T), "the third member's live socket connects");
   if (new Date().getSeconds() > 40) await sleep((61 - new Date().getSeconds()) * 1000);
   const acks = await T.evaluate(async (r, c) => {
     const out: string[] = [];
@@ -270,10 +289,12 @@ export async function liveChecks(stamp: number, owner: Person, guest: Person, th
   }));
   const closed = await layout();
   await P.click('header button[aria-label="Open sidebar"]');
-  await sleep(500);
+  // The drawer slides with a CSS transition on a wrapper, so it has settled once no CSS transition is running.
+  await until(P, () => document.querySelector('nav[aria-label="Room"]')!.getBoundingClientRect().right > 0 &&
+    !document.getAnimations().some((a) => a instanceof CSSTransition));
   const open = await layout();
   check(closed.scroll <= closed.width && closed.composerBottom <= closed.height && closed.navRight <= 0 && open.navRight > 200,
-    `at 390×844: no horizontal scroll (${closed.scroll}px), the composer is on screen, and the menu button opens the drawer`);
+    `at 390×844: no horizontal scroll (${closed.scroll}px), the composer is on screen, and the menu button opens the drawer (right edge ${Math.round(open.navRight)}px)`);
   await P.close();
 }
 

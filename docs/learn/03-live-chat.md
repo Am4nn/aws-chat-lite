@@ -15,7 +15,7 @@
 - **Search** across a room's chats, with the match highlighted and a click that jumps to the message.
 - **Leave and archive.** Archived rooms are read-only and hidden from the list.
 - **Phone width:** the sidebar becomes a drawer and the panel an overlay.
-- **`npm run smoke`** now drives two (sometimes three) real browsers through all of it: 42 checks.
+- **`npm run smoke`** now drives two (sometimes three) real browsers through all of it: 44 checks.
 
 ## How to try it
 ```powershell
@@ -93,24 +93,60 @@ These were judgement calls during the build. Each line says what we chose and wh
 **Design calls**
 | Ruling | Cost if wrong |
 |---|---|
-| The S3 public endpoint setting arrived with the bucket, not with the socket | None |
 | The web client mirrors `parseMentions` (`web/lib/client/mentions.ts`) so mentions highlight without a round trip | Two copies to keep in step |
 | `window.__live` exposes the socket only when `NODE_ENV !== "production"` | None |
-| Independent parts were built in parallel worktrees and merged | A lockfile merge fix-up commit |
 | The socket URL in outputs is the one a browser can reach (the Floci host locally) | None |
 | Connection items live in their own module; the `CONN` item also stores its `roomIds` so disconnect knows what to delete | One extra attribute per connection |
 | Deleting a message reads the role from the same membership read, not from the caller | None |
 | `around=n` returns 25 before, n, and 24 after (one page of 50) | None |
 | Mentions never count for the sender, named or via `@everyone` | None |
-| Small follow-ups were folded into the next task touching the same files | Bigger diffs to review |
 | Sends aren't idempotent on `clientId`; the client never auto-resends after a timeout, it offers Retry | A rare duplicate on a manual retry |
 | Archive is one transaction, so it's capped at 97 members (meta + members + invite delete + revoke ≤ 100 items) | Bigger rooms get "can't be archived yet" until archive is batched |
 | Archived rooms refuse joins, new chats and invite rotation as well as messages | None |
 | The ticket route is `POST /live/ticket`, not `/ws/ticket`, because Floci answers every `/ws/*` path itself | None |
-| Edits re-parse mentions; a badge for a mention the edit removed stays until read | A stale badge, cleared by reading the chat |
+| Edits re-parse mentions on the server, and the stored counts follow: someone the edit newly names gets a mention, and a mention the edit removed stays until read | A stale badge, cleared by reading the chat |
+| The open sidebar doesn't count badges from `message.updated`, only from `message.new`. So an edit that adds a mention of you shows no badge live, and a later message doesn't bring it either; it appears when the room view is next fetched (a reload, a room switch or a `room.updated`) | A missed mention badge until then |
 | After leaving, archiving or being removed you go to your next room, not `/`, because home sits outside the layout that owns the socket | None |
 | Deleted messages hide their files as well as their text | None |
 | Inline images are served with the declared type forced, so an upload can't change how it renders | None |
+
+**Process**
+| Ruling | Cost if wrong |
+|---|---|
+| The S3 public endpoint setting was built with the bucket, not with the socket infrastructure | None |
+| Independent parts were built in parallel git worktrees and merged | A lockfile merge fix-up commit |
+| Worktree agents branch from `master`, not from the step branch, so their review base differs (only the plan doc was missing) | None |
+| Small review findings were folded into the next change touching the same files, listed below | Bigger diffs to review |
+
+What was folded in, and where:
+- **Into the attachments and search work:**
+  - consistent reads of the chat counter in history;
+  - read marks and typing proving the chat is in the room (a `ConditionCheck`);
+  - the error classes moved to `lib/errors.ts`;
+  - empty cursors refused.
+- **Into the archive fix round:**
+  - broadcasts made best-effort;
+  - a clear error above the archive member cap;
+  - the room view reading only the caller's `READ#` items, with pagination;
+  - a retry cap on `BatchGet`;
+  - the leaver's other tabs hearing `room.updated`.
+- **Into the chat view fix round:**
+  - memoised message rows;
+  - no load-older retry loop;
+  - images contained, not cropped;
+  - the time-zone cookie set at sign-in;
+  - accessibility (reaction labels, the @ list as a combobox, roving toolbar focus);
+  - "Connecting…" vs "Reconnecting…";
+  - optimistic changes reverted from the latest copy;
+  - the timeline hook split out;
+  - one socket per tab;
+  - tighter grouping.
+- **Into the shell work:**
+  - the ticket route rename;
+  - server-side mention re-parsing on edit;
+  - a ping sent without waiting for an ack (the server answers `pong`, not an ack);
+  - the phone layout;
+  - sidebar badges and `room.updated`.
 
 ## Floci notes
 - **`/ws/*` is taken.** Floci answers any `/ws/...` path on an execute-api host itself (an empty 403) before routing, so the ticket route was renamed to `/live/ticket`.
@@ -128,12 +164,12 @@ These were judgement calls during the build. Each line says what we chose and wh
 - Search is a filtered scan (above).
 
 ## How big companies do it
-- **Gateways:** Slack and Discord run their own long-lived connection gateways (Discord's in Elixir, millions of sockets per cluster). The gateway only holds sockets and routes events; business logic lives elsewhere, which is the same split as API Gateway holding the socket and Lambda doing the work. Discord's gateway also uses a session id plus a sequence number, so a client that reconnects asks to **resume** from its last seq, exactly like our `after=` catch-up.
-- **Sharded fan-out:** instead of one writer posting to every socket, events go onto a pub/sub layer (Slack's channel servers, Discord's guild processes, or Kafka/Redis pub/sub) sharded by channel. Each gateway subscribes only to the channels its connected users are in, so a message to a 50,000-person channel is published once and copied by the gateways. Large rooms also get "lazy" treatment: Discord stops sending full member lists and presence for huge servers.
-- **Presence services:** presence is the noisiest data in chat, so it gets its own service with heartbeats, short TTLs and aggressive coalescing (batch updates every few seconds, only for people you can see). Slack only sends presence for users currently visible on your screen.
-- **Search:** messages are streamed into Elasticsearch/OpenSearch (Slack built its search on Solr, then moved), indexed per workspace with tokenisation, stemming and ranking, and filtered by the channels you can read. DynamoDB Streams → OpenSearch is the AWS version of this.
-- **Attachments:** uploads go straight to object storage with signed URLs, as here, and downloads are served by a CDN (CloudFront with signed URLs or cookies) from a separate, cookieless domain (Slack's `files.slack.com`, Discord's `cdn.discordapp.com`), so a malicious file can never run script on the app's origin. Images are re-encoded and thumbnailed by a worker.
-- **Rate limits:** token buckets per user and per channel, usually in Redis, with separate limits for bots.
+- **Gateways:** Slack and Discord each run their own connection gateway (Discord's is written in Elixir). The gateway only holds sockets and routes events, and the business logic lives in other services. That is the same split as API Gateway holding the socket while Lambda does the work. Discord's documented gateway protocol uses a session id plus a sequence number, so a client that reconnects asks to **resume** from its last seq, much like our `after=` catch-up.
+- **Sharded fan-out:** instead of one writer posting to every socket, events go onto a pub/sub layer sharded by channel (Kafka, Redis pub/sub or in-house channel servers). Each gateway subscribes only to the channels its connected users are in, so a message to a huge channel is published once and copied out by the gateways. Very large rooms also get lighter treatment: Discord's gateway marks servers above a size threshold as "large" and stops sending their full member lists up front.
+- **Presence services:** presence is the noisiest data in chat, so it usually gets its own service with heartbeats, short TTLs and batching, and clients subscribe only to the people they are actually showing.
+- **Search:** messages are copied into a search index (Discord has written about indexing its messages in Elasticsearch), with tokenising, stemming and ranking, and filtered by the channels you can read. DynamoDB Streams → OpenSearch is the AWS version of this.
+- **Attachments:** uploads go straight to object storage with signed URLs, as here, and downloads come from a CDN on a separate domain (Slack's `files.slack.com`, Discord's `cdn.discordapp.com`), so a malicious file can't run script on the app's origin. CloudFront with signed URLs or cookies is the AWS version.
+- **Rate limits:** usually token buckets per user and per channel, kept in a fast shared store, with separate limits for bots.
 
 ## Interview angle
 - "How do you authenticate a WebSocket from a browser?" You can't set headers, so trade the session for a short-lived, single-use ticket over HTTPS, pass it in the URL, and consume it atomically on connect.
