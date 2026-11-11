@@ -1,7 +1,27 @@
-import type { Message, RunEndStatus, ThreadSummary } from "../types";
+import type { Budget, Message, RunEndStatus, ThreadStatus, ThreadSummary } from "../types";
 import { formatElapsed } from "./format";
 
 const IDLE_ARCHIVE_MS = 7 * 24 * 3600_000;
+// Mirrors the server's dead-run cutoff (the run's execution timeout plus a margin). A run still "running" past it died
+// without closing, and the server already reads it as failed.
+const DEAD_RUN_MS = 135 * 60_000;
+
+const deadAt = (t: ThreadSummary) => Date.parse(t.startedAt ?? "") + DEAD_RUN_MS;
+const isDead = (t: ThreadSummary, nowMs: number) => t.status === "running" && nowMs >= deadAt(t);
+
+/** The threads as of `nowMs`: a run that outlived the cutoff reads as failed, so it stops showing live and can archive. */
+export const settleDeadRuns = (list: ThreadSummary[], nowMs: number): ThreadSummary[] =>
+  list.map((t) => (isDead(t, nowMs) ? { ...t, status: "failed" } : t));
+
+/** When the next live run reaches the cutoff (Infinity when none will), so the list can be settled again then. */
+export const nextRunDeadline = (list: ThreadSummary[], nowMs: number) =>
+  Math.min(...list.filter((t) => t.status === "running" && !isDead(t, nowMs)).map(deadAt).filter(Number.isFinite));
+
+/** Budget frames can arrive out of order, so spend never goes back within a month; a new month starts over. */
+export function mergeBudget(prev: Budget, next: Budget): Budget {
+  if (next.month !== prev.month) return next.month > prev.month ? next : prev;
+  return { ...next, spentMicros: Math.max(prev.spentMicros, next.spentMicros) };
+}
 
 export function applyThreadUpdate(list: ThreadSummary[], t: ThreadSummary): ThreadSummary[] {
   const i = list.findIndex((x) => x.threadId === t.threadId);
@@ -25,6 +45,10 @@ export function runLabel(t: ThreadSummary): string {
   if (t.status === "running") return t.currentStep ?? "thinking";
   return t.status === "idle" ? "" : ENDED[t.status];
 }
+
+/** A thread's state in words, for screen readers; a thread that never ran has none. */
+export const stateText = (status: ThreadStatus) =>
+  status === "idle" ? "" : status === "running" ? "running" : ENDED[status].toLowerCase();
 
 /** How long the run has taken: so far while it runs, in total once it ended. */
 export function runElapsed(t: ThreadSummary, nowMs: number): string {

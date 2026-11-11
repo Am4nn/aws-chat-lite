@@ -48,16 +48,17 @@ export function applyRunEvent(v: RunView, e: RunEvent): RunView {
 export type RunRow =
   | { kind: "step"; key: string; step: Extract<RunItem, { kind: "step" }> }
   | {
-    kind: "steer"; key: string; text: string; state: "read" | "queued" | "sending" | "failed";
+    kind: "steer"; key: string; text: string; state: "read" | "queued" | "unread" | "sending" | "failed";
     authorName?: string; at?: string; clientId?: string;
   };
 
 /**
  * What a run shows under its trigger: steps and the steers the loop has read, in event order, then the steers it
- * hasn't read yet, then the ones still being sent. A steer keeps its message's key through all three states, so its
- * row changes in place instead of leaving one list and entering another.
+ * hasn't read yet (queued while it runs, unread once it ended without them), then the ones still being sent. A steer
+ * keeps its message's key through every state, so its row changes in place instead of leaving one list and entering another.
  */
 export function runRows(v: RunView, steers: Message[], pending: PendingMessage[]): RunRow[] {
+  const waiting = v.status === "running" ? "queued" : "unread";
   const bySeq = new Map(steers.map((m) => [m.seq, m]));
   const read = new Set<number>();
   const rows: RunRow[] = v.items.map((i) => {
@@ -66,7 +67,7 @@ export function runRows(v: RunView, steers: Message[], pending: PendingMessage[]
     return { kind: "steer", key: keyOf(bySeq.get(i.messageSeq) ?? { seq: i.messageSeq }), text: i.text, authorName: i.authorName, at: i.at, state: "read" };
   });
   for (const m of steers) {
-    if (!read.has(m.seq)) rows.push({ kind: "steer", key: keyOf(m), text: m.text, authorName: m.authorName, state: "queued" });
+    if (!read.has(m.seq)) rows.push({ kind: "steer", key: keyOf(m), text: m.text, authorName: m.authorName, state: waiting });
   }
   for (const p of pending) {
     rows.push({ kind: "steer", key: keyOf(p), text: p.text, clientId: p.clientId, state: p.failed ? "failed" : "sending" });

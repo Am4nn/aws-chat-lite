@@ -4,7 +4,7 @@ import { useRef } from "react";
 import Link from "next/link";
 import { motion } from "motion/react";
 import { Bot, Plus } from "lucide-react";
-import { liveCount, sidebarThreads, threadMeta } from "@/lib/client/threads";
+import { liveCount, sidebarThreads, stateText, threadMeta } from "@/lib/client/threads";
 import { useThreads } from "@/lib/client/ThreadsProvider";
 import { useNow } from "@/lib/client/useNow";
 import { spring } from "@/lib/motion";
@@ -90,7 +90,7 @@ function ThreadRow({ thread: t, href, active, fresh, meta }: {
         >
           {meta.text}
         </span>
-        <span className="sr-only">, {t.status}</span>
+        {t.status !== "idle" && <span className="sr-only">, {stateText(t.status)}</span>}
       </Link>
     </li>
   );

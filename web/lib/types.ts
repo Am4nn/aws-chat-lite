@@ -53,6 +53,7 @@ export type LiveEvent =
   | { type: "room.updated"; roomId: string }
   | { type: "run.updated"; roomId: string; thread: ThreadSummary; lastSeq: number; budget: Budget }
   | { type: "thread.updated"; roomId: string; thread: ThreadSummary }
+  | { type: "budget.updated"; roomId: string; budget: Budget }
   | { type: "pong" };
 
 export const isAdmin = (role: Role) => role === "owner" || role === "admin";

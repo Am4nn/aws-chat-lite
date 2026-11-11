@@ -137,7 +137,7 @@ function Ending({ status, reason }: { status: Exclude<RunEndStatus, "done">; rea
 
 /**
  * A message sent to the running agent. It springs in when sent, waits as "queued" until the agent reads it between
- * steps, then turns lime where it landed among the steps.
+ * steps, then turns lime where it landed among the steps. One the run ended without reading says "not read".
  */
 function SteerBubble({ row, mine, startedAt, enter, onRetry, onDiscard }: {
   row: Extract<RunRow, { kind: "steer" }>; mine: boolean; startedAt?: string; enter: boolean;
@@ -146,7 +146,7 @@ function SteerBubble({ row, mine, startedAt, enter, onRetry, onDiscard }: {
   const reduced = useReducedMotion();
   const read = row.state === "read";
   const steeredAt = read && startedAt && row.at ? ` at ${formatElapsed(Date.parse(row.at) - Date.parse(startedAt))}` : "";
-  const label = { read: `steered${steeredAt}`, queued: "queued", sending: "sending", failed: "" }[row.state];
+  const label = { read: `steered${steeredAt}`, queued: "queued", unread: "not read", sending: "sending", failed: "" }[row.state];
 
   return (
     <motion.div
