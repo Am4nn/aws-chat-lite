@@ -1,6 +1,7 @@
 import { Duration } from "aws-cdk-lib";
 import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
 import { WebSocketLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
+import { EDGE_THROTTLE } from "./config.js";
 import type { CoreStack } from "./core-stack.js";
 
 /** A route per client action rather than all on $default, so each gets its own metrics and can get its own throttle. */
@@ -20,6 +21,10 @@ export function addLive(stack: CoreStack) {
     defaultRouteOptions: { integration },
   });
   for (const action of ACTIONS) wsApi.addRoute(action, { integration });
-  const stage = new apigwv2.WebSocketStage(stack, "WsStage", { webSocketApi: wsApi, stageName: "live", autoDeploy: true });
+  // No access logs: a WebSocket stage can only write them through the account-wide API Gateway logging role, which
+  // every stack in the account would share.
+  const stage = new apigwv2.WebSocketStage(stack, "WsStage", {
+    webSocketApi: wsApi, stageName: "live", autoDeploy: true, ...(!stack.stageConfig.isLocal && { throttle: EDGE_THROTTLE }),
+  });
   return { wsApi, stage, liveFn };
 }
