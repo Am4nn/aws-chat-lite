@@ -42,6 +42,9 @@ function sampleInput(schema: Schema): unknown {
 const SPAN = /\b(sh|py|js)`([^`]*)`/g;
 const SPAN_LANGUAGES: Record<string, Language> = { sh: "shell", py: "python", js: "javascript" };
 
+/** About what Claude bills for an image of around 1,100 by 1,100 pixels. */
+const IMAGE_TOKENS = 1600;
+
 const charsOf = (m: ModelMessage) => {
   if (m.role === "tool") return m.output.length;
   return m.text.length + (m.role === "assistant" && m.toolCalls ? JSON.stringify(m.toolCalls).length : 0);
@@ -55,11 +58,12 @@ async function* run(req: ModelRequest, sleep: (ms: number) => Promise<void>): As
   const first = req.messages.find((m) => m.role === "user");
   const prompt = first?.text ?? "";
   const inputChars = req.system.length + req.messages.reduce((sum, m) => sum + charsOf(m), 0);
+  const images = req.messages.flatMap((m) => (m.role === "user" ? m.images ?? [] : [])).filter((p) => p.data !== undefined).length;
   let outputChars = 0;
   const calls: string[] = [];
   const usage = (): ProviderChunk => ({
     type: "usage",
-    inputTokens: Math.ceil(inputChars / 4),
+    inputTokens: Math.ceil(inputChars / 4) + images * IMAGE_TOKENS,
     outputTokens: Math.ceil(outputChars / 4),
     cacheReadTokens: 0,
     cacheWriteTokens: 0,
@@ -135,7 +139,8 @@ async function* run(req: ModelRequest, sleep: (ms: number) => Promise<void>): As
   const body = Array.from({ length: words }, (_, i) => BODY_WORDS[i % BODY_WORDS.length]);
   body[words - 1] += ".";
   const noSandbox = spans.length && !sandboxOffered ? "(no sandbox here) " : "";
-  const pieces = [`${noSandbox}Fake answer for "${query}".\n\n`, ...body.map((w, i) => (i < words - 1 ? `${w} ` : w))];
+  const saw = images ? ` (saw ${images} image${images === 1 ? "" : "s"})` : "";
+  const pieces = [`${noSandbox}Fake answer for "${query}".${saw}\n\n`, ...body.map((w, i) => (i < words - 1 ? `${w} ` : w))];
   for (const text of drop === undefined ? pieces : pieces.slice(0, drop)) {
     if (outputChars / 4 >= req.maxTokens) {
       yield* finish("max_tokens");

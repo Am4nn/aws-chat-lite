@@ -52,6 +52,31 @@ describe("toParams", () => {
 const c1: ToolCall = { id: "c1", name: "get_number", input: {} };
 const c2: ToolCall = { id: "c2", name: "get_number", input: { n: 2 } };
 
+describe("images", () => {
+  const image = (data?: string): ModelMessage => ({
+    role: "user", author: "aman", text: "what is this", images: [{ name: "a.png", mediaType: "image/png", key: "k/a.png", size: 3, data }],
+  });
+
+  it("an image with its bytes goes before the text it came with", () => {
+    expect(toMessages([image("iVBO")], SONNET, "anthropic")).toEqual([{
+      role: "user",
+      content: [
+        { type: "image", source: { type: "base64", media_type: "image/png", data: "iVBO" } },
+        { type: "text", text: "aman: what is this" },
+      ],
+    }]);
+  });
+
+  it("an image without its bytes is left out", () => {
+    expect(toMessages([image()], SONNET, "anthropic")[0]!.content).toEqual([{ type: "text", text: "aman: what is this" }]);
+  });
+
+  it("DeepSeek is never sent an image's bytes, even if the privacy gate missed it", () => {
+    expect(() => toParams(request({ model: "deepseek-flash", messages: [image("iVBO")] }), "deepseek")).toThrow("DeepSeek never sees attachments.");
+    expect(() => toParams(request({ model: "deepseek-flash", messages: [image()] }), "deepseek")).not.toThrow();
+  });
+});
+
 describe("toMessages", () => {
   it("joins consecutive users into one turn, each text signed by its author", () => {
     const messages: ModelMessage[] = [

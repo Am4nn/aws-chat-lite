@@ -1,11 +1,19 @@
-import type { Message } from "../chat/model.js";
-import type { ModelMessage, ToolCall } from "../models/gateway.js";
+import { inlineType } from "../chat/files.js";
+import type { Attachment, Message } from "../chat/model.js";
+import type { ImagePart, ModelMessage, ToolCall } from "../models/gateway.js";
 import type { RunEvent } from "../threads/types.js";
 
 type Assistant = Extract<ModelMessage, { role: "assistant" }>;
 
-/** The model can't open files, so a message names its attachments for it. */
-const withAttachments = (text: string, names: string[] = []) => [text, ...names.map((name) => `[attached: ${name}]`)].join("\n");
+/**
+ * A member's message as the model gets it. The model can't open files, so the text names each attachment; an image
+ * also goes along as a part, whose bytes are filled in only for a model that may see them.
+ */
+function memberMessage(author: string, text: string, attachments: Attachment[] = []): ModelMessage {
+  const images = attachments.flatMap(({ key, name, size, type }): ImagePart[] => (inlineType(type) ? [{ name, mediaType: type, key, size }] : []));
+  const named = [text, ...attachments.map((a) => `[attached: ${a.name}]`)].join("\n");
+  return { role: "user", author, text: named, ...(images.length > 0 && { images }) };
+}
 
 /** The log without what failed attempts wrote: a `text.reset` voids the text and native turn its turn wrote before it. */
 function withoutVoided(events: RunEvent[]): RunEvent[] {
@@ -26,7 +34,7 @@ function withoutVoided(events: RunEvent[]): RunEvent[] {
 export function buildContext(prior: Message[], events: RunEvent[]): ModelMessage[] {
   const from = prior.findIndex((m) => m.authorId !== "agent");
   const messages: ModelMessage[] = (from < 0 ? [] : prior.slice(from)).map((m) =>
-    m.authorId === "agent" ? { role: "assistant", text: m.text } : { role: "user", author: m.authorName, text: withAttachments(m.text, m.attachments.map((a) => a.name)) },
+    m.authorId === "agent" ? { role: "assistant", text: m.text } : memberMessage(m.authorName, m.text, m.attachments),
   );
   const calls = new Map<number, ToolCall>();
   // The assistant message this run is writing; a tool result or a steer ends it.
@@ -49,7 +57,7 @@ export function buildContext(prior: Message[], events: RunEvent[]): ModelMessage
       messages.push({ role: "tool", toolCallId: calls.get(e.step)?.id ?? "", output: e.output, isError: !e.ok });
       current = undefined;
     } else if (e.type === "steer") {
-      messages.push({ role: "user", author: e.authorName, text: withAttachments(e.text, e.attachments?.map((a) => a.name)) });
+      messages.push(memberMessage(e.authorName, e.text, e.attachments));
       current = undefined;
     }
   }

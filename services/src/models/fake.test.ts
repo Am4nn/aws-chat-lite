@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NAME_PROMPT, type ModelMessage, type ModelRequest, type ProviderChunk } from "./gateway.js";
+import { NAME_PROMPT, type ImagePart, type ModelMessage, type ModelRequest, type ProviderChunk } from "./gateway.js";
 import { fakeModel } from "./fake.js";
 import { ROUTER_PROMPT } from "./picks.js";
 
@@ -83,6 +83,20 @@ describe("fakeModel", () => {
       cacheReadTokens: 0,
       cacheWriteTokens: 0,
     });
+  });
+
+  it("says how many images it was sent with their bytes, and counts 1,600 input tokens for each", async () => {
+    const part = (key: string, data?: string) => ({ name: key, mediaType: "image/png" as const, key, size: 3, data });
+    const seeing = (text: string, ...images: ImagePart[]): ModelMessage => ({ role: "user", author: "aman", text, images });
+    const chunks = await collect(request([
+      seeing("what is this tools:0 words:1", part("a", "iVBO"), part("b")),
+      seeing("and this", part("c", "iVBO")),
+    ]));
+    expect(textOf(chunks).split("\n")[0]).toBe('Fake answer for "what is this". (saw 2 images)');
+    expect((chunks.at(-2) as { inputTokens: number }).inputTokens).toBeGreaterThanOrEqual(3200);
+
+    const one = await collect(request([seeing("go tools:0 words:1", part("a", "iVBO"))]));
+    expect(textOf(one).split("\n")[0]).toBe('Fake answer for "go". (saw 1 image)');
   });
 
   it("counts assistant and tool message text as input", async () => {

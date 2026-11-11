@@ -7,8 +7,11 @@ import { sleep } from "../lib/sleep.js";
 import { mcpServerOf } from "../mcp/client/tools.js";
 import { JOBS, NAMING_MODEL, ROUTER_MODEL } from "../models/catalog.js";
 import { gateway } from "../models/index.js";
-import { NAME_PROMPT, type ModelChunk, type ModelGateway, type ModelRequest, type ToolCall, type ToolSpec } from "../models/gateway.js";
+import {
+  NAME_PROMPT, type ModelChunk, type ModelGateway, type ModelMessage, type ModelRequest, type ToolCall, type ToolSpec,
+} from "../models/gateway.js";
 import { modelIdOf, parseRoute, ROUTER_PROMPT, routerInput } from "../models/picks.js";
+import { loadImages } from "../models/vision.js";
 import { mergeTaint, messageTaint, runRefusal } from "../models/privacy.js";
 import { isNumberedName } from "../threads/model.js";
 import { threadsRepo } from "../threads/repo.js";
@@ -265,11 +268,12 @@ export async function modelTurn(run: RoutedRun, turn: number): Promise<Turn> {
     events.push(await writer.append({ type: "text.reset", turn }));
   }
   const tools = toolsFor(run.model, models().servedBy(run.model), { ...room, github: room.github !== null });
-  return stream(run, writer, buildContext(prior, events), events, { turn, seenSeq, tools, tainted: taint.length > 0 });
+  const messages = await loadImages(buildContext(prior, events), run.model);
+  return stream(run, writer, messages, events, { turn, seenSeq, tools, tainted: taint.length > 0 });
 }
 
 async function stream(
-  run: RoutedRun, writer: Writer, messages: ReturnType<typeof buildContext>, events: RunEvent[],
+  run: RoutedRun, writer: Writer, messages: ModelMessage[], events: RunEvent[],
   at: { turn: number; seenSeq: number; tools: ToolSpec[]; tainted: boolean },
 ): Promise<Turn> {
   const { turn, seenSeq, tools, tainted } = at;

@@ -78,6 +78,22 @@ describe("buildContext", () => {
     expect(buildContext([message(1, "u1", "aman", "go")], run)[1]).toEqual({ role: "user", author: "ravi", text: "and this\n[attached: log.txt]" });
   });
 
+  it("an image attachment goes along as an image part, without its bytes; every file is still named", () => {
+    const png = { key: "k/shot.png", name: "shot.png", size: 9, type: "image/png", url: "https://s3/shot.png" };
+    const pdf = { key: "k/report.pdf", name: "report.pdf", size: 1, type: "application/pdf" };
+    expect(buildContext([{ ...message(1, "u1", "aman", "what is this"), attachments: [png, pdf] }], [])).toEqual([{
+      role: "user", author: "aman", text: "what is this\n[attached: shot.png]\n[attached: report.pdf]",
+      images: [{ name: "shot.png", mediaType: "image/png", key: "k/shot.png", size: 9 }],
+    }]);
+  });
+
+  it("a steer's image attachment goes along as an image part", () => {
+    const run = events({ type: "steer", messageSeq: 2, authorName: "ravi", text: "and this", attachments: [{ key: "k/a.webp", name: "a.webp", size: 3, type: "image/webp" }] });
+    expect(buildContext([message(1, "u1", "aman", "go")], run)[1]).toEqual({
+      role: "user", author: "ravi", text: "and this\n[attached: a.webp]", images: [{ name: "a.webp", mediaType: "image/webp", key: "k/a.webp", size: 3 }],
+    });
+  });
+
   it("starts at the first member message: older agent answers before it are left out", () => {
     const prior = [message(1, "agent", "agent", "old answer"), message(2, "u1", "aman", "go")];
     expect(buildContext(prior, [])).toEqual([{ role: "user", author: "aman", text: "go" }]);
