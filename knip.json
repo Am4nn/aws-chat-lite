@@ -1,10 +1,5 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  // The MCP types are a contract the connection and run-engine code is written against; they have no user until that
-  // code lands. Remove once every type in the file has an importer.
-  "ignoreIssues": {
-    "services/src/threads/types.ts": ["types"]
-  },
   "workspaces": {
     "infra": {
       "entry": [
