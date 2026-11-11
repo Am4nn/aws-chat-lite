@@ -3,11 +3,10 @@ import {
 } from "@aws/durable-execution-sdk-js";
 import type { Approval } from "../approvals/repo.js";
 import type { ToolCall } from "../models/gateway.js";
-import type { RunEndStatus } from "../threads/types.js";
 import { gateOf, requestApproval, settleApproval } from "./approval.js";
 import { finishRun } from "./finish.js";
 import { finishHelper, startHelper } from "./helpers.js";
-import { failRun, laneName, load, modelTurn, nameThread, routeRun, toolStep, type RoutedRun } from "./steps.js";
+import { failRun, laneName, load, modelTurn, nameThread, routeRun, toolStep, type End, type RoutedRun, type StepResult } from "./steps.js";
 import { DELEGATE } from "./tools.js";
 
 /** Each step is tried 3 times in all, a second or two apart, before the run gives up on it. */
@@ -15,8 +14,6 @@ const retryStrategy = createRetryStrategy({ maxAttempts: 3, initialDelay: { seco
 /** The wait outlasts the approval a little, so a decision made just before it expires still wakes the run. */
 const WAIT_MARGIN_SEC = 5;
 
-type End = { status: RunEndStatus; reason?: string };
-type StepResult = { steps: number; costMicros: number; end?: End };
 /** What a lane does once its agent is done: the main lane closes the run, which comes back "unread" to carry on. */
 type Close = (run: RoutedRun, end: End, force: boolean, turn: number) => Promise<string>;
 

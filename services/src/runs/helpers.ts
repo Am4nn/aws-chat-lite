@@ -2,12 +2,12 @@ import type { ToolCall } from "../models/gateway.js";
 import { resolvePick } from "../models/picks.js";
 import { summaryLine } from "../threads/model.js";
 import { threadsRepo } from "../threads/repo.js";
-import type { Agent, RunEndStatus, RunEvent } from "../threads/types.js";
+import type { Agent, RunEvent } from "../threads/types.js";
 import { answerOf, inLane } from "./context.js";
 import { notifyRun } from "./notify.js";
 import { runsRepo } from "./repo.js";
 import { roomDefaultModel } from "./start.js";
-import { chooseModel, costOf, laneName, limitsReached, type RoutedRun } from "./steps.js";
+import { chooseModel, costOf, laneName, limitsReached, type End, type RoutedRun, type StepResult } from "./steps.js";
 import { firstLine } from "./tools.js";
 
 /*
@@ -19,8 +19,6 @@ import { firstLine } from "./tools.js";
 const MAX_ANSWER = 20_000;
 const ERROR = "The agent hit an error.";
 
-type End = { status: RunEndStatus; reason?: string };
-type StepResult = { steps: number; costMicros: number; end?: End };
 
 export const noSuchAgent = (name: string, others: Agent[]) =>
   `There's no @${name} in this room. Agents: ${others.map((a) => `@${a.name}`).join(", ")}.`;

@@ -42,7 +42,7 @@ const LENGTH_NOTE = "\n\n(The answer was cut off at the length limit.)";
 const REFUSED = "The model declined this request. Try another model.";
 const DROPPED = "The model's connection dropped mid-answer.";
 
-type End = { status: RunEndStatus; reason?: string };
+export type End = { status: RunEndStatus; reason?: string };
 type Writer = Awaited<ReturnType<ReturnType<typeof runsRepo>["eventWriter"]>>;
 /** `ms`: how long the model call took. */
 type Usage = Extract<ModelChunk, { type: "usage" }> & { ms?: number };
@@ -379,7 +379,7 @@ async function stream(
   return settle({ toolCalls: call.toolCalls });
 }
 
-type StepResult = { steps: number; costMicros: number; end?: End };
+export type StepResult = { steps: number; costMicros: number; end?: End };
 
 /**
  * Ends a run that hit an error it couldn't get past. Its cost is summed from its usage events: the total stored on
