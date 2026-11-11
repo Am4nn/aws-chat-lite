@@ -4,6 +4,7 @@ import {
   type BatchGetCommandInput, type BatchGetCommandOutput, type QueryCommandInput, type QueryCommandOutput,
 } from "@aws-sdk/lib-dynamodb";
 import { Unavailable } from "./errors.js";
+import { sleep } from "./sleep.js";
 
 let cached: DynamoDBDocumentClient | undefined;
 
@@ -67,7 +68,7 @@ export async function batchGet(keys: Record<string, string>[], opts: { consisten
     };
     for (let attempt = 0; request && Object.keys(request).length; attempt++) {
       if (attempt === BATCH_GET_ATTEMPTS) throw new Unavailable("The server is busy right now; try again in a moment.");
-      if (attempt) await new Promise((r) => setTimeout(r, 50 * 2 ** attempt));
+      if (attempt) await sleep(50 * 2 ** attempt);
       const { Responses, UnprocessedKeys }: BatchGetCommandOutput = await docClient().send(new BatchGetCommand({ RequestItems: request }));
       items.push(...(Responses?.[TableName] ?? []));
       request = UnprocessedKeys;

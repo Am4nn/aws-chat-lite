@@ -21,7 +21,9 @@ async function announce(answer: Message) {
  * Ends a run: posts the answer (all the text it streamed), then writes `run.finished`, then tells the room. The event
  * comes after the close because a close can come back "unread", and then the run carries on; a stream that saw
  * `run.finished` would already have stopped reading. A close that finds the run already closed (a retried step)
- * reports the ending that is stored, whatever this attempt meant to write. Every ending also closes the run's sandbox.
+ * reports the ending that is stored, whatever this attempt meant to write, and announces the answer only if the
+ * attempt before it stopped short of `run.finished`. The card shows the answer's first line for a finished run, and
+ * otherwise why the run ended. Every ending also closes the run's sandbox.
  */
 export async function finishRun(
   run: Run, end: { status: RunEndStatus; reason?: string }, opts: { seenSeq: number; force: boolean },
@@ -29,21 +31,24 @@ export async function finishRun(
   const runs = runsRepo();
   const events = await runs.allEvents(run.runId);
   const { text, final } = answerOf(events);
-  const { result, answer } = await runs.closeRun(run, { ...end, text, summary: summaryLine(final) || end.reason || "", ...opts });
+  const summary = end.status === "done" ? summaryLine(final) : end.reason ?? "";
+  const { result, answer, endedAt } = await runs.closeRun(run, { ...end, text, summary, ...opts });
   if (result === "unread") return result;
   // Before `run.finished`, so a run that reads as ended never still holds a sandbox session.
   await closeSandbox(run.runId);
 
   let last = events.at(-1);
+  const finished = last?.type === "run.finished";
   if (last?.type !== "run.finished") {
-    const closed = result === "already" ? (await runs.getRun(run.runId))! : { ...run, ...end, endedAt: new Date().toISOString() };
+    const closed = result === "already" ? (await runs.getRun(run.runId))! : { ...run, ...end, endedAt };
     last = await (await runs.eventWriter(run.runId)).append({
       type: "run.finished", status: closed.status as RunEndStatus, reason: closed.reason,
       ms: Date.parse(closed.endedAt!) - Date.parse(run.startedAt), steps: closed.steps, costMicros: closed.costMicros,
     });
   }
-  if (answer) await announce(answer);
+  if (answer && !finished) await announce(answer);
   const thread = await threadsRepo().threadById(run.roomId, run.threadId);
-  if (thread) await notifyRun(run.roomId, thread, last.seq);
+  // A run replaced as dead closes without its thread, which now shows the newer run.
+  if (thread?.runId === run.runId) await notifyRun(run.roomId, thread, last.seq);
   return result;
 }

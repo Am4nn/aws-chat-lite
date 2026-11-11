@@ -44,10 +44,11 @@ export function toolDetail(call: ToolCall): string {
 
 export async function runTool(
   call: ToolCall,
-  { sleep }: { sleep: (ms: number) => Promise<void> },
+  { sleep, signal }: { sleep: (ms: number, signal?: AbortSignal) => Promise<void>; signal?: AbortSignal },
 ): Promise<{ output: string; ok: boolean }> {
   if (call.name !== "fake.lookup") return { ok: false, output: `Unknown tool ${call.name}.` };
-  await sleep(call.input.slow ? 1500 : 200);
+  await sleep(call.input.slow ? 1500 : 200, signal);
+  if (signal?.aborted) return { ok: false, output: "Stopped before the tool finished." };
   const notes = [1, 2, 3].map((n) => `- note ${n}: details about ${call.input.query}`);
   return { ok: true, output: [`Found 3 notes about "${call.input.query}".`, ...notes].join("\n") };
 }

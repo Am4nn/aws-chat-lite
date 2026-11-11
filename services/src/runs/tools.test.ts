@@ -22,6 +22,15 @@ describe("runTool", () => {
     expect(waits).toEqual([1500]);
   });
 
+  it("gives up when the run is stopped while the tool works", async () => {
+    const { sleep } = recorder();
+    const stop = new AbortController();
+    stop.abort();
+    expect(await runTool({ id: "c", name: "fake.lookup", input: { query: "q" } }, { sleep, signal: stop.signal })).toEqual({
+      ok: false, output: "Stopped before the tool finished.",
+    });
+  });
+
   it("fails on an unknown tool", async () => {
     const { sleep } = recorder();
     expect(await runTool({ id: "c", name: "nope", input: {} }, { sleep })).toEqual({

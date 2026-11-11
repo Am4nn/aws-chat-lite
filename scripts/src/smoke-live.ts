@@ -6,26 +6,9 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Browser, ElementHandle, Page } from "puppeteer-core";
-import { WEB, bff, check, grantCreator, person, signUp, sleep, until } from "./smoke-page.js";
+import { WEB, bff, check, grantCreator, person, say, send, shows, signUp, sleep, socketOpen, toastSays, until } from "./smoke-page.js";
 
 type Person = { page: Page; name: string };
-
-const socketOpen = (page: Page) => until(page, () => window.__live?.status === "open", undefined, 12_000);
-const shows = (page: Page, text: string, timeout?: number) =>
-  until(page, (t) => document.querySelector("main")?.innerText.includes(t), text, timeout);
-const toastSays = (page: Page, text: string) =>
-  until(page, (t) => document.querySelector("[aria-live=polite]")?.textContent?.includes(t), text);
-
-async function send(page: Page, text: string) {
-  await page.click("textarea#composer");
-  await page.keyboard.type(text);
-  await page.keyboard.press("Enter");
-}
-
-/** A send straight over the socket, for messages whose composing isn't what the check is about. */
-const say = (page: Page, roomId: string, chatId: string, text: string) =>
-  page.evaluate((r, c, t) => window.__live.request("send", { roomId: r, chatId: c, clientId: crypto.randomUUID(), text: t })
-    .then(() => "ok", (e: Error) => e.message), roomId, chatId, text);
 
 async function rowWith(page: Page, text: string) {
   const handle = await page.evaluateHandle((t) => [...document.querySelectorAll("main [data-seq]")].reverse().find((el) => (el as HTMLElement).innerText.includes(t)), text);

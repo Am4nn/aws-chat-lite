@@ -27,7 +27,7 @@ let clients = 0;
 
 /**
  * A run with its event log already written straight to the table: finished (run.finished last), or `dead`, still
- * marked running 131 minutes after it started, with no run.finished.
+ * marked running 136 minutes after it started, with no run.finished.
  */
 async function storedRun(texts: string[], { dead = false } = {}) {
   const owner = user("owner");
@@ -35,12 +35,12 @@ async function storedRun(texts: string[], { dead = false } = {}) {
   const { thread, message } = await threadsRepo().createThread(owner, roomId, { text: "go", clientId: `k${++clients}` });
   const run: Run = {
     runId: randomUUID(), roomId, threadId: thread.threadId, number: thread.number, status: dead ? "running" : "done",
-    model: "fake", pick: "auto", pickBy: "default", startedBy: owner.username, startedAt: new Date(Date.now() - (dead ? 131 * 60_000 : 0)).toISOString(), firstSeq: message.seq, seenSeq: message.seq, steps: 0, costMicros: 0,
+    model: "fake", pick: "auto", pickBy: "default", startedBy: owner.username, startedAt: new Date(Date.now() - (dead ? 136 * 60_000 : 0)).toISOString(), firstSeq: message.seq, seenSeq: message.seq, steps: 0, costMicros: 0,
   };
   await docClient().send(new PutCommand({ TableName: tableName(), Item: { pk: `RUN#${run.runId}`, sk: "META", ...run } }));
   const writer = await runs.eventWriter(run.runId);
   await writer.append({ type: "run.started", pick: "auto", startedBy: owner.username });
-  for (const text of texts) await writer.append({ type: "text", text });
+  for (const text of texts) await writer.append({ type: "text", text, turn: 1 });
   if (!dead) await writer.append({ type: "run.finished", status: "done", ms: 5, steps: 0, costMicros: 0 });
   return { owner, roomId, run };
 }

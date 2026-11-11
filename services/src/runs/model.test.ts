@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { budgetText } from "../budget/model.js";
-import { endReason, stoppedBy } from "./model.js";
+import { DEAD_AFTER_MS, endReason, stoppedBy } from "./model.js";
 
 const base = { steps: 0, startedAtMs: 1_000, spentMicros: 0, capMicros: 3_000_000, month: "2026-11" };
 const now = 1_000 + 60_000;
@@ -18,6 +18,9 @@ describe("endReason", () => {
   });
   it("ends at the time limit", () => {
     expect(endReason(base, 1_000 + 7_200_001)?.reason).toBe("Time limit reached (2 hours).");
+  });
+  it("counts a run as dead five minutes after its 130-minute execution timeout", () => {
+    expect(DEAD_AFTER_MS).toBe(135 * 60_000);
   });
   it("continues otherwise", () => expect(endReason(base, now)).toBeNull());
   it("prefers stop over budget over steps over time", () => {

@@ -1,3 +1,4 @@
+import type { User } from "../lib/auth.js";
 import { NotFound, ValidationError } from "../lib/errors.js";
 import { CODE, parseMentions } from "../chat/mentions.js";
 import type { Message } from "../chat/model.js";
@@ -9,7 +10,6 @@ import { startOrSteer } from "../runs/start.js";
 import { leadingTag } from "./model.js";
 import { threadsRepo, type ThreadsRepo } from "./repo.js";
 
-interface User { userId: string; username: string }
 interface SendInput {
   roomId: string; chatId: string; clientId: string; text: unknown; attachments?: unknown; replyToSeq?: number;
   /** Deliver into this thread, as a leading `#tag` would. */

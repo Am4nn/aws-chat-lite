@@ -9,6 +9,7 @@ import { canDelete, canEdit, REACTION_NAMES, reactionLabel } from "@/lib/client/
 import { useClickOutside } from "@/lib/client/useClickOutside";
 import { dur, easeOut, instant, spring } from "@/lib/motion";
 import type { Message, Reaction, Role } from "@/lib/types";
+import { ThreadRef } from "@/components/threads/ThreadCard";
 import { Avatar } from "@/components/ui/Avatar";
 import { MessageAttachments } from "./Attachments";
 import { MessageText } from "./MessageText";
@@ -22,6 +23,7 @@ export type RowContext = { meId: string; role: Role; members: Mentionable[]; now
 export type RowActions = {
   react: (m: Message, reaction: Reaction, on: boolean) => void;
   reply: (m: Message) => void;
+  replyInThread: (threadId: string) => void;
   edit: (m: Message) => void;
   remove: (m: Message) => void;
   jump: (seq: number) => void;
@@ -93,6 +95,9 @@ export const MessageRow = memo(function MessageRow({ rowKey, message: m, status,
           )}
           <Body message={m} members={ctx.members} />
           {!m.deleted && <MessageAttachments attachments={m.attachments} onExpired={() => actions.refetch(m.seq)} />}
+          {m.threadRef && !m.deleted && (
+            <ThreadRef threadRef={m.threadRef} roomId={m.roomId} readOnly={ctx.readOnly} onReply={actions.replyInThread} />
+          )}
           {!m.deleted && settled && <Reactions message={m} meId={ctx.meId} members={ctx.members} readOnly={ctx.readOnly} onReact={actions.react} />}
           {status === "failed" && (
             <div className="mt-1 flex items-center gap-2 text-[12px]">

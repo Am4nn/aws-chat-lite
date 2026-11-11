@@ -1,4 +1,5 @@
 import { DeleteCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
+import type { User } from "../lib/auth.js";
 import { conditionFailed, docClient, tableName } from "../lib/db.js";
 import { NotFound } from "../lib/errors.js";
 import { requireMember } from "../chat/membership.js";
@@ -10,8 +11,6 @@ import { runsRepo } from "./repo.js";
  * ticket in the URL instead. A ticket is bound to one run and lasts 60 s: one is fetched for every (re)connect.
  */
 const TICKET_TTL_SEC = 60;
-
-interface User { userId: string; username: string }
 
 const ticketKey = (ticket: string) => ({ pk: `STREAMTICKET#${ticket}`, sk: "META" });
 

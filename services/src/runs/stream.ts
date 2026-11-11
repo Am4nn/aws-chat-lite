@@ -1,4 +1,5 @@
 import { NotFound } from "../lib/errors.js";
+import { sleep } from "../lib/sleep.js";
 import { requireMember } from "../chat/membership.js";
 import type { RunEvent } from "../threads/types.js";
 import { DEAD_AFTER_MS } from "./model.js";
@@ -51,7 +52,7 @@ function liveDeps(): StreamDeps {
       throw e;
     }),
     nowMs: Date.now,
-    sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+    sleep,
   };
 }
 

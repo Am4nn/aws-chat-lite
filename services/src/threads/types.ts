@@ -36,9 +36,12 @@ export type RunEventBody =
   /** Once per run, before its first model call: the model id that answers. */
   | { type: "routed"; model: string; by: "pick" | "default" | "auto" }
   /** The provider's own content for a model call that ended, replayed verbatim on the next call; never streamed. */
-  | { type: "model.turn"; model: string; content: unknown }
+  | { type: "model.turn"; model: string; content: unknown; turn: number }
   | { type: "steer"; messageSeq: number; authorName: string; text: string }
-  | { type: "text"; text: string }
+  /** `turn` is the model call that wrote it (the loop's `model-<turn>` step). */
+  | { type: "text"; text: string; turn: number }
+  /** An attempt at `turn` failed after writing, and the retry answers again: that turn's text and native turn are void. */
+  | { type: "text.reset"; turn: number }
   | { type: "step.started"; step: number; call: { id: string; name: string; input: Record<string, unknown> }; detail: string }
   | { type: "step.finished"; step: number; output: string; ms: number; ok: boolean }
   /** What a sandbox step saved to or deleted from the room's files, and what it couldn't. */

@@ -3,8 +3,9 @@ import type { RunEndStatus } from "../threads/types.js";
 
 const RUN_MAX_MS = 7_200_000;
 const RUN_MAX_STEPS = 200;
-/** Slightly over the execution timeout: a run this old can no longer be alive. */
-export const DEAD_AFTER_MS = 7_800_000;
+/** The execution timeout (130 min) plus a margin for a step still finishing as it hits: a run this old can't still write. */
+export const DEAD_AFTER_MS = 8_100_000;
+export const DEAD_REASON = "The run stopped responding.";
 
 export const eventSk = (seq: number) => `EV#${String(seq).padStart(10, "0")}`;
 
@@ -24,6 +25,6 @@ export function endReason(s: RunState, nowMs: number): { status: RunEndStatus; r
   if (s.stopRequestedBy) return stoppedBy(s.stopRequestedBy);
   if (s.spentMicros >= s.capMicros) return { status: "capped", reason: budgetText(s.capMicros, s.month) };
   if (s.steps >= RUN_MAX_STEPS) return { status: "failed", reason: `Step limit reached (${RUN_MAX_STEPS} steps).` };
-  if (nowMs - s.startedAtMs > RUN_MAX_MS) return { status: "failed", reason: "Time limit reached (2 hours)." };
+  if (nowMs - s.startedAtMs > RUN_MAX_MS) return { status: "failed", reason: `Time limit reached (${RUN_MAX_MS / 3_600_000} hours).` };
   return null;
 }

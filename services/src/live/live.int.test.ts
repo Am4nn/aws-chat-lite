@@ -6,13 +6,14 @@ import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { docClient, tableName } from "../lib/db.js";
 import { roomsRepo } from "../rooms/repo.js";
 import { chatRepo } from "../chat/repo.js";
+import { budgetRepo } from "../budget/repo.js";
 import { threadsRepo } from "../threads/repo.js";
 import { presignUpload } from "../chat/files.js";
 import { PICK_REFUSED } from "../models/privacy.js";
 import { issueTicket, consumeTicket } from "./tickets.js";
 import { isOnline } from "./presence.js";
-import { broadcastToRoom, sendToUser } from "./broadcast.js";
-import { subscribe } from "./connections.js";
+import { broadcastToRoom, sendToConnection, sendToUser } from "./broadcast.js";
+import { getConnection, saveConnection, subscribe } from "./connections.js";
 
 // Runs against the deployed stack on Floci: npm run floci:up && npm run deploy:local, then npm -w services run test:int
 const outputs = JSON.parse(readFileSync(new URL("../../../infra/cdk.out/outputs-local.json", import.meta.url), "utf8"));
@@ -205,6 +206,22 @@ describe("live socket on Floci", () => {
     expect((await read("ROOM#r-gone", `CONN#${connId}`)).Item).toBeUndefined();
   });
 
+  it("a post that answers Gone right after $connect keeps the socket, since it may still be opening; later, it's cleaned up", async () => {
+    // Connection ids API Gateway doesn't know, so every post to them answers Gone.
+    const [opening, closed] = [`opening-${randomUUID()}`, `closed-${randomUUID()}`];
+    const owner = user("ann");
+    await saveConnection(opening, owner, ["r-opening"]);
+    await saveConnection(closed, owner, ["r-opening"]);
+    await docClient().send(new UpdateCommand({
+      TableName: tableName(), Key: { pk: `CONN#${closed}`, sk: "META" }, UpdateExpression: "SET connectedAt = :t",
+      ExpressionAttributeValues: { ":t": Date.now() - 60_000 },
+    }));
+    await sendToConnection(opening, { type: "pong" });
+    await sendToConnection(closed, { type: "pong" });
+    expect(await getConnection(opening)).toBeDefined();
+    expect(await getConnection(closed)).toBeUndefined();
+  });
+
   it("sendToUser reaches every tab the user has open", async () => {
     const u = user("tabs");
     const [a, b] = await Promise.all([signIn(u), signIn(u)]);
@@ -247,6 +264,8 @@ describe("agent threads over the socket", () => {
 
     const isNew = (f: Frame) => f.type === "message.new" && (f.message as Frame).chatId === generalChatId;
     expect(sb.frames.findIndex(isNew)).toBeLessThan(sb.frames.indexOf(updated));
+    // The room knows the thread before the card that points at it.
+    expect(sb.frames.findIndex(runUpdated(threadId))).toBeLessThan(sb.frames.indexOf(updated));
     expect(sb.frames.filter(runUpdated(threadId)).at(-1)).toMatchObject({ thread: { status: "done", number: 1 } });
     expect(await history(a, roomId, generalChatId)).toHaveLength(1);
     const [first, answer] = await history(a, roomId, threadId);
@@ -356,6 +375,13 @@ describe("agent threads over the socket", () => {
     expect(ack).toMatchObject({ ok: true, data: { runId: expect.any(String) } });
     await at.sb.next(runUpdated(threadId, "stopped"), AGENT_MS);
   }, AGENT_MS);
+
+  it("the owner's budget change reaches the room at once", async () => {
+    const { a, roomId, sb } = await pair("Budget");
+    const budget = await budgetRepo().setCap(a, roomId, 5_000_000);
+    expect(await sb.next((f) => f.type === "budget.updated")).toEqual({ type: "budget.updated", roomId, budget });
+    expect(budget).toMatchObject({ capMicros: 5_000_000, spentMicros: 0 });
+  });
 
   it("a removed member can't stop a run", async () => {
     const at = await pair("Stop removed");

@@ -12,8 +12,8 @@ import type { Upload } from "./useUploads";
 
 const PREVIEW = { width: 320, height: 240 };
 
-/** Images preview inline; everything else is a download card. */
-export function MessageAttachments({ attachments, onExpired }: { attachments: Attachment[]; onExpired: () => void }) {
+/** Images preview inline; everything else is a download card. A message not yet sent shows local previews, which never expire. */
+export function MessageAttachments({ attachments, onExpired }: { attachments: Attachment[]; onExpired?: () => void }) {
   if (!attachments.length) return null;
   const images = attachments.filter((a) => isInlineImage(a.type));
   const files = attachments.filter((a) => !isInlineImage(a.type));
@@ -31,7 +31,7 @@ export function MessageAttachments({ attachments, onExpired }: { attachments: At
  * A failed load is most likely its signed link expiring in a tab left open, so it asks once for a fresh link; asking
  * again for a file that is really gone would loop.
  */
-function ImagePreview({ attachment: a, onExpired }: { attachment: Attachment; onExpired: () => void }) {
+function ImagePreview({ attachment: a, onExpired }: { attachment: Attachment; onExpired?: () => void }) {
   const img = useRef<HTMLImageElement>(null);
   const [loaded, setLoaded] = useState(false);
   const [askedAgain, setAskedAgain] = useState(false);
@@ -56,7 +56,7 @@ function ImagePreview({ attachment: a, onExpired }: { attachment: Attachment; on
           onError={() => {
             if (askedAgain) return;
             setAskedAgain(true);
-            onExpired();
+            onExpired?.();
           }}
           className={`size-full object-contain transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
         />

@@ -1,17 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { App } from "aws-cdk-lib";
-import { Template, Match } from "aws-cdk-lib/assertions";
-import { CoreStack } from "./core-stack.js";
-import { loadConfig } from "./config.js";
-
-const cache: Record<string, Template> = {};
-const template = (stage: "local" | "aws") => {
-  if (cache[stage]) return cache[stage];
-  const env = stage === "local" ? { AWS_ENDPOINT_URL: "http://localhost:4566" } : {};
-  const config = loadConfig(stage, env);
-  const stack = new CoreStack(new App(), `cl-${stage}-core`, { config, env: { account: "000000000000", region: config.region } });
-  return (cache[stage] = Template.fromStack(stack));
-};
+import { Match } from "aws-cdk-lib/assertions";
+import { template } from "./test-templates.js";
 
 describe("auth", () => {
   it("local: user pool with a PreSignUp auto-confirm trigger", () => {

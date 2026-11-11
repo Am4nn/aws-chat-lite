@@ -1,12 +1,13 @@
 import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import type { User } from "../lib/auth.js";
 import { docClient, tableName } from "../lib/db.js";
 import { Forbidden } from "../lib/errors.js";
 import { requireMember } from "../chat/membership.js";
+import { broadcastToRoom } from "../live/broadcast.js";
 import { can } from "../rooms/access.js";
+import type { TransactItem } from "../runs/repo.js";
 import type { Budget } from "../threads/types.js";
 import { budgetOf, monthKey } from "./model.js";
-
-interface User { userId: string; username: string }
 
 const metaKey = (roomId: string) => ({ pk: `ROOM#${roomId}`, sk: "META" });
 const usageKey = (roomId: string, month: string) => ({ pk: `ROOM#${roomId}`, sk: `USAGE#${month}` });
@@ -35,27 +36,33 @@ export function budgetRepo() {
   return {
     get,
 
-    /** ADD is atomic, so model calls finishing at once in different runs all count. */
-    async record(roomId: string, costMicros: number, now: Date): Promise<Budget> {
-      const month = monthKey(now);
-      const [room, { Attributes: usage }] = await Promise.all([
-        meta(roomId),
-        db.send(new UpdateCommand({
-          TableName, Key: usageKey(roomId, month), UpdateExpression: "ADD costMicros :c, #calls :one",
+    /**
+     * A model call's cost, as a write for the transaction that records the call. ADD is atomic, so calls finishing
+     * at once in different runs all count.
+     */
+    spend(roomId: string, costMicros: number, now: Date): TransactItem {
+      return {
+        Update: {
+          TableName, Key: usageKey(roomId, monthKey(now)), UpdateExpression: "ADD costMicros :c, #calls :one",
           ExpressionAttributeNames: { "#calls": "calls" }, ExpressionAttributeValues: { ":c": costMicros, ":one": 1 },
-          ReturnValues: "ALL_NEW",
-        })),
-      ]);
-      return budgetOf(month, room, usage);
+        },
+      };
     },
 
+    /** The room hears the new cap at once, so every member's budget card shows it without a reload. */
     async setCap(user: User, roomId: string, capMicros: number): Promise<Budget> {
       const role = await requireMember(roomId, user.userId, { writing: true });
       if (!can("setBudget", role)) throw new Forbidden("Only the room's owner sets its budget.");
       await db.send(new UpdateCommand({
         TableName, Key: metaKey(roomId), UpdateExpression: "SET budgetCapMicros = :cap", ExpressionAttributeValues: { ":cap": capMicros },
       }));
-      return get(roomId, new Date());
+      const budget = await get(roomId, new Date());
+      try {
+        await broadcastToRoom(roomId, { type: "budget.updated", roomId, budget });
+      } catch (e) {
+        console.error("budget.updated broadcast failed", roomId, e);
+      }
+      return budget;
     },
   };
 }
