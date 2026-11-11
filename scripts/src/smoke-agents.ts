@@ -86,7 +86,9 @@ export async function agentChecks(stamp: number, owner: Person, guest: Person) {
   await A.waitForSelector("#agent-name-new");
   await A.type("#agent-name-new", "researcher");
   await A.type("#agent-instructions-new", "Find sources and cite them.");
-  if (await A.$eval("#agent-new-sandbox", (el) => (el as HTMLInputElement).checked)) await A.click("#agent-new-sandbox");
+  for (const kind of ["sandbox", "images"]) {
+    if (await A.$eval(`#agent-new-${kind}`, (el) => (el as HTMLInputElement).checked)) await A.click(`#agent-new-${kind}`);
+  }
   await clickButton(A, "Create agent");
   const listed = (await panelShows(A, ["@researcher", `by ${owner.name}`])) && await panelShows(B, ["@researcher"], 15_000);
   const menu = `${PANEL} button[aria-label="Actions for @researcher"]`;
