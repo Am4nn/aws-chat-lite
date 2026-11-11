@@ -47,6 +47,7 @@ describe("excerpt", () => {
     expect(excerpt(" a\n\n b ")).toBe("a b");
     expect(excerpt("x".repeat(150))).toBe(`${"x".repeat(140)}…`);
   });
+  it("never splits an emoji in two", () => expect(excerpt(`${"x".repeat(139)}😀y`)).toBe(`${"x".repeat(139)}😀…`));
 });
 
 describe("fileSize", () => {

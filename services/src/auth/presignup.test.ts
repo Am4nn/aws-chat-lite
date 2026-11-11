@@ -1,18 +1,24 @@
 import { describe, it, expect, afterEach } from "vitest";
+import type { PreSignUpTriggerEvent } from "aws-lambda";
 import { handler } from "./presignup.js";
 
-const signUp = (userName: string) => ({ userName, response: {} }) as any;
+const signUp = (userName: string) => ({ userName, response: {} }) as PreSignUpTriggerEvent;
 
-afterEach(() => { delete process.env.AUTO_CONFIRM; });
+afterEach(() => { delete process.env.STAGE; });
 
-describe("pre-sign-up trigger", () => {
-  it.each(["agent", "Agent", "everyone"])("refuses the reserved username %s", async (name) => {
-    await expect(handler(signUp(name))).rejects.toThrow("That username is reserved.");
+describe("PreSignUp", () => {
+  it("refuses the names mentions give a meaning to, in any case", async () => {
+    await expect(handler(signUp("everyone"))).rejects.toThrow("That username is reserved.");
+    await expect(handler(signUp("Agent"))).rejects.toThrow("That username is reserved.");
   });
 
-  it("confirms the account at once only where AUTO_CONFIRM is set", async () => {
-    expect((await handler(signUp("aman"))).response.autoConfirmUser).toBeUndefined();
-    process.env.AUTO_CONFIRM = "true";
-    expect((await handler(signUp("aman"))).response.autoConfirmUser).toBe(true);
+  it("confirms at once locally, where no email is sent", async () => {
+    process.env.STAGE = "local";
+    expect((await handler(signUp("ann"))).response.autoConfirmUser).toBe(true);
+  });
+
+  it("leaves confirmation to the emailed code on AWS", async () => {
+    process.env.STAGE = "aws";
+    expect((await handler(signUp("ann"))).response.autoConfirmUser).toBeUndefined();
   });
 });

@@ -1,7 +1,9 @@
 import { GetCommand, PutCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
-import { conditionFailed, docClient, failedAt, tableName } from "../lib/db.js";
+import type { User } from "../lib/auth.js";
+import { conditionFailed, docClient, failedAt, tableName, transactionConflict } from "../lib/db.js";
 import { Conflict, Forbidden, NotFound, ValidationError } from "../lib/errors.js";
-import { withUrls } from "./files.js";
+import { counterKey, memberKey, roomKey } from "../lib/keys.js";
+import { storedAttachment, withUrls } from "./files.js";
 import { requireMember } from "./membership.js";
 import { notified, parseMentions } from "./mentions.js";
 import {
@@ -9,18 +11,14 @@ import {
   seqKey, validAttachment, versionKey, type Attachment, type Message, type Reaction, type StoredMessage,
 } from "./model.js";
 
-interface User { userId: string; username: string }
 /** Where a message lives: every chat belongs to exactly one room. */
 interface ChatRef { roomId: string; chatId: string }
 interface Cursor { before?: number; after?: number; around?: number }
 /** A send's content once `admit` has accepted it. */
 export interface Admitted { text: string; attachments: Attachment[] }
 
-const roomKey = (roomId: string) => `ROOM#${roomId}`;
 const chatKey = (chatId: string) => `CHAT#${chatId}`;
-const memberKey = (roomId: string, userId: string) => ({ pk: roomKey(roomId), sk: `MEMBER#${userId}` });
 const readKey = (at: ChatRef, userId: string) => ({ pk: roomKey(at.roomId), sk: `READ#${userId}#${at.chatId}` });
-const counterKey = (chatId: string) => ({ pk: chatKey(chatId), sk: "META" });
 const messageKey = (at: ChatRef, seq: number) => ({ pk: chatKey(at.chatId), sk: seqKey(seq) });
 
 const NEEDS_CONTENT = "A message needs text or an attachment.";
@@ -127,17 +125,17 @@ export function chatRepo() {
   }
 
   /**
-   * The checks that can refuse any send: valid content, a member of a room that isn't archived, and within the rate
-   * limit. A caller that must write something before the message exists (a new thread) runs this first and hands the
+   * The checks that can refuse any send: valid content, a member of a room that isn't archived, within the rate limit,
+   * and attachments that S3 really holds (their size and type come from S3, not the client). A caller that must write something before the message exists (a new thread) runs this first and hands the
    * result to `send`, so a refusal never leaves that write behind.
    */
   async function admit(user: User, input: { roomId: string; text: unknown; attachments?: unknown }): Promise<Admitted> {
     const text = messageText(input.text);
-    const attachments = attachmentList(input.attachments, input.roomId, user.userId);
-    if (!text && !attachments.length) throw new ValidationError(NEEDS_CONTENT);
+    const declared = attachmentList(input.attachments, input.roomId, user.userId);
+    if (!text && !declared.length) throw new ValidationError(NEEDS_CONTENT);
     await requireMember(input.roomId, user.userId, { writing: true });
     await countTowardsRate(user.userId);
-    return { text, attachments };
+    return { text, attachments: await Promise.all(declared.map(storedAttachment)) };
   }
 
   return {
@@ -180,8 +178,8 @@ export function chatRepo() {
      */
     async linkThread(at: ChatRef & { seq: number }, threadRef: NonNullable<Message["threadRef"]>): Promise<Message> {
       const { Attributes } = await db.send(new UpdateCommand({
-        TableName, Key: messageKey(at, at.seq), UpdateExpression: "SET threadRef = :ref", ConditionExpression: "attribute_exists(sk)",
-        ExpressionAttributeValues: { ":ref": threadRef }, ReturnValues: "ALL_NEW",
+        TableName, Key: messageKey(at, at.seq), UpdateExpression: "SET threadRef = :ref ADD v :one", ConditionExpression: "attribute_exists(sk)",
+        ExpressionAttributeValues: { ":ref": threadRef, ":one": 1 }, ReturnValues: "ALL_NEW",
       }));
       return toMessage(Attributes!);
     },
@@ -209,13 +207,14 @@ export function chatRepo() {
             {
               Update: {
                 TableName, Key: messageKey(at, input.seq),
-                UpdateExpression: "SET #text = :text, textLower = :lower, editedAt = :at, mentions = :mentions, everyone = :everyone",
-                // The rules again, plus "the text is still what we saved as the version", so a delete or another edit
-                // landing between the read and this write can't be overwritten.
-                ConditionExpression: "authorId = :me AND attribute_not_exists(deleted) AND createdAt >= :cutoff AND #text = :old",
+                UpdateExpression: "SET #text = :text, textLower = :lower, editedAt = :at, mentions = :mentions, everyone = :everyone ADD v :one",
+                // The rules again, plus an optimistic lock on the version we read (`v` is never removed once set), so
+                // no change landing between the read and this write is overwritten, and what this edit returns and
+                // broadcasts (reactions included) is exactly what's stored.
+                ConditionExpression: "authorId = :me AND attribute_not_exists(deleted) AND createdAt >= :cutoff AND (attribute_not_exists(v) OR v = :v)",
                 ExpressionAttributeNames: { "#text": "text" },
                 ExpressionAttributeValues: {
-                  ":text": text, ":lower": text.toLowerCase(), ":at": editedAt, ":me": user.userId, ":old": old.text,
+                  ":text": text, ":lower": text.toLowerCase(), ":at": editedAt, ":me": user.userId, ":v": old.v ?? 0, ":one": 1,
                   ":mentions": mentions, ":everyone": everyone,
                   ":cutoff": new Date(now - EDIT_WINDOW_SEC * 1000).toISOString(),
                 },
@@ -224,12 +223,12 @@ export function chatRepo() {
           ],
         }));
       } catch (e) {
-        if (conditionFailed(e)) throw new Conflict("That message just changed; try again.");
+        if (conditionFailed(e) || transactionConflict(e)) throw new Conflict("That message just changed; try again.");
         throw e;
       }
       const before = new Set(notified(old, members, user.userId));
       await countMentions(at, notified({ mentions, everyone }, members, user.userId).filter((id) => !before.has(id)));
-      return toMessage({ ...old, text, editedAt, mentions, everyone });
+      return toMessage({ ...old, text, editedAt, mentions, everyone, v: (old.v ?? 0) + 1 });
     },
 
     /** Marks the message deleted; the stored text stays, and readers get it blanked. */
@@ -242,14 +241,14 @@ export function chatRepo() {
       if (!deleted) throw new Forbidden("You can delete only your own messages, for 15 minutes.");
       try {
         await db.send(new UpdateCommand({
-          TableName, Key: messageKey(at, input.seq), UpdateExpression: "SET deleted = :d",
-          ConditionExpression: "attribute_not_exists(deleted)", ExpressionAttributeValues: { ":d": deleted },
+          TableName, Key: messageKey(at, input.seq), UpdateExpression: "SET deleted = :d ADD v :one",
+          ConditionExpression: "attribute_not_exists(deleted)", ExpressionAttributeValues: { ":d": deleted, ":one": 1 },
         }));
       } catch (e) {
         if (conditionFailed(e)) throw new Conflict("That message is already deleted.");
         throw e;
       }
-      return toMessage({ ...msg, deleted });
+      return toMessage({ ...msg, deleted, v: (msg.v ?? 0) + 1 });
     },
 
     /** Set ADD/DELETE make a double tap harmless: adding someone twice or removing someone absent changes nothing. */
@@ -258,9 +257,9 @@ export function chatRepo() {
       await requireMember(at.roomId, user.userId, { writing: true });
       try {
         const { Attributes } = await db.send(new UpdateCommand({
-          TableName, Key: messageKey(at, input.seq), UpdateExpression: `${input.on ? "ADD" : "DELETE"} reactions.#k :me`,
+          TableName, Key: messageKey(at, input.seq), UpdateExpression: input.on ? "ADD reactions.#k :me, v :one" : "DELETE reactions.#k :me ADD v :one",
           ConditionExpression: "roomId = :r AND attribute_not_exists(deleted)", ExpressionAttributeNames: { "#k": input.reaction },
-          ExpressionAttributeValues: { ":me": new Set([user.userId]), ":r": at.roomId }, ReturnValues: "ALL_NEW",
+          ExpressionAttributeValues: { ":me": new Set([user.userId]), ":r": at.roomId, ":one": 1 }, ReturnValues: "ALL_NEW",
         }));
         return toMessage(Attributes!);
       } catch (e) {
@@ -278,7 +277,8 @@ export function chatRepo() {
     /**
      * Moves the read marker forward, clears the chat's mentions and takes the same number off the member's room total,
      * in one transaction. Optimistic: the write only applies if the mentions are still the count we read, so a mention
-     * arriving meanwhile is never wiped without being subtracted; on a clash it reads again and retries. The chat's
+     * arriving meanwhile is never wiped without being subtracted; on a clash (that, or another transaction writing the
+   * same items at the same moment, which DynamoDB cancels as a TransactionConflict) it reads again and retries. The chat's
      * counter, checked in the same transaction, proves the chat is in this room and the seq has been sent.
      */
     async markRead(user: User, input: ChatRef & { seq: number }): Promise<{ lastReadSeq: number }> {
@@ -316,8 +316,8 @@ export function chatRepo() {
           }));
           return { lastReadSeq };
         } catch (e) {
-          if (!conditionFailed(e)) throw e;
           if (failedAt(e, 0)) throw new NotFound("Chat not found.");
+          if (!conditionFailed(e) && !transactionConflict(e)) throw e;
         }
       }
       throw new Conflict("Your read state kept changing; try again.");

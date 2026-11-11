@@ -14,24 +14,17 @@ const template = (stage: "local" | "aws") => {
 };
 
 describe("auth", () => {
-  const presignup = (stage: "local" | "aws") =>
-    (Object.values(template(stage).findResources("AWS::Lambda::Function", { Properties: { FunctionName: `cl-${stage}-presignup` } }))[0] as any)
-      ?.Properties;
-
-  it("every stage has the PreSignUp trigger (it refuses reserved usernames); only local auto-confirms", () => {
-    for (const stage of ["local", "aws"] as const) {
-      template(stage).hasResourceProperties("AWS::Cognito::UserPool", {
-        UserPoolName: `cl-${stage}-users`,
-        LambdaConfig: Match.objectLike({ PreSignUp: Match.anyValue() }),
-      });
-    }
-    expect(presignup("local").Environment.Variables.AUTO_CONFIRM).toBe("true");
-    expect(presignup("aws").Environment.Variables.AUTO_CONFIRM).toBeUndefined();
+  it("local: user pool with a PreSignUp auto-confirm trigger", () => {
+    template("local").hasResourceProperties("AWS::Cognito::UserPool", {
+      UserPoolName: "cl-local-users",
+      LambdaConfig: Match.objectLike({ PreSignUp: Match.anyValue() }),
+    });
   });
 
-  it("aws: email required", () => {
+  it("aws: email required, and the PreSignUp trigger (which only reserves names there)", () => {
     const pools = template("aws").findResources("AWS::Cognito::UserPool");
     const props = (Object.values(pools)[0] as any).Properties;
+    expect(props.LambdaConfig?.PreSignUp).toBeDefined();
     expect(props.Schema).toEqual(expect.arrayContaining([expect.objectContaining({ Name: "email", Required: true })]));
   });
 

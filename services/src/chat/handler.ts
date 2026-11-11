@@ -1,5 +1,5 @@
 import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
-import { callerFromEvent } from "../lib/auth.js";
+import { callerFromEvent, type User } from "../lib/auth.js";
 import { errorResponse, json, parseBody } from "../lib/http.js";
 import { issueTicket } from "../live/tickets.js";
 import { presignUpload } from "./files.js";
@@ -9,7 +9,6 @@ import { chatRepo, type ChatRepo } from "./repo.js";
 import { searchRoom } from "./search.js";
 
 type Event = APIGatewayProxyEventV2WithJWTAuthorizer;
-type User = ReturnType<typeof callerFromEvent>;
 
 interface Deps {
   history: ChatRepo["history"];

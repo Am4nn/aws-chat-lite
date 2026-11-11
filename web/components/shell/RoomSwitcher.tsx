@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Archive, Check, ChevronDown, LogOut, Plus } from "lucide-react";
 import { useClickOutside } from "@/lib/client/useClickOutside";
+import { useEscape } from "@/lib/client/useEscape";
 import { dur, easeOut, instant } from "@/lib/motion";
 import type { RoomSummary } from "@/lib/types";
 
@@ -23,16 +24,10 @@ export function RoomSwitcher({ current, rooms, hasMentions, canCreate, canLeave,
   const ref = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   useClickOutside(ref, open, () => setOpen(false));
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      setOpen(false);
-      button.current?.focus();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
+  useEscape(open, () => {
+    setOpen(false);
+    button.current?.focus();
+  });
 
   const elsewhere = rooms.some((r) => r.roomId !== current.roomId && hasMentions(r.roomId));
   const choose = (run: () => void) => () => { setOpen(false); run(); };

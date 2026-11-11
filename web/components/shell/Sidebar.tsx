@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode, type Ref } from "react";
+import { useRef, useState, type ReactNode, type Ref } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Bell, BellOff, Bot, Hash, LogOut, MoreHorizontal, Plus, Search } from "lucide-react";
 import { chatBadge } from "@/lib/client/badges";
 import { useClickOutside } from "@/lib/client/useClickOutside";
+import { useEscape } from "@/lib/client/useEscape";
 import { dur, easeOut, instant, spring } from "@/lib/motion";
 import type { Chat, Me } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
@@ -143,16 +144,10 @@ function RowMenu({ name, muted, onMute }: { name: string; muted: boolean; onMute
   const ref = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   useClickOutside(ref, open, () => setOpen(false));
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      setOpen(false);
-      button.current?.focus();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
+  useEscape(open, () => {
+    setOpen(false);
+    button.current?.focus();
+  });
 
   return (
     <div ref={ref} className="absolute right-1.5 top-1.5">

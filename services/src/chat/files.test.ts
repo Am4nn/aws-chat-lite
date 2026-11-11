@@ -1,5 +1,7 @@
-import { describe, it, expect } from "vitest";
-import { attachmentKey, inlineType, presignDownload, presignUpload } from "./files.js";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { S3Client, type HeadObjectCommand } from "@aws-sdk/client-s3";
+import { ValidationError } from "../lib/errors.js";
+import { attachmentKey, inlineType, presignDownload, presignUpload, storedAttachment } from "./files.js";
 
 // Presigning is local computation; it needs credentials to sign with, never a network call.
 Object.assign(process.env, {
@@ -58,5 +60,21 @@ describe("presignDownload", () => {
     const url = await presignDownload({ ...attachment, key: "rooms/r/u/id/a.png", name: "a.png", type: "image/png" });
     expect(url).not.toContain("response-content-disposition");
     expect(url).toContain("response-content-type=image%2Fpng");
+  });
+});
+
+describe("storedAttachment", () => {
+  afterEach(() => vi.restoreAllMocks());
+  const declared = { key: "rooms/r/u/id/a.png", name: "a.png", size: 10, type: "image/png" };
+
+  it("takes the size and type from what S3 stored, not from what the sender declared", async () => {
+    const send = vi.spyOn(S3Client.prototype, "send").mockImplementation((async () => ({ ContentLength: 5_000_000, ContentType: "text/html" })) as never);
+    expect(await storedAttachment(declared)).toEqual({ ...declared, size: 5_000_000, type: "text/html" });
+    expect((send.mock.calls[0][0] as HeadObjectCommand).input).toEqual({ Bucket: "cl-test-files", Key: declared.key });
+  });
+
+  it("refuses a file that was never uploaded", async () => {
+    vi.spyOn(S3Client.prototype, "send").mockImplementation((async () => { throw Object.assign(new Error("nf"), { name: "NotFound" }); }) as never);
+    await expect(storedAttachment(declared)).rejects.toBeInstanceOf(ValidationError);
   });
 });

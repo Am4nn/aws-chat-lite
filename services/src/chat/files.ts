@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, HeadObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { ValidationError } from "../lib/errors.js";
 import { MAX_FILE_BYTES, validAttachment, type Attachment, type Message } from "./model.js";
 
 const UPLOAD_EXPIRY_SEC = 5 * 60;
@@ -12,6 +13,7 @@ const MAX_SAFE_NAME = 120;
 const INLINE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 
 let cached: S3Client | undefined;
+let objectsClient: S3Client | undefined;
 
 /**
  * Signing is local computation, so this client only has to produce URLs the browser can reach. Locally that is
@@ -21,6 +23,14 @@ let cached: S3Client | undefined;
 function s3() {
   const endpoint = process.env.S3_PUBLIC_ENDPOINT;
   return (cached ??= new S3Client(endpoint ? { endpoint, forcePathStyle: true } : {}));
+}
+
+/**
+ * For the Lambda's own calls to S3. An endpoint override (AWS_ENDPOINT_URL, which Floci sets inside its Lambdas and the
+ * config forbids on AWS) means Floci, which serves buckets path-style.
+ */
+function objects() {
+  return (objectsClient ??= new S3Client(process.env.AWS_ENDPOINT_URL ? { forcePathStyle: true } : {}));
 }
 
 function bucket() {
@@ -50,6 +60,20 @@ export async function presignUpload(roomId: string, userId: string, input: unkno
     Conditions: [["content-length-range", 1, MAX_FILE_BYTES], ["eq", "$Content-Type", type]],
   });
   return { url, fields, key };
+}
+
+/**
+ * An uploaded file as S3 stored it. The POST policy made S3 enforce the size range and the type, so the object's own
+ * size and type are the truth; the sender's are only a claim.
+ */
+export async function storedAttachment(a: Attachment): Promise<Attachment> {
+  try {
+    const head = await objects().send(new HeadObjectCommand({ Bucket: bucket(), Key: a.key }));
+    return { ...a, size: Number(head.ContentLength), type: head.ContentType ?? "application/octet-stream" };
+  } catch (e) {
+    if ((e as Error).name === "NotFound") throw new ValidationError(`${a.name} hasn't finished uploading.`);
+    throw e;
+  }
 }
 
 /**

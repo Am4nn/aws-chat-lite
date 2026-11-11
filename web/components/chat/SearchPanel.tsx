@@ -6,6 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Hash, Search, X } from "lucide-react";
 import { bff, errorText } from "@/lib/client/bff";
 import { matchSnippet, shortWhen } from "@/lib/client/format";
+import { useTimeZone } from "@/lib/client/useTimeZone";
 import { dur, easeOut, instant } from "@/lib/motion";
 import type { Chat, Message } from "@/lib/types";
 import { Spinner } from "@/components/ui/Spinner";
@@ -27,17 +28,23 @@ function byChat(results: Message[]) {
  * while the next one loads (so the list never blanks between keystrokes), and an answer to an older query is dropped.
  * `focusSignal` changes whenever search is opened, so the field takes focus even if the tab was already showing.
  */
-export function SearchPanel({ roomId, chats, focusSignal, onPick }: {
-  roomId: string; chats: Chat[]; focusSignal: number; onPick: () => void;
+export function SearchPanel({ roomId, chats, serverTimeZone, focusSignal, onPick }: {
+  roomId: string; chats: Chat[]; serverTimeZone: string; focusSignal: number; onPick: () => void;
 }) {
   const router = useRouter();
   const reduced = useReducedMotion();
+  const timeZone = useTimeZone(serverTimeZone);
   const input = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<Found | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const q = query.trim();
+  // An error belongs to the query that caused it, so a new query starts without one.
+  const changeQuery = (value: string) => {
+    setQuery(value);
+    setError(null);
+  };
   const searchable = q.length >= MIN_QUERY;
 
   // preventScroll: the panel may still be sliding open, and focusing would scroll its clipped column sideways.
@@ -68,7 +75,6 @@ export function SearchPanel({ roomId, chats, focusSignal, onPick }: {
   }, [roomId, q, searchable]);
 
   const chatName = (chatId: string) => chats.find((c) => c.chatId === chatId)?.name ?? "chat";
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const shown = searchable ? found : null;
 
   return (
@@ -79,7 +85,7 @@ export function SearchPanel({ roomId, chats, focusSignal, onPick }: {
           ref={input}
           type="search"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => changeQuery(e.target.value)}
           placeholder="Search messages"
           aria-label="Search messages"
           className="h-full min-w-0 flex-1 bg-transparent text-[13.5px] text-text outline-none placeholder:text-text-3 [&::-webkit-search-cancel-button]:hidden"
@@ -89,7 +95,7 @@ export function SearchPanel({ roomId, chats, focusSignal, onPick }: {
             ? <Spinner />
             : query && (
               <button
-                onClick={() => { setQuery(""); input.current?.focus(); }}
+                onClick={() => { changeQuery(""); input.current?.focus(); }}
                 aria-label="Clear search"
                 className="grid size-5 place-items-center rounded-md transition-colors hover:bg-surface-3 hover:text-text"
               >

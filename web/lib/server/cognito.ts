@@ -73,6 +73,8 @@ const MESSAGES: Record<string, string> = {
   LimitExceededException: "Too many tries. Wait a few minutes.",
   TooManyRequestsException: "Too many tries. Wait a few minutes.",
   CodeDeliveryFailureException: "We couldn't send the email. Try again later.",
+  // The PreSignUp trigger refuses only reserved usernames.
+  UserLambdaValidationException: "That username is reserved.",
 };
 
 export const authErrorMessage = (e: unknown) => MESSAGES[(e as Error)?.name ?? ""] ?? "Something went wrong.";

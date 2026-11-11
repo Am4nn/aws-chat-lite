@@ -27,6 +27,8 @@ export type Message = {
     runId: string; status: RunEndStatus; reason?: string; steps: number; costMicros: number; ms: number; model: string;
     firstSeq: number;
   };
+  /** How many times the message has changed (edit, delete, reaction); absent until the first change. */
+  v?: number;
 };
 /** `textLower` backs search; it never leaves the server. */
 export type StoredMessage = Message & { textLower: string };
@@ -96,9 +98,10 @@ export function deleteMode(msg: Authored, userId: string, role: Role, nowMs: num
   return role === "owner" || role === "admin" ? "admin" : null;
 }
 
+/** Cut by code point, not UTF-16 unit, so an emoji at the cut is never split into half a surrogate pair. */
 export function excerpt(text: string): string {
-  const flat = text.replace(/\s+/g, " ").trim();
-  return flat.length > EXCERPT_LENGTH ? `${flat.slice(0, EXCERPT_LENGTH)}…` : flat;
+  const chars = Array.from(text.replace(/\s+/g, " ").trim());
+  return chars.length > EXCERPT_LENGTH ? `${chars.slice(0, EXCERPT_LENGTH).join("")}…` : chars.join("");
 }
 
 /** A deleted message keeps its text and files in the table; readers get neither. */

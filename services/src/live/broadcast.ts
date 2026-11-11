@@ -2,7 +2,7 @@ import { QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { ApiGatewayManagementApiClient, PostToConnectionCommand } from "@aws-sdk/client-apigatewaymanagementapi";
 import { docClient, tableName } from "../lib/db.js";
 import { forgetConnection } from "./connections.js";
-import { markDisconnected } from "./presence.js";
+import { isOnline, markDisconnected, type Presence } from "./presence.js";
 
 let cached: ApiGatewayManagementApiClient | undefined;
 
@@ -12,18 +12,20 @@ function managementApi() {
   return (cached ??= new ApiGatewayManagementApiClient({ endpoint }));
 }
 
-/** The sockets listed under one partition (`CONN#<connId>` items), with the owner a room subscription records. */
-async function connIdsUnder(pk: string) {
+/** The `CONN#<connId>` items under one partition: a user's sockets, or a room's subscriptions (which name the owner). */
+async function connItems(pk: string) {
   const { Items = [] } = await docClient().send(new QueryCommand({
     TableName: tableName(), KeyConditionExpression: "pk = :p AND begins_with(sk, :c)",
     ExpressionAttributeValues: { ":p": pk, ":c": "CONN#" },
   }));
-  return Items.map((i) => ({ connId: String(i.sk).slice("CONN#".length), userId: String(i.userId) }));
+  return Items;
 }
+
+const connIdOf = (item: Record<string, unknown>) => String(item.sk).slice("CONN#".length);
 
 /**
  * Best effort: the event is already stored when this runs, and a client that misses it catches up by fetching
- * history after it reconnects, so one bad socket never fails the action that caused the event.
+ * history, so one bad socket never fails the action that caused the event.
  */
 export async function sendToConnection(connId: string, event: object): Promise<void> {
   try {
@@ -33,15 +35,26 @@ export async function sendToConnection(connId: string, event: object): Promise<v
       console.error("postToConnection failed", connId, e);
       return;
     }
-    // The socket closed without (or before) its $disconnect: clean up after it.
-    const gone = await forgetConnection(connId);
-    if (gone) await markDisconnected(gone.userId);
+    // The socket closed without (or before) its $disconnect: clean up after it, as $disconnect would.
+    await closeConnection(connId);
   }
 }
 
+/** A socket is gone: its items go, and when that was a counted socket, the user's rooms hear their new presence. */
+export async function closeConnection(connId: string): Promise<void> {
+  const conn = await forgetConnection(connId);
+  const presence = conn && await markDisconnected(conn.userId);
+  if (conn && presence) await announcePresence(conn.userId, conn.roomIds, presence);
+}
+
+export function announcePresence(userId: string, roomIds: string[], p: Presence, exceptConnId?: string) {
+  const event = { type: "presence", userId, online: isOnline(p, Math.floor(Date.now() / 1000)), lastSeen: p.lastSeen };
+  return Promise.all(roomIds.map((roomId) => broadcastToRoom(roomId, event, { exceptConnId })));
+}
+
 export async function sendToUser(userId: string, event: object, opts: { exceptConnId?: string } = {}): Promise<void> {
-  const conns = await connIdsUnder(`USER#${userId}`);
-  await Promise.all(conns.filter((c) => c.connId !== opts.exceptConnId).map((c) => sendToConnection(c.connId, event)));
+  const connIds = (await connItems(`USER#${userId}`)).map(connIdOf);
+  await Promise.all(connIds.filter((c) => c !== opts.exceptConnId).map((c) => sendToConnection(c, event)));
 }
 
 /**
@@ -50,7 +63,7 @@ export async function sendToUser(userId: string, event: object, opts: { exceptCo
  */
 export async function broadcastToRoom(roomId: string, event: object, opts: { exceptConnId?: string } = {}): Promise<void> {
   const [subs, members] = await Promise.all([
-    connIdsUnder(`ROOM#${roomId}`),
+    connItems(`ROOM#${roomId}`),
     docClient().send(new QueryCommand({
       TableName: tableName(), KeyConditionExpression: "pk = :p AND begins_with(sk, :m)", ConsistentRead: true,
       ExpressionAttributeValues: { ":p": `ROOM#${roomId}`, ":m": "MEMBER#" }, ProjectionExpression: "userId",
@@ -58,6 +71,6 @@ export async function broadcastToRoom(roomId: string, event: object, opts: { exc
   ]);
   const memberIds = new Set((members.Items ?? []).map((m) => String(m.userId)));
   await Promise.all(subs
-    .filter((s) => memberIds.has(s.userId) && s.connId !== opts.exceptConnId)
-    .map((s) => sendToConnection(s.connId, event)));
+    .filter((s) => memberIds.has(String(s.userId)) && connIdOf(s) !== opts.exceptConnId)
+    .map((s) => sendToConnection(connIdOf(s), event)));
 }

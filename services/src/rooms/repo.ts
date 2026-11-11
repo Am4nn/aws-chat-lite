@@ -2,8 +2,11 @@ import { randomUUID } from "node:crypto";
 import {
   DeleteCommand, GetCommand, QueryCommand, TransactWriteCommand, UpdateCommand, type TransactWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
-import { batchGet, conditionFailed, docClient, failedAt, queryAll, tableName } from "../lib/db.js";
+import type { User } from "../lib/auth.js";
+import { batchGet, conditionFailed, docClient, failedAt, queryAll, tableName, transactionConflict } from "../lib/db.js";
 import { Conflict, Forbidden, Gone, NotFound, ValidationError } from "../lib/errors.js";
+import { counterKey, memberKey, roomKey } from "../lib/keys.js";
+import { findMember, requireMember } from "../chat/membership.js";
 import { isOnline, type Presence } from "../live/presence.js";
 import { budgetOf, monthKey } from "../budget/model.js";
 import { claimableName, summary } from "../threads/model.js";
@@ -12,7 +15,6 @@ import { can, type Action, type Role } from "./access.js";
 import { chatName, roomName } from "./model.js";
 import { INVITE_TTL_SEC, inviteState, newInviteCode } from "./invites.js";
 
-interface User { userId: string; username: string }
 interface RoomView {
   room: { roomId: string; name: string; ownerId: string; archived: boolean };
   me: { role: Role };
@@ -24,11 +26,8 @@ interface RoomView {
 
 const nowSec = () => Math.floor(Date.now() / 1000);
 const nowIso = () => new Date().toISOString();
-const roomKey = (roomId: string) => `ROOM#${roomId}`;
-const memberKey = (roomId: string, userId: string) => ({ pk: roomKey(roomId), sk: `MEMBER#${userId}` });
 const roomInviteKey = (roomId: string) => ({ pk: roomKey(roomId), sk: "INVITE" });
 const inviteKey = (code: string) => ({ pk: `INVITE#${code}`, sk: "META" });
-const counterKey = (chatId: string) => ({ pk: `CHAT#${chatId}`, sk: "META" });
 const presenceKey = (userId: string) => ({ pk: `USER#${userId}`, sk: "PRESENCE" });
 /** The id at the end of a key such as `CHAT#<id>` or `READ#<userId>#<chatId>` (ids never contain "#"). */
 const lastPart = (key: unknown) => String(key).slice(String(key).lastIndexOf("#") + 1);
@@ -70,25 +69,11 @@ export function roomsRepo() {
   const db = docClient();
   const TableName = tableName();
 
-  /**
-   * Role reads are strongly consistent (base-table reads allow it, at twice the read cost) so that someone removed a
-   * moment ago is refused at once, and someone who just joined is let in at once.
-   */
-  async function membership(roomId: string, userId: string) {
-    const { Item } = await db.send(new GetCommand({ TableName, Key: memberKey(roomId, userId), ConsistentRead: true }));
-    return Item as { role: Role; archived?: boolean } | undefined;
-  }
-
-  /**
-   * The caller's role, or NotFound when they aren't in the room; Forbidden when the role can't do `action` (on a
-   * member with role `target`). A `writing` action is refused in an archived room, which is read-only.
-   */
+  /** The caller's role, as `requireMember` reads it; Forbidden when it can't do `action` (on a member with role `target`). */
   async function requireRole(roomId: string, userId: string, action: Action, opts: { target?: Role; writing?: boolean } = {}) {
-    const member = await membership(roomId, userId);
-    if (!member) throw new NotFound("Room not found.");
-    if (opts.writing && member.archived) throw new Gone("This room is archived.");
-    if (!can(action, member.role, opts.target)) throw new Forbidden("Your role in this room can't do that.");
-    return member.role;
+    const role = await requireMember(roomId, userId, opts);
+    if (!can(action, role, opts.target)) throw new Forbidden("Your role in this room can't do that.");
+    return role;
   }
 
   async function roomMeta(roomId: string) {
@@ -160,11 +145,10 @@ export function roomsRepo() {
 
     /** Archived rooms drop out of the list. The member item's mention total feeds the list's dot. */
     async listMyRooms(userId: string) {
-      const { Items = [] } = await db.send(new QueryCommand({
-        TableName, IndexName: "gsi1", KeyConditionExpression: "gsi1pk = :u",
-        ExpressionAttributeValues: { ":u": `USER#${userId}` },
-      }));
-      return Items.filter((i) => !i.archived).map((i) => ({
+      const items = await queryAll({
+        IndexName: "gsi1", KeyConditionExpression: "gsi1pk = :u", ExpressionAttributeValues: { ":u": `USER#${userId}` },
+      });
+      return items.filter((i) => !i.archived).map((i) => ({
         roomId: String(i.roomId), name: String(i.roomName), role: i.role as Role, mentions: Number(i.mentions ?? 0),
       }));
     },
@@ -247,7 +231,7 @@ export function roomsRepo() {
 
     async setRole(roomId: string, actorId: string, targetId: string, role: unknown) {
       if (role !== "admin" && role !== "member") throw new ValidationError("Role must be admin or member.");
-      const target = (await membership(roomId, targetId))?.role;
+      const target = (await findMember(roomId, targetId))?.role;
       // The caller's own access is checked before revealing whether the target is in the room.
       await requireRole(roomId, actorId, "setRole", { target: target ?? "member" });
       if (!target) throw new NotFound("Not a member of this room.");
@@ -266,7 +250,7 @@ export function roomsRepo() {
     },
 
     async removeMember(roomId: string, actorId: string, targetId: string) {
-      const target = (await membership(roomId, targetId))?.role;
+      const target = (await findMember(roomId, targetId))?.role;
       await requireRole(roomId, actorId, "removeMember", { target: target ?? "member" });
       if (!target) throw new NotFound("Not a member of this room.");
       try {
@@ -311,9 +295,7 @@ export function roomsRepo() {
      * isn't a member; deleting the subscriptions saves the room's fan-out from reading them.
      */
     async leaveRoom(roomId: string, userId: string) {
-      const member = await membership(roomId, userId);
-      if (!member) throw new NotFound("Room not found.");
-      if (!can("leave", member.role)) throw new Forbidden("The owner can't leave their own room.");
+      if (!can("leave", await requireMember(roomId, userId))) throw new Forbidden("The owner can't leave their own room.");
       await db.send(new DeleteCommand({ TableName, Key: memberKey(roomId, userId) }));
       const subscriptions = await queryAll({
         KeyConditionExpression: "pk = :p AND begins_with(sk, :c)", FilterExpression: "userId = :u",
@@ -327,10 +309,12 @@ export function roomsRepo() {
      * Marks the room and every member item archived and revokes the invite link, in one transaction, so the room is
      * never half archived (some members refused new messages while others still post, or a live link into a closed
      * room). The member items carry the flag because every chat write already reads the member item, and the room list
-     * reads them through gsi1.
+     * reads them through gsi1. Every join counts itself on META, read here before the members, so a join landing after
+     * that read fails the META condition instead of leaving one member unarchived.
      */
     async archiveRoom(roomId: string, userId: string) {
       await requireRole(roomId, userId, "archive");
+      const { Item: meta } = await db.send(new GetCommand({ TableName, Key: { pk: roomKey(roomId), sk: "META" }, ConsistentRead: true }));
       const members = await queryAll({
         KeyConditionExpression: "pk = :p AND begins_with(sk, :m)", ProjectionExpression: "sk", ConsistentRead: true,
         ExpressionAttributeValues: { ":p": roomKey(roomId), ":m": "MEMBER#" },
@@ -339,22 +323,23 @@ export function roomsRepo() {
         throw new ValidationError(`Rooms over ${MAX_ARCHIVE_MEMBERS} members can't be archived yet.`);
       }
       const invite = await currentInvite(roomId);
-      const archive = (sk: string) => ({
+      const archive = (sk: string, alsoIf = "", values = {}) => ({
         Update: {
           TableName, Key: { pk: roomKey(roomId), sk }, UpdateExpression: "SET archived = :t",
-          ConditionExpression: "attribute_exists(pk)", ExpressionAttributeValues: { ":t": true },
+          ConditionExpression: `attribute_exists(pk)${alsoIf}`, ExpressionAttributeValues: { ":t": true, ...values },
         },
       });
       try {
         await db.send(new TransactWriteCommand({
           TransactItems: [
-            archive("META"),
+            // `joinCount` is never removed once set, so a room nobody has joined yet matches on its absence.
+            archive("META", " AND (attribute_not_exists(joinCount) OR joinCount = :joins)", { ":joins": Number(meta?.joinCount ?? 0) }),
             ...members.map((m) => archive(String(m.sk))),
             ...(invite ? [{ Delete: { TableName, Key: roomInviteKey(roomId), ...unchangedSince(invite) } }, revokeCode(invite.code)] : []),
           ],
         }));
       } catch (e) {
-        if (conditionFailed(e)) throw new Conflict("The room just changed; try again.");
+        if (conditionFailed(e) || transactionConflict(e)) throw new Conflict("The room just changed; try again.");
         throw e;
       }
       return {};
@@ -393,24 +378,29 @@ export function roomsRepo() {
     /** Public: what a link leads to, before you sign in. */
     async previewInvite(code: string) {
       const inv = await liveInvite(code);
-      const { Count = 0 } = await db.send(new QueryCommand({
-        TableName, KeyConditionExpression: "pk = :p AND begins_with(sk, :m)",
-        ExpressionAttributeValues: { ":p": roomKey(inv.roomId), ":m": "MEMBER#" }, Select: "COUNT",
-      }));
-      return { roomName: inv.roomName, memberCount: Count, expiresAt: inv.expiresAt };
+      const members = await queryAll({
+        KeyConditionExpression: "pk = :p AND begins_with(sk, :m)", ProjectionExpression: "sk",
+        ExpressionAttributeValues: { ":p": roomKey(inv.roomId), ":m": "MEMBER#" },
+      });
+      return { roomName: inv.roomName, memberCount: members.length, expiresAt: inv.expiresAt };
     },
 
     /**
-     * Join as member. Already in the room: nothing changes (an admin stays admin). The check on the room's META in the
-     * same transaction refuses an archived room, even one archived after the link was read: DynamoDB serializes this
-     * transaction against the archive's, which writes that META item.
+     * Join as member. Already in the room: nothing changes (an admin stays admin). The META update in the same
+     * transaction refuses an archived room, even one archived after the link was read, and counts the join, so an
+     * archive that read the members before this join refuses to apply (see archiveRoom).
      */
     async acceptInvite(code: string, user: User) {
       const inv = await liveInvite(code);
       try {
         await db.send(new TransactWriteCommand({
           TransactItems: [
-            { ConditionCheck: { TableName, Key: { pk: roomKey(inv.roomId), sk: "META" }, ConditionExpression: "attribute_not_exists(archived)" } },
+            {
+              Update: {
+                TableName, Key: { pk: roomKey(inv.roomId), sk: "META" }, UpdateExpression: "ADD joinCount :one",
+                ConditionExpression: "attribute_exists(pk) AND attribute_not_exists(archived)", ExpressionAttributeValues: { ":one": 1 },
+              },
+            },
             {
               Put: {
                 TableName, Item: memberItem(inv.roomId, inv.roomName, user, "member", nowIso()),
@@ -421,6 +411,7 @@ export function roomsRepo() {
         }));
       } catch (e) {
         if (failedAt(e, 0)) throw new Gone("This room is archived.");
+        if (transactionConflict(e)) throw new Conflict("The room just changed; try again.");
         if (!failedAt(e, 1)) throw e; // Already a member, or a concurrent accept won: either way they are in.
       }
       return { roomId: inv.roomId };

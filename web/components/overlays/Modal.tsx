@@ -1,17 +1,13 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import { useEscape } from "@/lib/client/useEscape";
 import { dur, easeOut } from "@/lib/motion";
 
 /** A centred dialog over a dimmed backdrop. Escape or a click outside closes it. */
 export function Modal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  useEscape(open, onClose);
 
   return (
     <AnimatePresence>

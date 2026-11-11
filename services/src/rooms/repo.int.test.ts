@@ -237,6 +237,28 @@ describe("rooms repo on Floci", () => {
     expect(Item).toBeUndefined();
   });
 
+  it("an archive whose member read missed a join is refused, so no member is left unarchived", async () => {
+    const owner = user("owner");
+    const late = user("late");
+    const { roomId } = await repo.createRoom(owner, "Join race");
+    const { code } = await repo.rotateInvite(roomId, owner.userId);
+    const db = docClient();
+    const send = db.send.bind(db);
+    // The join committing right after the archive has read the members.
+    const spy = vi.spyOn(db, "send").mockImplementation((async (c: QueryCommand) => {
+      const out = await send(c as never);
+      if (c instanceof QueryCommand && c.input.ExpressionAttributeValues?.[":m"] === "MEMBER#") {
+        spy.mockRestore();
+        await repo.acceptInvite(code, late);
+      }
+      return out;
+    }) as never);
+    await expect(repo.archiveRoom(roomId, owner.userId)).rejects.toBeInstanceOf(Conflict);
+    expect((await repo.getRoomView(roomId, late.userId)).room.archived).toBe(false);
+    await repo.archiveRoom(roomId, owner.userId);
+    expect((await repo.getRoomView(roomId, late.userId)).room.archived).toBe(true);
+  });
+
   it("a room too big for one archive transaction is refused in words, not with a server error", async () => {
     const owner = user("owner");
     const { roomId } = await repo.createRoom(owner, "Crowd");

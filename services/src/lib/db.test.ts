@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { BatchGetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { Unavailable } from "./errors.js";
 import { batchGet, docClient, queryAll, transactionConflict } from "./db.js";
 
 process.env.TABLE_NAME = "t";
@@ -27,13 +28,13 @@ describe("batchGet", () => {
     expect(await batchGet([{ pk: "a", sk: "s" }, { pk: "b", sk: "s" }])).toEqual([{ n: 1 }, { n: 2 }]);
   });
 
-  it("gives up after 5 attempts instead of spinning on a throttled table", async () => {
+  it("gives up after 5 attempts instead of spinning on a throttled table, as a busy (503) error", async () => {
     vi.useFakeTimers();
     try {
       const send = vi.spyOn(docClient(), "send").mockImplementation((async () =>
         ({ Responses: { t: [] }, UnprocessedKeys: { t: { Keys: [{ pk: "a", sk: "s" }] } } })) as never);
       const result = batchGet([{ pk: "a", sk: "s" }]);
-      const settled = expect(result).rejects.toThrow(/unprocessed/i);
+      const settled = expect(result).rejects.toBeInstanceOf(Unavailable);
       await vi.runAllTimersAsync();
       await settled;
       expect(send.mock.calls.filter(([c]) => c instanceof BatchGetCommand)).toHaveLength(5);

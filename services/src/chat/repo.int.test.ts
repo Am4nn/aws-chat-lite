@@ -148,6 +148,34 @@ describe("chat repo on Floci", () => {
     expect((await item(`CHAT#${at.chatId}`, seqKey(m.seq)))?.reactions).not.toHaveProperty("thumbs");
   });
 
+  it("every change bumps the version v, and history hands it out", async () => {
+    const { owner, members: [b], at } = await room("bee");
+    const m = await say(owner, at, "v0");
+    expect(m.v).toBeUndefined();
+    expect((await chat.react(b, { ...at, seq: m.seq, reaction: "eyes", on: true })).v).toBe(1);
+    expect((await chat.edit(owner, { ...at, seq: m.seq, text: "v2" })).v).toBe(2);
+    expect((await chat.remove(owner, { ...at, seq: m.seq })).v).toBe(3);
+    expect((await chat.history(owner, at.roomId, at.chatId, {})).messages[0].v).toBe(3);
+  });
+
+  it("an edit racing a reaction is a Conflict, so it never broadcasts the reactions it read", async () => {
+    const { owner, members: [b], at } = await room("bee");
+    const m = await say(owner, at, "first");
+    const db = docClient();
+    const send = db.send.bind(db);
+    // Lands the reaction right after the edit has read the message, before its transaction.
+    const spy = vi.spyOn(db, "send").mockImplementation((async (c: GetCommand) => {
+      const out = await send(c as never);
+      if (c instanceof GetCommand && c.input.Key?.sk === seqKey(m.seq)) {
+        spy.mockRestore();
+        await chat.react(b, { ...at, seq: m.seq, reaction: "tada", on: true });
+      }
+      return out;
+    }) as never);
+    await expect(chat.edit(owner, { ...at, seq: m.seq, text: "second" })).rejects.toBeInstanceOf(Conflict);
+    expect(await item(`CHAT#${at.chatId}`, seqKey(m.seq))).toMatchObject({ text: "first", v: 1 });
+  });
+
   it("a mention counts on the target's read state and membership; markRead clears both", async () => {
     const { owner, members: [b], roomId, chatId, at } = await room("bee");
     const m = await say(owner, at, "ping @bee");
@@ -183,10 +211,13 @@ describe("chat repo on Floci", () => {
     expect(await item(`ROOM#${roomId}`, `MEMBER#${b.userId}`)).toMatchObject({ mentions: 0 });
   });
 
-  it("a removed member's send is NotFound", async () => {
+  it("a removed member's send, reaction and typing are all NotFound", async () => {
     const { owner, members: [b], at } = await room("bee");
+    const m = await say(owner, at);
     await rooms.removeMember(at.roomId, owner.userId, b.userId);
     await expect(say(b, at)).rejects.toBeInstanceOf(NotFound);
+    await expect(chat.react(b, { ...at, seq: m.seq, reaction: "thumbs", on: true })).rejects.toBeInstanceOf(NotFound);
+    await expect(chat.assertCanType(b.userId, at)).rejects.toBeInstanceOf(NotFound);
   });
 
   it("a send to an archived room is Gone", async () => {
@@ -248,7 +279,9 @@ describe("chat repo on Floci", () => {
     expect(await upload(form, new Blob(["hello"], { type: "text/plain" }))).toBeLessThan(300);
 
     const file = { key: form.key, name: "notes.txt", size: 5, type: "text/plain" };
-    const sent = await chat.send(owner, { ...at, clientId: "f1", text: "", attachments: [file] });
+    // The declared size is a claim; what S3 stored wins.
+    const sent = await chat.send(owner, { ...at, clientId: "f1", text: "", attachments: [{ ...file, size: 9_999 }] });
+    expect(sent.attachments[0]).toMatchObject({ size: 5, type: "text/plain" });
     expect(sent.attachments[0].url).toMatch(/^http:\/\/localhost:4566\//);
     const { messages: [stored] } = await chat.history(owner, at.roomId, at.chatId, {});
     const download = await fetch(stored.attachments[0].url!);
@@ -256,6 +289,8 @@ describe("chat repo on Floci", () => {
     expect(await download.text()).toBe("hello");
     const foreign = { ...file, key: `rooms/${at.roomId}/someone-else/x/notes.txt` };
     await expect(chat.send(owner, { ...at, clientId: "f2", text: "", attachments: [foreign] })).rejects.toBeInstanceOf(ValidationError);
+    const neverUploaded = { ...file, key: `rooms/${at.roomId}/${owner.userId}/missing/notes.txt` };
+    await expect(chat.send(owner, { ...at, clientId: "f3", text: "", attachments: [neverUploaded] })).rejects.toBeInstanceOf(ValidationError);
   });
 
   it("S3 refuses an 11 MB upload on the presigned form", async () => {

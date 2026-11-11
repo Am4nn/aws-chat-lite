@@ -36,9 +36,11 @@ describe("live WebSocket API", () => {
     });
   });
 
-  it("has all 12 route keys", () => {
-    const keys = Object.values(template().findResources("AWS::ApiGatewayV2::Route")).map((r: any) => r.Properties.RouteKey);
-    for (const k of ROUTE_KEYS) expect(keys, k).toContain(k);
+  it("has exactly its 12 route keys", () => {
+    const [wsApi] = Object.keys(template().findResources("AWS::ApiGatewayV2::Api", { Properties: { ProtocolType: "WEBSOCKET" } }));
+    const keys = Object.values(template().findResources("AWS::ApiGatewayV2::Route"))
+      .filter((r: any) => r.Properties.ApiId.Ref === wsApi).map((r: any) => r.Properties.RouteKey);
+    expect(keys.sort()).toEqual([...ROUTE_KEYS].sort());
   });
 
   it("deploys to the stage live", () => {
@@ -62,6 +64,12 @@ describe("live WebSocket API", () => {
 
   it("the live Lambda has 29 s, since a send hands its message to the agent after the ack", () => {
     expect(liveFunction().Properties.Timeout).toBe(29);
+  });
+
+  it("may post only to the live stage's connections", () => {
+    const manage = liveStatements().filter((s: any) => [s.Action].flat().includes("execute-api:ManageConnections"));
+    expect(manage).toHaveLength(1);
+    expect(JSON.stringify(manage[0].Resource)).toMatch(/\/live\/POST\/@connections\/\*"/);
   });
 
   it("the live Lambda posts back through the API's own Floci host locally", () => {

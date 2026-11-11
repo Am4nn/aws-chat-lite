@@ -12,8 +12,11 @@ export function subFromEvent(event: APIGatewayProxyEventV2WithJWTAuthorizer): st
   return sub;
 }
 
+/** A signed-in person: their Cognito id and username. */
+export interface User { userId: string; username: string }
+
 /** Caller's id and username (ID token claim `cognito:username`). */
-export function callerFromEvent(event: APIGatewayProxyEventV2WithJWTAuthorizer): { userId: string; username: string } {
+export function callerFromEvent(event: APIGatewayProxyEventV2WithJWTAuthorizer): User {
   const u = claimsFromEvent(event)["cognito:username"];
   return { userId: subFromEvent(event), username: typeof u === "string" ? u : "" };
 }

@@ -29,6 +29,7 @@ describe("deleteMode", () => {
 
 describe("excerpt", () => {
   it("cuts at 140 characters and adds an ellipsis", () => expect(excerpt("a".repeat(200)).length).toBe(141));
+  it("never splits an emoji in two", () => expect(excerpt(`${"a".repeat(139)}😀b`)).toBe(`${"a".repeat(139)}😀…`));
   it("collapses whitespace", () => expect(excerpt("a \n\n  b")).toBe("a b"));
 });
 

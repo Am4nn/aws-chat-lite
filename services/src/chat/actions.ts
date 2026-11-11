@@ -1,11 +1,13 @@
 import { broadcastToRoom, sendToConnection, sendToUser } from "../live/broadcast.js";
+import { subscribe } from "../live/connections.js";
+import type { User } from "../lib/auth.js";
 import { UserError, ValidationError } from "../lib/errors.js";
 import { requestStop } from "../runs/stop.js";
 import { routeSend } from "../threads/route.js";
+import { requireMember } from "./membership.js";
 import { REACTIONS, idOf, seqNumber, type Message, type Reaction } from "./model.js";
 import { chatRepo, type ChatRepo } from "./repo.js";
 
-interface User { userId: string; username: string }
 type Frame = Record<string, unknown>;
 
 /** What a successful action answers its sender with, and how everyone else hears about it. */
@@ -59,6 +61,14 @@ async function perform(connId: string, user: User, f: Frame): Promise<Outcome> {
     }
     case "stop":
       return { data: await requestStop(user, idOf(f.roomId, "roomId"), idOf(f.threadId, "threadId")) };
+    case "subscribe": {
+      // Sent whenever a room opens, so a room joined after the socket connected starts getting its events at once.
+      // The member read is consistent; the user's room index that $connect reads (gsi1) can lag behind a join.
+      const roomId = idOf(f.roomId, "roomId");
+      await requireMember(roomId, user.userId);
+      await subscribe(connId, user.userId, roomId);
+      return {};
+    }
     default:
       throw new ValidationError("Unknown action.");
   }

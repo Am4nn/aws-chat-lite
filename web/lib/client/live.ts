@@ -100,7 +100,15 @@ export class LiveSocket {
       this.pingTimer = setInterval(() => ws.send(JSON.stringify({ action: "ping" })), PING_EVERY_MS);
       this.emit({ type: "reconnected" });
     };
-    ws.onmessage = (e) => this.receive(JSON.parse(String(e.data)));
+    ws.onmessage = (e) => {
+      let frame;
+      try {
+        frame = JSON.parse(String(e.data));
+      } catch {
+        return; // Not JSON, so no event or ack the client could act on.
+      }
+      this.receive(frame);
+    };
     ws.onclose = () => {
       this.failPending();
       if (gen === this.generation) this.scheduleReconnect(gen);

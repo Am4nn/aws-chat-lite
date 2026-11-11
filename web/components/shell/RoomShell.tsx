@@ -5,7 +5,7 @@ import { useParams, usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Search } from "lucide-react";
 import { bff, bffOrNull, errorText } from "@/lib/client/bff";
-import { useLive, useLiveEvent } from "@/lib/client/LiveProvider";
+import { useLive, useLiveStatus } from "@/lib/client/LiveProvider";
 import { PHONE_QUERY, useIsPhone } from "@/lib/client/useIsPhone";
 import { isPaletteShortcut } from "@/lib/keys";
 import { enterFrom } from "@/lib/motion";
@@ -29,6 +29,7 @@ import { Sidebar } from "./Sidebar";
 import { direction } from "./nav";
 import { useBadges } from "./useBadges";
 import { usePresence } from "./usePresence";
+import { useRoomExit } from "./useRoomExit";
 
 type Dialog = "chat" | "room" | "leave" | "archive" | null;
 /** What covers the chat on a phone: the sidebar drawer or the room panel. */
@@ -36,7 +37,9 @@ type Overlay = "nav" | "panel" | null;
 
 const isPhoneNow = () => window.matchMedia(PHONE_QUERY).matches;
 
-export function RoomShell({ view, rooms, me, children }: { view: RoomView; rooms: RoomSummary[]; me: Me; children: ReactNode }) {
+export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
+  view: RoomView; rooms: RoomSummary[]; me: Me; serverTimeZone: string; children: ReactNode;
+}) {
   const router = useRouter();
   const toast = useToast();
   const reducedMotion = useReducedMotion() ?? false;
@@ -50,32 +53,18 @@ export function RoomShell({ view, rooms, me, children }: { view: RoomView; rooms
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
   const live = useLive();
+  const status = useLiveStatus();
   const { room } = view;
   const roomId = room.roomId;
   const badges = useBadges({ view, rooms, meId: me.userId, activeChatId: chatId });
   const members = usePresence(view.members, me.userId);
-  // The room I'm leaving or archiving from this tab, which navigates away by itself; its own events are ignored.
-  const leaving = useRef<string>(undefined);
+  const exitRoom = useRoomExit({ roomId, rooms, onExited: () => setDialog(null) });
 
-  // The socket outlives room switches, so a room joined since it connected is subscribed to here; a socket that
-  // isn't open yet subscribes to every room when it connects.
+  // The socket outlives room switches and subscribes only to the rooms the user was in when it connected, so each
+  // room asks for its own events once the socket is open (again after every reconnect).
   useEffect(() => {
-    if (live.status === "open") live.request("subscribe", {}).catch(() => {});
-  }, [live, roomId]);
-
-  // Members, chats or the archive flag changed. The room view says whether I'm still in it; the server's answer
-  // (not the event) decides, so a late or repeated event can't throw anyone out.
-  useLiveEvent("room.updated", async (e) => {
-    if (e.roomId === leaving.current) return;
-    if (e.roomId !== roomId) return router.refresh();
-    try {
-      if (await bffOrNull(`/bff/api/rooms/${roomId}`)) return router.refresh();
-      toast(`You're no longer in ${room.name}`);
-      goToNextRoom();
-    } catch {
-      router.refresh();
-    }
-  });
+    if (status === "open") live.request("subscribe", { roomId }).catch(() => {});
+  }, [live, status, roomId]);
 
   const index = view.chats.findIndex((c) => c.chatId === chatId);
   const prevIndex = useRef(index);
@@ -95,7 +84,8 @@ export function RoomShell({ view, rooms, me, children }: { view: RoomView; rooms
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOverlay(null);
+      // Something on top (a menu, a dialog, the @ list) that handled the Escape marked it, and keeps the drawer open.
+      if (e.key === "Escape" && !e.defaultPrevented) setOverlay(null);
       if (!isPaletteShortcut(e)) return;
       e.preventDefault();
       setPaletteOpen((o) => !o);
@@ -114,15 +104,6 @@ export function RoomShell({ view, rooms, me, children }: { view: RoomView; rooms
     setSearchFocus((n) => n + 1);
     if (isPhoneNow()) setOverlay("panel");
     else setPanelOpen(true);
-  }
-
-  /**
-   * Out of this room and into my next one. Going there directly, not through home (which would redirect there), keeps
-   * the tab's socket: home is outside the rooms layout that owns it.
-   */
-  function goToNextRoom() {
-    const next = rooms.find((r) => r.roomId !== roomId);
-    router.replace(next ? `/r/${next.roomId}` : "/");
   }
 
   /** Copies the room's live invite link, creating one first when there is none. */
@@ -150,20 +131,6 @@ export function RoomShell({ view, rooms, me, children }: { view: RoomView; rooms
       toast(muted ? `#${chat.name} muted` : `#${chat.name} unmuted`);
     } catch (e) {
       badges.setMuted(chat.chatId, !muted);
-      toast(errorText(e), "error");
-    }
-  }
-
-  /** Leave and archive both end with the room out of my list. */
-  async function exitRoom(action: "leave" | "archive", done: string) {
-    leaving.current = roomId;
-    try {
-      await bff(`/bff/api/rooms/${roomId}/${action}`, { body: {} });
-      setDialog(null);
-      toast(done);
-      goToNextRoom();
-    } catch (e) {
-      leaving.current = undefined;
       toast(errorText(e), "error");
     }
   }
@@ -224,7 +191,7 @@ export function RoomShell({ view, rooms, me, children }: { view: RoomView; rooms
           tabs={[
             { id: "members", label: `Members · ${members.length}`, content: <MemberList roomId={roomId} members={members} myRole={view.me.role} myUserId={me.userId} /> },
             ...(isAdmin(view.me.role) && !room.archived ? [{ id: "invite", label: "Invite", content: <InvitePanel roomId={roomId} /> }] : []),
-            { id: "search", label: "Search", content: <SearchPanel roomId={roomId} chats={view.chats} focusSignal={searchFocus} onPick={() => setOverlay(null)} /> },
+            { id: "search", label: "Search", content: <SearchPanel roomId={roomId} chats={view.chats} serverTimeZone={serverTimeZone} focusSignal={searchFocus} onPick={() => setOverlay(null)} /> },
           ]}
         />
         <Backdrop open={overlay !== null} onClose={() => setOverlay(null)} />

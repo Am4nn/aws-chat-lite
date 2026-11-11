@@ -39,6 +39,8 @@ export type Message = {
   everyone: boolean;
   threadRef?: { threadId: string; kind: "started" | "delivered" };
   agent?: { runId: string; status: RunEndStatus; reason?: string; steps: number; costMicros: number; ms: number; model: string; firstSeq: number };
+  /** How many times the message has changed (edit, delete, reaction); absent until the first change. */
+  v?: number;
 };
 
 export type LiveEvent =

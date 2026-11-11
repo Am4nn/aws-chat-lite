@@ -1,4 +1,5 @@
 import { QueryCommand } from "@aws-sdk/lib-dynamodb";
+import type { User } from "../lib/auth.js";
 import { docClient, queryAll, tableName } from "../lib/db.js";
 import { ValidationError } from "../lib/errors.js";
 import { requireMember } from "./membership.js";
@@ -8,8 +9,6 @@ import { toMessage } from "./repo.js";
 const MIN_QUERY = 2;
 const MAX_RESULTS = 30;
 const SCAN_PER_CHAT = 2000;
-
-interface User { userId: string; username: string }
 
 /** Lowercased, because messages store `textLower` for this match and DynamoDB's `contains` is case-sensitive. */
 export function normalizeQuery(raw: unknown): string {

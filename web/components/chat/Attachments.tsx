@@ -13,13 +13,13 @@ import type { Upload } from "./useUploads";
 const PREVIEW = { width: 320, height: 240 };
 
 /** Images preview inline; everything else is a download card. */
-export function MessageAttachments({ attachments }: { attachments: Attachment[] }) {
+export function MessageAttachments({ attachments, onExpired }: { attachments: Attachment[]; onExpired: () => void }) {
   if (!attachments.length) return null;
   const images = attachments.filter((a) => isInlineImage(a.type));
   const files = attachments.filter((a) => !isInlineImage(a.type));
   return (
     <div className="mt-1.5 flex flex-col gap-2">
-      {images.length > 0 && <div className="flex flex-wrap gap-2">{images.map((a) => <ImagePreview key={a.key} attachment={a} />)}</div>}
+      {images.length > 0 && <div className="flex flex-wrap gap-2">{images.map((a) => <ImagePreview key={a.key} attachment={a} onExpired={onExpired} />)}</div>}
       {files.map((a) => <FileCard key={a.key} attachment={a} />)}
     </div>
   );
@@ -28,10 +28,13 @@ export function MessageAttachments({ attachments }: { attachments: Attachment[] 
 /**
  * Attachments carry no dimensions, so the preview reserves a fixed 4:3 box and the whole image fits inside it, never
  * cropped: nothing below moves when it loads. It fades in once decoded; a cached image may finish before hydration, hence the `complete` check.
+ * A failed load is most likely its signed link expiring in a tab left open, so it asks once for a fresh link; asking
+ * again for a file that is really gone would loop.
  */
-function ImagePreview({ attachment: a }: { attachment: Attachment }) {
+function ImagePreview({ attachment: a, onExpired }: { attachment: Attachment; onExpired: () => void }) {
   const img = useRef<HTMLImageElement>(null);
   const [loaded, setLoaded] = useState(false);
+  const [askedAgain, setAskedAgain] = useState(false);
   useEffect(() => { if (img.current?.complete) setLoaded(true); }, []);
   return (
     <a
@@ -50,6 +53,11 @@ function ImagePreview({ attachment: a }: { attachment: Attachment }) {
           width={PREVIEW.width}
           height={PREVIEW.height}
           onLoad={() => setLoaded(true)}
+          onError={() => {
+            if (askedAgain) return;
+            setAskedAgain(true);
+            onExpired();
+          }}
           className={`size-full object-contain transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
         />
       )}

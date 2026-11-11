@@ -1,4 +1,5 @@
 import { RemovalPolicy } from "aws-cdk-lib";
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import type { CoreStack } from "./core-stack.js";
 
@@ -10,7 +11,8 @@ import type { CoreStack } from "./core-stack.js";
 export function addChat(stack: CoreStack) {
   const { prefix, isLocal, siteOrigins, s3PublicEndpoint } = stack.stageConfig;
   const files = new s3.Bucket(stack, "Files", {
-    bucketName: `${prefix}-files`,
+    // Bucket names are global across every AWS account, so the real one carries ours. Floci's is local to it.
+    bucketName: isLocal ? `${prefix}-files` : `${prefix}-files-${stack.account}`,
     blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
     encryption: s3.BucketEncryption.S3_MANAGED,
     enforceSSL: !isLocal, // Floci serves plain http.
@@ -21,11 +23,16 @@ export function addChat(stack: CoreStack) {
     ...(isLocal && { removalPolicy: RemovalPolicy.DESTROY }),
   });
 
-  const fn = stack.addFunction("chat", "chat/handler.ts", { tableAccess: true });
+  const fn = stack.addFunction("chat", "chat/handler.ts");
+  // Its routes only read, apart from issuing a socket ticket.
+  stack.table.grantReadData(fn);
+  stack.table.grant(fn, "dynamodb:PutItem");
   fn.addEnvironment("WS_URL", stack.wsUrl);
-  files.grantPut(fn);
+  files.grantPut(fn, "rooms/*");
+  // Signing a download needs only GetObject on the uploads; the live Lambda's HeadObject of a new attachment does too.
+  const readUploads = new iam.PolicyStatement({ actions: ["s3:GetObject"], resources: [files.arnForObjects("rooms/*")] });
   for (const signer of [fn, stack.live.liveFn]) {
-    files.grantRead(signer);
+    signer.addToRolePolicy(readUploads);
     signer.addEnvironment("FILES_BUCKET", files.bucketName);
     if (s3PublicEndpoint) signer.addEnvironment("S3_PUBLIC_ENDPOINT", s3PublicEndpoint);
   }

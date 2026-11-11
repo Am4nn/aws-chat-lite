@@ -23,15 +23,17 @@ const fn = (name: string) => {
 };
 const chatFunction = () => fn("cl-local-chat");
 
-/** The S3 actions the function's execution role may take on the files bucket. */
-const s3Actions = (name: string) => {
+/** Every statement in the policies attached to the function's execution role. */
+const statements = (name: string) => {
   const role = fn(name).Properties.Role["Fn::GetAtt"][0];
   return Object.values(template().findResources("AWS::IAM::Policy"))
     .filter((p: any) => p.Properties.Roles.some((r: any) => r.Ref === role))
-    .flatMap((p: any) => p.Properties.PolicyDocument.Statement)
-    .filter((s: any) => JSON.stringify(s.Resource).includes("Files"))
-    .flatMap((s: any) => [s.Action].flat());
+    .flatMap((p: any) => p.Properties.PolicyDocument.Statement);
 };
+const s3Statements = (name: string) => statements(name).filter((s: any) => JSON.stringify(s.Resource).includes("Files"));
+const s3Actions = (name: string) => s3Statements(name).flatMap((s: any) => [s.Action].flat());
+const tableActions = (name: string) => statements(name)
+  .filter((s: any) => JSON.stringify(s.Resource).includes("Main")).flatMap((s: any) => [s.Action].flat());
 
 describe("chat API", () => {
   it("has the ticket and history routes, both behind the JWT authorizer", () => {
@@ -60,10 +62,27 @@ describe("chat API", () => {
     })]);
   });
 
-  it("the chat Lambda signs uploads and downloads; the live Lambda signs downloads only", () => {
-    expect(s3Actions("cl-local-chat")).toEqual(expect.arrayContaining(["s3:PutObject", "s3:GetObject*"]));
-    expect(s3Actions("cl-local-live")).toContain("s3:GetObject*");
-    expect(s3Actions("cl-local-live")).not.toContain("s3:PutObject");
+  it("the chat Lambda signs uploads and downloads; the live Lambda signs downloads only; both only under rooms/", () => {
+    expect(s3Actions("cl-local-chat")).toContain("s3:PutObject");
+    expect(s3Actions("cl-local-chat")).toContain("s3:GetObject");
+    expect(s3Actions("cl-local-live")).toEqual(["s3:GetObject"]);
+    expect(s3Actions("cl-local-chat").filter((a: string) => /List|GetBucket|Delete/.test(a))).toEqual([]);
+    for (const name of ["cl-local-chat", "cl-local-live"]) {
+      for (const s of s3Statements(name)) expect(JSON.stringify(s.Resource), name).toMatch(/\/rooms\/\*"/);
+    }
+  });
+
+  it("the chat Lambda only reads the table, except the put that issues a socket ticket", () => {
+    const actions = tableActions("cl-local-chat");
+    expect(actions).toContain("dynamodb:PutItem");
+    expect(actions).toContain("dynamodb:Query");
+    expect(actions.filter((a: string) => /UpdateItem|DeleteItem|BatchWriteItem/.test(a))).toEqual([]);
+  });
+
+  it("on AWS the files bucket's name carries the account, since S3 names are global", () => {
+    const config = loadConfig("aws", {});
+    const stack = new CoreStack(new App(), "cl-aws-core", { config, env: { account: "123456789012", region: config.region } });
+    Template.fromStack(stack).hasResourceProperties("AWS::S3::Bucket", { BucketName: "cl-aws-files-123456789012" });
   });
 
   it("both sign URLs for the browser's view of S3 (Floci's host locally)", () => {

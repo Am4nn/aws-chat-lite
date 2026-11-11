@@ -11,10 +11,16 @@ export type PendingMessage = {
 
 export type Timeline = { messages: Message[]; pending: PendingMessage[] };
 
-// History pages and live events overlap and can arrive out of order, so every merge dedupes by seq and re-sorts.
+/**
+ * History pages and live events overlap and can arrive out of order, so every merge dedupes by seq and re-sorts, and
+ * of two copies of one message keeps the later version: a page read before an edit, delete or reaction never undoes it.
+ */
 export function applyMessages(t: Timeline, incoming: Message[]): Timeline {
   const bySeq = new Map(t.messages.map((m) => [m.seq, m]));
-  for (const m of incoming) bySeq.set(m.seq, m);
+  for (const m of incoming) {
+    const current = bySeq.get(m.seq);
+    if (!current || (m.v ?? 0) >= (current.v ?? 0)) bySeq.set(m.seq, m);
+  }
   const arrived = new Set(incoming.map((m) => m.clientId));
   return {
     messages: [...bySeq.values()].sort((a, b) => a.seq - b.seq),
@@ -35,6 +41,9 @@ export const dropPending = (t: Timeline, clientId: string): Timeline => ({
 });
 
 export const newestSeq = (t: Timeline) => t.messages.at(-1)?.seq ?? 0;
+
+/** A live message past the next seq means events were missed while the socket stayed open. */
+export const skipsAhead = (t: Timeline, seq: number) => seq > newestSeq(t) + 1;
 
 /** Changes the loaded copy of message `seq`, whatever has happened to it since; unloaded messages are left alone. */
 export function updateMessage(t: Timeline, seq: number, change: (m: Message) => Message): Timeline {

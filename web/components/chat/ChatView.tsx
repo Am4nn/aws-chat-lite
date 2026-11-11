@@ -21,6 +21,7 @@ import { keyOf, useChatTimeline } from "./useChatTimeline";
 import { useUploads } from "./useUploads";
 
 const READ_DEBOUNCE_MS = 1000;
+const READ_RETRY_MS = 5000;
 const CLOCK_TICK_MS = 30_000;
 
 const subscribeVisibility = (fn: () => void) => {
@@ -52,7 +53,7 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
   const timeZone = useTimeZone(serverTimeZone);
   const uploads = useUploads(roomId);
   const chat = useChatTimeline({ roomId, chatId, meId: me.userId, initial });
-  const { timeline, setTimeline, latest, apply, markFresh, hasNewer, showLatest, jumpTo, scrollToBottom } = chat;
+  const { timeline, setTimeline, latest, apply, markFresh, refetchAround, hasNewer, showLatest, jumpTo, scrollToBottom } = chat;
   const [mode, setMode] = useState<ComposerMode>(null);
   const [dragging, setDragging] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -73,17 +74,19 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
     window.history.replaceState(null, "", window.location.pathname);
   }, [target, jumpTo]);
 
-  // Only a confirmed read counts, so one sent before the socket opened (or lost in a drop) is sent again once it's up.
+  // Only a confirmed read counts, so one sent before the socket opened (or lost in a drop) is sent again once it's up,
+  // and a refused or timed-out one is tried again after a pause rather than waiting for the next message.
   const lastRead = useRef(0);
+  const [readFailures, setReadFailures] = useState(0);
   const newest = newestSeq(timeline);
   useEffect(() => {
     if (status !== "open" || !chat.pinned || hasNewer || !visible || newest <= lastRead.current) return;
     const timer = setTimeout(() => {
       live.request("read", { roomId, chatId, seq: newest })
-        .then(() => { lastRead.current = Math.max(lastRead.current, newest); }, () => {});
-    }, READ_DEBOUNCE_MS);
+        .then(() => { lastRead.current = Math.max(lastRead.current, newest); }, () => setReadFailures((n) => n + 1));
+    }, readFailures ? READ_RETRY_MS : READ_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [status, chat.pinned, hasNewer, visible, newest, live, roomId, chatId]);
+  }, [status, chat.pinned, hasNewer, visible, newest, live, roomId, chatId, readFailures]);
 
   const deliver = useCallback(async (p: PendingMessage) => {
     try {
@@ -150,6 +153,7 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
       }
     },
     jump: (seq: number) => void jumpTo(seq),
+    refetch: (seq: number) => void refetchAround(seq),
     retry(clientId: string) {
       const failed = latest.current.pending.find((p) => p.clientId === clientId);
       if (!failed) return;
@@ -161,7 +165,7 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
       if (failed) revokePreviews(failed.attachments);
       setTimeline((t) => dropPending(t, clientId));
     },
-  }), [me.userId, live, roomId, chatId, apply, setTimeline, latest, toast, jumpTo, queue]);
+  }), [me.userId, live, roomId, chatId, apply, setTimeline, latest, toast, jumpTo, refetchAround, queue]);
 
   const ctx = useMemo<RowContext>(
     () => ({ meId: me.userId, role, members, now, timeZone, readOnly: archived }),

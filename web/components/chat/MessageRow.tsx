@@ -25,6 +25,7 @@ export type RowActions = {
   edit: (m: Message) => void;
   remove: (m: Message) => void;
   jump: (seq: number) => void;
+  refetch: (seq: number) => void;
   retry: (clientId: string) => void;
   discard: (clientId: string) => void;
 };
@@ -91,7 +92,7 @@ export const MessageRow = memo(function MessageRow({ rowKey, message: m, status,
             </button>
           )}
           <Body message={m} members={ctx.members} />
-          {!m.deleted && <MessageAttachments attachments={m.attachments} />}
+          {!m.deleted && <MessageAttachments attachments={m.attachments} onExpired={() => actions.refetch(m.seq)} />}
           {!m.deleted && settled && <Reactions message={m} meId={ctx.meId} members={ctx.members} readOnly={ctx.readOnly} onReact={actions.react} />}
           {status === "failed" && (
             <div className="mt-1 flex items-center gap-2 text-[12px]">
