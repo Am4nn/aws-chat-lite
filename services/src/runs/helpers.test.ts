@@ -3,6 +3,7 @@ import { BUILT_IN } from "../agents/model.js";
 import type { RunEvent } from "../threads/types.js";
 import { delegateResult, helperKinds, noSuchAgent, startHelper } from "./helpers.js";
 import type { RoutedRun } from "./steps.js";
+import { agentCard } from "./tools.js";
 
 const runs = {
   allEvents: vi.fn(async (): Promise<RunEvent[]> => []),
@@ -12,6 +13,8 @@ const runs = {
   recorded: vi.fn(),
 };
 const threads = { threadById: vi.fn() };
+const agents = { byId: vi.fn() };
+vi.mock("../agents/repo.js", () => ({ agentsRepo: () => agents }));
 vi.mock("./repo.js", () => ({ runsRepo: () => runs }));
 vi.mock("./notify.js", () => ({ notifyRun: async () => {} }));
 vi.mock("./start.js", () => ({ roomDefaultModel: async () => "deepseek-flash" }));
@@ -51,17 +54,20 @@ describe("helperKinds", () => {
 });
 
 describe("startHelper", () => {
-  const researcher = { ...BUILT_IN, agentId: "a1", name: "researcher", builtIn: false, model: "room" as const, tools: [] };
+  const researcher = {
+    ...BUILT_IN, agentId: "a1", name: "researcher", builtIn: false, model: "room" as const, tools: [], instructions: "Find sources.\nCite them.",
+  };
   const run = {
     runId: "run1", roomId: "r1", threadId: "t1", number: 1, agentId: "agent", status: "running", pick: "sonnet", pickBy: "pick",
     model: "claude-sonnet-5-5", startedBy: "aman", startedAt: "2026-11-12T00:00:00.000Z", deadAt: "2026-11-12T01:00:00.000Z",
-    firstSeq: 1, seenSeq: 1, steps: 1, costMicros: 0, agent: BUILT_IN, others: [researcher],
+    firstSeq: 1, seenSeq: 1, steps: 1, costMicros: 0, agent: BUILT_IN, others: [agentCard(researcher)],
   } satisfies RoutedRun;
   const call = { id: "c1", name: "delegate", input: { agent: "researcher", task: "Look it up." } };
 
   beforeEach(() => {
     vi.clearAllMocks();
     threads.threadById.mockResolvedValue({ taint: [] });
+    agents.byId.mockResolvedValue(researcher);
     runs.recorded.mockResolvedValue({ model: "claude-haiku-5-5", by: "auto", costMicros: 0 });
   });
 
@@ -73,5 +79,16 @@ describe("startHelper", () => {
   it("moves a helper off DeepSeek when the turn saw private content the thread hasn't stored yet", async () => {
     const handover = await startHelper(run, call, ["attachment"]);
     expect("helper" in handover && handover.helper.model).toBe("claude-haiku-5-5");
+  });
+
+  it("hands the helper its whole agent, read when it starts", async () => {
+    const handover = await startHelper(run, call, []);
+    expect(agents.byId).toHaveBeenCalledWith("r1", "a1");
+    expect("helper" in handover && handover.helper.agent).toMatchObject({ name: "researcher", instructions: "Find sources.\nCite them." });
+  });
+
+  it("refuses an agent deleted since the run started, as one the room doesn't have", async () => {
+    agents.byId.mockResolvedValue({ ...researcher, deleted: true });
+    expect(await startHelper(run, call, [])).toEqual({ result: { steps: 2, costMicros: 0 } });
   });
 });

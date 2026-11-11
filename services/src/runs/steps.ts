@@ -27,7 +27,7 @@ import { endReason, stoppedBy } from "./model.js";
 import { notifyRun } from "./notify.js";
 import { systemPrompt } from "./prompt.js";
 import { runsRepo, type Run } from "./repo.js";
-import { delegateSpec, mayRun, runTool, SANDBOX_TOOL, toolDetail, toolsFor } from "./tools.js";
+import { agentCard, delegateSpec, mayRun, runTool, SANDBOX_TOOL, toolDetail, toolsFor, type AgentCard } from "./tools.js";
 
 /*
  * The bodies of the run loop's durable steps. A step that fails is run again with the same input, so each one reads
@@ -52,7 +52,7 @@ type Helper = { lane: number; step: number; task: string; parent: string };
  * A run once its model is settled, with the agent that answers it and the room's other agents, as `load` read them.
  * A helper works on the same run from its own lane, with its own agent and model, and no others: it can't hand on.
  */
-export type RoutedRun = Run & { model: string; agent: Agent; others: Agent[]; helper?: Helper };
+export type RoutedRun = Run & { model: string; agent: Agent; others: AgentCard[]; helper?: Helper };
 
 export const laneOf = (run: RoutedRun) => run.helper?.lane ?? 0;
 /**
@@ -76,7 +76,7 @@ export const toolRoom = (run: RoutedRun, tainted: boolean): ToolEnv["room"] =>
  * Null when the run is already over (its start failed after the invoke was accepted). The agent is read once, here,
  * so an edit made while the run works applies from the next run on. One deleted since the run started is the built-in.
  */
-export async function load(runId: string): Promise<{ run: Run; provisional: boolean; agent: Agent; others: Agent[] } | null> {
+export async function load(runId: string): Promise<{ run: Run; provisional: boolean; agent: Agent; others: AgentCard[] } | null> {
   const run = await runsRepo().getRun(runId);
   if (run?.status !== "running") return null;
   const agents = agentsRepo();
@@ -85,7 +85,7 @@ export async function load(runId: string): Promise<{ run: Run; provisional: bool
   ]);
   const agent = agentOrDefault(stored);
   // A thread keeps its `thread-<N>` name until someone or a run names it; names like that can't be picked.
-  return { run, provisional: !!thread && isNumberedName(thread.name), agent, others: all.filter((a) => a.agentId !== agent.agentId) };
+  return { run, provisional: !!thread && isNumberedName(thread.name), agent, others: all.filter((a) => a.agentId !== agent.agentId).map(agentCard) };
 }
 
 /** Stop, budget, steps and time, checked before every model call and every tool call. */

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { BUILT_IN } from "../agents/model.js";
 import type { McpConnection, ToolKind } from "../threads/types.js";
 import { findTool } from "../tools/index.js";
-import { asksFirst, delegateSpec, FAKE_TOOLS, mayRun, runTool, SANDBOX_TOOL, toolDetail, toolsFor } from "./tools.js";
+import { agentCard, asksFirst, delegateSpec, FAKE_TOOLS, mayRun, runTool, SANDBOX_TOOL, toolDetail, toolsFor } from "./tools.js";
 
 const conn = (status: McpConnection["status"]): McpConnection => ({
   name: "test", url: "http://127.0.0.1:4710/mcp", auth: "oauth", status, toolCount: 1, toolsAt: "2026-11-11T00:00:00Z", addedBy: "aman",
@@ -144,12 +144,16 @@ describe("toolsFor", () => {
 describe("delegateSpec", () => {
   const researcher = { ...BUILT_IN, agentId: "a1", name: "researcher", builtIn: false, instructions: `\n  Find sources.${"x".repeat(200)}\nCite them.` };
 
+  it("knows another agent by its id, its name and the first line of its instructions, so a run carries no full instructions", () => {
+    expect(agentCard(researcher)).toEqual({ agentId: "a1", name: "researcher", about: `Find sources.${"x".repeat(200)}`.slice(0, 120) });
+  });
+
   it("isn't offered when the room has no other agent", () => {
     expect(delegateSpec([])).toBeUndefined();
   });
 
   it("names each agent it can hand to, by the first line of its instructions", () => {
-    const spec = delegateSpec([BUILT_IN, researcher])!;
+    const spec = delegateSpec([BUILT_IN, researcher].map(agentCard))!;
     expect(spec.name).toBe("delegate");
     expect(spec.inputSchema).toMatchObject({ properties: { agent: { enum: ["agent", "researcher"] }, task: { type: "string" } }, required: ["agent", "task"] });
     const roster = spec.description.split("\n").slice(-2);

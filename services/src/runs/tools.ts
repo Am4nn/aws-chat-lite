@@ -36,13 +36,19 @@ export const DELEGATE = "delegate";
 const DELEGATE_ABOUT = "Hand one sub-task to another agent of this room. It sees only the task you write, works with its own "
   + "tools and instructions, and its final answer comes back as this tool's result.";
 
+/**
+ * Another agent of the room as a run knows it: enough to pick it for a sub-task. The run's first step checkpoints
+ * the room's other agents, and twenty full instructions would come near the checkpoint's size limit, so a helper's
+ * whole agent is read when it starts.
+ */
+export type AgentCard = Pick<Agent, "agentId" | "name"> & { about: string };
+
+export const agentCard = (a: Agent): AgentCard => ({ agentId: a.agentId, name: a.name, about: firstLine(a.instructions).slice(0, 120) });
+
 /** The tool that hands a sub-task to one of `others`, the agents a run's agent can ask; none when there are none. */
-export function delegateSpec(others: Agent[]): ToolSpec | undefined {
+export function delegateSpec(others: AgentCard[]): ToolSpec | undefined {
   if (!others.length) return undefined;
-  const roster = others.map((a) => {
-    const line = firstLine(a.instructions).slice(0, 120);
-    return line ? `@${a.name}: ${line}` : `@${a.name}`;
-  });
+  const roster = others.map((a) => (a.about ? `@${a.name}: ${a.about}` : `@${a.name}`));
   return {
     name: DELEGATE,
     description: [DELEGATE_ABOUT, "Agents:", ...roster].join("\n"),

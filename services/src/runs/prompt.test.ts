@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { BUILT_IN } from "../agents/model.js";
 import type { Agent, MemoryEntry } from "../threads/types.js";
 import { systemPrompt } from "./prompt.js";
+import { agentCard } from "./tools.js";
 
 const reviewer: Agent = { ...BUILT_IN, agentId: "a1", name: "reviewer", instructions: "Review PRs.\nBe brief.", builtIn: false };
 const entry = (memoryId: string, text: string, isPrivate: boolean): MemoryEntry => ({
@@ -10,7 +11,7 @@ const entry = (memoryId: string, text: string, isPrivate: boolean): MemoryEntry 
 });
 const memory = [entry("aaaa1111", "We ship on Fridays.", false), entry("bbbb2222", "The secret plan is X.", true)];
 const prompt = (o: Partial<Parameters<typeof systemPrompt>[0]> = {}) =>
-  systemPrompt({ agent: reviewer, others: [BUILT_IN], memory, privateOk: true, ...o });
+  systemPrompt({ agent: reviewer, others: [agentCard(BUILT_IN)], memory, privateOk: true, ...o });
 
 describe("systemPrompt", () => {
   it("names the agent and gives its instructions after the base prompt", () => {

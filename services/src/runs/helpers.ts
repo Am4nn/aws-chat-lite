@@ -1,16 +1,18 @@
+import { agentOrDefault } from "../agents/model.js";
+import { agentsRepo } from "../agents/repo.js";
 import { modelInfo } from "../models/catalog.js";
 import type { ToolCall } from "../models/gateway.js";
 import { resolvePick } from "../models/picks.js";
 import { mergeTaint, type TaintSource } from "../models/privacy.js";
 import { summaryLine } from "../threads/model.js";
 import { threadsRepo } from "../threads/repo.js";
-import type { Agent, RunEvent, ToolKind } from "../threads/types.js";
+import type { RunEvent, ToolKind } from "../threads/types.js";
 import { answerOf, inLane } from "./context.js";
 import { notifyRun } from "./notify.js";
 import { runsRepo } from "./repo.js";
 import { roomDefaultModel } from "./start.js";
 import { chooseModel, costOf, laneName, limitsReached, type End, type RoutedRun, type StepResult } from "./steps.js";
-import { firstLine } from "./tools.js";
+import { firstLine, type AgentCard } from "./tools.js";
 
 /*
  * The two steps around a helper's work: the delegate step starts in the main lane, the helper works in a lane of its
@@ -22,7 +24,7 @@ const MAX_ANSWER = 20_000;
 const ERROR = "The agent hit an error.";
 
 
-export const noSuchAgent = (name: string, others: Agent[]) =>
+export const noSuchAgent = (name: string, others: Pick<AgentCard, "name">[]) =>
   `There's no @${name} in this room. Agents: ${others.map((a) => `@${a.name}`).join(", ")}.`;
 
 /** The delegate step's result, as the agent that delegated reads it: the helper's answer, or why it has none. */
@@ -37,8 +39,8 @@ const stepEvent = (events: RunEvent[], type: RunEvent["type"], step: number) =>
 
 /**
  * The delegate step's start, which a retry repeats without logging anything twice. It logs the main lane's step, then
- * either refuses an agent the room doesn't have (the run's own agent is not among `others`) or hands the task to the
- * named one: the next lane, and the helper's model, picked as a new run's would be from the agent's own model, Auto
+ * either refuses an agent the room doesn't have (the run's own agent is not among `others`, and one deleted since the
+ * run started is gone) or hands the task to the named one, read in full now: the next lane, and the helper's model, picked as a new run's would be from the agent's own model, Auto
  * routing on the task, kept off models that may not see the private content the thread or the delegating turn holds
  * (`taint`, which the thread's stored one can lag behind). The handover is the helper's run, which starts at the
  * delegate step's number, so its steps follow on from it.
@@ -59,14 +61,16 @@ export async function startHelper(
   });
   await notifyRun(run.roomId, await runs.progress(run, { steps: step, currentStep: name }), started.seq);
 
-  const agent = run.others.find((a) => a.name === name);
-  if (!agent) {
+  const card = run.others.find((a) => a.name === name);
+  const stored = card ? await agentsRepo().byId(run.roomId, card.agentId) : null;
+  if (!stored || stored.deleted) {
     const refused = stepEvent(events, "step.finished", step) ?? await (await runs.eventWriter(run.runId)).append({
       type: "step.finished", step, output: noSuchAgent(name, run.others), ms: Date.now() - Date.parse(started.at), ok: false,
     });
     await notifyRun(run.roomId, await runs.stepDone(run), refused.seq);
     return { result: { steps: step, costMicros: run.costMicros } };
   }
+  const agent = agentOrDefault(stored);
 
   // Helpers work one at a time, each in the lane after the last one's.
   const helpers = events.filter((e) => e.type === "helper.started");
