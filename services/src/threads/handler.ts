@@ -6,11 +6,10 @@ import { errorResponse, json, parseBody } from "../lib/http.js";
 import { budgetRepo, type BudgetRepo } from "../budget/repo.js";
 import { capFromUsd } from "../budget/model.js";
 import { idOf } from "../chat/model.js";
-import { parsePick } from "../models/picks.js";
-import { startOrSteer } from "../runs/start.js";
 import { issueStreamTicket } from "../runs/stream-tickets.js";
 import { claimableName, threadName } from "./model.js";
 import { threadsRepo, type ThreadsRepo } from "./repo.js";
+import { startThread } from "./start-thread.js";
 
 type Event = APIGatewayProxyEventV2WithJWTAuthorizer;
 
@@ -19,8 +18,8 @@ type Event = APIGatewayProxyEventV2WithJWTAuthorizer;
  * stream, and a member's decision on a write the agent asked to make. No route deletes a thread.
  */
 export function makeHandler(
-  threads: Pick<ThreadsRepo, "createThread" | "rename" | "threadById">, budget: Pick<BudgetRepo, "setCap">,
-  startRun: typeof startOrSteer, issueTicket: typeof issueStreamTicket, decide: typeof decideApproval,
+  threads: Pick<ThreadsRepo, "rename">, budget: Pick<BudgetRepo, "setCap">, start: typeof startThread,
+  issueTicket: typeof issueStreamTicket, decide: typeof decideApproval,
 ) {
   return async (event: Event): Promise<APIGatewayProxyStructuredResultV2> => {
     const params = event.pathParameters ?? {};
@@ -30,22 +29,8 @@ export function makeHandler(
     try {
       switch (event.routeKey) {
         case "POST /rooms/{roomId}/threads": {
-          const user = callerFromEvent(event);
-          const roomId = params.roomId!;
-          if (typeof body.text !== "string" || !body.text.trim()) throw new ValidationError("A new thread needs a first message.");
-          // A new thread holds only this text (files come over the socket), so no pick is refused for privacy here.
-          const pick = parsePick(body.model, process.env.STAGE ?? "");
-          const created = await threads.createThread(user, roomId, { text: body.text, clientId: idOf(body.clientId, "clientId") });
-          // The thread and its message exist now, so a failed start is no reason to fail the request: a client that
-          // retried would make a second thread. The next message in the thread starts the run.
-          try {
-            await startRun(user, roomId, created.thread.threadId, created.message, pick);
-          } catch (e) {
-            console.error("run start failed", roomId, created.thread.threadId, e);
-          }
-          // Read again so the reply shows the run that just started.
-          const thread = await threads.threadById(roomId, created.thread.threadId);
-          return json(201, { thread, message: created.message });
+          const input = { text: body.text, clientId: idOf(body.clientId, "clientId"), model: body.model };
+          return json(201, await start(callerFromEvent(event), params.roomId!, input));
         }
         case "PATCH /rooms/{roomId}/threads/{threadId}": {
           const name = claimableName(threadName(body.name));
@@ -78,4 +63,4 @@ export function makeHandler(
 // Built on first use, so tests can import makeHandler without a table configured.
 let liveHandler: ReturnType<typeof makeHandler> | undefined;
 export const handler = (event: Event) =>
-  (liveHandler ??= makeHandler(threadsRepo(), budgetRepo(), startOrSteer, issueStreamTicket, decideApproval))(event);
+  (liveHandler ??= makeHandler(threadsRepo(), budgetRepo(), startThread, issueStreamTicket, decideApproval))(event);
