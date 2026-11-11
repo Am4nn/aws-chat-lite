@@ -17,7 +17,7 @@ type AgentInput = Pick<Agent, "name" | "instructions" | "tools" | "model">;
 const agentKey = (roomId: string, agentId: string) => ({ pk: roomKey(roomId), sk: `AGENT#${agentId}` });
 const nameKey = (roomId: string, name: string) => ({ pk: roomKey(roomId), sk: `AGENTNAME#${name}` });
 const metaKey = (roomId: string) => ({ pk: roomKey(roomId), sk: "META" });
-const BUILT_IN_REFUSAL = "The built-in @agent can't be renamed, deleted or copied.";
+export const BUILT_IN_REFUSAL = "The built-in @agent can't be renamed, deleted or copied.";
 const taken = (name: string) => new Conflict(`@${name} is taken in this room.`);
 const changed = (name: string) => new Conflict(`@${name} just changed; try again.`);
 
