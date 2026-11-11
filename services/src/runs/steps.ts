@@ -9,7 +9,7 @@ import { JOBS, NAMING_MODEL, ROUTER_MODEL } from "../models/catalog.js";
 import { gateway } from "../models/index.js";
 import { NAME_PROMPT, type ModelChunk, type ModelGateway, type ModelRequest, type ToolCall, type ToolSpec } from "../models/gateway.js";
 import { modelIdOf, parseRoute, ROUTER_PROMPT, routerInput } from "../models/picks.js";
-import { mergeTaint, messageTaint, runRefusal } from "../models/privacy.js";
+import { mcpTaint, mergeTaint, messageTaint, runRefusal, type TaintSource } from "../models/privacy.js";
 import { isNumberedName } from "../threads/model.js";
 import { threadsRepo } from "../threads/repo.js";
 import type { RunEndStatus, RunEvent, Source } from "../threads/types.js";
@@ -229,8 +229,8 @@ async function readSteers(run: Run, events: RunEvent[], writer: Writer): Promise
   return seenSeq;
 }
 
-/** `tainted`: the thread held private content when the model answered, which its tool calls' gates need. */
-type Turn = { toolCalls: ToolCall[]; seenSeq: number; costMicros: number; end?: End; tainted?: boolean };
+/** `taint`: the private content the thread held when the model answered, which its tool calls' gates need. */
+type Turn = { toolCalls: ToolCall[]; seenSeq: number; costMicros: number; end?: End; taint?: TaintSource[] };
 
 /**
  * One model call: the loop's `model-<turn>` step. First the limits, then the messages members sent since the run
@@ -261,14 +261,14 @@ export async function modelTurn(run: RoutedRun, turn: number): Promise<Turn> {
     events.push(await writer.append({ type: "text.reset", turn }));
   }
   const tools = toolsFor(run.model, models().servedBy(run.model), { ...room, github: room.github !== null });
-  return stream(run, writer, buildContext(prior, events), events, { turn, seenSeq, tools, tainted: taint.length > 0 });
+  return stream(run, writer, buildContext(prior, events), events, { turn, seenSeq, tools, taint });
 }
 
 async function stream(
   run: RoutedRun, writer: Writer, messages: ReturnType<typeof buildContext>, events: RunEvent[],
-  at: { turn: number; seenSeq: number; tools: ToolSpec[]; tainted: boolean },
+  at: { turn: number; seenSeq: number; tools: ToolSpec[]; taint: TaintSource[] },
 ): Promise<Turn> {
-  const { turn, seenSeq, tools, tainted } = at;
+  const { turn, seenSeq, tools, taint } = at;
   const stop = watchStop(run.runId);
   let failure: unknown;
   let pending = "";
@@ -320,7 +320,7 @@ async function stream(
     return chargeAndRetry(e, true);
   }
   const settle = (result: Pick<Turn, "toolCalls" | "end">) => {
-    const turnResult = { ...result, seenSeq, costMicros: spent + (call.usage?.costMicros ?? 0), tainted };
+    const turnResult = { ...result, seenSeq, costMicros: spent + (call.usage?.costMicros ?? 0), taint };
     if (!call.usage) return turnResult;
     return recordCall(run, writer, { model: run.model, job: "run", step: `model-${turn}` }, call.usage, turnResult);
   };
@@ -387,7 +387,8 @@ async function runRoomTool(run: RoutedRun, tool: Tool, call: ToolCall, { room, s
   if (refused) return { ok: false, output: refused };
   if ((tool.write || settled) && settled?.status !== "approved") return { ok: false, output: unapproved(settled) };
   if (tool.write && rerun) return { ok: false, output: unsure(tool.kind === "mcp" ? mcpServerOf(call.name) : "GitHub") };
-  if (tool.kind === "github" || tool.kind === "mcp") await threadsRepo().addTaint(run.roomId, run.number, [tool.kind]);
+  if (tool.kind === "github") await threadsRepo().addTaint(run.roomId, run.number, ["github"]);
+  if (tool.kind === "mcp") await threadsRepo().addTaint(run.roomId, run.number, [mcpTaint(mcpServerOf(call.name))]);
   await auditRepo().record(run.roomId, {
     id: `${run.runId}#${started.seq}`, at: started.at, actor: "agent", kind: "tool", threadNumber: run.number, tool: call.name,
     detail: tool.detail(input),

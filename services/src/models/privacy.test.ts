@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mergeTaint, messageTaint, PICK_REFUSED, pickRefusal, RUN_REFUSED, runRefusal } from "./privacy.js";
+import { mcpTaint, mergeTaint, messageTaint, PICK_REFUSED, pickRefusal, RUN_REFUSED, runRefusal } from "./privacy.js";
 
 describe("taint", () => {
   it("marks a message with an attachment", () => expect(messageTaint({ attachments: [{}] })).toEqual(["attachment"]));
@@ -11,6 +11,10 @@ describe("taint", () => {
     expect(mergeTaint(["attachment"], [], ["attachment"])).toEqual(["attachment"]);
     expect(mergeTaint(["sandbox"], ["github"], ["attachment", "sandbox"])).toEqual(["attachment", "github", "sandbox"]);
   });
+  it("records MCP output per server", () => {
+    expect(mcpTaint("notes")).toBe("mcp:notes");
+    expect(mergeTaint([mcpTaint("b")], [mcpTaint("a"), "github"])).toEqual(["github", "mcp:a", "mcp:b"]);
+  });
 });
 
 describe("pickRefusal", () => {
@@ -18,6 +22,7 @@ describe("pickRefusal", () => {
     expect(pickRefusal("deepseek-flash", ["attachment"])).toBe(PICK_REFUSED);
     expect(pickRefusal("deepseek-flash", ["github"])).toBe(PICK_REFUSED);
     expect(PICK_REFUSED).toContain("GitHub data");
+    expect(pickRefusal("deepseek-flash", ["mcp:notes"])).toBe(PICK_REFUSED);
   });
   it("allows everything else", () => {
     expect(pickRefusal("sonnet", ["attachment"])).toBeNull();
@@ -30,6 +35,8 @@ describe("pickRefusal", () => {
 describe("runRefusal", () => {
   it("fails a DeepSeek run that meets private content", () =>
     expect(runRefusal("deepseek-v4-pro", ["attachment"])).toEqual({ status: "failed", reason: RUN_REFUSED }));
+  it("fails one that meets any server's MCP output", () =>
+    expect(runRefusal("deepseek-v4-pro", ["mcp:notes"])).toEqual({ status: "failed", reason: RUN_REFUSED }));
   it("lets other models run", () => expect(runRefusal("claude-sonnet-5-5", ["attachment"])).toBeNull());
 });
 

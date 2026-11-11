@@ -43,7 +43,7 @@ export async function runLoop({ runId }: { runId: string }, ctx: DurableContext)
         continue;
       }
       for (const call of turn.toolCalls) {
-        const gate = await step(`gate-${i}-${call.id}`, () => gateOf(run, call, !!turn.tainted));
+        const gate = await step(`gate-${i}-${call.id}`, () => gateOf(run, call, turn.taint ?? []));
         let settled: Approval | undefined;
         if (gate.asks) {
           const n = run.steps + 1;

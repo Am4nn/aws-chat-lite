@@ -9,6 +9,7 @@ import { docClient, tableName } from "../lib/db.js";
 import { connectTestServer } from "../mcp/testing/connect.js";
 import { startMcpTestServer } from "../mcp/testing/server.js";
 import type { ModelPick } from "../models/catalog.js";
+import type { TaintSource } from "../models/privacy.js";
 import { roomsRepo } from "../rooms/repo.js";
 import { threadsRepo } from "../threads/repo.js";
 import type { RunEvent } from "../threads/types.js";
@@ -95,8 +96,32 @@ describe("room MCP tools in the run loop, on Floci", { timeout: 60_000 }, () => 
     expect((await finished(runId)).status).toBe("done");
     expect(await eventsOf(runId, "approval.requested")).toEqual([]);
     expect(await eventsOf(runId, "step.finished")).toMatchObject([{ ok: true, output: "echo: fake" }]);
-    expect((await threadsRepo().threadById(at.roomId, thread.threadId))!.taint).toContain("mcp");
+    expect((await threadsRepo().threadById(at.roomId, thread.threadId))!.taint).toEqual(["mcp:test"]);
     expect(server.calls).toContainEqual({ tool: "echo", input: { text: "fake" }, sub: "tester" });
+  });
+
+  it("a read-only tool asks first once the thread holds other private content, but not for that server's own output", async () => {
+    const server = await testServer(4727);
+    const at = await room(server);
+    const tainted = async (taint: TaintSource[]) => {
+      const { thread, message } = await threadsRepo().createThread(at.aman, at.roomId, { text: "go call:mcp__test__echo", clientId: `k${++clients}` });
+      await threadsRepo().addTaint(at.roomId, thread.number, taint);
+      return { thread, ...(await startOrSteer(at.aman, at.roomId, thread.threadId, message)) };
+    };
+
+    const own = await tainted(["mcp:test"]);
+    expect((await finished(own.runId)).status).toBe("done");
+    expect(await eventsOf(own.runId, "approval.requested")).toEqual([]);
+
+    const github = await tainted(["github"]);
+    const waiting = await until("the thread to wait", async () => {
+      const t = await threadsRepo().threadById(at.roomId, github.thread.threadId);
+      return t?.status === "waiting" ? t : undefined;
+    });
+    expect(waiting.approval).toMatchObject({ step: 1, title: "Run echo on test?" });
+    await decideApproval(at.bea, github.runId, 1, "approve");
+    expect((await finished(github.runId)).status).toBe("done");
+    expect(await eventsOf(github.runId, "step.finished")).toMatchObject([{ ok: true, output: "echo: fake" }]);
   });
 
   it("a tool not marked read-only waits for a member, then runs once with the input the card showed", async () => {

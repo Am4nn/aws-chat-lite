@@ -96,7 +96,8 @@ export type ThreadSummary = {
 // Model choice: mirrors services/src/models/catalog.ts and privacy.ts.
 export type ModelPick = "auto" | "sonnet" | "haiku" | "opus" | "fable" | "deepseek-flash" | "deepseek-pro" | "fake";
 export type ModelOption = { pick: ModelPick; id?: string; label: string; short: string; price: string; privateOk: boolean };
-export type TaintSource = "attachment" | "github" | "mcp" | "sandbox";
+/** MCP output is recorded per server, as `mcp:<name>`. */
+export type TaintSource = "attachment" | "github" | "sandbox" | `mcp:${string}`;
 
 export type Budget = { spentMicros: number; capMicros: number; month: string; resetsAt: string };
 
