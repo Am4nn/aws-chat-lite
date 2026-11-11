@@ -1,4 +1,5 @@
 import { modelInfo, type Provider } from "../models/catalog.js";
+import { ASPECTS } from "../images/step.js";
 import type { ToolCall, ToolSpec } from "../models/gateway.js";
 import { LANGUAGES, MAX_TIMEOUT_SEC } from "../sandbox/sandbox.js";
 import { findTool, roomTools, type RoomMcp } from "../tools/index.js";
@@ -26,16 +27,33 @@ export const SANDBOX_TOOL: ToolSpec = {
   },
 };
 
+export const IMAGE_TOOL: ToolSpec = {
+  name: "image_generate",
+  description: "Generate an image from a text description, with Gemini. "
+    + "It is saved to the room's files under images/ and shown in the thread. About $0.07 per image.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      prompt: { type: "string", minLength: 1, maxLength: 2000 },
+      aspect: { enum: [...ASPECTS] },
+      name: { type: "string", description: "A few words to name the file by." },
+    },
+    required: ["prompt"],
+  },
+};
+
 /**
  * The tools a model is offered. Sandbox output carries room files, so only a model that may see private content gets
- * the sandbox; the fake's tools are ones only the fake accepts; GitHub's need the room to be connected, and an MCP
- * server's a signed-in connection.
+ * the sandbox; images go to every model, since what comes back is only the file's path, never the image. The fake's
+ * tools are ones only the fake accepts; GitHub's need the room to be connected, and an MCP server's a signed-in
+ * connection.
  */
 export function toolsFor(model: string, served: Provider, room: RoomMcp & { github: boolean }): ToolSpec[] {
   const privateOk = modelInfo(model).privateOk;
   return [
     ...(served === "fake" ? FAKE_TOOLS : []),
     ...(privateOk ? [SANDBOX_TOOL] : []),
+    IMAGE_TOOL,
     ...roomTools({ ...room, privateOk }).map((t) => t.spec),
   ];
 }
@@ -55,6 +73,7 @@ const firstLine = (code: unknown) => String(code ?? "").split("\n").map((l) => l
 export function toolDetail(call: ToolCall, room: RoomMcp): string {
   if (call.name === "fake.lookup") return `Looking up "${call.input.query}"`;
   if (call.name === SANDBOX_TOOL.name) return `Running ${call.input.language}: ${firstLine(call.input.code).slice(0, 60)}`;
+  if (call.name === IMAGE_TOOL.name) return `Drawing "${String(call.input.prompt ?? "").slice(0, 60)}"`;
   return findTool(call.name, room)?.detail(call.input) ?? call.name;
 }
 

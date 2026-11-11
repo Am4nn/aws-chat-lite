@@ -93,7 +93,8 @@ export async function startOrSteer(
   const deadAt = new Date(now.getTime() + DEAD_AFTER_MS).toISOString();
   const run: Run = {
     runId: randomUUID(), roomId, threadId, number: thread.number, status: "running", pick: chosen.pick, pickBy: chosen.by,
-    startedBy: user.username, startedAt, deadAt, firstSeq: message.seq, seenSeq: message.seq, steps: 0, costMicros: 0,
+    startedBy: user.username, startedById: user.userId, startedAt, deadAt, firstSeq: message.seq, seenSeq: message.seq, steps: 0,
+    costMicros: 0,
   };
   const start = setFields({
     activeRunId: run.runId, runId: run.runId, runFirstSeq: message.seq, status: "running", startedAt, deadAt, steps: 0, costMicros: 0,

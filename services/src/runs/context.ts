@@ -1,7 +1,7 @@
 import { inlineType } from "../chat/files.js";
 import type { Attachment, Message } from "../chat/model.js";
 import type { ImagePart, ModelMessage, ToolCall } from "../models/gateway.js";
-import type { RunEvent } from "../threads/types.js";
+import type { GeneratedImage, RunEvent } from "../threads/types.js";
 
 type Assistant = Extract<ModelMessage, { role: "assistant" }>;
 
@@ -65,19 +65,21 @@ export function buildContext(prior: Message[], events: RunEvent[]): ModelMessage
 }
 
 /**
- * The run's answer: every text event in order (what viewers saw stream, less any attempt voided), and the final turn's text, the part
- * after the last tool step or steer, which the thread's card summarizes.
+ * The run's answer: every text event in order (what viewers saw stream, less any attempt voided), the final turn's text, the part
+ * after the last tool step or steer, which the thread's card summarizes, and the images its steps made.
  */
-export function answerOf(events: RunEvent[]): { text: string; final: string } {
+export function answerOf(events: RunEvent[]): { text: string; final: string; images: GeneratedImage[] } {
   let text = "";
   let final = "";
+  const images: GeneratedImage[] = [];
   for (const e of withoutVoided(events)) {
     if (e.type === "text") {
       text += e.text;
       final += e.text;
     } else if (e.type === "step.started" || e.type === "step.finished" || e.type === "steer") {
       final = "";
+      if (e.type === "step.finished" && e.image) images.push(e.image);
     }
   }
-  return { text, final: final.trim() };
+  return { text, final: final.trim(), images };
 }

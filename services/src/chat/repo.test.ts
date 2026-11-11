@@ -3,9 +3,15 @@ import { GetCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from "@
 import { docClient } from "../lib/db.js";
 import { chatRepo } from "./repo.js";
 
+const pushed = vi.hoisted(() => [] as unknown[]);
+vi.mock("../push/enqueue.js", () => ({ enqueuePush: async (job: unknown) => void pushed.push(job) }));
+
 Object.assign(process.env, { TABLE_NAME: "t", AWS_REGION: "us-east-1" });
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  pushed.length = 0;
+});
 
 const me = { userId: "u1", username: "ann" };
 const at = { roomId: "r1", chatId: "c1" };
@@ -85,5 +91,35 @@ describe("transaction conflicts", () => {
   it("an edit that clashes with another transaction asks to try again", async () => {
     fakeTable(stored(), () => { throw conflict(); });
     await expect(chatRepo().edit(me, { ...at, seq: 1, text: "hello" })).rejects.toThrow("That message just changed; try again.");
+  });
+});
+
+describe("mention pushes", () => {
+  const bea = { userId: "u2", username: "bea" };
+  const cy = { userId: "u3", username: "cy" };
+  /** Every write answers as the chat counter does, and a member query lists ann, bea and cy. */
+  const roomOfThree = (message: object) => fakeTable(message, (c) => {
+    if (c instanceof QueryCommand) return { Items: [me, bea, cy] };
+    return { Attributes: { lastSeq: 2 } };
+  });
+
+  it("a send tells the members it mentions, never its author", async () => {
+    roomOfThree(stored());
+    await chatRepo().send(me, { ...at, clientId: "k", text: "@bea @ann look" }, { text: "@bea @ann look", attachments: [] });
+    expect(pushed).toEqual([{
+      kind: "mention", roomId: "r1", chatId: "c1", seq: 2, authorName: "ann", text: "@bea @ann look", everyone: false, userIds: ["u2"],
+    }]);
+  });
+
+  it("an edit tells only the members it newly mentions", async () => {
+    roomOfThree(stored({ text: "@cy hi", mentions: ["u3"] }));
+    await chatRepo().edit(me, { ...at, seq: 1, text: "@cy @bea hi" });
+    expect(pushed).toMatchObject([{ kind: "mention", seq: 1, text: "@cy @bea hi", userIds: ["u2"] }]);
+  });
+
+  it("a copy of a message sent elsewhere tells no one again", async () => {
+    roomOfThree(stored());
+    await chatRepo().send(me, { ...at, clientId: "k", text: "@bea" }, { text: "@bea", attachments: [] }, { copy: true });
+    expect(pushed).toEqual([]);
   });
 });

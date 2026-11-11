@@ -1,6 +1,7 @@
 import { SKIP_NOTE } from "../approvals/model.js";
 import type { Message } from "../chat/model.js";
 import { broadcastToRoom } from "../live/broadcast.js";
+import { enqueuePush } from "../push/enqueue.js";
 import { summaryLine } from "../threads/model.js";
 import { threadsRepo } from "../threads/repo.js";
 import type { RunEndStatus, RunEvent } from "../threads/types.js";
@@ -49,9 +50,9 @@ export async function finishRun(
   const events = await runs.allEvents(run.runId);
   const notes = skipNotes(events);
   const noted = notes.join("");
-  const { text, final } = answerOf(events);
+  const { text, final, images } = answerOf(events);
   const summary = end.status === "done" ? summaryLine(final + noted) : end.reason ?? "";
-  const { result, answer, endedAt } = await runs.closeRun(run, { ...end, text: text + noted, summary, ...opts });
+  const { result, answer, endedAt } = await runs.closeRun(run, { ...end, text: text + noted, images, summary, ...opts });
   if (result === "unread") return result;
   if (notes.length) {
     const writer = await runs.eventWriter(run.runId);
@@ -73,5 +74,20 @@ export async function finishRun(
   const thread = await threadsRepo().threadById(run.roomId, run.threadId);
   // A run replaced as dead closes without its thread, which now shows the newer run.
   if (thread?.runId === run.runId) await notifyRun(run.roomId, thread, last.seq);
+  if (result === "closed") await tellStarter(run, end, summary);
   return result;
+}
+
+/**
+ * The starter hears how their run ended, once: only the attempt whose close ended it tells them. A run its own starter
+ * stopped needs no news.
+ */
+async function tellStarter(run: Run, end: { status: RunEndStatus; reason?: string }, summary: string) {
+  if (!run.startedById) return;
+  const stopper = end.status === "stopped" ? (await runsRepo().getRun(run.runId))?.stopRequestedBy : undefined;
+  if (stopper === run.startedBy) return;
+  await enqueuePush({
+    kind: "run", roomId: run.roomId, threadId: run.threadId, number: run.number, status: end.status,
+    ...(end.status === "done" ? { summary } : { reason: end.reason }), ...(stopper && { stoppedBy: stopper }), userIds: [run.startedById],
+  });
 }
