@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { startLocalSandboxServer } from "./sandbox-local.js";
 import { startLocalStreamServer } from "./stream-local.js";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
@@ -8,17 +9,20 @@ const root = fileURLToPath(new URL("../../", import.meta.url));
 const npmCli = process.env.npm_execpath;
 if (!npmCli) throw new Error("Run this through npm: npm run dev");
 
+const sandbox = await startLocalSandboxServer();
 const stream = startLocalStreamServer();
 const web = spawn(process.execPath, [npmCli, "-w", "web", "run", "dev"], { cwd: root, stdio: "inherit" });
 
-function stopStream() {
-  stream.closeAllConnections();
-  stream.close();
+function stopServers() {
+  for (const server of [stream, sandbox]) {
+    server.closeAllConnections();
+    server.close();
+  }
 }
 
-// Ctrl+C reaches both processes; once the web server has gone, open streams are cut and this process exits too.
+// Ctrl+C reaches both processes; once the web server has gone, open streams and sandbox calls are cut and this process exits too.
 web.on("exit", (code) => {
-  stopStream();
+  stopServers();
   process.exit(code ?? 0);
 });
 for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => web.kill(signal));

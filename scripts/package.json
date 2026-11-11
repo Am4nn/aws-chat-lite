@@ -12,6 +12,7 @@
     "smoke": "tsx src/smoke.ts",
     "dev": "tsx src/dev.ts",
     "stream-local": "tsx src/stream-local.ts",
+    "sandbox-local": "tsx src/sandbox-local.ts",
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
