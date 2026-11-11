@@ -20,10 +20,7 @@ export function liveProviders(keys: ModelKeys): LiveProviders {
       ? anthropicProvider(new Anthropic({ apiKey: keys.anthropicKey }), "anthropic")
       : notSetUp("Claude isn't set up here (no ANTHROPIC_API_KEY)."),
     deepseek: keys.deepseekKey
-      ? anthropicProvider(
-          new Anthropic({ apiKey: keys.deepseekKey, baseURL: keys.deepseekBaseUrl ?? "https://api.deepseek.com/anthropic" }),
-          "deepseek",
-        )
+      ? anthropicProvider(new Anthropic({ apiKey: keys.deepseekKey, baseURL: keys.deepseekBaseUrl }), "deepseek")
       : notSetUp("DeepSeek isn't set up here (no DEEPSEEK_API_KEY)."),
   };
 }

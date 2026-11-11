@@ -87,6 +87,18 @@ describe("toMessages", () => {
     });
   });
 
+  it("drops whitespace-only text from a rebuilt assistant turn", () => {
+    const messages: ModelMessage[] = [
+      { role: "user", author: "aman", text: "go" },
+      { role: "assistant", text: " \n ", toolCalls: [c1] },
+      { role: "tool", toolCallId: "c1", output: "42" },
+    ];
+    expect(toMessages(messages, SONNET, "anthropic")[1]).toEqual({
+      role: "assistant",
+      content: [{ type: "tool_use", id: "c1", name: "get_number", input: {} }],
+    });
+  });
+
   const round: ModelMessage[] = [
     { role: "user", author: "aman", text: "go" },
     { role: "assistant", text: "Checking.", toolCalls: [c1, c2] },

@@ -29,18 +29,22 @@ async function ask(label: string, req: Omit<ModelRequest, "maxTokens" | "effort"
   const calls: ToolCall[] = [];
   let usage: Usage | undefined;
   let end: Extract<ModelChunk, { type: "end" }> | undefined;
-  for await (const chunk of live.stream(full)) {
-    if (chunk.type === "text") text += chunk.text;
-    else if (chunk.type === "tool_call") calls.push(chunk.call);
-    else if (chunk.type === "usage") usage = chunk;
-    else end = chunk;
-  }
-  if (usage) {
-    spentMicros += usage.costMicros;
-    rows.push(
-      `${full.model} | ${label} | in ${usage.inputTokens}, out ${usage.outputTokens}, cache r/w ${usage.cacheReadTokens}/${usage.cacheWriteTokens} | $${(usage.costMicros / 1e6).toFixed(6)} | total $${(spentMicros / 1e6).toFixed(6)}`,
-    );
-    console.log(rows.at(-1));
+  // A stream that fails mid-answer still reports what it cost before rejecting, and that counts against the cap.
+  try {
+    for await (const chunk of live.stream(full)) {
+      if (chunk.type === "text") text += chunk.text;
+      else if (chunk.type === "tool_call") calls.push(chunk.call);
+      else if (chunk.type === "usage") usage = chunk;
+      else end = chunk;
+    }
+  } finally {
+    if (usage) {
+      spentMicros += usage.costMicros;
+      rows.push(
+        `${full.model} | ${label} | in ${usage.inputTokens}, out ${usage.outputTokens}, cache r/w ${usage.cacheReadTokens}/${usage.cacheWriteTokens} | ${(usage.costMicros / 1e6).toFixed(6)} | total ${(spentMicros / 1e6).toFixed(6)}`,
+      );
+      console.log(rows.at(-1));
+    }
   }
   if (spentMicros > CAP_MICROS) throw new Error(`Real-model spend passed $0.50 ($${spentMicros / 1e6}).`);
   return { text, calls, usage, end };

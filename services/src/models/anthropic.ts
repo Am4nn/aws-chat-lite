@@ -48,7 +48,7 @@ function toTurn(m: ModelMessage, model: string, kind: Kind): Turn {
   return {
     role: "assistant",
     content: [
-      ...(m.text ? [{ type: "text" as const, text: m.text }] : []),
+      ...(m.text.trim() ? [{ type: "text" as const, text: m.text }] : []),
       ...(m.toolCalls ?? []).map((c) => ({ type: "tool_use" as const, id: c.id, name: c.name, input: c.input })),
     ],
   };

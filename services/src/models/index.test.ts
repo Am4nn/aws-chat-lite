@@ -103,7 +103,7 @@ describe("gateway", () => {
 
 describe("liveProviders", () => {
   it("refuses to stream a provider whose key is missing", async () => {
-    await expect(collect(liveProviders({}).anthropic.stream(request("claude-haiku-5-5", "hi")))).rejects.toThrow(
+    await expect(collect(liveProviders({ deepseekBaseUrl: "https://api.deepseek.com/anthropic" }).anthropic.stream(request("claude-haiku-5-5", "hi")))).rejects.toThrow(
       "Claude isn't set up here (no ANTHROPIC_API_KEY).",
     );
   });

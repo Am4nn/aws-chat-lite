@@ -48,6 +48,15 @@ describe("run engine", () => {
     });
   });
 
+  it("keeps the hand-set keys secret on AWS and lets cdk destroy remove it locally", () => {
+    const local = Object.values(template().findResources("AWS::SecretsManager::Secret"))[0] as any;
+    expect(local.DeletionPolicy).toBe("Delete");
+    const config = loadConfig("aws", {});
+    const aws = Template.fromStack(new CoreStack(new App(), "cl-aws-core", { config, env: { account: "111111111111", region: "ap-southeast-2" } }));
+    const secret = Object.values(aws.findResources("AWS::SecretsManager::Secret"))[0] as any;
+    expect(secret).toMatchObject({ DeletionPolicy: "Retain", UpdateReplacePolicy: "Retain" });
+  });
+
   it("the run function may read the model keys secret", () => {
     const { props } = fnNamed("cl-local-run");
     const secret = Object.keys(template().findResources("AWS::SecretsManager::Secret"))[0];
