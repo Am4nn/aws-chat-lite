@@ -7,10 +7,10 @@ import type { AuditEntry } from "../threads/types.js";
 const PAGE = 50;
 const auditSk = (cursor: string) => `AUDIT#${cursor}`;
 
-/**
- * A room's append-only log of what its agent asked for and did, and who changed its connections. Sorting the key by
- * time first makes a page of the newest entries one Query.
- */
+/** An entry as stored: under its room, sorted by time first, so a page of the newest is one Query. */
+export const auditItem = (roomId: string, entry: AuditEntry) => ({ pk: roomKey(roomId), sk: auditSk(`${entry.at}#${entry.id}`), ...entry });
+
+/** A room's append-only log of what its agent asked for and did, and who changed its connections. */
 export function auditRepo() {
   const db = docClient();
   const TableName = tableName();
@@ -24,7 +24,7 @@ export function auditRepo() {
       const entry = { ...e, id: e.id ?? randomUUID() };
       try {
         await db.send(new PutCommand({
-          TableName, Item: { pk: roomKey(roomId), sk: auditSk(`${entry.at}#${entry.id}`), ...entry },
+          TableName, Item: auditItem(roomId, entry),
           ConditionExpression: "attribute_not_exists(sk)",
         }));
       } catch (err) {

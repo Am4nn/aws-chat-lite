@@ -29,9 +29,9 @@ const statementsOf = (role: string) =>
     .flatMap((p: any) => p.Properties.PolicyDocument.Statement);
 
 describe("run engine", () => {
-  it("the run function is durable for 130 minutes, keeps executions 7 days and times out at 15 minutes", () => {
+  it("the run function is durable for 7 days (a write can wait that long for approval), keeps executions 7 days and times out at 15 minutes", () => {
     const { props } = fnNamed("cl-local-run");
-    expect(props.DurableConfig).toEqual({ ExecutionTimeout: 7800, RetentionPeriodInDays: 7 });
+    expect(props.DurableConfig).toEqual({ ExecutionTimeout: 7 * 24 * 3600, RetentionPeriodInDays: 7 });
     expect(props.Timeout).toBe(900);
     expect(props.Environment.Variables).toMatchObject({ MODEL_GATEWAY: "fake" });
     expect(props.Environment.Variables.WS_CALLBACK_URL).toBeDefined();
@@ -48,29 +48,52 @@ describe("run engine", () => {
     });
   });
 
-  it("keeps the hand-set keys secret on AWS and lets cdk destroy remove it locally", () => {
-    const local = Object.values(template().findResources("AWS::SecretsManager::Secret"))[0] as any;
-    expect(local.DeletionPolicy).toBe("Delete");
+  it("knows where its tool keys are, and calls real tools only when the stage asks", () => {
+    const secrets = Object.entries(template().findResources("AWS::SecretsManager::Secret", { Properties: { Name: "cl-local-tool-keys" } }));
+    expect(secrets).toHaveLength(1);
+    expect(fnNamed("cl-local-run").props.Environment.Variables).toMatchObject({ TOOL_MODE: "fake", TOOL_KEYS_SECRET: "cl-local-tool-keys" });
+    expect(fnNamed("cl-local-run", { ...FLOCI, TOOL_MODE: "live" }).props.Environment.Variables).toMatchObject({ TOOL_MODE: "live" });
+  });
+
+  it("keeps the hand-set keys secrets on AWS and lets cdk destroy remove them locally", () => {
+    const local = Object.values(template().findResources("AWS::SecretsManager::Secret")) as any[];
+    expect(local.map((s) => s.DeletionPolicy)).toEqual(["Delete", "Delete"]);
     const config = loadConfig("aws", {});
     const aws = Template.fromStack(new CoreStack(new App(), "cl-aws-core", { config, env: { account: "111111111111", region: "ap-southeast-2" } }));
-    const secret = Object.values(aws.findResources("AWS::SecretsManager::Secret"))[0] as any;
-    expect(secret).toMatchObject({ DeletionPolicy: "Retain", UpdateReplacePolicy: "Retain" });
+    const secrets = Object.values(aws.findResources("AWS::SecretsManager::Secret"));
+    expect(secrets).toHaveLength(2);
+    for (const secret of secrets) expect(secret).toMatchObject({ DeletionPolicy: "Retain", UpdateReplacePolicy: "Retain" });
   });
 
-  it("the run function may read the model keys secret", () => {
-    const { props } = fnNamed("cl-local-run");
-    const secret = Object.keys(template().findResources("AWS::SecretsManager::Secret"))[0];
-    const statements = statementsOf(props.Role["Fn::GetAtt"][0]);
-    expect(statements).toContainEqual(expect.objectContaining({
-      Action: expect.arrayContaining(["secretsmanager:GetSecretValue"]), Effect: "Allow", Resource: { Ref: secret },
-    }));
+  const secretId = (name: string) => Object.keys(template().findResources("AWS::SecretsManager::Secret", { Properties: { Name: name } }))[0];
+  const secretReads = (fn: string) => statementsOf(fnNamed(fn).props.Role["Fn::GetAtt"][0])
+    .filter((s: any) => [s.Action].flat().includes("secretsmanager:GetSecretValue"))
+    .map((s: any) => s.Resource.Ref);
+
+  it("the run function may read both keys secrets, the connections function only the tool keys, and no one else either", () => {
+    expect(secretReads("cl-local-run").sort()).toEqual([secretId("cl-local-model-keys"), secretId("cl-local-tool-keys")].sort());
+    expect(secretReads("cl-local-connections")).toEqual([secretId("cl-local-tool-keys")]);
+    expect(secretReads("cl-local-threads")).toEqual([]);
   });
 
-  it("no Lambda holds an API key in its environment", () => {
-    const names = Object.values(template().findResources("AWS::Lambda::Function"))
-      .flatMap((fn: any) => Object.keys(fn.Properties.Environment?.Variables ?? {}));
-    expect(names.length).toBeGreaterThan(0);
-    expect(names.filter((n) => /API_KEY/.test(n))).toEqual([]);
+  it("no Lambda holds a key in its environment, only the names of the secrets that do", () => {
+    for (const env of [FLOCI, { ...FLOCI, MODEL_GATEWAY: "live", TOOL_MODE: "live" }]) {
+      const names = Object.values(template(env).findResources("AWS::Lambda::Function"))
+        .flatMap((fn: any) => Object.keys(fn.Properties.Environment?.Variables ?? {}));
+      expect(names.length).toBeGreaterThan(0);
+      expect(names.filter((n) => /KEY|PEM/.test(n) && !n.endsWith("_SECRET"))).toEqual([]);
+    }
+  });
+
+  it("the threads and live Lambdas may wake a waiting run, and only on the run function", () => {
+    const arn = { "Fn::GetAtt": [fnNamed("cl-local-run").logicalId, "Arn"] };
+    for (const name of ["cl-local-threads", "cl-local-live"]) {
+      const callbacks = statementsOf(fnNamed(name).props.Role["Fn::GetAtt"][0])
+        .filter((s: any) => [s.Action].flat().includes("lambda:SendDurableExecutionCallbackSuccess"));
+      expect(callbacks, name).toEqual([{
+        Action: "lambda:SendDurableExecutionCallbackSuccess", Effect: "Allow", Resource: [arn, { "Fn::Join": ["", [arn, ":*"]] }],
+      }]);
+    }
   });
 
   it("has an alias named live", () => {

@@ -8,13 +8,18 @@ describe("loadConfig", () => {
     expect(loadConfig("local", FLOCI)).toEqual({
       stage: "local", prefix: "cl-local", isLocal: true, region: "us-east-1",
       siteOrigins: ["http://localhost:3000", "http://localhost:3100"], s3PublicEndpoint: "http://localhost:4566",
-      modelGateway: "fake",
+      modelGateway: "fake", toolMode: "fake",
     });
   });
 
   it("serves real models locally only when asked with MODEL_GATEWAY=live", () => {
     expect(loadConfig("local", { ...FLOCI, MODEL_GATEWAY: "live" }).modelGateway).toBe("live");
     expect(loadConfig("local", { ...FLOCI, MODEL_GATEWAY: "anything" }).modelGateway).toBe("fake");
+  });
+
+  it("calls real tools locally only when asked with TOOL_MODE=live", () => {
+    expect(loadConfig("local", { ...FLOCI, TOOL_MODE: "live" }).toolMode).toBe("live");
+    expect(loadConfig("local", { ...FLOCI, TOOL_MODE: "anything" }).toolMode).toBe("fake");
   });
 
   it("accepts the *.floci.io endpoint", () => {
@@ -24,7 +29,7 @@ describe("loadConfig", () => {
   it("builds the aws stage in ap-southeast-2 with no endpoint override", () => {
     expect(loadConfig("aws", {})).toEqual({
       stage: "aws", prefix: "cl-aws", isLocal: false, region: "ap-southeast-2", siteOrigins: ["https://chat.amanarya.com"],
-      modelGateway: "live",
+      modelGateway: "live", toolMode: "live",
     });
   });
 

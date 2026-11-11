@@ -1,0 +1,33 @@
+import { parseEnv } from "node:util";
+
+export const MODEL_KEY_NAMES = ["ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL"] as const;
+export const TOOL_KEY_NAMES = ["TAVILY_API_KEY", "GITHUB_APP_ID", "GITHUB_APP_SLUG", "GITHUB_APP_PRIVATE_KEY"] as const;
+
+/** The named values from the text of .env; only these leave the file. */
+function pick(envText: string, names: readonly string[]): Record<string, string> {
+  const env = parseEnv(envText);
+  const missing = names.filter((name) => !env[name]);
+  if (missing.length) throw new Error(`.env is missing ${missing.join(", ")}`);
+  return Object.fromEntries(names.map((name) => [name, env[name]!]));
+}
+
+/** The model keys secret's JSON. */
+export function modelKeysSecret(envText: string): string {
+  return JSON.stringify(pick(envText, MODEL_KEY_NAMES));
+}
+
+/**
+ * The tool keys secret's JSON. GitHub hands out the App's private key as a .pem file, so .env names the file and the
+ * key itself goes into the secret. Errors name the setting, never the file's contents.
+ */
+export function toolKeysSecret(envText: string, readFile: (path: string) => string): string {
+  const { GITHUB_APP_PRIVATE_KEY_PATH: path, ...keys } = pick(envText, ["TAVILY_API_KEY", "GITHUB_APP_ID", "GITHUB_APP_SLUG", "GITHUB_APP_PRIVATE_KEY_PATH"]);
+  let pem: string;
+  try {
+    pem = readFile(path!);
+  } catch {
+    throw new Error(`Can't read the file at GITHUB_APP_PRIVATE_KEY_PATH (${path}).`);
+  }
+  if (!/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(pem)) throw new Error("The file at GITHUB_APP_PRIVATE_KEY_PATH isn't a PEM private key.");
+  return JSON.stringify({ ...keys, GITHUB_APP_PRIVATE_KEY: pem });
+}
