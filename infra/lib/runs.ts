@@ -9,7 +9,7 @@ import type { CoreStack } from "./core-stack.js";
  * invoked through a version or alias, never $LATEST.
  */
 export function addRuns(stack: CoreStack) {
-  const { prefix, isLocal, modelGateway } = stack.stageConfig;
+  const { prefix, isLocal, modelGateway, sandboxToken } = stack.stageConfig;
   // The provider keys live only in this secret, as JSON {ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL}. Its
   // value is set outside CloudFormation, so no key ever appears in a template or a Lambda environment variable.
   const keysName = `${prefix}-model-keys`;
@@ -23,7 +23,7 @@ export function addRuns(stack: CoreStack) {
   const runFn = stack.addFunction("run", "runs/loop.ts", { tableAccess: true }, {
     timeout: Duration.minutes(15),
     durableConfig: { executionTimeout: Duration.minutes(130), retentionPeriod: Duration.days(7) },
-    environment: { MODEL_GATEWAY: modelGateway, MODEL_KEYS_SECRET: keysName },
+    environment: { MODEL_GATEWAY: modelGateway, MODEL_KEYS_SECRET: keysName, ...(sandboxToken && { SANDBOX_TOKEN: sandboxToken }) },
   });
   modelKeys.grantRead(runFn);
   stack.allowBroadcast(runFn);
