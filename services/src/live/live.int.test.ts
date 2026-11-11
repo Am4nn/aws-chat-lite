@@ -226,6 +226,8 @@ describe("agent threads over the socket", () => {
     const updated = await sb.next(messageUpdated(generalChatId, 1));
     const ref = (updated.message as Frame).threadRef as Frame;
     expect(ref.kind).toBe("started");
+    // Linking bumps the version, so a stale copy of the plain message (a gap catch-up, say) can't replace the card.
+    expect((updated.message as Frame).v).toBe(1);
     const threadId = String(ref.threadId);
     await sb.next(runUpdated(threadId, "done"), AGENT_MS);
 
