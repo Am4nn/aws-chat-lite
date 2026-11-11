@@ -26,7 +26,7 @@ import { addSandbox } from "./sandbox.js";
 export const servicePath = (file: string) =>
   fileURLToPath(new URL(`../../services/src/${file}`, import.meta.url));
 
-interface CoreStackProps extends StackProps {
+export interface CoreStackProps extends StackProps {
   config: StageConfig;
 }
 

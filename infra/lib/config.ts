@@ -1,5 +1,18 @@
 export type Stage = "local" | "aws";
 
+const DOMAIN_NAME = "chat.amanarya.com";
+
+/** What only a real deploy needs: the public domain, its certificate and who the alarms mail. */
+export interface ProdSettings {
+  domainName: typeof DOMAIN_NAME;
+  alertEmail: string;
+  /** CloudFront only reads certificates from ACM in us-east-1, whatever region the stack is in. */
+  certificateArn: string;
+}
+
+/** Account-specific values, read from the gitignored infra/cdk.context.json so they never enter git. */
+type DeployContext = { alertEmail?: string; certificateArn?: string };
+
 export interface StageConfig {
   stage: Stage;
   /** Prefix for every stack and resource name: cl-<stage> */
@@ -25,6 +38,8 @@ export interface StageConfig {
   toolMode: "fake" | "live";
   /** Local only: the secret the run function sends to the Docker sandbox server on the developer's machine. */
   sandboxToken?: string;
+  /** Set on AWS only. */
+  prod?: ProdSettings;
 }
 
 function isFlociEndpoint(url: string | undefined): boolean {
@@ -38,7 +53,7 @@ function isFlociEndpoint(url: string | undefined): boolean {
 }
 
 /** Safety guard: local must hit Floci, aws must not have an endpoint override. */
-export function loadConfig(stage: string | undefined, env: NodeJS.ProcessEnv): StageConfig {
+export function loadConfig(stage: string | undefined, env: NodeJS.ProcessEnv, context: DeployContext = {}): StageConfig {
   if (stage === "local") {
     if (!isFlociEndpoint(env.AWS_ENDPOINT_URL)) {
       throw new Error(
@@ -55,9 +70,21 @@ export function loadConfig(stage: string | undefined, env: NodeJS.ProcessEnv): S
   if (stage === "aws") {
     if (env.AWS_ENDPOINT_URL) throw new Error("stage=aws: unset AWS_ENDPOINT_URL first (it is pointing at an emulator).");
     return {
-      stage, prefix: "cl-aws", isLocal: false, region: "ap-southeast-2", siteOrigins: ["https://chat.amanarya.com"],
-      mcpBaseUrl: "https://chat.amanarya.com", modelGateway: "live", toolMode: "live",
+      stage, prefix: "cl-aws", isLocal: false, region: "ap-southeast-2", siteOrigins: [`https://${DOMAIN_NAME}`],
+      mcpBaseUrl: `https://${DOMAIN_NAME}`, modelGateway: "live", toolMode: "live", prod: prodSettings(context),
     };
   }
   throw new Error(`stage must be local or aws (got "${stage}"). Pass -c stage=local`);
+}
+
+function prodSettings({ alertEmail, certificateArn }: DeployContext): ProdSettings {
+  if (!alertEmail || !certificateArn) {
+    const missing = [!alertEmail && "alertEmail", !certificateArn && "certificateArn"].filter(Boolean).join(", ");
+    throw new Error(`stage=aws is missing ${missing} in infra/cdk.context.json (copy infra/cdk.context.example.json).`);
+  }
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(alertEmail)) throw new Error(`alertEmail "${alertEmail}" is not an email address.`);
+  if (!certificateArn.startsWith("arn:aws:acm:us-east-1:")) {
+    throw new Error("certificateArn must be an ACM certificate in us-east-1 (CloudFront only reads certificates there).");
+  }
+  return { domainName: DOMAIN_NAME, alertEmail, certificateArn };
 }
