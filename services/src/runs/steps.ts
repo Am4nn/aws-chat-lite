@@ -281,8 +281,12 @@ async function stream(
   // is tried again, as is one whose text didn't all reach the log; a drop after text ends the run instead, since a
   // fresh answer would replace the one members were already reading.
   if (failure || (call.failed && !wrote && !stopper)) {
-    // The provider billed the attempt, dropped or not, so it is charged before the retry.
-    if (call.usage) await recordCall(run, writer, { model: run.model, job: "run" }, call.usage, { costMicros: spent + call.usage.costMicros });
+    // The provider billed the attempt, dropped or not, so it is charged before the retry. A writer refuses every append
+    // after one fails, so the charge goes through a fresh one, which starts after the last event that landed.
+    if (call.usage) {
+      const fresh = failure ? await runsRepo().eventWriter(run.runId) : writer;
+      await recordCall(run, fresh, { model: run.model, job: "run" }, call.usage, { costMicros: spent + call.usage.costMicros });
+    }
     throw failure ?? call.error;
   }
   if (call.end?.native) await writer.append({ type: "model.turn", ...call.end.native, turn });
