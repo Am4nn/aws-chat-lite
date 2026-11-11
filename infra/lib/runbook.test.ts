@@ -28,6 +28,15 @@ describe("the AWS runbook", () => {
     for (const name of secrets) expect(runbook).toContain(`\`${name}\``);
   });
 
+  it("counts the alarms, functions and secrets the stack has", () => {
+    const count = (type: string) => Object.keys(template("aws").findResources(type)).length;
+    const named = Object.values(template("aws").findResources("AWS::Lambda::Function"))
+      .filter((f: any) => typeof f.Properties.FunctionName === "string").length;
+    expect(runbook).toContain(`${count("AWS::CloudWatch::Alarm")} of them: one errors alarm for each of the ${named} functions`);
+    expect(runbook).toContain(`up to all ${count("AWS::CloudWatch::Alarm")} if you confirm`);
+    expect(runbook).toContain(`$0.40 per secret, ${count("AWS::SecretsManager::Secret")} of them`);
+  });
+
   it("checks for leftover function log groups without CDK's helpers, whose groups the stack never owns", () => {
     const checks = runbook.split("\n").filter((line) => line.includes("--log-group-name-prefix /aws/lambda/cl-aws- "));
     expect(checks.length).toBeGreaterThan(0);

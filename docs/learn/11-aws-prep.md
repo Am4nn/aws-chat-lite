@@ -2,11 +2,9 @@
 
 **Nothing in this step was deployed.** It is the infrastructure, the checks and the runbook for putting chat-lite on `https://chat.amanarya.com`. Every proof here is a `cdk synth` without credentials plus the infra unit tests. The deploy itself is [docs/runbook-aws.md](../runbook-aws.md), which Aman runs by hand, one checked step at a time.
 
-**This branch was cut before steps 9 and 10 finished.** Schedules (step 9) and the push worker, push routes, voice Lambda, push-keys secret and `GEMINI_API_KEY` (step 10) aren't in its stack. They arrive when step 11 merges after 9 and 10:
-- the alarms, the dashboard lines and the log retention pick the new Lambdas up by themselves (see the sweep below);
-- the runbook marks their rows as waiting ("Not on this branch yet"). Its test fails until the push-keys secret gets its row in step 5, and the alarm count (17), the secret count (3) and the teardown's secret list change with that merge.
+**Steps 9 and 10 merged in afterwards.** Their schedules, push worker, push routes, voice Lambda, two push secrets and `GEMINI_API_KEY` got their alarms, dashboard lines and log retention from the sweep below with no edit to ops. The merge did need edits elsewhere: the runbook's rows and counts, four more cdk-nag exceptions, and two narrower invoke grants. A credential-less synth after it: 20 named functions (plus CDK's two helpers), 23 alarms, 5 secrets, 15 outputs, 411 resources, and cdk-nag at 105 compliant, 130 suppressed, 0 open.
 
-`docs/learn/08-mcp.md` and step 8's lines in `floci-compat.md` are on master and arrive with the same merge, so this doc doesn't repeat them.
+**411 of CloudFormation's 500 resources per stack.** Each HTTP route costs three (route, integration, Lambda permission), so another feature or two of routes fits, but not many. Past that, the web site (CloudFront, its bucket and its deployments) would move to its own stack.
 
 ## What we built
 All of it is aws-only: the local (Floci) template has no CloudFront, alarm, SNS, dashboard or new log group, so `deploy:local` is unchanged.
@@ -85,7 +83,7 @@ Nothing is pruned, so a page still open from the last deploy can load its old bu
 Every alarm has one evaluation period, treats missing data as fine (a quiet function is a healthy one), and mails both on alarm and on OK, so the mail thread shows when it ended. The cost: an OK action also fires when a new alarm leaves its starting state (`INSUFFICIENT_DATA`), so each deploy that adds a function sends one OK mail per new alarm. Avoiding that would mean routing state changes through EventBridge to drop those, which isn't worth it for a few mails. There are no CPU- or duration-style alarms: those are causes, and the dashboard shows them once a symptom fires. Thresholds are guesses until a week of real traffic.
 
 **cdk-nag: fix or write the reason down.** `AwsSolutionsChecks` is an Aspect added in `bin/app.ts` for the aws stage only. An error fails `cdk synth` and `cdk deploy`, so a new finding needs a fix or a suppression with its reason in `compliance.ts`.
-- **The one fix:** the chat Lambda's `grantPut` on `rooms/*` became plain `s3:PutObject`. Signing a presigned POST needs nothing else, and `grantPut` also gave `Abort*`, object tagging, legal hold and retention. It applies to both stages.
+- **The fixes:** the chat Lambda's `grantPut` on `rooms/*` became plain `s3:PutObject`. Signing a presigned POST needs nothing else, and `grantPut` also gave `Abort*`, object tagging, legal hold and retention. And the push worker and the schedule fire function are invoked through a grant on their own ARN, where CDK's `grantInvoke` adds `<arn>:*` (every version and alias) that nothing calls. Both apply to both stages.
 - **Suppressed, each with its reason:**
 
   | Finding | Where | Why it stays |
@@ -93,20 +91,22 @@ Every alarm has one evaluation period, treats missing data as fine (a quiet func
   | COG1, COG2, COG8 | user pool | 8-character minimum without composition rules (NIST SP 800-63B); no MFA for a few invited friends, every account has a verified email; threat protection needs the Plus tier |
   | SMG4 | model and tool keys | providers issue them, so they're rotated by hand there |
   | SMG4 | token key | rotating it would make every sealed MCP sign-in unreadable |
+  | SMG4 | both push secrets | a new VAPID pair orphans every browser's subscription, so it's changed by hand, with a resubscribe |
   | S1 | files and web buckets | files go through URLs a logged function signs; the web bucket is read only by CloudFront. Server access logs would need another bucket |
   | CFR1, CFR2, CFR3 | distribution | no country to block; WAF costs at least $5 a month, and the throttles and Cognito's limits cover a friends-only site; access logs would need a log bucket |
   | APIG1 | socket stage | WebSocket access logs need the account-wide API Gateway role every stack shares; the live Lambda logs instead |
   | APIG4 | 12 public HTTP routes, in 4 groups | health; invite preview (the code is the credential); `/mcp` (checks its own OAuth tokens); OAuth discovery, register, authorize, token and revoke (how a client gets a token) |
   | APIG4 | every socket route | only `$connect` can take an authorizer, and it checks the one-time ticket itself |
   | IAM4 | every function's role | exactly `AWSLambdaBasicExecutionRole` (logs only), and the run function's durable execution policy |
-  | IAM5 | four exact wildcards | the table's `index/*`; each function's own prefix of the files bucket; POST on the one stage's `@connections/*`; durable executions under `cl-aws-run:*` |
+  | IAM5 | five exact wildcards | the table's `index/*`; each function's own prefix of the files bucket (`generated/` and `speech/` among them); POST on the one stage's `@connections/*`; durable executions under `cl-aws-run:*`; schedules in the stack's own group |
+  | IAM5 | the voice function's `Resource: *` | Transcribe streaming has no resource type, and Polly's only one is lexicons, which chat-lite doesn't use |
   | IAM5, L1 | CDK's asset-copy handler | its grants and runtime come with aws-cdk-lib |
   | L1 | every Node 22 function | the runtime they're all proven on; they move together |
 - **Suppressions are narrow on purpose.** By path where a resource is meant (`addResourceSuppressionsByPath` throws if the path disappears, so a stale reason can't linger), and wildcards only through anchored `appliesTo` regexes. A test pins that a new public route, or a new `s3:*` or `Resource: *` grant, still fails the gate.
 - **The `<AWS::AccountId>` gotcha.** A synth without credentials leaves the account to CloudFormation, and cdk-nag then shows ARNs with `<AWS::AccountId>` where a real synth shows 12 digits. The first credential-less synth failed on that, so each ARN regex accepts both, and the tests run both forms.
 - **Why 2.x.** `cdk-nag` 3.x is a rewrite: a policy-validation plugin with per-finding acknowledgements, no `NagSuppressions` and no annotations. 2.38.2 is the last 2.x and supports aws-cdk-lib 2.275.
 
-**Retained user data and point-in-time recovery.** On aws the table (`cl-aws-main`), the user pool, the files bucket and the three secrets are `RETAIN`; Floci still deletes everything.
+**Retained user data and point-in-time recovery.** On aws the table (`cl-aws-main`), the user pool, the files bucket and the five secrets are `RETAIN`; Floci still deletes everything.
 - **PITR** keeps 35 days of continuous backups. A restore creates a *new* table at any second in that window, which undoes a bad write or a bad migration; it can't rewrite the live table.
 - **Fixed names cut both ways.** A retained `cl-aws-main` makes the next fresh deploy fail, because the name is taken. So the runbook's teardown lists the manual deletes for a clean slate, and says to update the stack in place to keep the data.
 - **Logs aren't users' data.** Every log group is `DESTROY`, for the same reason: a retained `/aws/lambda/cl-aws-run` would block the next deploy with "already exists". The stack creates each Lambda's group itself, with one-month retention, so the runbook checks that none exists before the first deploy. CDK's own helper Lambdas (the asset copy and the bucket auto-delete) are the exception: they're named `cl-aws-core` plus a generated suffix, and Lambda makes their groups itself, so the stack doesn't own them. Those groups survive `cdk destroy` and never expire, but they never collide either, so the runbook's checks leave them out and its teardown says how to delete them.
@@ -122,9 +122,8 @@ Synth and unit tests show the template says the right things. They can't show AW
 - **IAM,** which Floci doesn't enforce at all, and DynamoDB's real validation: one Logs Insights query over every `/aws/lambda/cl-aws-*` group after walking each feature;
 - **behaviour Floci hides:** GSI lag, transaction conflicts, offline presence timing, S3 lifecycle expiry, AgentCore sandboxes offline and online;
 - **the GitHub sign-in on real GitHub,** which no automated test reaches;
+- **what Floci fakes or skips:** Transcribe and Polly (the voice live suite runs against AWS), Gemini images, delivery to real phones, and Scheduler across a DST change in the room's zone;
 - **ops:** the SNS confirmation, a test alarm mailing `ALARM` then `OK`, and every graph having lines (the CloudFront dimension gotcha above shows up only as an empty graph).
-
-Rows for schedules in a time zone across DST, voice, Gemini images and web push wait for the step 9 and 10 merges.
 
 ## The runbook's choices
 - **Aman runs every command.** No deploy, secrets or ops script calls AWS. Each step ends with a **Check** (a command and the output that means it worked) and a **Stop if**.
@@ -164,7 +163,7 @@ These were judgement calls during the build. Each line says what we chose and wh
 | On aws the table (with PITR), user pool, files bucket and secrets are `RETAIN`; every log group is `DESTROY` | A clean slate needs the runbook's manual deletes |
 | No WebSocket access logs: they need the account-wide API Gateway role, which instagram-lite shares | Add it once the account is prod-only |
 | cdk-nag pinned to 2.38.2, a runtime dependency of infra | Moving to 3.x means rewriting `compliance.ts` |
-| One fix (`s3:PutObject`), every other finding suppressed with a reason, by path or exact regex | A doc-worthy reason for each new finding |
+| Three fixes (`s3:PutObject`, and invoke grants without `:*` for the push worker and the schedule fire function), every other finding suppressed with a reason, by path or exact regex | A doc-worthy reason for each new finding |
 | Secrets are filled by CLI from a temp file built by the existing helpers; no AWS-calling script | A `secrets:aws` script would make it one command |
 | No budget alarm: Free plan credits, plus the app's own room caps | Add an AWS Budget if the account leaves the Free plan |
 | Admins connect only GitHub installations their own account reaches, and only repos it can push to (in [07](07-tools-approvals.md)); every page of both lists is read. The runbook won't invite friends before that check passes on AWS | Every Connect goes through GitHub's sign-in. `push` is the minimum: a push-only collaborator's room can have the agent merge a PR, if branch protection allows it |

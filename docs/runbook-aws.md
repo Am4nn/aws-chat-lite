@@ -21,20 +21,13 @@ Every numbered step ends with:
   - pass `--require-approval never`;
   - edit or delete this stack's resources in the console, except where a step says to.
 
-## Not on this branch yet
-This runbook matches the stack as the code stands now. Two pieces of work still have to merge, and each one adds a row or a check below:
-- **Agents, memory and schedules** add EventBridge Scheduler (a schedule group, a fire Lambda and a schedules Lambda). The schedule rows in step 9 wait for them.
-- **The rest of media and notifications** adds the push worker, the push routes, the voice Lambda (Polly and Transcribe), a fourth secret for the push keys (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`) and `GEMINI_API_KEY` in the model keys. Until it lands, the dictation and read-aloud buttons in the web app have no backend on AWS.
-
-`infra/lib/runbook.test.ts` fails as soon as the stack holds a secret this file doesn't explain, so the merge that adds one has to update step 5.
-
 ## Decisions for Aman
 Make these before step 2. Each line gives the recommendation first.
 - **Certificate: a single-name certificate for `chat.amanarya.com` (recommended),** or a `*.amanarya.com` wildcard. The single name is the smallest grant and matches what instagram-lite did. A wildcard would also cover future subdomains, and if one already exists in us-east-1 you can reuse it. Only the ARN in `infra\cdk.context.json` changes either way.
 - **Load test on AWS: skip it (recommended).** The aws stage always runs real models, so a load test spends real money. It would also hit the throttles (step 10) and, on a new account, the Lambda concurrency quota. The Floci load test already covers the engine.
 
 ## 1. Before you start
-1. You're on master, with the merges above done, and `npm test` and `npm run check` are green. `git status` is clean.
+1. You're on master, and `npm test` and `npm run check` are green. `git status` is clean.
 2. Clear the emulator endpoint and log in:
    ```powershell
    Remove-Item Env:AWS_ENDPOINT_URL -ErrorAction SilentlyContinue
@@ -166,10 +159,11 @@ function Set-ChatSecret([string]$SecretId, [string]$Build) {
 
 | Secret | What it holds | How to fill it |
 |---|---|---|
-| `cl-aws-model-keys` | `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, and `GEMINI_API_KEY` once the media merge adds it to the helper | `Set-ChatSecret cl-aws-model-keys 'k.modelKeysSecret(env)'` |
+| `cl-aws-model-keys` | `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, `GEMINI_API_KEY` (the image tool) | `Set-ChatSecret cl-aws-model-keys 'k.modelKeysSecret(env)'` |
 | `cl-aws-tool-keys` | `TAVILY_API_KEY`, `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_PRIVATE_KEY` (read from the `.pem` file that `GITHUB_APP_PRIVATE_KEY_PATH` names in `.env`), `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET` | `Set-ChatSecret cl-aws-tool-keys "k.toolKeysSecret(env, (path) => fs.readFileSync(path, 'utf8'))"` |
 | `cl-aws-token-key` | The key that seals rooms' MCP sign-ins. CloudFormation generated it and nobody ever sees it | **Don't touch it.** A new value makes every stored MCP sign-in unopenable |
-| *(push keys, with the media merge)* | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`. The same pair as `.env`, or one made for AWS; a new pair later orphans every subscribed device | `Set-ChatSecret <its name> 'k.pushKeysSecret(env)'` |
+| `cl-aws-push-keys` | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, read only by the push worker. The pair in `.env` (made with `npx web-push generate-vapid-keys`), or one made for AWS; a new pair later orphans every subscribed device | `Set-ChatSecret cl-aws-push-keys 'k.pushKeysSecret(env)'` |
+| `cl-aws-push-public-key` | `VAPID_PUBLIC_KEY` alone, from the same `.env` as `cl-aws-push-keys`: the push routes hand it to browsers and never see the private key | `Set-ChatSecret cl-aws-push-public-key 'k.pushPublicKeySecret(env)'` |
 
 Nothing else needs filling:
 - **No sandbox token on AWS:** that token only guards the local Docker sandbox server, and AWS uses AgentCore.
@@ -187,7 +181,7 @@ Nothing else needs filling:
 ## 6. Alarm email
 After the first deploy, AWS mails a confirmation link to the alert address. Click it. Nothing arrives until you do.
 
-Each alarm mails on its way into `ALARM` and again back to `OK`. A new alarm also mails `OK` once, a few minutes after the deploy that creates it, as it leaves its starting state. So after a deploy that adds functions, expect one `OK` mail per new alarm (up to all 17 if you confirm within minutes of the first deploy). They need nothing.
+Each alarm mails on its way into `ALARM` and again back to `OK`. A new alarm also mails `OK` once, a few minutes after the deploy that creates it, as it leaves its starting state. So after a deploy that adds functions, expect one `OK` mail per new alarm (up to all 23 if you confirm within minutes of the first deploy). They need nothing.
 
 **Check:**
 - `aws sns list-subscriptions-by-topic --topic-arn $out.OpsTopicArn --query "Subscriptions[].SubscriptionArn" --output text --profile ig --region ap-southeast-2` prints an ARN, not `PendingConfirmation`;
@@ -265,10 +259,10 @@ Floci passed all of these locally or couldn't run them at all. Check each row on
 | Sandbox files round-trip | Ask it to write `out.txt`, then open the Files panel | `out.txt` is there with the right content |
 | chat-lite as an MCP server | `claude mcp add --transport http chat-lite-aws https://chat.amanarya.com/mcp`, sign in on `/consent`, then ask Claude Code to `list_rooms` | Your room is listed; `/apps` shows the client, and Remove ends its access |
 | Budget stop | Lower the test room's cap below what it has spent, then start a run | The run stops with the cap message before calling the model |
-| Schedules in a time zone *(after the schedules merge)* | Set the room's zone to `Australia/Sydney` (it observes daylight saving) and add a schedule a few minutes ahead in local time | It fires at that local time, not an hour off. The next DST change in Sydney is in April 2027; check that a daily schedule still fires at the same local hour the day after |
-| Voice in and out *(after the media merge)* | Dictate a message, then use read-aloud on an answer | Live words appear while you speak (Transcribe), and the answer plays in the Matthew voice (Polly) |
-| Gemini images *(after the media merge)* | Ask the agent for an image | It appears under the answer and in the room's files, and the cost shows |
-| Web push *(after the media merge)* | Turn notifications on for each device (Android Chrome, desktop, iPhone from the home screen), then get mentioned from the other account | Each device shows the notification |
+| Schedules in a time zone | Set the room's zone to `Australia/Sydney` (it observes daylight saving) and add a schedule a few minutes ahead in local time | It fires at that local time, not an hour off. The next DST change in Sydney is in April 2027; check that a daily schedule still fires at the same local hour the day after |
+| Voice in and out (Floci fakes both) | First the live suite, with the `ig` credentials: `$env:AWS_PROFILE='ig'; $env:AWS_REGION='ap-southeast-2'; $env:REAL_AWS='1'; npm -w services run test:live -- voice`, then `Remove-Item Env:REAL_AWS, Env:AWS_PROFILE, Env:AWS_REGION`. Then dictate a message in the app and use read-aloud on an answer | Live words appear while you speak (Transcribe), and the answer plays in the Matthew voice (Polly). The suite passes, for well under a cent |
+| Gemini images | Ask the agent for an image | It appears under the answer and in the room's files, and the cost shows |
+| Web push | Turn notifications on for each device (Android Chrome, desktop, iPhone from the home screen), then get mentioned from the other account | Each device shows the notification |
 | The certificate | `curl.exe -sS -o NUL -w "%{http_code}" https://chat.amanarya.com/login` | `200` and no certificate error: curl checks that the certificate matches the name. The TLS 1.2 minimum is pinned by the infra tests |
 
 The query for the IAM and DynamoDB row:
@@ -280,17 +274,17 @@ fields @timestamp, @log, @message
 
 **Check:** every row passes, and Billing shows the walk within $3.
 
-**Stop if:** a row fails. Note the time and the row, copy the matching log lines, and ask for a fix. Don't invite anyone until every row that isn't marked as waiting for a merge passes.
+**Stop if:** a row fails. Note the time and the row, copy the matching log lines, and ask for a fix. Don't invite anyone until every row passes.
 
 ## 10. Ops and cost
 Open `$out.OpsDashboardUrl`.
 
 **Check:**
-- every alarm is OK (17 of them: one errors alarm per function, `cl-aws-api-5xx`, `cl-aws-ws-execution-errors` and `cl-aws-lambda-throttles`);
+- every alarm is OK (23 of them: one errors alarm for each of the 20 functions, `cl-aws-api-5xx`, `cl-aws-ws-execution-errors` and `cl-aws-lambda-throttles`);
 - every function has lines on the Lambda graphs.
 
 **The expected idle floor per month:**
-- Secrets Manager: $0.40 per secret (3 now, 4 after the media merge);
+- Secrets Manager: $0.40 per secret, 5 of them ($2);
 - CloudWatch alarms: $0.10 each beyond the account's free 10, which instagram-lite's alarms share;
 - logs, the table and its point-in-time recovery, CloudFront and S3: cents.
 
@@ -381,7 +375,7 @@ The destroy takes everything except users' data and the keys. CloudFront takes s
 | table `cl-aws-main` (with point-in-time recovery) | `aws dynamodb delete-table --table-name cl-aws-main --profile ig --region ap-southeast-2` |
 | user pool `cl-aws-users` | `$pool = aws cognito-idp list-user-pools --max-results 60 --query "UserPools[?Name=='cl-aws-users'].Id" --output text --profile ig --region ap-southeast-2`, then `aws cognito-idp delete-user-pool --user-pool-id $pool --profile ig --region ap-southeast-2` |
 | files bucket `cl-aws-files-<account>` | `aws s3 rb "s3://cl-aws-files-$account" --force --profile ig --region ap-southeast-2` (empties it first) |
-| secrets `cl-aws-model-keys`, `cl-aws-tool-keys` and `cl-aws-token-key` (and the push keys after the media merge) | `aws secretsmanager delete-secret --secret-id <name> --force-delete-without-recovery --profile ig --region ap-southeast-2`. Without the flag, the name stays taken for 7 to 30 days |
+| secrets `cl-aws-model-keys`, `cl-aws-tool-keys`, `cl-aws-token-key`, `cl-aws-push-keys` and `cl-aws-push-public-key` | `aws secretsmanager delete-secret --secret-id <name> --force-delete-without-recovery --profile ig --region ap-southeast-2`. Without the flag, the name stays taken for 7 to 30 days |
 
 Delete them only when you really want friends' data, accounts and keys gone. A fresh deploy fails while the table, the bucket or a secret exists, because their names are taken. There's no deploy that adopts the old ones, so to keep the data, update the stack in place rather than destroying it.
 
