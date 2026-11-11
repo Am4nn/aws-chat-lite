@@ -1,32 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { App } from "aws-cdk-lib";
-import { Template } from "aws-cdk-lib/assertions";
-import { CoreStack } from "./core-stack.js";
-import { loadConfig } from "./config.js";
+import { fnNamed, statementsOf, template } from "./test-templates.js";
 
-let cached: Template | undefined;
-const template = () => {
-  if (cached) return cached;
-  const config = loadConfig("local", { AWS_ENDPOINT_URL: "http://localhost:4566" });
-  const stack = new CoreStack(new App(), "cl-local-core", { config, env: { account: "000000000000", region: "us-east-1" } });
-  return (cached = Template.fromStack(stack));
-};
+const ROUTE_KEYS = ["$connect", "$disconnect", "$default", "send", "edit", "delete", "react", "typing", "read", "subscribe", "ping", "stop"];
 
-const ROUTE_KEYS = ["$connect", "$disconnect", "$default", "send", "edit", "delete", "react", "typing", "read", "subscribe", "ping"];
-
-const liveFunction = () => {
-  const fns = Object.entries(template().findResources("AWS::Lambda::Function", { Properties: { FunctionName: "cl-local-live" } }));
-  expect(fns).toHaveLength(1);
-  return fns[0][1] as any;
-};
-
-/** Every statement in the policies attached to the live Lambda's role. */
-const liveStatements = () => {
-  const role = liveFunction().Properties.Role["Fn::GetAtt"][0];
-  return Object.values(template().findResources("AWS::IAM::Policy"))
-    .filter((p: any) => p.Properties.Roles.some((r: any) => r.Ref === role))
-    .flatMap((p: any) => p.Properties.PolicyDocument.Statement);
-};
+const liveFunction = () => fnNamed("cl-local-live");
+const liveStatements = () => statementsOf(liveFunction());
 
 describe("live WebSocket API", () => {
   it("is one WebSocket API cl-local-ws that routes on the frame's action field", () => {
@@ -36,7 +14,7 @@ describe("live WebSocket API", () => {
     });
   });
 
-  it("has exactly its 11 route keys", () => {
+  it("has exactly its 12 route keys", () => {
     const [wsApi] = Object.keys(template().findResources("AWS::ApiGatewayV2::Api", { Properties: { ProtocolType: "WEBSOCKET" } }));
     const keys = Object.values(template().findResources("AWS::ApiGatewayV2::Route"))
       .filter((r: any) => r.Properties.ApiId.Ref === wsApi).map((r: any) => r.Properties.RouteKey);
@@ -53,6 +31,19 @@ describe("live WebSocket API", () => {
     expect(actions).toContain("dynamodb:PutItem");
   });
 
+  it("the live Lambda may start agent runs, since a message in a thread starts or steers one", () => {
+    const vars = liveFunction().props.Environment.Variables;
+    expect(vars).toMatchObject({ RUN_FN_QUALIFIER: "live" });
+    expect(vars.RUN_FN_NAME).toBeDefined();
+    const alias = Object.keys(template().findResources("AWS::Lambda::Alias", { Properties: { Name: "live" } }));
+    expect(alias).toHaveLength(1);
+    expect(liveStatements()).toContainEqual(expect.objectContaining({ Action: "lambda:InvokeFunction", Effect: "Allow", Resource: { Ref: alias[0] } }));
+  });
+
+  it("the live Lambda has 29 s, since a send hands its message to the agent after the ack", () => {
+    expect(liveFunction().props.Timeout).toBe(29);
+  });
+
   it("may post only to the live stage's connections", () => {
     const manage = liveStatements().filter((s: any) => [s.Action].flat().includes("execute-api:ManageConnections"));
     expect(manage).toHaveLength(1);
@@ -60,7 +51,7 @@ describe("live WebSocket API", () => {
   });
 
   it("the live Lambda posts back through the API's own Floci host locally", () => {
-    const url = liveFunction().Properties.Environment.Variables.WS_CALLBACK_URL;
+    const url = liveFunction().props.Environment.Variables.WS_CALLBACK_URL;
     expect(JSON.stringify(url)).toMatch(/execute-api\.localhost\.floci\.io:4566\/live/);
   });
 });

@@ -39,15 +39,21 @@ async function matchesIn(chatId: string, q: string) {
   return found;
 }
 
-/** Keyword search across a room's chats: the 30 newest matching messages, newest first. */
+/** The ids of a room's chats or threads (their items' `field`, under sort-key `prefix`). */
+const idsUnder = async (roomId: string, prefix: string, field: string) => (await queryAll({
+  KeyConditionExpression: "pk = :p AND begins_with(sk, :s)", ProjectionExpression: field,
+  ExpressionAttributeValues: { ":p": `ROOM#${roomId}`, ":s": prefix },
+})).map((i) => String(i[field]));
+
+/**
+ * Keyword search across a room's chats and threads (archived threads too: archiving only hides them from the
+ * sidebar): the 30 newest matching messages, newest first.
+ */
 export async function searchRoom(user: User, roomId: string, rawQuery: unknown): Promise<{ results: Message[] }> {
   const q = normalizeQuery(rawQuery);
   await requireMember(roomId, user.userId);
-  const chats = await queryAll({
-    KeyConditionExpression: "pk = :p AND begins_with(sk, :c)", ProjectionExpression: "chatId",
-    ExpressionAttributeValues: { ":p": `ROOM#${roomId}`, ":c": "CHAT#" },
-  });
-  const perChat = await Promise.all(chats.map((c) => matchesIn(String(c.chatId), q)));
+  const ids = (await Promise.all([idsUnder(roomId, "CHAT#", "chatId"), idsUnder(roomId, "THREAD#", "threadId")])).flat();
+  const perChat = await Promise.all(ids.map((id) => matchesIn(id, q)));
   const newest = perChat.flat()
     .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
     .slice(0, MAX_RESULTS);

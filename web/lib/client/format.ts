@@ -1,3 +1,55 @@
+import type { Budget } from "../types";
+
+const pad = (n: number) => String(n).padStart(2, "0");
+
+export function formatElapsed(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
+/** How long a step took: tenths of a second for quick ones, then whole seconds, then minutes. */
+export function formatStepTime(ms: number): string {
+  if (ms < 9_950) return `${(ms / 1000).toFixed(1)}s`;
+  if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
+  return formatElapsed(ms);
+}
+
+export function formatUsd(micros: number): string {
+  if (micros > 0 && micros < 10_000) return "<$0.01";
+  return `$${(Math.round(micros / 10_000) / 100).toFixed(2)}`;
+}
+
+/** The day the room's budget resets, which is the 1st of a month in UTC. */
+export const resetsOn = (resetsAt: string) =>
+  new Date(resetsAt).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+
+export const budgetFill = (b: Pick<Budget, "spentMicros" | "capMicros">) =>
+  b.capMicros === 0 ? 100 : Math.min(100, (b.spentMicros / b.capMicros) * 100);
+
+export function splitHeadline(text: string): { headline: string | null; body: string } {
+  const i = text.indexOf("\n\n");
+  if (i > 0 && i <= 120 && !text.slice(0, i).includes("\n")) return { headline: text.slice(0, i), body: text.slice(i + 2) };
+  return { headline: null, body: text };
+}
+
+// A trailing partial word would flash and then change, so it waits for its space unless the text is final.
+export function streamWords(text: string, final: boolean): string[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  if (!final && words.length && !/\s$/.test(text)) words.pop();
+  return words;
+}
+
+/** The streamed answer as paragraphs of words; only the last paragraph can still be mid-word. */
+export function answerParagraphs(text: string, final: boolean): string[][] {
+  const paragraphs = text.split(/\n\s*\n/);
+  return paragraphs
+    .map((p, i) => streamWords(p, final || i < paragraphs.length - 1))
+    .filter((words) => words.length > 0);
+}
+
 export function typingText(names: string[]): string {
   if (names.length === 0) return "";
   if (names.length === 1) return `${names[0]} is typing…`;

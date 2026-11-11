@@ -34,6 +34,7 @@ describe("sendToConnection", () => {
     vi.mocked(forgetConnection).mockResolvedValue({ userId: "u1", roomIds: ["r1"] });
     vi.mocked(markDisconnected).mockResolvedValue({ conns: 0, lastSeen: "2026-11-11T00:00:00.000Z" });
     await sendToConnection("dead", { type: "pong" });
+    expect(forgetConnection).toHaveBeenCalledWith("dead", { gone: true });
     expect(posts).toEqual([{ to: "peer", event: { type: "presence", userId: "u1", online: false, lastSeen: "2026-11-11T00:00:00.000Z" } }]);
   });
 

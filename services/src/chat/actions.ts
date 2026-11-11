@@ -2,8 +2,10 @@ import { broadcastToRoom, sendToConnection, sendToUser } from "../live/broadcast
 import { subscribe } from "../live/connections.js";
 import type { User } from "../lib/auth.js";
 import { UserError, ValidationError } from "../lib/errors.js";
+import { requestStop } from "../runs/stop.js";
+import { routeSend } from "../threads/route.js";
 import { requireMember } from "./membership.js";
-import { REACTIONS, seqNumber, type Message, type Reaction } from "./model.js";
+import { REACTIONS, idOf, seqNumber, type Message, type Reaction } from "./model.js";
 import { chatRepo, type ChatRepo } from "./repo.js";
 
 type Frame = Record<string, unknown>;
@@ -11,14 +13,7 @@ type Frame = Record<string, unknown>;
 /** What a successful action answers its sender with, and how everyone else hears about it. */
 interface Outcome { data?: unknown; notify?: () => Promise<unknown> }
 
-const ID = /^[A-Za-z0-9_-]{1,64}$/;
-
-function id(raw: unknown, name: string): string {
-  if (typeof raw !== "string" || !ID.test(raw)) throw new ValidationError(`${name} is missing or invalid.`);
-  return raw;
-}
-
-const chatRef = (f: Frame) => ({ roomId: id(f.roomId, "roomId"), chatId: id(f.chatId, "chatId") });
+const chatRef = (f: Frame) => ({ roomId: idOf(f.roomId, "roomId"), chatId: idOf(f.chatId, "chatId") });
 
 // Built on first use, so importing this module needs no table configured.
 let repo: ChatRepo | undefined;
@@ -30,11 +25,16 @@ const updated = (message: Message): Outcome =>
 async function perform(connId: string, user: User, f: Frame): Promise<Outcome> {
   switch (f.action) {
     case "send": {
-      const message = await chat().send(user, {
-        ...chatRef(f), clientId: id(f.clientId, "clientId"), text: f.text, attachments: f.attachments,
+      const { message, route } = await routeSend(user, {
+        ...chatRef(f), clientId: idOf(f.clientId, "clientId"), text: f.text, attachments: f.attachments,
         replyToSeq: f.replyToSeq === undefined ? undefined : seqNumber(f.replyToSeq),
+        threadId: f.threadId === undefined ? undefined : idOf(f.threadId, "threadId"),
       });
-      return { data: message, notify: () => broadcastToRoom(message.roomId, { type: "message.new", message }) };
+      const notify = async () => {
+        await broadcastToRoom(message.roomId, { type: "message.new", message });
+        await route();
+      };
+      return { data: message, notify };
     }
     case "edit":
       return updated(await chat().edit(user, { ...chatRef(f), seq: seqNumber(f.seq), text: f.text }));
@@ -59,10 +59,12 @@ async function perform(connId: string, user: User, f: Frame): Promise<Outcome> {
       const event = { type: "read", roomId, chatId, lastReadSeq };
       return { data: { lastReadSeq }, notify: () => sendToUser(user.userId, event, { exceptConnId: connId }) };
     }
+    case "stop":
+      return { data: await requestStop(user, idOf(f.roomId, "roomId"), idOf(f.threadId, "threadId")) };
     case "subscribe": {
       // Sent whenever a room opens, so a room joined after the socket connected starts getting its events at once.
       // The member read is consistent; the user's room index that $connect reads (gsi1) can lag behind a join.
-      const roomId = id(f.roomId, "roomId");
+      const roomId = idOf(f.roomId, "roomId");
       await requireMember(roomId, user.userId);
       await subscribe(connId, user.userId, roomId);
       return {};

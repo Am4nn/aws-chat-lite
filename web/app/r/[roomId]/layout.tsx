@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { serverApi, serverApiOrNull } from "@/lib/server/api";
 import { readerTimeZone } from "@/lib/server/timeZone";
+import { ThreadsProvider } from "@/lib/client/ThreadsProvider";
 import type { Me, RoomSummary, RoomView } from "@/lib/types";
 import { RoomGone } from "@/components/shell/RoomGone";
 import { RoomShell } from "@/components/shell/RoomShell";
@@ -14,5 +15,9 @@ export default async function RoomLayout({ children, params }: { children: React
     readerTimeZone(),
   ]);
   if (!view) return <RoomGone roomId={roomId} rooms={rooms} />;
-  return <RoomShell view={view} rooms={rooms} me={me} serverTimeZone={timeZone}>{children}</RoomShell>;
+  return (
+    <ThreadsProvider view={view}>
+      <RoomShell view={view} rooms={rooms} me={me} serverTimeZone={timeZone}>{children}</RoomShell>
+    </ThreadsProvider>
+  );
 }

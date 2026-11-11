@@ -10,6 +10,8 @@
     "spike-aws": "tsx src/spike-aws.ts",
     "grant": "tsx src/grant.ts",
     "smoke": "tsx src/smoke.ts",
+    "dev": "tsx src/dev.ts",
+    "stream-local": "tsx src/stream-local.ts",
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {

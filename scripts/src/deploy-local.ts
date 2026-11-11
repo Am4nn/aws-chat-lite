@@ -32,8 +32,8 @@ async function main() {
   cdk(["deploy", "cl-local-core", "-c", "stage=local", "--require-approval", "never", "--outputs-file", "cdk.out/outputs-local.json"]);
   const out = readOutputs("cl-local-core");
   const api = `http://${flociHost(out.ApiUrl)}`;
-  writeFileSync(webEnvPath, devEnvFile({ apiUrl: api, userPoolClientId: out.UserPoolClientId }));
-  console.log(`\nAPI: ${api}  (try: curl ${api}/health)\nWrote web/.env.development.local. Next: npm run dev\n`);
+  writeFileSync(webEnvPath, devEnvFile({ apiUrl: api, userPoolClientId: out.UserPoolClientId, streamUrl: out.StreamUrl }));
+  console.log(`\nAPI: ${api}  (try: curl ${api}/health)\nWrote web/.env.development.local. Next: npm run dev (the web app and the run stream)\n`);
 }
 
 // The other scripts import cdk() and readOutputs() from here, so the deploy only runs when this file is executed.

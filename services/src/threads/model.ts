@@ -1,0 +1,76 @@
+import { ValidationError } from "../lib/errors.js";
+import { DEAD_AFTER_MS, DEAD_REASON } from "../runs/model.js";
+import type { ThreadStatus, ThreadSummary } from "./types.js";
+
+export const ARCHIVE_AFTER_SEC = 604_800;
+
+export const PROVISIONAL = (n: number) => `thread-${n}`;
+
+/**
+ * True for a `thread-<N>` name. Each new thread takes one as its provisional name, so chats and renames may not
+ * claim them first.
+ */
+export const isNumberedName = (name: string) => /^thread-\d+$/.test(name);
+
+/** A name a person picked for a chat or a thread, refused when it is one the numbered threads keep. */
+export function claimableName(name: string): string {
+  if (isNumberedName(name)) throw new ValidationError("Names like thread-12 are kept for numbered threads.");
+  return name;
+}
+
+export const threadSk = (n: number) => `THREAD#${String(n).padStart(10, "0")}`;
+
+const NAME = /^(?=.*[a-z])[a-z0-9-]{1,32}$/;
+
+/** Thread name: lowercase a-z, 0-9 and dashes, 1–32 characters, with a letter so it can't be mistaken for a number. */
+export function threadName(raw: unknown): string {
+  const name = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  if (!NAME.test(name)) {
+    throw new ValidationError("Thread names use a-z, 0-9 and dashes, 1 to 32 characters, with at least one letter.");
+  }
+  return name;
+}
+
+/**
+ * The name, then name-2 … name-9; the base is trimmed so the suffix still fits in 32 characters, and a trimmed
+ * candidate that lost the name's only letter is left out.
+ */
+export function uniqueCandidates(name: string): string[] {
+  const rest = Array.from({ length: 8 }, (_, i) => `${name.slice(0, 30)}-${i + 2}`);
+  return [name, ...rest].filter((n) => NAME.test(n));
+}
+
+/** A running thread is never archived, however long it has been quiet. */
+export function isArchived(t: { status: ThreadStatus; lastActivityAt: string }, nowMs: number): boolean {
+  return t.status !== "running" && nowMs - Date.parse(t.lastActivityAt) > ARCHIVE_AFTER_SEC * 1000;
+}
+
+/**
+ * A stored thread as clients get it: the bookkeeping fields stay on the server, and `archived` is worked out now. A
+ * run past its execution timeout died without closing, so it shows as failed until the next message replaces it.
+ */
+export function summary(
+  { pk: _pk, sk: _sk, activeRunId: _run, named: _named, from: _from, ...rest }: Record<string, unknown>, nowMs: number,
+): ThreadSummary {
+  let thread = rest as Omit<ThreadSummary, "archived">;
+  if (thread.status === "running" && nowMs - Date.parse(thread.startedAt ?? "") > DEAD_AFTER_MS) {
+    const { currentStep: _step, ...dead } = thread;
+    thread = { ...dead, status: "failed", summary: DEAD_REASON };
+  }
+  return { ...thread, archived: isArchived(thread, nowMs) };
+}
+
+/** `#12` or `#name` at the very start of a message; a tag later in the text is just text. */
+export function leadingTag(text: string): { number: number } | { name: string } | null {
+  const tag = /^#([a-z0-9-]{1,32})(?=\s|$)/i.exec(text)?.[1]?.toLowerCase();
+  if (!tag) return null;
+  if (/^\d+$/.test(tag)) return { number: Number(tag) };
+  return NAME.test(tag) ? { name: tag } : null;
+}
+
+export function summaryLine(text: string): string {
+  const line = text.split("\n").map((l) => l.trim()).find(Boolean) ?? "";
+  // By code point, so an emoji at the cut isn't split in half.
+  const chars = Array.from(line);
+  return chars.length > 80 ? `${chars.slice(0, 80).join("")}…` : line;
+}

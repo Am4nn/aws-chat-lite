@@ -1,5 +1,6 @@
 import type { Role } from "../rooms/access.js";
 import { ValidationError } from "../lib/errors.js";
+import type { RunEndStatus } from "../threads/types.js";
 
 export type Reaction = "thumbs" | "heart" | "joy" | "tada" | "eyes" | "check";
 export type Attachment = { key: string; name: string; size: number; type: string; url?: string };
@@ -19,6 +20,13 @@ export type Message = {
   reactions: Partial<Record<Reaction, string[]>>;
   mentions: string[];
   everyone: boolean;
+  /** Set on a people-chat message that started a thread (its card) or was delivered into one (its chip). */
+  threadRef?: { threadId: string; kind: "started" | "delivered" };
+  /** Set on an agent's answer (`authorId: "agent"`): how the run that wrote it ended. */
+  agent?: {
+    runId: string; status: RunEndStatus; reason?: string; steps: number; costMicros: number; ms: number; model: string;
+    firstSeq: number;
+  };
   /** How many times the message has changed (edit, delete, reaction); absent until the first change. */
   v?: number;
 };
@@ -57,6 +65,14 @@ export function seqNumber(raw: unknown): number {
   if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 0 || raw > LAST_SEQ) {
     throw new ValidationError("seq must be a whole number.");
   }
+  return raw;
+}
+
+const ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+/** An id from a client (room, chat or client id): a short plain token, safe in a key or a path. */
+export function idOf(raw: unknown, name: string): string {
+  if (typeof raw !== "string" || !ID.test(raw)) throw new ValidationError(`${name} is missing or invalid.`);
   return raw;
 }
 

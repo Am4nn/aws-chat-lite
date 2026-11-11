@@ -1,16 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { App } from "aws-cdk-lib";
-import { Template } from "aws-cdk-lib/assertions";
-import { CoreStack } from "./core-stack.js";
-import { loadConfig } from "./config.js";
-
-let cached: Template | undefined;
-const template = () => {
-  if (cached) return cached;
-  const config = loadConfig("local", { AWS_ENDPOINT_URL: "http://localhost:4566" });
-  const stack = new CoreStack(new App(), "cl-local-core", { config, env: { account: "000000000000", region: "us-east-1" } });
-  return (cached = Template.fromStack(stack));
-};
+import { template } from "./test-templates.js";
 
 const ROUTES = [
   "GET /me", "GET /rooms", "POST /rooms", "GET /rooms/{roomId}", "POST /rooms/{roomId}/chats",
@@ -55,8 +44,8 @@ describe("rooms API", () => {
       .map((f: any) => f.Properties.FunctionName);
   };
 
-  it("only the rooms, chat and live Lambdas get table access (the public health check and sign-up trigger get none)", () => {
-    expect(tableWriters().sort()).toEqual(["cl-local-chat", "cl-local-live", "cl-local-rooms"]);
+  it("only the rooms, chat, live, threads and run Lambdas get table access (the public health check and sign-up trigger get none)", () => {
+    expect(tableWriters().sort()).toEqual(["cl-local-chat", "cl-local-live", "cl-local-rooms", "cl-local-run", "cl-local-threads"]);
   });
 
   it("the rooms Lambda may post to open sockets", () => {

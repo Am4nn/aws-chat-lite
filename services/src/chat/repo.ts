@@ -14,6 +14,8 @@ import {
 /** Where a message lives: every chat belongs to exactly one room. */
 interface ChatRef { roomId: string; chatId: string }
 interface Cursor { before?: number; after?: number; around?: number }
+/** A send's content once `admit` has accepted it. */
+export interface Admitted { text: string; attachments: Attachment[] }
 
 const chatKey = (chatId: string) => `CHAT#${chatId}`;
 const readKey = (at: ChatRef, userId: string) => ({ pk: roomKey(at.roomId), sk: `READ#${userId}#${at.chatId}` });
@@ -122,15 +124,33 @@ export function chatRepo() {
     return newestFirst ? Items.reverse() : Items;
   }
 
+  /**
+   * The checks that can refuse any send: valid content, a member of a room that isn't archived, within the rate limit,
+   * and attachments that S3 really holds (their size and type come from S3, not the client). A caller that must write something before the message exists (a new thread) runs this first and hands the
+   * result to `send`, so a refusal never leaves that write behind.
+   */
+  async function admit(user: User, input: { roomId: string; text: unknown; attachments?: unknown }): Promise<Admitted> {
+    const text = messageText(input.text);
+    const declared = attachmentList(input.attachments, input.roomId, user.userId);
+    if (!text && !declared.length) throw new ValidationError(NEEDS_CONTENT);
+    await requireMember(input.roomId, user.userId, { writing: true });
+    await countTowardsRate(user.userId);
+    return { text, attachments: await Promise.all(declared.map(storedAttachment)) };
+  }
+
   return {
-    async send(user: User, input: ChatRef & { clientId: string; text: unknown; replyToSeq?: number; attachments?: unknown }): Promise<Message> {
+    admit,
+
+    /**
+     * A `copy` is the server's copy of a message already sent elsewhere (into the thread it was delivered to or
+     * started); the original counted its mentions, so the copy doesn't count them again.
+     */
+    async send(
+      user: User, input: ChatRef & { clientId: string; text: unknown; replyToSeq?: number; attachments?: unknown }, admitted?: Admitted,
+      opts: { copy?: boolean } = {},
+    ): Promise<Message> {
       const at = { roomId: input.roomId, chatId: input.chatId };
-      const text = messageText(input.text);
-      const declared = attachmentList(input.attachments, at.roomId, user.userId);
-      if (!text && !declared.length) throw new ValidationError(NEEDS_CONTENT);
-      await requireMember(at.roomId, user.userId, { writing: true });
-      await countTowardsRate(user.userId);
-      const attachments = await Promise.all(declared.map(storedAttachment));
+      const { text, attachments } = admitted ?? await admit(user, input);
       const quoted = input.replyToSeq === undefined ? undefined : await storedMessage(at, input.replyToSeq);
       const members = text.includes("@") ? await roomMembers(at.roomId) : [];
       const { mentions, everyone } = parseMentions(text, members);
@@ -146,11 +166,22 @@ export function chatRepo() {
         TableName, Item: { ...messageKey(at, seq), ...message, textLower: text.toLowerCase() },
         ConditionExpression: "attribute_not_exists(sk)",
       }));
-      await Promise.all([
-        readOwnMessage(at, user.userId, seq),
-        countMentions(at, notified(message, members, user.userId)),
-      ]);
+      const writes = [readOwnMessage(at, user.userId, seq)];
+      if (!opts.copy) writes.push(countMentions(at, notified(message, members, user.userId)));
+      await Promise.all(writes);
       return withUrls(message);
+    },
+
+    /**
+     * Points a message at the thread it started or was delivered into. Only the server calls this, right after the
+     * message's own send checked its author, so it checks no caller.
+     */
+    async linkThread(at: ChatRef & { seq: number }, threadRef: NonNullable<Message["threadRef"]>): Promise<Message> {
+      const { Attributes } = await db.send(new UpdateCommand({
+        TableName, Key: messageKey(at, at.seq), UpdateExpression: "SET threadRef = :ref ADD v :one", ConditionExpression: "attribute_exists(sk)",
+        ExpressionAttributeValues: { ":ref": threadRef, ":one": 1 }, ReturnValues: "ALL_NEW",
+      }));
+      return toMessage(Attributes!);
     },
 
     /**

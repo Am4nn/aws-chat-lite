@@ -18,6 +18,8 @@
         "src/**/handler.ts",
         "src/health.ts",
         "src/auth/presignup.ts",
+        "src/runs/loop.ts",
+        "src/runs/stream-handler.ts",
         "src/spike/*.ts"
       ],
       "project": [
@@ -26,7 +28,7 @@
     },
     "scripts": {
       "entry": [
-        "src/{floci-up,deploy-local,spike-check,spike-aws,grant,smoke}.ts"
+        "src/{floci-up,deploy-local,spike-check,spike-aws,grant,smoke,dev,stream-local}.ts"
       ],
       "project": [
         "src/**/*.ts"

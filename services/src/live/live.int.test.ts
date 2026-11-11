@@ -5,10 +5,13 @@ import WebSocket from "ws";
 import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { docClient, tableName } from "../lib/db.js";
 import { roomsRepo } from "../rooms/repo.js";
+import { chatRepo } from "../chat/repo.js";
+import { budgetRepo } from "../budget/repo.js";
+import { threadsRepo } from "../threads/repo.js";
 import { issueTicket, consumeTicket } from "./tickets.js";
 import { isOnline } from "./presence.js";
-import { broadcastToRoom, sendToUser } from "./broadcast.js";
-import { subscribe } from "./connections.js";
+import { broadcastToRoom, sendToConnection, sendToUser } from "./broadcast.js";
+import { getConnection, saveConnection, subscribe } from "./connections.js";
 
 // Runs against the deployed stack on Floci: npm run floci:up && npm run deploy:local, then npm -w services run test:int
 const outputs = JSON.parse(readFileSync(new URL("../../../infra/cdk.out/outputs-local.json", import.meta.url), "utf8"));
@@ -189,10 +192,159 @@ describe("live socket on Floci", () => {
     expect((await read("ROOM#r-gone", `CONN#${connId}`)).Item).toBeUndefined();
   });
 
+  it("a post that answers Gone right after $connect keeps the socket, since it may still be opening; later, it's cleaned up", async () => {
+    // Connection ids API Gateway doesn't know, so every post to them answers Gone.
+    const [opening, closed] = [`opening-${randomUUID()}`, `closed-${randomUUID()}`];
+    const owner = user("ann");
+    await saveConnection(opening, owner, ["r-opening"]);
+    await saveConnection(closed, owner, ["r-opening"]);
+    await docClient().send(new UpdateCommand({
+      TableName: tableName(), Key: { pk: `CONN#${closed}`, sk: "META" }, UpdateExpression: "SET connectedAt = :t",
+      ExpressionAttributeValues: { ":t": Date.now() - 60_000 },
+    }));
+    await sendToConnection(opening, { type: "pong" });
+    await sendToConnection(closed, { type: "pong" });
+    expect(await getConnection(opening)).toBeDefined();
+    expect(await getConnection(closed)).toBeUndefined();
+  });
+
   it("sendToUser reaches every tab the user has open", async () => {
     const u = user("tabs");
     const [a, b] = await Promise.all([signIn(u), signIn(u)]);
     await sendToUser(u.userId, { type: "read", roomId: "r", chatId: "c", lastReadSeq: 7 });
     await Promise.all([a.next((f) => f.lastReadSeq === 7), b.next((f) => f.lastReadSeq === 7)]);
   });
+});
+
+describe("agent threads over the socket", () => {
+  const AGENT_MS = 60_000;
+
+  /** A room with two members on open sockets. */
+  async function pair(name: string) {
+    const a = user("a");
+    const b = user("b");
+    const { roomId, generalChatId } = await repo.createRoom(a, name);
+    await repo.acceptInvite((await repo.rotateInvite(roomId, a.userId)).code, b);
+    return { a, b, roomId, generalChatId, sa: await signIn(a), sb: await signIn(b) };
+  }
+
+  const messageUpdated = (chatId: string, seq: number) => (f: Frame) =>
+    f.type === "message.updated" && (f.message as Frame).chatId === chatId && (f.message as Frame).seq === seq;
+  const runUpdated = (threadId: string, status?: string) => (f: Frame) =>
+    f.type === "run.updated" && (f.thread as Frame).threadId === threadId && (!status || (f.thread as Frame).status === status);
+  const history = async (u: { userId: string; username: string }, roomId: string, chatId: string) =>
+    (await chatRepo().history(u, roomId, chatId, {})).messages;
+
+  it("@agent in a people chat starts a thread and turns the message into its card", async () => {
+    const { a, roomId, generalChatId, sa, sb } = await pair("Cards");
+    send(sa, { action: "send", requestId: "c1", roomId, chatId: generalChatId, clientId: "k1", text: "@agent look tools:1" });
+    expect(await sa.next((f) => f.type === "ack")).toMatchObject({ ok: true, data: { seq: 1, text: "@agent look tools:1" } });
+
+    const updated = await sb.next(messageUpdated(generalChatId, 1));
+    const ref = (updated.message as Frame).threadRef as Frame;
+    expect(ref.kind).toBe("started");
+    // Linking bumps the version, so a stale copy of the plain message (a gap catch-up, say) can't replace the card.
+    expect((updated.message as Frame).v).toBe(1);
+    const threadId = String(ref.threadId);
+    await sb.next(runUpdated(threadId, "done"), AGENT_MS);
+
+    const isNew = (f: Frame) => f.type === "message.new" && (f.message as Frame).chatId === generalChatId;
+    expect(sb.frames.findIndex(isNew)).toBeLessThan(sb.frames.indexOf(updated));
+    // The room knows the thread before the card that points at it.
+    expect(sb.frames.findIndex(runUpdated(threadId))).toBeLessThan(sb.frames.indexOf(updated));
+    expect(sb.frames.filter(runUpdated(threadId)).at(-1)).toMatchObject({ thread: { status: "done", number: 1 } });
+    expect(await history(a, roomId, generalChatId)).toHaveLength(1);
+    const [first, answer] = await history(a, roomId, threadId);
+    expect(first).toMatchObject({ authorId: a.userId, text: "@agent look tools:1" });
+    expect(answer).toMatchObject({ authorId: "agent", agent: { status: "done" } });
+  }, AGENT_MS);
+
+  it("a leading #tag or a threadId delivers a people-chat message into the thread, which starts a run", async () => {
+    const { a, roomId, generalChatId, sa, sb } = await pair("Delivery");
+    const { thread } = await threadsRepo().createThread(a, roomId, { text: "notes", clientId: "k0" });
+
+    send(sa, { action: "send", requestId: "d1", roomId, chatId: generalChatId, clientId: "k1", text: "#1 and this" });
+    const updated = await sb.next(messageUpdated(generalChatId, 1));
+    expect((updated.message as Frame).threadRef).toEqual({ threadId: thread.threadId, kind: "delivered" });
+    const running = await sb.next((f) => runUpdated(thread.threadId)(f) && (f.thread as Frame).runFirstSeq === 2);
+    expect((await history(a, roomId, thread.threadId))[1]).toMatchObject({ seq: 2, authorId: a.userId, clientId: "k1:t", text: "#1 and this" });
+    await sb.next((f) => runUpdated(thread.threadId, "done")(f) && (f.thread as Frame).runId === (running.thread as Frame).runId, AGENT_MS);
+
+    send(sa, { action: "send", requestId: "d2", roomId, chatId: generalChatId, threadId: thread.threadId, clientId: "k2", text: "and more" });
+    expect((await sb.next(messageUpdated(generalChatId, 2))).message).toMatchObject({ threadRef: { kind: "delivered" } });
+    const copies = await history(a, roomId, thread.threadId);
+    expect(copies.filter((m) => m.authorId === a.userId).map((m) => m.text)).toEqual(["notes", "#1 and this", "and more"]);
+  }, AGENT_MS);
+
+  it("a mention counts once: the copy in the thread doesn't badge the member again", async () => {
+    const { a, b, roomId, generalChatId, sa } = await pair("Mentions");
+    send(sa, { action: "send", requestId: "m1", roomId, chatId: generalChatId, clientId: "k1", text: "@agent ask @b tools:0" });
+    const started = await sa.next(messageUpdated(generalChatId, 1));
+    const threadId = String(((started.message as Frame).threadRef as Frame).threadId);
+    send(sa, { action: "send", requestId: "m2", roomId, chatId: generalChatId, clientId: "k2", text: "#1 and @b again" });
+    await sa.next(messageUpdated(generalChatId, 2));
+
+    const item = async (sk: string) =>
+      (await docClient().send(new GetCommand({ TableName: tableName(), Key: { pk: `ROOM#${roomId}`, sk }, ConsistentRead: true }))).Item;
+    expect(await item(`MEMBER#${b.userId}`)).toMatchObject({ mentions: 2 });
+    expect((await item(`READ#${b.userId}#${threadId}`))?.mentions).toBeUndefined();
+    expect((await history(a, roomId, threadId)).filter((m) => m.authorId === a.userId).map((m) => m.mentions))
+      .toEqual([[b.userId], [b.userId]]);
+  }, AGENT_MS);
+
+  it("a thread's #name is sent as its #number; a tag later in the text delivers nothing", async () => {
+    const { a, roomId, generalChatId, sa } = await pair("Tags");
+    const { thread } = await threadsRepo().createThread(a, roomId, { text: "notes", clientId: "k0" });
+    await threadsRepo().rename(a, roomId, thread.threadId, "pr-check");
+
+    send(sa, { action: "send", requestId: "t1", roomId, chatId: generalChatId, clientId: "k1", text: "see #pr-check and #general" });
+    expect(await sa.next((f) => f.type === "ack")).toMatchObject({ ok: true, data: { text: "see #1 and #general" } });
+    await sleep(1000);
+    expect(sa.frames.some(messageUpdated(generalChatId, 1))).toBe(false);
+  });
+
+  it("a message in a thread chat starts the thread's run", async () => {
+    const { a, roomId, sa, sb } = await pair("Thread chat");
+    const { thread } = await threadsRepo().createThread(a, roomId, { text: "notes", clientId: "k0" });
+    send(sa, { action: "send", requestId: "s1", roomId, chatId: thread.threadId, clientId: "k1", text: "go tools:0" });
+    await sb.next((f) => runUpdated(thread.threadId, "running")(f) && (f.thread as Frame).runFirstSeq === 2);
+    await sb.next(runUpdated(thread.threadId, "done"), AGENT_MS);
+  }, AGENT_MS);
+
+  /** A slow run that A starts from #general; resolves with its thread id once the card is in place. */
+  async function slowRun(at: Awaited<ReturnType<typeof pair>>) {
+    send(at.sa, { action: "send", requestId: "slow", roomId: at.roomId, chatId: at.generalChatId, clientId: "k1", text: "@agent slow words:400" });
+    const updated = await at.sa.next(messageUpdated(at.generalChatId, 1));
+    const threadId = String(((updated.message as Frame).threadRef as Frame).threadId);
+    await at.sa.next(runUpdated(threadId, "running"));
+    return threadId;
+  }
+
+  it("any member can stop a run", async () => {
+    const at = await pair("Stop");
+    const threadId = await slowRun(at);
+    send(at.sb, { action: "stop", requestId: "x1", roomId: at.roomId, threadId });
+    const ack = await at.sb.next((f) => f.type === "ack" && f.requestId === "x1");
+    expect(ack).toMatchObject({ ok: true, data: { runId: expect.any(String) } });
+    await at.sb.next(runUpdated(threadId, "stopped"), AGENT_MS);
+  }, AGENT_MS);
+
+  it("the owner's budget change reaches the room at once", async () => {
+    const { a, roomId, sb } = await pair("Budget");
+    const budget = await budgetRepo().setCap(a, roomId, 5_000_000);
+    expect(await sb.next((f) => f.type === "budget.updated")).toEqual({ type: "budget.updated", roomId, budget });
+    expect(budget).toMatchObject({ capMicros: 5_000_000, spentMicros: 0 });
+  });
+
+  it("a removed member can't stop a run", async () => {
+    const at = await pair("Stop removed");
+    const threadId = await slowRun(at);
+    await repo.removeMember(at.roomId, at.a.userId, at.b.userId);
+    send(at.sb, { action: "stop", requestId: "x1", roomId: at.roomId, threadId });
+    expect(await at.sb.next((f) => f.type === "ack" && f.requestId === "x1")).toMatchObject({ ok: false, error: expect.any(String) });
+    expect((await threadsRepo().threadById(at.roomId, threadId))!.status).toBe("running");
+
+    send(at.sa, { action: "stop", requestId: "x2", roomId: at.roomId, threadId });
+    await at.sa.next(runUpdated(threadId, "stopped"), AGENT_MS);
+  }, AGENT_MS);
 });

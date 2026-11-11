@@ -1,6 +1,7 @@
 type Member = { userId: string; username: string };
 
-const CODE = /```[\s\S]*?```|`[^`\n]*`/g;
+/** Inline code and fenced blocks, where an `@name` or a `#tag` is just text. */
+export const CODE = /```[\s\S]*?```|`[^`\n]*`/g;
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** An `@` right after a word character is an email address, not a mention. */
