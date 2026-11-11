@@ -92,7 +92,8 @@ export type Schedule = {
 export type Budget = { spentMicros: number; capMicros: number; month: string; resetsAt: string };
 
 export type RunEventBody =
-  | { type: "run.started"; pick: ModelPick; startedBy: string }
+  /** `agentName`: who answers, as named when the run started, so the run reads the same after a rename or a delete. */
+  | { type: "run.started"; pick: ModelPick; startedBy: string; agentName: string }
   /** Once per run, before its first model call: the model id that answers. */
   | { type: "routed"; model: string; by: "pick" | "default" | "auto" }
   /** The provider's own content for a model call that ended, replayed verbatim on the next call; never streamed. */

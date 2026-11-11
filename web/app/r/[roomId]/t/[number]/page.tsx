@@ -16,8 +16,7 @@ export default async function ThreadPage({ params, searchParams }: {
   const thread = view.threads.find((t) => String(t.number) === number);
   if (!thread) notFound();
   if (query.view === "map") {
-    const agentName = view.agents.find((a) => a.agentId === thread.agentId)?.name ?? "agent";
-    return <ThreadMap key={thread.threadId} thread={thread} runId={query.run} agentName={agentName} />;
+    return <ThreadMap key={thread.threadId} thread={thread} runId={query.run} />;
   }
   const history = await serverApiOrNull<{ messages: Message[] }>(`/rooms/${roomId}/chats/${thread.threadId}/messages`);
   if (!history) notFound();

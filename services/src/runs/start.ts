@@ -138,7 +138,7 @@ export async function startOrSteer(
 
   let first: RunEvent;
   try {
-    first = await (await runs.eventWriter(run.runId)).append({ type: "run.started", pick: run.pick, startedBy: run.startedBy });
+    first = await (await runs.eventWriter(run.runId)).append({ type: "run.started", pick: run.pick, startedBy: run.startedBy, agentName: agent.name });
     await auditRepo().record(roomId, {
       id: `${run.runId}#${first.seq}`, at: first.at, actor: user.username, kind: "asked", threadNumber: thread.number, detail: message.text,
       agent: agent.name,

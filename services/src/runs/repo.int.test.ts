@@ -238,7 +238,7 @@ describe("startOrSteer: the model pick and the thread's taint, on Floci", () => 
     expect(started).toBe(true);
     expect(await taintOf(roomId, thread.threadId)).toEqual(["attachment"]);
     expect(await runs.getRun(runId)).toMatchObject({ pick: "auto", pickBy: "default" });
-    expect((await runs.allEvents(runId))[0]).toMatchObject({ type: "run.started", pick: "auto", startedBy: "owner" });
+    expect((await runs.allEvents(runId))[0]).toMatchObject({ type: "run.started", pick: "auto", startedBy: "owner", agentName: "agent" });
   });
 
   it("a pick sent with the message is the run's pick", async () => {

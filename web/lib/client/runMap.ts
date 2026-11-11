@@ -69,8 +69,10 @@ type LaneState = { lane: number; label: string; groups: Group[]; lastAt: number;
  * delegate step, so the lane that waited for it resumes to their right. A model turn's tokens and cost are split
  * evenly over the calls it made; the turn that made none is the lane's answer.
  */
-export function runMap(events: RunEvent[], nowMs: number, agentName: string): RunMap {
+export function runMap(events: RunEvent[], nowMs: number): RunMap {
   if (!events.length) return { lanes: [], nodes: [], edges: [], width: 0, height: 0 };
+  const started = events.find((e) => e.type === "run.started");
+  const agentName = started?.type === "run.started" ? started.agentName : "agent";
   const t0 = Date.parse(events[0].at);
   const ended = events.find((e) => e.type === "run.finished");
   const endMs = ended ? Date.parse(ended.at) : nowMs;

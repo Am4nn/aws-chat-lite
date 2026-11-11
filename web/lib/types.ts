@@ -107,7 +107,7 @@ export type TaintSource = "attachment" | "github" | "sandbox" | `mcp:${string}`;
 export type Budget = { spentMicros: number; capMicros: number; month: string; resetsAt: string };
 
 type RunEventBody =
-  | { type: "run.started"; pick: ModelPick; startedBy: string }
+  | { type: "run.started"; pick: ModelPick; startedBy: string; agentName: string }
   | { type: "routed"; model: string; by: "pick" | "default" | "auto" }
   | { type: "model.turn"; model: string; content: unknown; turn: number }
   | { type: "steer"; messageSeq: number; authorName: string; text: string; attachments?: string[] }

@@ -19,7 +19,7 @@ const at = (s: number) => new Date(Date.parse("2026-11-11T10:00:00Z") + s * 1000
 const ev = (seq: number, s: number, body: Record<string, unknown>) => ({ seq, at: at(s), ...body }) as RunEvent;
 const call = { id: "c1", name: "web_search", input: { query: "rotation" } };
 const searched = [
-  ev(1, 0, { type: "run.started", pick: "auto", startedBy: "aman" }),
+  ev(1, 0, { type: "run.started", pick: "auto", startedBy: "aman", agentName: "reviewer" }),
   ev(2, 2, { type: "usage", model: "m", job: "run", inputTokens: 1000, outputTokens: 100, cacheReadTokens: 0, cacheWriteTokens: 0, costMicros: 3000, ms: 2000 }),
   ev(3, 3, { type: "step.started", step: 1, call, detail: "rotation" }),
   ev(4, 5, { type: "step.finished", step: 1, output: "5 results", ms: 1800, ok: true }),
@@ -33,7 +33,7 @@ function Harness() {
   const [picked, pick] = useState<PickedStep | null>(null);
   return (
     <StepPick.Provider value={{ picked, pick }}>
-      <RunMap runId="run1" agentName="reviewer" live={false} />
+      <RunMap runId="run1" live={false} />
       {picked && <StepDetails {...picked} />}
     </StepPick.Provider>
   );

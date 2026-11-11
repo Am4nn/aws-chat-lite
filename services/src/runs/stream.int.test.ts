@@ -40,7 +40,7 @@ async function storedRun(texts: string[], { dead = false } = {}) {
   };
   await docClient().send(new PutCommand({ TableName: tableName(), Item: { pk: `RUN#${run.runId}`, sk: "META", ...run } }));
   const writer = await runs.eventWriter(run.runId);
-  await writer.append({ type: "run.started", pick: "auto", startedBy: owner.username });
+  await writer.append({ type: "run.started", pick: "auto", startedBy: owner.username, agentName: "agent" });
   for (const text of texts) await writer.append({ type: "text", text, turn: 1 });
   if (!dead) await writer.append({ type: "run.finished", status: "done", ms: 5, steps: 0, costMicros: 0 });
   return { owner, roomId, run };
