@@ -50,7 +50,7 @@ const fileGone = (page: Page, path: string) =>
 async function openFilesTab(page: Page) {
   await page.waitForSelector(`${PANEL} [role=tab]`);
   await page.evaluate(() => ([...document.querySelectorAll('aside[aria-label="Room panel"] [role=tab]')] as HTMLElement[])
-    .find((t) => t.textContent?.startsWith("Files"))!.click());
+    .find((t) => t.getAttribute("aria-label")?.startsWith("Files"))!.click());
   await page.waitForSelector(`${PANEL} input[type=file]`);
 }
 
