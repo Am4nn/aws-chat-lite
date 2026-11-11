@@ -129,7 +129,7 @@ export function schedulesRepo() {
 
   async function timeZoneOf(roomId: string): Promise<string> {
     const { Item } = await db.send(new GetCommand({
-      TableName, Key: metaKey(roomId), ConsistentRead: true, ProjectionExpression: "timeZone",
+      TableName, Key: metaKey(roomId), ConsistentRead: true, ProjectionExpression: "#tz", ExpressionAttributeNames: { "#tz": "timeZone" },
     }));
     return (Item?.timeZone as string | undefined) ?? DEFAULT_TIME_ZONE;
   }
@@ -292,7 +292,7 @@ export function schedulesRepo() {
       const role = await requireMember(roomId, user.userId, { writing: true });
       if (!can("setTimeZone", role)) throw new Forbidden("Only admins can set the room's time zone.");
       await db.send(new UpdateCommand({
-        TableName, Key: metaKey(roomId), UpdateExpression: "SET timeZone = :tz", ConditionExpression: "attribute_exists(pk)",
+        TableName, Key: metaKey(roomId), UpdateExpression: "SET #tz = :tz", ExpressionAttributeNames: { "#tz": "timeZone" }, ConditionExpression: "attribute_exists(pk)",
         ExpressionAttributeValues: { ":tz": timeZone },
       }));
       await changed(roomId);

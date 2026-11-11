@@ -60,7 +60,7 @@ export async function fireSchedule({ roomId, scheduleId, at }: FireInput, deps: 
 
 async function roomState(roomId: string) {
   const { Item } = await docClient().send(new GetCommand({
-    TableName: tableName(), Key: { pk: roomKey(roomId), sk: "META" }, ConsistentRead: true, ProjectionExpression: "archived, timeZone",
+    TableName: tableName(), Key: { pk: roomKey(roomId), sk: "META" }, ConsistentRead: true, ProjectionExpression: "archived, #tz", ExpressionAttributeNames: { "#tz": "timeZone" },
   }));
   return Item ? { archived: !!Item.archived, timeZone: (Item.timeZone as string | undefined) ?? DEFAULT_TIME_ZONE } : null;
 }
