@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ChevronRight, CircleAlert, CornerDownRight, Square, Wallet } from "lucide-react";
 import { formatElapsed } from "@/lib/client/format";
@@ -46,6 +48,7 @@ const ENDINGS: Record<Exclude<RunEndStatus, "done">, { label: string; icon: type
 export function RunBlock({ runId, answer, steers, pending, active, meName, members, onRetry, onDiscard }: Props) {
   const reduced = useReducedMotion();
   const { models } = useModels();
+  const pathname = usePathname();
   const stored = answer?.agent;
   const [wanted, setWanted] = useState(!stored);
   const [open, setOpen] = useState(false);
@@ -66,6 +69,13 @@ export function RunBlock({ runId, answer, steers, pending, active, meName, membe
     animate: { opacity: 1 },
     transition: reduced ? instant : { duration: dur.base, ease: easeOut },
   }) as const;
+
+  const mapLink = (
+    <>
+      {" · "}
+      <Link href={`${pathname}?view=map&run=${runId}`} scroll={false} className="rounded-sm text-text-2 underline-offset-2 transition-colors hover:text-text hover:underline">Map</Link>
+    </>
+  );
 
   function toggle() {
     setWanted(true);
@@ -128,8 +138,8 @@ export function RunBlock({ runId, answer, steers, pending, active, meName, membe
       {status && status !== "done" && <Ending status={status} reason={stored?.reason ?? run.reason} />}
 
       {stored
-        ? <motion.p {...fade(true)} className="-mt-2 font-mono text-[11.5px] text-text-3">{footerText(stored, models)}</motion.p>
-        : loaded && <p className="-mt-2 font-mono text-[11.5px] text-text-3">{liveFooter(run, models)}</p>}
+        ? <motion.p {...fade(true)} className="-mt-2 font-mono text-[11.5px] text-text-3">{footerText(stored, models)}{mapLink}</motion.p>
+        : loaded && <p className="-mt-2 font-mono text-[11.5px] text-text-3">{liveFooter(run, models)}{mapLink}</p>}
     </div>
   );
 }

@@ -94,10 +94,10 @@ describe("applyRunEvent", () => {
     expect(v).toMatchObject({ pick: "auto", model: "claude-haiku-5-5", startedAt: "2026-11-11T10:00:00Z" });
   });
 
-  it("ignores model.turn except for lastSeq", () => {
+  it("only keeps model.turn among the events", () => {
     const before = run(ev(1, { type: "text", text: "a" }));
-    const after = applyRunEvent(before, ev(2, { type: "model.turn", model: "m", content: [] }));
-    expect(after).toEqual({ ...before, lastSeq: 2 });
+    const turn = ev(2, { type: "model.turn", model: "m", content: [] });
+    expect(applyRunEvent(before, turn)).toEqual({ ...before, lastSeq: 2, events: [...before.events, turn] });
   });
 });
 
@@ -137,6 +137,46 @@ describe("applyRunEvent: approvals and sources", () => {
       ev(3, { type: "step.finished", step: 3, output: "", ms: 1, ok: true }),
     );
     expect(v.sources.map((x) => x.url)).toEqual(["https://a.dev/1", "https://b.dev"]);
+  });
+});
+
+describe("applyRunEvent: helper lanes", () => {
+  const call = (id: string, name: string, input = {}) => ({ id, name, input });
+  const delegated = [
+    ev(1, { type: "text", text: "Checking.", turn: 1 }),
+    ev(2, { type: "step.started", step: 1, call: call("d", "delegate", { agent: "researcher", task: "find docs" }), detail: "researcher: find docs" }),
+    ev(3, { type: "helper.started", lane: 1, step: 1, agentId: "a2", agentName: "researcher", task: "find docs", model: "claude-haiku-5-5" }),
+    ev(4, { type: "step.started", lane: 1, step: 2, call: call("l1", "fake.lookup"), detail: "a" }),
+    ev(5, { type: "step.finished", lane: 1, step: 2, output: "doc a", ms: 5, ok: true }),
+    ev(6, { type: "step.started", lane: 1, step: 3, call: call("l2", "fake.lookup"), detail: "b" }),
+    ev(7, { type: "step.finished", lane: 1, step: 3, output: "doc b", ms: 5, ok: true, sources: [{ title: "B", url: "https://b.dev" }] }),
+    ev(8, { type: "text", lane: 1, text: "Found 3 docs.", turn: 1 }),
+    ev(9, { type: "helper.finished", lane: 1, step: 1, status: "done", summary: "found 3 docs", steps: 2, ms: 10, costMicros: 40 }),
+    ev(10, { type: "step.finished", step: 1, output: "Found 3 docs.", ms: 20, ok: true }),
+    ev(11, { type: "text", text: "\n\nAll good.", turn: 2 }),
+  ];
+
+  it("keeps a helper's steps and text out of the run's own, on its delegate step", () => {
+    const v = run(...delegated);
+    expect(v.text).toBe("Checking.\n\nAll good.");
+    expect(v.items).toHaveLength(1);
+    expect(v.items[0]).toMatchObject({
+      kind: "step", name: "delegate", status: "done",
+      helper: { lane: 1, agentName: "researcher", task: "find docs", status: "done", summary: "found 3 docs", text: "Found 3 docs." },
+    });
+    const helper = v.items[0].kind === "step" ? v.items[0].helper : undefined;
+    expect(helper?.items).toHaveLength(2);
+    expect(v.sources.map((s) => s.url)).toEqual(["https://b.dev"]);
+  });
+
+  it("keeps every event, in order", () => {
+    expect(run(...delegated).events.map((e) => e.seq)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+  });
+
+  it("shows a helper's approvals in the run's rows, right after its delegate step", () => {
+    const asked = ev(5, { type: "approval.requested", lane: 1, step: 2, call: call("w", "github_comment"), title: "Comment?", expiresAt: "2026-11-11T12:00:00Z" });
+    const v = run(...delegated.slice(0, 3), asked);
+    expect(runRows(v, [], []).map((r) => r.key)).toEqual(["step:1", "approval:2"]);
   });
 });
 
