@@ -2,9 +2,23 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Each test gets a fresh module, so the per-container cache starts empty.
 let secretJson: typeof import("./secrets.js").secretJson;
+let secretText: typeof import("./secrets.js").secretText;
 beforeEach(async () => {
   vi.resetModules();
-  ({ secretJson } = await import("./secrets.js"));
+  ({ secretJson, secretText } = await import("./secrets.js"));
+});
+
+describe("secretText", () => {
+  it("returns the raw text, read once per container, shared with secretJson", async () => {
+    const read = vi.fn(async () => "{\"K\":\"v\"}");
+    expect(await secretText("a", read)).toBe("{\"K\":\"v\"}");
+    expect(await secretJson("a", read)).toEqual({ K: "v" });
+    expect(read).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a secret with no text", async () => {
+    await expect(secretText("a", async () => undefined)).rejects.toThrow("The secret a has no text.");
+  });
 });
 
 describe("secretJson", () => {
