@@ -7,11 +7,18 @@ describe("taint", () => {
     expect(messageTaint({ attachments: [] })).toEqual([]);
     expect(messageTaint({})).toEqual([]);
   });
-  it("merges sorted and unique", () => expect(mergeTaint(["attachment"], [], ["attachment"])).toEqual(["attachment"]));
+  it("merges sorted and unique", () => {
+    expect(mergeTaint(["attachment"], [], ["attachment"])).toEqual(["attachment"]);
+    expect(mergeTaint(["github"], ["attachment"])).toEqual(["attachment", "github"]);
+  });
 });
 
 describe("pickRefusal", () => {
-  it("refuses DeepSeek on private content", () => expect(pickRefusal("deepseek-flash", ["attachment"])).toBe(PICK_REFUSED));
+  it("refuses DeepSeek on private content", () => {
+    expect(pickRefusal("deepseek-flash", ["attachment"])).toBe(PICK_REFUSED);
+    expect(pickRefusal("deepseek-flash", ["github"])).toBe(PICK_REFUSED);
+    expect(PICK_REFUSED).toContain("GitHub data");
+  });
   it("allows everything else", () => {
     expect(pickRefusal("sonnet", ["attachment"])).toBeNull();
     expect(pickRefusal("deepseek-flash", [])).toBeNull();

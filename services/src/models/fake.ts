@@ -1,4 +1,4 @@
-import type { ModelMessage, ModelProvider, ModelRequest, ProviderChunk, StopReason } from "./gateway.js";
+import type { ModelMessage, ModelProvider, ModelRequest, ProviderChunk, StopReason, ToolCall } from "./gateway.js";
 import { NAME_PROMPT } from "./gateway.js";
 import { ROUTER_PROMPT } from "./picks.js";
 
@@ -13,8 +13,28 @@ const directive = (text: string, key: string, min: number, max: number) => {
   return match ? clamp(Number(match[1]), min, max) : undefined;
 };
 const stripDirectives = (text: string) =>
-  text.replace(/\b(tools|words|drop):\d+|\broute:\S+|\b(slow|fail|cutoff|refuse)\b/g, " ");
+  text.replace(/\b(tools|words|drop):\d+|\b(route|call):\S+|\b(slow|fail|cutoff|refuse)\b/g, " ");
 const firstWords = (text: string, n: number) => text.split(/\s+/).filter(Boolean).slice(0, n).join(" ");
+
+type Schema = { type?: string; format?: string; enum?: unknown[]; items?: Schema; properties?: Record<string, Schema>; required?: string[] };
+
+/** The smallest input a tool's JSON Schema accepts: its required properties only, each a fixed placeholder. */
+function sampleInput(schema: Schema): unknown {
+  if (schema.enum) return schema.enum[0];
+  switch (schema.type) {
+    case "string":
+      return schema.format === "uri" ? "https://example.com/" : "fake";
+    case "integer":
+    case "number":
+      return 1;
+    case "boolean":
+      return false;
+    case "array":
+      return [sampleInput(schema.items ?? {})];
+    default:
+      return Object.fromEntries((schema.required ?? []).map((key) => [key, sampleInput(schema.properties?.[key] ?? {})]));
+  }
+}
 
 const charsOf = (m: ModelMessage) => (m.role === "tool" ? m.output.length : m.text.length);
 
@@ -68,13 +88,24 @@ async function* run(req: ModelRequest, sleep: (ms: number) => Promise<void>): As
   const steers =
     firstToolIndex < 0 ? 0 : req.messages.slice(firstToolIndex).filter((m) => m.role === "user").length;
 
-  // A cut-off reply stops inside its tool call, so the call is there but the turn ends at the length limit.
-  if (cutoff || results < toolTarget + steers) {
-    const call = { id: `call-${results + 1}`, name: "fake.lookup", input: { query, slow } };
+  const toolTurn = (call: ToolCall, stop: StopReason): ProviderChunk[] => {
     calls.push(call.id);
     outputChars += JSON.stringify(call).length;
-    yield { type: "tool_call", call };
-    yield* finish(cutoff ? "max_tokens" : "tool_use");
+    return [{ type: "tool_call", call }, ...finish(stop)];
+  };
+  const id = `call-${results + 1}`;
+
+  // call:<tool> uses the request's real tools, one per turn in the order named, in place of the lookups.
+  const named = [...prompt.matchAll(/\bcall:(\S+)/g)];
+  if (named.length) {
+    const tool = named.flatMap(([, name]) => req.tools.filter((t) => t.name === name))[results];
+    if (tool) {
+      yield* toolTurn({ id, name: tool.name, input: sampleInput(tool.inputSchema) as Record<string, unknown> }, "tool_use");
+      return;
+    }
+  } else if (cutoff || results < toolTarget + steers) {
+    // A cut-off reply stops inside its tool call, so the call is there but the turn ends at the length limit.
+    yield* toolTurn({ id, name: "fake.lookup", input: { query, slow } }, cutoff ? "max_tokens" : "tool_use");
     return;
   }
 

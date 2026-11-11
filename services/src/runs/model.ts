@@ -12,6 +12,8 @@ type RunState = {
   stopRequestedBy?: string;
   steps: number;
   startedAtMs: number;
+  /** Time spent waiting for approvals, which doesn't count toward the run's time limit. */
+  pausedMs?: number;
   spentMicros: number;
   capMicros: number;
   month: string;
@@ -24,6 +26,6 @@ export function endReason(s: RunState, nowMs: number): { status: RunEndStatus; r
   if (s.stopRequestedBy) return stoppedBy(s.stopRequestedBy);
   if (s.spentMicros >= s.capMicros) return { status: "capped", reason: budgetText(s.capMicros, s.month) };
   if (s.steps >= RUN_MAX_STEPS) return { status: "failed", reason: `Step limit reached (${RUN_MAX_STEPS} steps).` };
-  if (nowMs - s.startedAtMs > RUN_MAX_MS) return { status: "failed", reason: "Time limit reached (2 hours)." };
+  if (nowMs - s.startedAtMs - (s.pausedMs ?? 0) > RUN_MAX_MS) return { status: "failed", reason: "Time limit reached (2 hours)." };
   return null;
 }

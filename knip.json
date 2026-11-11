@@ -5,14 +5,10 @@
       "exports",
       "types"
     ],
-    "services/src/threads/types.ts": [
-      "types"
-    ],
     "web/lib/types.ts": [
       "types"
     ],
     "services/src/tools/types.ts": [
-      "files",
       "types"
     ]
   },
