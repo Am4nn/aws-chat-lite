@@ -6,6 +6,7 @@ import { bff, errorText } from "@/lib/client/bff";
 import { useLiveEvent } from "@/lib/client/LiveProvider";
 import type { RoomSummary } from "@/lib/types";
 import { useToast } from "@/components/overlays/Toast";
+import { nextRoomPath } from "./nav";
 
 /**
  * Leaving the room (leave or archive) from this tab, and keeping the shell current when the room changes under it.
@@ -33,8 +34,7 @@ export function useRoomExit({ roomId, rooms, onExited }: { roomId: string; rooms
       await bff(`/bff/api/rooms/${roomId}/${action}`, { body: {} });
       onExited();
       toast(done);
-      const next = rooms.find((r) => r.roomId !== roomId);
-      router.replace(next ? `/r/${next.roomId}` : "/");
+      router.replace(nextRoomPath(rooms, roomId));
     } catch (e) {
       leaving.current = undefined;
       toast(errorText(e), "error");
