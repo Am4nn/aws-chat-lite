@@ -3,8 +3,7 @@
 import { useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ChevronRight, Clock, Square, X } from "lucide-react";
-import { decider, remaining, settledLine, type LocalDecision } from "@/lib/client/approvals";
-import { bff } from "@/lib/client/bff";
+import { decider, remaining, sendDecision, settledLine, type LocalDecision } from "@/lib/client/approvals";
 import type { ApprovalItem } from "@/lib/client/run";
 import type { ApprovalStatus } from "@/lib/types";
 import { useNow } from "@/lib/client/useNow";
@@ -33,7 +32,7 @@ export function ApprovalCard({ runId, approval: a, meName, enter }: Props) {
   const toast = useToast();
   const [local, setLocal] = useState<LocalDecision>(null);
   const [decide] = useState(() => decider(
-    async (decision) => { await bff(`/bff/api/runs/${runId}/approvals/${a.step}`, { body: { decision } }); },
+    (decision) => sendDecision(runId, a.step, decision),
     setLocal,
     (text) => toast(text, "error"),
   ));

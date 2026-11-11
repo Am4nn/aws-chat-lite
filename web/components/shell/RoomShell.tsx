@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { motion, useReducedMotion } from "motion/react";
-import { Bot, Folder, Plug, Search, UserPlus, Users } from "lucide-react";
+import { Bot, Folder, Plug, Search, UserPlus, Users, Workflow } from "lucide-react";
 import { bff, bffOrNull, errorText } from "@/lib/client/bff";
 import { useLive, useLiveStatus } from "@/lib/client/LiveProvider";
 import { ModelsProvider } from "@/lib/client/ModelsProvider";
@@ -29,10 +29,13 @@ import { MentionSound } from "@/components/chat/MentionSound";
 import { FilesPanel } from "@/components/files/FilesPanel";
 import { useRoomFiles } from "@/components/files/useRoomFiles";
 import { SearchPanel } from "@/components/chat/SearchPanel";
+import { StepDetails } from "@/components/threads/map/StepDetails";
+import { StepPick, type PickedStep } from "@/components/threads/map/stepPick";
 import { RunCapsule } from "@/components/threads/RunCapsule";
 import { RunPanel } from "@/components/threads/RunPanel";
 import { ThreadList } from "@/components/threads/ThreadList";
 import { ThreadTitle } from "@/components/threads/ThreadTitle";
+import { ViewSwitch } from "@/components/threads/ViewSwitch";
 import { BudgetCard } from "./BudgetCard";
 import { Header } from "./Header";
 import { Backdrop, MobileNav } from "./MobileNav";
@@ -66,6 +69,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
   const [searchFocus, setSearchFocus] = useState(0);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
+  const [picked, setPicked] = useState<PickedStep | null>(null);
   const live = useLive();
   const status = useLiveStatus();
   const { room } = view;
@@ -80,6 +84,9 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
   const query = useSearchParams();
   const mcpName = query.get("mcp");
   const mcpError = query.get("mcpError");
+  const onMap = !!activeThread && query.get("view") === "map";
+  // A step picked on another run's Map (another thread's, or this thread's before its next run) isn't shown.
+  const shownStep = onMap && picked?.runId === (query.get("run") ?? activeThread.runId) ? picked : null;
   const shownMcpResult = useRef<string | null>(null);
 
   // The socket outlives room switches and subscribes only to the rooms the user was in when it connected, so each
@@ -136,6 +143,14 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
   function togglePanel() {
     if (isPhoneNow()) setOverlay((o) => (o === "panel" ? null : "panel"));
     else setPanelOpen((o) => !o);
+  }
+
+  /** A step picked on the Map opens in the panel's Step tab. */
+  function pickStep(step: PickedStep) {
+    setPicked(step);
+    setPanelTab("step");
+    if (isPhoneNow()) setOverlay("panel");
+    else setPanelOpen(true);
   }
 
   function openSearch() {
@@ -241,6 +256,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
               <>
                 <ThreadTitle thread={activeThread} />
                 {activeThread.runId && <RunCapsule key={activeThread.threadId} thread={activeThread} />}
+                <ViewSwitch map={onMap} />
               </>
             )}
             taint={activeThread?.taint}
@@ -248,7 +264,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
           />
           <div className="relative min-h-0 flex-1 overflow-hidden">
             <motion.div key={pathname} {...enter} initial={navigated ? enter.initial : false} className="absolute inset-0">
-              {children}
+              <StepPick.Provider value={{ picked, pick: pickStep }}>{children}</StepPick.Provider>
             </motion.div>
           </div>
         </main>
@@ -258,6 +274,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
           active={panelTab}
           onActiveChange={setPanelTab}
           tabs={[
+            ...(shownStep ? [{ id: "step", label: "Step", icon: Workflow, content: <StepDetails {...shownStep} /> }] : []),
             ...(activeThread ? [{ id: "context", label: "Context", icon: Bot, content: <RunPanel thread={activeThread} files={files.files} /> }] : []),
             {
               id: "files", label: `Files · ${files.files.length}`, icon: Folder,
