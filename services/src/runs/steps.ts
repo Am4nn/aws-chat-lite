@@ -8,7 +8,7 @@ import { connectionsRepo } from "../connections/repo.js";
 import { sleep } from "../lib/sleep.js";
 import { mcpServerOf } from "../mcp/client/tools.js";
 import { memoryRepo } from "../memory/repo.js";
-import { JOBS, modelInfo, NAMING_MODEL, ROUTER_MODEL } from "../models/catalog.js";
+import { JOBS, modelInfo, NAMING_MODEL, ROUTER_MODEL, type ModelPick } from "../models/catalog.js";
 import { gateway } from "../models/index.js";
 import { NAME_PROMPT, type ModelChunk, type ModelGateway, type ModelRequest, type ToolCall, type ToolSpec } from "../models/gateway.js";
 import { modelIdOf, parseRoute, ROUTER_PROMPT, routerInput } from "../models/picks.js";
@@ -21,13 +21,13 @@ import type { Tool, ToolEnv, ToolResult } from "../tools/types.js";
 import { sandboxCostMicros } from "../workspace/limits.js";
 import { runSandbox } from "../workspace/session.js";
 import type { FilesSynced } from "../workspace/types.js";
-import { answerOf, buildContext } from "./context.js";
+import { answerOf, buildContext, inLane, threadMessages } from "./context.js";
 import { finishRun } from "./finish.js";
 import { endReason, stoppedBy } from "./model.js";
 import { notifyRun } from "./notify.js";
 import { systemPrompt } from "./prompt.js";
 import { runsRepo, type Run } from "./repo.js";
-import { mayRun, runTool, SANDBOX_TOOL, toolDetail, toolsFor } from "./tools.js";
+import { delegateSpec, mayRun, runTool, SANDBOX_TOOL, toolDetail, toolsFor } from "./tools.js";
 
 /*
  * The bodies of the run loop's durable steps. A step that fails is run again with the same input, so each one reads
@@ -46,8 +46,20 @@ type End = { status: RunEndStatus; reason?: string };
 type Writer = Awaited<ReturnType<ReturnType<typeof runsRepo>["eventWriter"]>>;
 /** `ms`: how long the model call took. */
 type Usage = Extract<ModelChunk, { type: "usage" }> & { ms?: number };
-/** A run once its model is settled, with the agent that answers it and the room's other agents, as `load` read them. */
-export type RoutedRun = Run & { model: string; agent: Agent; others: Agent[] };
+/** A helper's lane, the main lane's delegate step that started it, the task it was handed and who handed it over. */
+type Helper = { lane: number; step: number; task: string; parent: string };
+/**
+ * A run once its model is settled, with the agent that answers it and the room's other agents, as `load` read them.
+ * A helper works on the same run from its own lane, with its own agent and model, and no others: it can't hand on.
+ */
+export type RoutedRun = Run & { model: string; agent: Agent; others: Agent[]; helper?: Helper };
+
+export const laneOf = (run: RoutedRun) => run.helper?.lane ?? 0;
+/**
+ * A helper's durable steps and recorded calls carry its lane in their names (`h1-model-1`). The markers are kept per
+ * run, so without it a helper's turn would find the main agent's turn of the same number already recorded.
+ */
+export const laneName = (run: RoutedRun, name: string) => (run.helper ? `h${run.helper.lane}-${name}` : name);
 
 let shared: ModelGateway | undefined;
 /** One gateway per container, so its SDK clients keep their connections alive from one call to the next. */
@@ -91,7 +103,7 @@ const budgetLeft = async (run: Run) => {
 };
 
 /** The run's cost so far: the sum of the calls it has recorded, a retried step's earlier attempts included. */
-const costOf = (events: RunEvent[]) => events.reduce((sum, e) => sum + (e.type === "usage" ? e.costMicros : 0), 0);
+export const costOf = (events: RunEvent[]) => events.reduce((sum, e) => sum + (e.type === "usage" ? e.costMicros : 0), 0);
 
 /** Polls the run's stop flag every second, and aborts the signal once a member has asked the run to stop. */
 function watchStop(runId: string) {
@@ -152,35 +164,42 @@ async function callModel(request: ModelRequest, onText?: (text: string) => void)
 }
 
 type Choice = { model: string; by: "pick" | "default" | "auto"; costMicros: number };
+/** What to choose for: the pick, the step whose result the router's call settles, and the message Auto routes on. */
+type Ask = { pick: ModelPick; by: "pick" | "default"; step: string; message: () => Promise<{ author: string; text: string }> };
 
 /**
- * A pick names its model. Auto asks the router on Haiku to choose Haiku or Sonnet from the run's first message, and
- * takes Sonnet without asking once the budget is spent, or when the router fails or declines.
+ * A pick names its model. Auto asks the router on Haiku to choose Haiku or Sonnet from the message, and takes Sonnet
+ * without asking once the budget is spent, or when the router fails or declines. A retried step keeps the router's
+ * recorded choice instead of asking again.
  */
-async function chooseModel(run: Run, writer: Writer): Promise<Choice> {
-  if (run.pick !== "auto") return { model: modelIdOf(run.pick), by: run.pickBy, costMicros: run.costMicros };
+export async function chooseModel(run: Run, writer: Writer, ask: Ask): Promise<Choice> {
+  if (ask.pick !== "auto") return { model: modelIdOf(ask.pick), by: ask.by, costMicros: run.costMicros };
+  const recorded = await runsRepo().recorded<Choice>(run.runId, ask.step);
+  if (recorded) return recorded;
   const sonnet = modelIdOf("sonnet");
   if (!await budgetLeft(run)) return { model: sonnet, by: "auto", costMicros: run.costMicros };
-  const first = (await runsRepo().prior(run.threadId, run.firstSeq)).at(-1);
+  const { author, text } = await ask.message();
   const call = await callModel({
-    model: ROUTER_MODEL, system: ROUTER_PROMPT, tools: [], ...JOBS.route,
-    messages: [{ role: "user", author: first?.authorName ?? "", text: routerInput(first?.text ?? "") }],
+    model: ROUTER_MODEL, system: ROUTER_PROMPT, tools: [], ...JOBS.route, messages: [{ role: "user", author, text: routerInput(text) }],
   });
   const choice: Choice = {
     model: call.failed || call.end?.stop === "refusal" ? sonnet : parseRoute(call.text), by: "auto",
     costMicros: run.costMicros + (call.usage?.costMicros ?? 0),
   };
-  return call.usage ? recordCall(run, writer, { model: ROUTER_MODEL, job: "route", step: "route" }, call.usage, choice) : choice;
+  return call.usage ? recordCall(run, writer, { model: ROUTER_MODEL, job: "route", step: ask.step }, call.usage, choice) : choice;
 }
 
-/**
- * Settles the model the run answers on before its first model call. A retried step keeps the router's recorded
- * choice instead of asking again, and logs `routed` once.
- */
+/** Settles the model the run answers on, from its first message, before its first model call. Logs `routed` once. */
 export async function routeRun(run: Run): Promise<{ model: string; costMicros: number }> {
   const runs = runsRepo();
   const [events, writer] = await Promise.all([runs.allEvents(run.runId), runs.eventWriter(run.runId)]);
-  const choice = await runs.recorded<Choice>(run.runId, "route") ?? await chooseModel(run, writer);
+  const choice = await chooseModel(run, writer, {
+    pick: run.pick, by: run.pickBy, step: "route",
+    message: async () => {
+      const first = (await runs.prior(run.threadId, run.firstSeq)).at(-1);
+      return { author: first?.authorName ?? "", text: first?.text ?? "" };
+    },
+  });
   const logged = events.find((e) => e.type === "routed");
   const routed = logged ?? await writer.append({ type: "routed", model: choice.model, by: choice.by });
   const thread = await runs.progress(run, { model: choice.model });
@@ -200,7 +219,7 @@ export async function nameThread(run: Run): Promise<number> {
 async function suggestName(run: Run): Promise<Named> {
   if (!await budgetLeft(run)) return { name: "", costMicros: run.costMicros };
   const runs = runsRepo();
-  const messages = buildContext(await runs.prior(run.threadId, run.firstSeq), []);
+  const messages = buildContext(threadMessages(await runs.prior(run.threadId, run.firstSeq)), []);
   const call = await callModel({ model: NAMING_MODEL, system: NAME_PROMPT, messages, tools: [], ...JOBS.name });
   // A name is a nicety: a failed call keeps the numbered name, which anyone can still change, and the run goes on.
   const named = { name: call.failed ? "" : call.text.trim(), costMicros: run.costMicros + (call.usage?.costMicros ?? 0) };
@@ -254,16 +273,18 @@ type Turn = { toolCalls: ToolCall[]; seenSeq: number; costMicros: number; end?: 
  * last looked, which become steers, then the privacy gate. The answer streams into the event log in 250 ms batches,
  * and a stop requested meanwhile aborts the call within a second, keeping what was written. What an earlier attempt
  * wrote for this turn without recording its call (its text and native turn) is voided by a `text.reset` before the
- * model answers again.
+ * model answers again. A helper's turn is the same, in its lane, except that it reads no steers: it hears only its
+ * task, and what members send meanwhile waits for the thread's own agent, whose next turn reads it.
  */
 export async function modelTurn(run: RoutedRun, turn: number): Promise<Turn> {
   const runs = runsRepo();
-  const recorded = await runs.recorded<Turn>(run.runId, `model-${turn}`);
+  const recorded = await runs.recorded<Turn>(run.runId, laneName(run, `model-${turn}`));
   if (recorded) return recorded;
-  const [events, writer, end] = await Promise.all([runs.allEvents(run.runId), runs.eventWriter(run.runId), limitsReached(run)]);
+  const lane = laneOf(run);
+  const [events, writer, end] = await Promise.all([runs.allEvents(run.runId), runs.eventWriter(run.runId, lane), limitsReached(run)]);
   if (end) return { toolCalls: [], seenSeq: run.seenSeq, costMicros: costOf(events), end };
 
-  const seenSeq = await readSteers(run, events, writer);
+  const seenSeq = run.helper ? run.seenSeq : await readSteers(run, events, writer);
   const [prior, steers, thread, room, memory] = await Promise.all([
     runs.prior(run.threadId, run.firstSeq), runs.unread(run.threadId, run.firstSeq), threadsRepo().threadById(run.roomId, run.threadId),
     roomConnections(run.roomId), memoryRepo().entries(run.roomId),
@@ -274,13 +295,20 @@ export async function modelTurn(run: RoutedRun, turn: number): Promise<Turn> {
   const refused = runRefusal(run.model, taint);
   if (refused) return { toolCalls: [], seenSeq, costMicros: costOf(events), end: refused };
 
-  if (events.some((e) => (e.type === "text" || e.type === "model.turn") && e.turn === turn)) {
+  if (events.some((e) => inLane(lane)(e) && (e.type === "text" || e.type === "model.turn") && e.turn === turn)) {
     events.push(await writer.append({ type: "text.reset", turn }));
   }
-  const tools = toolsFor(run.model, models().servedBy(run.model), { ...room, github: room.github !== null }, run.agent.tools);
+  const delegate = delegateSpec(run.others);
+  const tools = [
+    ...toolsFor(run.model, models().servedBy(run.model), { ...room, github: room.github !== null }, run.agent.tools),
+    ...(delegate ? [delegate] : []),
+  ];
   // Memory is read every turn, so what this run or another one saved since is there for the next call.
-  const system = systemPrompt({ agent: run.agent, others: run.others, memory, privateOk: modelInfo(run.model).privateOk });
-  return stream(run, writer, buildContext(prior, events), events, { turn, seenSeq, system, tools, tainted: taint.length > 0 });
+  const system = systemPrompt({
+    agent: run.agent, others: run.others, memory, privateOk: modelInfo(run.model).privateOk, helperOf: run.helper?.parent,
+  });
+  const opening = run.helper ? [{ role: "user" as const, author: run.helper.parent, text: run.helper.task }] : threadMessages(prior);
+  return stream(run, writer, buildContext(opening, events, lane), events, { turn, seenSeq, system, tools, tainted: taint.length > 0 });
 }
 
 async function stream(
@@ -294,7 +322,7 @@ async function stream(
   let wrote = false;
   // Each turn's text after the first starts a new paragraph, in the log itself, so the stored answer and the streamed
   // one stay the same text.
-  let lead = answerOf(events).text ? "\n\n" : "";
+  let lead = answerOf(events, laneOf(run)).text ? "\n\n" : "";
   const flush = async () => {
     if (!pending) return;
     const text = lead + pending;
@@ -322,7 +350,7 @@ async function stream(
   // landed.
   const chargeAndRetry = async (error: unknown, logFailed: boolean): Promise<never> => {
     if (call.usage) {
-      const charger = logFailed ? await runsRepo().eventWriter(run.runId) : writer;
+      const charger = logFailed ? await runsRepo().eventWriter(run.runId, laneOf(run)) : writer;
       await recordCall(run, charger, { model: run.model, job: "run" }, call.usage, { costMicros: spent + call.usage.costMicros });
     }
     throw error;
@@ -341,7 +369,7 @@ async function stream(
   const settle = (result: Pick<Turn, "toolCalls" | "end">) => {
     const turnResult = { ...result, seenSeq, costMicros: spent + (call.usage?.costMicros ?? 0), tainted };
     if (!call.usage) return turnResult;
-    return recordCall(run, writer, { model: run.model, job: "run", step: `model-${turn}` }, call.usage, turnResult);
+    return recordCall(run, writer, { model: run.model, job: "run", step: laneName(run, `model-${turn}`) }, call.usage, turnResult);
   };
   if (stopper) return settle({ toolCalls: [], end: stoppedBy(stopper) });
   if (call.failed) return settle({ toolCalls: [], end: { status: "failed", reason: DROPPED } });
@@ -449,7 +477,9 @@ export async function toolStep(
 
   const runs = runsRepo();
   const step = run.steps + 1;
-  const [events, writer, room] = await Promise.all([runs.allEvents(run.runId), runs.eventWriter(run.runId), roomConnections(run.roomId)]);
+  const [events, writer, room] = await Promise.all([
+    runs.allEvents(run.runId), runs.eventWriter(run.runId, laneOf(run)), roomConnections(run.roomId),
+  ]);
   const logged = (type: string) => events.find((e) => (e.type === type) && "step" in e && e.step === step);
   const offered = mayRun(run.model, models().servedBy(run.model), call.name, room, run.agent.tools);
   const sandboxed = offered && call.name === SANDBOX_TOOL.name;
@@ -463,7 +493,8 @@ export async function toolStep(
   if (sandboxed) await threadsRepo().addTaint(run.roomId, run.number, ["sandbox"]);
   const before = logged("step.started");
   const started = before ?? await writer.append({ type: "step.started", step, call, detail: toolDetail(call, room) });
-  await notifyRun(run.roomId, await runs.progress(run, { steps: step, currentStep: call.name }), started.seq);
+  const currentStep = run.helper ? `${run.agent.name} › ${call.name}` : call.name;
+  await notifyRun(run.roomId, await runs.progress(run, { steps: step, currentStep }), started.seq);
   const t0 = Date.now();
   const result = await runCall(run, call, offered, step, { room, settled, started, rerun: !!before, envOf });
   const { output, ok, synced, sources } = result;

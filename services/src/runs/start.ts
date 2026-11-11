@@ -25,7 +25,7 @@ const CLAIM_ATTEMPTS = 5;
 let lambda: LambdaClient | undefined;
 
 /** A room that never set a default model uses Auto. Read consistently, so a default an admin just set applies. */
-async function roomDefaultModel(roomId: string): Promise<ModelPick> {
+export async function roomDefaultModel(roomId: string): Promise<ModelPick> {
   const { Item } = await docClient().send(new GetCommand({
     TableName: tableName(), Key: { pk: roomKey(roomId), sk: "META" }, ConsistentRead: true,
     ProjectionExpression: "#m", ExpressionAttributeNames: { "#m": "defaultModel" },

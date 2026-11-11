@@ -1,7 +1,7 @@
 import { modelInfo, type Provider } from "../models/catalog.js";
 import type { ToolCall, ToolSpec } from "../models/gateway.js";
 import { LANGUAGES, MAX_TIMEOUT_SEC } from "../sandbox/sandbox.js";
-import type { ToolKind } from "../threads/types.js";
+import type { Agent, ToolKind } from "../threads/types.js";
 import { findTool, roomTools, type RoomMcp } from "../tools/index.js";
 import type { Tool } from "../tools/types.js";
 
@@ -28,6 +28,30 @@ export const SANDBOX_TOOL: ToolSpec = {
   },
 };
 
+export const firstLine = (text: unknown) => String(text ?? "").split("\n").map((l) => l.trim()).find(Boolean) ?? "";
+
+export const DELEGATE = "delegate";
+const DELEGATE_ABOUT = "Hand one sub-task to another agent of this room. It sees only the task you write, works with its own "
+  + "tools and instructions, and its final answer comes back as this tool's result.";
+
+/** The tool that hands a sub-task to one of `others`, the agents a run's agent can ask; none when there are none. */
+export function delegateSpec(others: Agent[]): ToolSpec | undefined {
+  if (!others.length) return undefined;
+  const roster = others.map((a) => {
+    const line = firstLine(a.instructions).slice(0, 120);
+    return line ? `@${a.name}: ${line}` : `@${a.name}`;
+  });
+  return {
+    name: DELEGATE,
+    description: [DELEGATE_ABOUT, "Agents:", ...roster].join("\n"),
+    inputSchema: {
+      type: "object",
+      properties: { agent: { enum: others.map((a) => a.name) }, task: { type: "string" } },
+      required: ["agent", "task"],
+    },
+  };
+}
+
 /**
  * The tools a model is offered: those of the kinds its agent may use, plus the room memory, which every agent shares.
  * Sandbox output carries room files, so only a model that may see private content gets the sandbox; the fake's tools
@@ -51,8 +75,6 @@ export function mayRun(model: string, served: Provider, name: string, { roomId, 
   const signedIn = mcp.map((c) => ({ ...c, status: "connected" as const }));
   return toolsFor(model, served, { roomId, github: true, mcp: signedIn }, kinds).some((t) => t.name === name);
 }
-
-const firstLine = (code: unknown) => String(code ?? "").split("\n").map((l) => l.trim()).find(Boolean) ?? "";
 
 /** The line a running step shows under its tool's name. */
 export function toolDetail(call: ToolCall, room: RoomMcp): string {

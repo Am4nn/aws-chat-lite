@@ -133,14 +133,15 @@ export function runsRepo() {
     /**
      * Appends events after the newest stored one. Each put waits for the one before it, so events land in seq order
      * even when appends overlap, and the condition refuses to overwrite a seq that is already taken. Writes passed in
-     * `with` go in one transaction with the event, so they happen exactly when it does.
+     * `with` go in one transaction with the event, so they happen exactly when it does. Every event is in the writer's
+     * `lane`: a helper's events are in its own.
      */
-    async eventWriter(runId: string): Promise<{ append(b: RunEventBody, alongside?: TransactItem[]): Promise<RunEvent> }> {
+    async eventWriter(runId: string, lane = 0): Promise<{ append(b: RunEventBody, alongside?: TransactItem[]): Promise<RunEvent> }> {
       let seq = await lastEventSeq(runId);
       let tail: Promise<unknown> = Promise.resolve();
       return {
         append(body, alongside = []) {
-          const event = { ...body, seq: ++seq, at: new Date().toISOString() } as RunEvent;
+          const event = { ...body, ...(lane ? { lane } : {}), seq: ++seq, at: new Date().toISOString() } as RunEvent;
           const put = {
             TableName, Item: { pk: `RUN#${runId}`, sk: eventSk(event.seq), ...event }, ConditionExpression: "attribute_not_exists(sk)",
           };
