@@ -14,6 +14,11 @@ export interface StageConfig {
    * because a Lambda's own S3 endpoint is an address inside Docker.
    */
   s3PublicEndpoint?: string;
+  /**
+   * AWS only: the public base of the OAuth and MCP endpoints, the issuer MCP clients see. Locally it is the API's own
+   * Floci host, which only exists once the API does.
+   */
+  mcpBaseUrl?: string;
   /** Which models answer: the fake, or the real providers. Real models cost money, so local opts in. */
   modelGateway: "fake" | "live";
   /** Which GitHub App and web search the tools reach: a canned fake, or the real ones. Locally that is opt-in too. */
@@ -51,7 +56,7 @@ export function loadConfig(stage: string | undefined, env: NodeJS.ProcessEnv): S
     if (env.AWS_ENDPOINT_URL) throw new Error("stage=aws: unset AWS_ENDPOINT_URL first (it is pointing at an emulator).");
     return {
       stage, prefix: "cl-aws", isLocal: false, region: "ap-southeast-2", siteOrigins: ["https://chat.amanarya.com"],
-      modelGateway: "live", toolMode: "live",
+      mcpBaseUrl: "https://chat.amanarya.com", modelGateway: "live", toolMode: "live",
     };
   }
   throw new Error(`stage must be local or aws (got "${stage}"). Pass -c stage=local`);
