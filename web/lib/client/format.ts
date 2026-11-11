@@ -10,6 +10,13 @@ export function formatElapsed(ms: number): string {
   return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
 
+/** How long a step took: tenths of a second for quick ones, then whole seconds, then minutes. */
+export function formatStepTime(ms: number): string {
+  if (ms < 9_950) return `${(ms / 1000).toFixed(1)}s`;
+  if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
+  return formatElapsed(ms);
+}
+
 export function formatUsd(micros: number): string {
   if (micros > 0 && micros < 10_000) return "<$0.01";
   return `$${(Math.round(micros / 10_000) / 100).toFixed(2)}`;
@@ -29,6 +36,14 @@ export function streamWords(text: string, final: boolean): string[] {
   const words = text.split(/\s+/).filter(Boolean);
   if (!final && words.length && !/\s$/.test(text)) words.pop();
   return words;
+}
+
+/** The streamed answer as paragraphs of words; only the last paragraph can still be mid-word. */
+export function answerParagraphs(text: string, final: boolean): string[][] {
+  const paragraphs = text.split(/\n\s*\n/);
+  return paragraphs
+    .map((p, i) => streamWords(p, final || i < paragraphs.length - 1))
+    .filter((words) => words.length > 0);
 }
 
 export function typingText(names: string[]): string {

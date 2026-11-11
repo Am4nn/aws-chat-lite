@@ -15,6 +15,8 @@ export type RoomView = {
   me: { role: Role };
   chats: Chat[];
   members: Member[];
+  threads: ThreadSummary[];
+  budget: Budget;
 };
 
 export type Reaction = "thumbs" | "heart" | "joy" | "tada" | "eyes" | "check";

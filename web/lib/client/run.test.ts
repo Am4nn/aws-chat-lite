@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Message, RunEvent } from "../types";
-import { applyRunEvent, emptyRun, queuedSteers } from "./run";
+import { applyRunEvent, emptyRun, runRows, stepsLabel } from "./run";
 
 type Body = Record<string, unknown>;
 const ev = (seq: number, body: Body) => ({ seq, at: "2026-11-11T10:00:00Z", ...body }) as RunEvent;
@@ -65,10 +65,41 @@ describe("applyRunEvent", () => {
   });
 });
 
-describe("queuedSteers", () => {
-  it("returns steer messages the loop has not read yet", () => {
-    const m = (seq: number) => ({ seq }) as Message;
-    const v = run(ev(1, { type: "steer", messageSeq: 5, authorName: "a", text: "t" }));
-    expect(queuedSteers(v, [m(5), m(6)]).map((x) => x.seq)).toEqual([6]);
+describe("runRows", () => {
+  const step = (seq: number, n: number) => ev(seq, { type: "step.started", step: n, call: { id: "c", name: "x", input: {} }, detail: "" });
+  const steer = (seq: number, messageSeq: number) => ev(seq, { type: "steer", messageSeq, authorName: "ann", text: "t" + messageSeq });
+  const m = (seq: number, clientId?: string) => ({ seq, clientId, authorName: "ann", text: "t" + seq }) as Message;
+
+  it("lists steps and read steers in event order, then queued steers, then unsent ones", () => {
+    const v = run(step(1, 1), steer(2, 5), step(3, 2));
+    const rows = runRows(v, [m(5), m(6)], [{ clientId: "p1", text: "later", createdAt: "", attachments: [] }]);
+    expect(rows.map((r) => (r.kind === "step" ? r.key : `${r.key} ${r.state}`))).toEqual([
+      "step:1", "s:5 read", "step:2", "s:6 queued", "c:p1 sending",
+    ]);
+  });
+
+  it("keeps a steer the same row from sending to queued to read", () => {
+    const pending = [{ clientId: "k", text: "t", createdAt: "", attachments: [] }];
+    const sending = runRows(emptyRun(), [], pending)[0];
+    const queued = runRows(emptyRun(), [m(5, "k")], [])[0];
+    const read = runRows(run(steer(1, 5)), [m(5, "k")], [])[0];
+    expect([sending.key, queued.key, read.key]).toEqual(["c:k", "c:k", "c:k"]);
+  });
+
+  it("marks an unsent steer that failed", () => {
+    const rows = runRows(emptyRun(), [], [{ clientId: "k", text: "t", createdAt: "", attachments: [], failed: true }]);
+    expect(rows[0]).toMatchObject({ kind: "steer", state: "failed", clientId: "k" });
+  });
+});
+
+describe("stepsLabel", () => {
+  it.each([
+    [1, 0, "1 step"],
+    [3, 0, "3 steps"],
+    [2, 1, "2 steps · 1 steer"],
+    [2, 3, "2 steps · 3 steers"],
+    [0, 1, "1 steer"],
+  ])("%i steps and %i steers → %s", (steps, steers, label) => {
+    expect(stepsLabel(steps, steers)).toBe(label);
   });
 });

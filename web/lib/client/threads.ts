@@ -37,10 +37,13 @@ type Block =
   | { kind: "message"; message: Message }
   | { kind: "run"; trigger: Message; steers: Message[]; answer?: Message };
 
-export function groupThread(messages: Message[], thread?: ThreadSummary): Block[] {
+/**
+ * `runFirstSeq` is the thread's active or last run. Its trigger opens a run block even once the run has ended,
+ * because the answer that closes the block can arrive after the thread says the run is over.
+ */
+export function groupThread(messages: Message[], runFirstSeq?: number): Block[] {
   const answers = new Map<number, Message>();
   for (const m of messages) if (m.agent) answers.set(m.agent.firstSeq, m);
-  const liveFirstSeq = thread?.status === "running" ? thread.runFirstSeq : undefined;
 
   const blocks: Block[] = [];
   let open: Extract<Block, { kind: "run" }> | undefined;
@@ -49,7 +52,7 @@ export function groupThread(messages: Message[], thread?: ThreadSummary): Block[
       open = undefined;
     } else if (open) {
       open.steers.push(m);
-    } else if (answers.get(m.seq) || m.seq === liveFirstSeq) {
+    } else if (answers.get(m.seq) || m.seq === runFirstSeq) {
       open = { kind: "run", trigger: m, steers: [], answer: answers.get(m.seq) };
       blocks.push(open);
     } else {
