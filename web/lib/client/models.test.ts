@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ModelOption } from "../types";
-import { footerText, modelLabel, nextEnabled, pickMenu, pillLabel } from "./models";
+import { footerText, liveFooter, modelLabel, nextEnabled, pickMenu, pillLabel } from "./models";
 
 const o = (pick: ModelOption["pick"], label: string, short: string, id: string | undefined, privateOk = true): ModelOption => ({
   pick, id, label, short, price: id ? "$2 / $10" : "", privateOk,
@@ -61,6 +61,14 @@ describe("labels", () => {
   it("modelLabel falls back to the id", () => {
     expect(modelLabel(models, "claude-opus-5-5")).toBe("Opus 5.5");
     expect(modelLabel(models, "x")).toBe("x");
+  });
+});
+
+describe("liveFooter", () => {
+  it("names the pick until the run has routed, then the model and the cost so far", () => {
+    expect(liveFooter({ pick: "auto", costMicros: 0 }, models)).toBe("Auto");
+    expect(liveFooter({ pick: "auto", model: "claude-haiku-5-5", costMicros: 1_200 }, models)).toBe("Auto → Haiku 5.5 · <$0.01");
+    expect(liveFooter({ pick: "opus", model: "claude-opus-5-5", costMicros: 42_000 }, models)).toBe("Opus 5.5 · $0.04");
   });
 });
 

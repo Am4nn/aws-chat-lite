@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ChevronRight, CircleAlert, CornerDownRight, Square, Wallet } from "lucide-react";
-import { formatElapsed, formatUsd } from "@/lib/client/format";
+import { formatElapsed } from "@/lib/client/format";
 import type { Mentionable } from "@/lib/client/mentions";
+import { footerText, liveFooter } from "@/lib/client/models";
+import { useModels } from "@/lib/client/ModelsProvider";
 import { runRows, stepsLabel, type RunRow } from "@/lib/client/run";
 import type { PendingMessage } from "@/lib/client/timeline";
 import { useRunStream } from "@/lib/client/useRunStream";
@@ -42,6 +44,7 @@ const ENDINGS: Record<Exclude<RunEndStatus, "done">, { label: string; icon: type
  */
 export function RunBlock({ runId, answer, steers, pending, active, meName, members, onRetry, onDiscard }: Props) {
   const reduced = useReducedMotion();
+  const { models } = useModels();
   const stored = answer?.agent;
   const [wanted, setWanted] = useState(!stored);
   const [open, setOpen] = useState(false);
@@ -116,11 +119,9 @@ export function RunBlock({ runId, answer, steers, pending, active, meName, membe
 
       {status && status !== "done" && <Ending status={status} reason={stored?.reason ?? run.reason} />}
 
-      {stored && (
-        <motion.p {...fade(true)} className="-mt-2 font-mono text-[11.5px] text-text-3">
-          {stored.model} · {formatUsd(stored.costMicros)} · {formatElapsed(stored.ms)}
-        </motion.p>
-      )}
+      {stored
+        ? <motion.p {...fade(true)} className="-mt-2 font-mono text-[11.5px] text-text-3">{footerText(stored, models)}</motion.p>
+        : loaded && <p className="-mt-2 font-mono text-[11.5px] text-text-3">{liveFooter(run, models)}</p>}
     </div>
   );
 }

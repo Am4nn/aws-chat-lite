@@ -102,7 +102,7 @@ export async function startOrSteer(
     { Put: { TableName, Item: { pk: `RUN#${run.runId}`, sk: "META", ...run }, ConditionExpression: "attribute_not_exists(pk)" } },
     {
       Update: {
-        TableName, Key: key, UpdateExpression: `${start.UpdateExpression} REMOVE endedAt, currentStep ${adds.clause}`,
+        TableName, Key: key, UpdateExpression: `${start.UpdateExpression} REMOVE endedAt, currentStep, model ${adds.clause}`,
         ConditionExpression: "attribute_not_exists(activeRunId) OR #startedAt < :deadAt",
         ExpressionAttributeNames: { ...start.ExpressionAttributeNames, ...adds.names },
         ExpressionAttributeValues: { ...start.ExpressionAttributeValues, ...adds.values, ":deadAt": deadAt },

@@ -32,8 +32,19 @@ export function pillLabel(models: ModelOption[], pick: ModelPick, phone: boolean
 
 export const modelLabel = (models: ModelOption[], id: string): string => models.find((o) => o.id === id)?.label ?? id;
 
+/** The model a run answers on; for Auto, what it routed to. */
+function routedLabel(models: ModelOption[], pick: ModelPick, model: string): string {
+  const label = modelLabel(models, model);
+  return pick === "auto" ? `Auto → ${label}` : label;
+}
+
 export function footerText(agent: { model: string; pick: ModelPick; costMicros: number; ms: number }, models: ModelOption[]): string {
-  const label = modelLabel(models, agent.model);
-  const routed = agent.pick === "auto" ? `Auto → ${label}` : label;
-  return `${routed} · ${formatUsd(agent.costMicros)} · ${formatElapsed(agent.ms)}`;
+  return `${routedLabel(models, agent.pick, agent.model)} · ${formatUsd(agent.costMicros)} · ${formatElapsed(agent.ms)}`;
+}
+
+/** A live run's footer: the pick until it has routed, then the model and what it has cost so far. */
+export function liveFooter(run: { pick?: ModelPick; model?: string; costMicros: number }, models: ModelOption[]): string {
+  const pick = run.pick ?? "auto";
+  if (!run.model) return pillLabel(models, pick, false);
+  return `${routedLabel(models, pick, run.model)} · ${formatUsd(run.costMicros)}`;
 }

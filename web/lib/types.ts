@@ -78,6 +78,8 @@ export type ThreadSummary = {
   steps: number;
   currentStep?: string;
   costMicros: number;
+  /** The model the latest run answers on, once it has routed. */
+  model?: string;
   summary?: string;
   createdBy: string;
   lastActivityAt: string;

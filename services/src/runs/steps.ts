@@ -145,11 +145,8 @@ export async function routeRun(run: Run): Promise<{ model: string; costMicros: n
   const choice = await runs.recorded<Choice>(run.runId, "route") ?? await chooseModel(run, writer);
   const logged = events.find((e) => e.type === "routed");
   const routed = logged ?? await writer.append({ type: "routed", model: choice.model, by: choice.by });
-  await runs.setModel(run.runId, choice.model);
-  if (!logged) {
-    const thread = await threadsRepo().threadById(run.roomId, run.threadId);
-    if (thread) await notifyRun(run.roomId, thread, routed.seq);
-  }
+  const thread = await runs.progress(run, { model: choice.model });
+  if (!logged && thread) await notifyRun(run.roomId, thread, routed.seq);
   return { model: choice.model, costMicros: choice.costMicros };
 }
 

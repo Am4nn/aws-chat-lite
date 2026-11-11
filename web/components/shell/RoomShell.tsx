@@ -6,6 +6,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { Bot, Search } from "lucide-react";
 import { bff, bffOrNull, errorText } from "@/lib/client/bff";
 import { useLive, useLiveStatus } from "@/lib/client/LiveProvider";
+import { ModelsProvider } from "@/lib/client/ModelsProvider";
 import { sidebarThreads } from "@/lib/client/threads";
 import { useThreads } from "@/lib/client/ThreadsProvider";
 import { useNow } from "@/lib/client/useNow";
@@ -192,7 +193,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
   const isOwner = view.me.role === "owner";
 
   return (
-    <>
+    <ModelsProvider view={view}>
       <MentionSound meId={me.userId} />
       <div className="flex h-dvh overflow-hidden bg-ink">
         <MobileNav open={overlay === "nav"}>
@@ -220,6 +221,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
                 {activeThread.runId && <RunCapsule key={activeThread.threadId} thread={activeThread} />}
               </>
             )}
+            isPrivate={!!activeThread?.taint.length}
             onMenu={() => setOverlay("nav")} onSearch={openSearch} onTogglePanel={togglePanel}
           />
           <div className="relative min-h-0 flex-1 overflow-hidden">
@@ -261,6 +263,6 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
           invite link stops working.
         </Confirm>
       </Modal>
-    </>
+    </ModelsProvider>
   );
 }

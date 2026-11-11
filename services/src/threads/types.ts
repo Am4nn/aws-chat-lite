@@ -19,6 +19,8 @@ export type ThreadSummary = {
   steps: number;
   currentStep?: string;
   costMicros: number;
+  /** The model the latest run answers on, once it has routed. */
+  model?: string;
   /** Why the thread is private, sorted; [] while it has no private content. */
   taint: TaintSource[];
   summary?: string;
