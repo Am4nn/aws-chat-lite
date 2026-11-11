@@ -93,7 +93,7 @@ describe("images and pushes, on Floci", { timeout: 60_000 }, () => {
     const run = await finished(runId);
     expect(run.status).toBe("done");
 
-    const path = `images/${thread.number}-1-fake.png`;
+    const path = `images/${thread.number}-${run.firstSeq}-1-fake.png`;
     expect((await workspaceRepo().list(at.roomId)).map((f) => f.path)).toContain(path);
     const events = await runs.allEvents(runId);
     expect(events.filter((e) => e.type === "step.finished")).toMatchObject([{ step: 1, ok: true, image: { path, aspect: "1:1" } }]);
@@ -103,6 +103,20 @@ describe("images and pushes, on Floci", { timeout: 60_000 }, () => {
 
     const named = (await threadsRepo().threadById(at.roomId, thread.threadId))!.name;
     expect((await pushedTo(at.aman.userId)).map((n) => n.title)).toEqual([`#${named} finished`]);
+  });
+
+  it("a second run in the thread saves its own image and leaves the first one", async () => {
+    const at = await room();
+    const first = await startRun("go call:image_generate", at);
+    await finished(first.runId);
+    const again = await chatRepo().send(at.aman, {
+      roomId: at.roomId, chatId: first.thread.threadId, clientId: `k${++clients}`, text: "again call:image_generate",
+    });
+    const second = await startOrSteer(at.aman, at.roomId, first.thread.threadId, again);
+    await finished(second.runId);
+
+    const paths = (await workspaceRepo().list(at.roomId)).map((f) => f.path).filter((p) => p.startsWith("images/"));
+    expect(paths).toHaveLength(2);
   });
 
   it("a mention reaches the member it names", async () => {

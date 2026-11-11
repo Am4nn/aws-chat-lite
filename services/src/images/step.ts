@@ -20,7 +20,7 @@ const LOST = "Gemini didn't make that image.";
 const EXTENSIONS: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
 
 type Cost = { usage: TokenUsage; costMicros: number };
-type RunRef = Pick<Run, "runId" | "roomId" | "threadId" | "number">;
+type RunRef = Pick<Run, "runId" | "roomId" | "threadId" | "number" | "firstSeq">;
 
 export interface ImageDeps {
   generate: ReturnType<typeof imageModel>["generate"];
@@ -41,10 +41,14 @@ export const imageDeps = (bill: ImageDeps["bill"]): ImageDeps => ({
   notify: broadcastToRoom,
 });
 
-/** `images/<thread>-<step>-<first four words>.<ext>`: the thread and step keep two runs' images from colliding. */
-export function imagePath(number: number, step: number, label: string, mediaType: string): string {
+/**
+ * `images/<thread>-<run>-<step>-<first four words>.<ext>`. Steps restart at 1 in every run, so the run (its first
+ * message's seq) keeps "again, but watercolor" from replacing the first picture. The name stays the same on a retry,
+ * which then finds its own file instead of saving a second copy.
+ */
+export function imagePath(run: Pick<Run, "number" | "firstSeq">, step: number, label: string, mediaType: string): string {
   const slug = label.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).slice(0, 4).join("-").slice(0, 40).replace(/-$/, "");
-  return `images/${number}-${step}-${slug || "image"}.${EXTENSIONS[mediaType] ?? "png"}`;
+  return `images/${run.number}-${run.firstSeq}-${step}-${slug || "image"}.${EXTENSIONS[mediaType] ?? "png"}`;
 }
 
 /** Where a step's image waits between Gemini and the room's files; the bucket clears it after a day. */
@@ -91,7 +95,7 @@ export async function generateImageStep(
   if (!billed) await deps.bill(JSON.parse(staged.metadata.cost!) as Cost);
 
   const name = typeof input.name === "string" && input.name.trim() ? input.name : prompt;
-  const path = imagePath(run.number, step, name, staged.contentType);
+  const path = imagePath(run, step, name, staged.contentType);
   const objectKey = newObjectKey(run.roomId);
   await deps.storage.copyObject(key, objectKey);
   let committed;

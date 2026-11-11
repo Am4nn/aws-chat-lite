@@ -4,11 +4,11 @@ import { QuotaError } from "../workspace/repo.js";
 import { ROOM_FILES_BYTES } from "../workspace/limits.js";
 import { generateImageStep, imagePath, type ImageDeps } from "./step.js";
 
-const run = { runId: "RUN", roomId: "R", threadId: "T", number: 7 };
+const run = { runId: "RUN", roomId: "R", threadId: "T", number: 7, firstSeq: 12 };
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
 const usage = { inputTokens: 10, outputTokens: 1120, cacheReadTokens: 0, cacheWriteTokens: 0 };
 const cost = JSON.stringify({ usage, costMicros: 67_205 });
-const SAVED = "Saved images/7-1-red-fox.png (1:1). It shows in the thread and in the room's files.";
+const SAVED = "Saved images/7-12-1-red-fox.png (1:1). It shows in the thread and in the room's files.";
 
 /** Deps that record each call by name; `staged` is the staging object an earlier attempt left, if any. */
 function fakeDeps(o: { staged?: boolean; made?: Awaited<ReturnType<ImageDeps["generate"]>>; usedBytes?: number; commit?: () => never } = {}) {
@@ -46,11 +46,15 @@ const imageUsage = at(4, { type: "usage", model: "gemini-3.1-flash-image", job: 
 const input = { prompt: "Red fox in snow", name: "red fox" };
 
 describe("imagePath", () => {
-  it("names the file after the thread, the step and the first words of its name", () => {
-    expect(imagePath(7, 1, "A red fox!", "image/png")).toBe("images/7-1-a-red-fox.png");
-    expect(imagePath(7, 2, "one two three four five", "image/jpeg")).toBe("images/7-2-one-two-three-four.jpg");
-    expect(imagePath(7, 3, "¿¡!", "image/webp")).toBe("images/7-3-image.webp");
-    expect(imagePath(7, 4, "a".repeat(60), "image/png")).toBe(`images/7-4-${"a".repeat(40)}.png`);
+  it("names the file after the thread, the run, the step and the first words of its name", () => {
+    expect(imagePath(run, 1, "A red fox!", "image/png")).toBe("images/7-12-1-a-red-fox.png");
+    expect(imagePath(run, 2, "one two three four five", "image/jpeg")).toBe("images/7-12-2-one-two-three-four.jpg");
+    expect(imagePath(run, 3, "¿¡!", "image/webp")).toBe("images/7-12-3-image.webp");
+    expect(imagePath(run, 4, "a".repeat(60), "image/png")).toBe(`images/7-12-4-${"a".repeat(40)}.png`);
+  });
+
+  it("a later run in the thread drawing the same name gets its own file", () => {
+    expect(imagePath({ number: 7, firstSeq: 15 }, 1, "red fox", "image/png")).not.toBe(imagePath(run, 1, "red fox", "image/png"));
   });
 });
 
@@ -61,10 +65,10 @@ describe("generateImageStep", () => {
     expect(calls).toEqual(["head", "usage", "generate", "putBytes", "bill", "copy", "commit"]);
     expect(billed).toEqual([67_205]);
     expect(result).toEqual({
-      ok: true, output: SAVED, image: { path: "images/7-1-red-fox.png", aspect: "1:1" },
-      synced: { written: ["images/7-1-red-fox.png"], deleted: [], notes: [] },
+      ok: true, output: SAVED, image: { path: "images/7-12-1-red-fox.png", aspect: "1:1" },
+      synced: { written: ["images/7-12-1-red-fox.png"], deleted: [], notes: [] },
     });
-    expect(notified).toMatchObject([{ type: "files.updated", roomId: "R", files: [{ path: "images/7-1-red-fox.png" }], deleted: [] }]);
+    expect(notified).toMatchObject([{ type: "files.updated", roomId: "R", files: [{ path: "images/7-12-1-red-fox.png" }], deleted: [] }]);
   });
 
   it("a retry that finds the staged image but no charge bills it once, without asking Gemini again", async () => {
@@ -83,7 +87,7 @@ describe("generateImageStep", () => {
 
   it("a retry that finds the file already saved only finishes", async () => {
     const { deps, calls } = fakeDeps({ staged: true });
-    const synced = at(5, { type: "files.synced", step: 1, written: ["images/7-1-red-fox.png"], deleted: [], notes: [] });
+    const synced = at(5, { type: "files.synced", step: 1, written: ["images/7-12-1-red-fox.png"], deleted: [], notes: [] });
     expect((await generateImageStep(run, 1, input, [imageUsage, synced], deps)).output).toBe(SAVED);
     expect(calls).toEqual([]);
   });
@@ -133,6 +137,6 @@ describe("generateImageStep", () => {
   it("keeps a valid aspect and names the file after the prompt when there's no name", async () => {
     const { deps } = fakeDeps();
     const result = await generateImageStep(run, 2, { prompt: "Night sky over hills", aspect: "16:9" }, [], deps);
-    expect(result.image).toEqual({ path: "images/7-2-night-sky-over-hills.png", aspect: "16:9" });
+    expect(result.image).toEqual({ path: "images/7-12-2-night-sky-over-hills.png", aspect: "16:9" });
   });
 });
