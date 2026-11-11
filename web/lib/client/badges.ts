@@ -1,4 +1,5 @@
 import type { Chat, Message } from "../types";
+import { timeAgo } from "./format";
 
 type ChatCounts = Pick<Chat, "lastSeq" | "unread" | "mentions" | "muted">;
 
@@ -7,17 +8,7 @@ export function chatBadge({ unread, mentions, muted }: Pick<Chat, "unread" | "me
   return { count: unread > 0 && !muted ? unread : null, mention: mentions > 0 ? mentions : null };
 }
 
-const MINUTE = 60_000;
-const HOUR = 60 * MINUTE;
-const DAY = 24 * HOUR;
-
-export function lastSeenText(iso: string, now: number): string {
-  const ago = now - Date.parse(iso);
-  if (ago < MINUTE) return "last seen just now";
-  if (ago < HOUR) return `last seen ${Math.floor(ago / MINUTE)}m ago`;
-  if (ago < DAY) return `last seen ${Math.floor(ago / HOUR)}h ago`;
-  return `last seen ${Math.floor(ago / DAY)}d ago`;
-}
+export const lastSeenText = (iso: string, now: number) => `last seen ${timeAgo(iso, now)}`;
 
 /**
  * A live message in a chat I'm not looking at. Unread is everything past my read marker (lastSeq − unread), the way the

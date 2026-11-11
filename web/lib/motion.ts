@@ -18,6 +18,9 @@ export const spring = {
   pop: { type: "spring", stiffness: 600, damping: 22 } satisfies Transition,
 };
 
+/** One state of a panel replacing another in place (with AnimatePresence mode="wait"). */
+export const swap = { initial: { opacity: 0, y: 6 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0, y: -6 }, transition: { duration: dur.fast, ease: easeOut } };
+
 /**
  * Content entering after a navigation, from the direction the user moved. With reduced motion it only fades: starting
  * at the final position avoids even one frame of offset before Motion skips the slide.

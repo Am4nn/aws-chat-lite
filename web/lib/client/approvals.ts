@@ -1,14 +1,6 @@
 import type { ApprovalStatus, ThreadSummary } from "../types";
 import { BffError, errorText } from "./bff";
-
-/** Mirrors the server's wait copy, so the card and the model's "skipped" result name a timeout the same way. */
-function formatWait(sec: number): string {
-  if (sec < 60) return "under a minute";
-  const hours = Math.floor(sec / 3600);
-  const minutes = Math.floor((sec % 3600) / 60);
-  if (!hours) return `${minutes} min`;
-  return minutes ? `${hours} h ${minutes} min` : `${hours} h`;
-}
+import { formatWait } from "./format";
 
 /** How long an approval has left, for "expires in …". */
 export const remaining = (expiresAt: string, nowMs: number) => formatWait(Math.max(0, Math.floor((Date.parse(expiresAt) - nowMs) / 1000)));

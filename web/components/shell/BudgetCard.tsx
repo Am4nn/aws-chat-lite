@@ -7,6 +7,7 @@ import { budgetFill, formatUsd, resetsOn } from "@/lib/client/format";
 import { useThreads } from "@/lib/client/ThreadsProvider";
 import type { Budget } from "@/lib/types";
 import { useToast } from "@/components/overlays/Toast";
+import { Hint } from "@/components/ui/Hint";
 
 /**
  * What the room's agents have spent this month against its cap. This is the app's only progress bar: money is the
@@ -46,7 +47,7 @@ export function BudgetCard({ roomId, isOwner }: { roomId: string; isOwner: boole
     <div className="flex flex-col gap-2 rounded-xl bg-surface-2 px-3 py-2.5">
       <div className="flex h-6 items-center gap-1 whitespace-nowrap text-xs text-text-2">
         Room budget
-        <ResetHint resetsAt={budget.resetsAt} />
+        <Hint text={`Resets on ${resetsOn(budget.resetsAt)} (00:00 UTC)`} />
         <span className="ml-auto" />
         <span className="font-mono text-text tabular-nums">{formatUsd(budget.spentMicros)}</span>
         <span className="font-mono text-text-3">/</span>
@@ -86,31 +87,5 @@ export function BudgetCard({ roomId, isOwner }: { roomId: string; isOwner: boole
         />
       </span>
     </div>
-  );
-}
-
-/**
- * A "?" that explains the reset on hover or focus, keeping the card to one line of text. The mark is drawn small, but
- * the button around it is a full 24 px target.
- */
-function ResetHint({ resetsAt }: { resetsAt: string }) {
-  const text = `Resets on ${resetsOn(resetsAt)} (00:00 UTC)`;
-  return (
-    <span className="group relative ml-0.5 flex">
-      <button aria-label={text} className="-mx-1 grid size-6 place-items-center rounded-full">
-        <span
-          aria-hidden="true"
-          className="grid size-4 place-items-center rounded-full border border-line-strong font-mono text-[10px] leading-none text-text-3 transition-colors group-hover:border-[#36403f] group-hover:text-text-2"
-        >
-          ?
-        </span>
-      </button>
-      <span
-        role="tooltip"
-        className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 -translate-x-1/2 whitespace-nowrap rounded-lg border border-line-strong bg-surface-3 px-2.5 py-1.5 text-[11.5px] text-text-2 opacity-0 shadow-[0_8px_24px_rgba(0,0,0,.4)] transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
-      >
-        {text}
-      </span>
-    </span>
   );
 }
