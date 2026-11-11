@@ -1,9 +1,9 @@
 import { ValidationError } from "../lib/errors.js";
 import type { ApprovalStatus } from "../threads/types.js";
 
-/** What the model is told when a write step was cut short after it may already have reached GitHub. */
-export const UNSURE =
-  "This write may or may not have happened (the step was interrupted). Check GitHub before trying again.";
+/** What the model is told when a write step was cut short after it may already have reached `place`. */
+export const unsure = (place: string) =>
+  `This write may or may not have happened (the step was interrupted). Check ${place} before trying again.`;
 
 export const SKIP_NOTE = (title: string) => `\n\n(Skipped because no one approved in time: ${title})`;
 export const deniedResult = (by: string) => `Denied by ${by}. Don't try this again unless someone asks.`;

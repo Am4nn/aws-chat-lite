@@ -1,7 +1,6 @@
 import { wakeRun } from "../approvals/decide.js";
 import { approvalsRepo, type Approval } from "../approvals/repo.js";
 import { auditRepo } from "../audit/repo.js";
-import { connectionsRepo } from "../connections/repo.js";
 import type { ToolCall } from "../models/gateway.js";
 import { findTool, toolEnv } from "../tools/index.js";
 import { repoOf } from "../tools/github/repo.js";
@@ -10,7 +9,7 @@ import type { ApprovalStatus } from "../threads/types.js";
 import { DEAD_AFTER_MS } from "./model.js";
 import { notifyRun } from "./notify.js";
 import { runsRepo, type Run } from "./repo.js";
-import { limitsReached, models } from "./steps.js";
+import { limitsReached, models, roomConnections } from "./steps.js";
 import { mayRun } from "./tools.js";
 
 /*
@@ -29,11 +28,12 @@ type Gate = { asks: false } | { asks: true; timeoutSec: number; title: string; i
  * turn saw, which the thread's own can lag behind.
  */
 export async function gateOf(run: Run & { model: string }, call: ToolCall, tainted: boolean): Promise<Gate> {
-  const tool = findTool(call.name);
-  if (!tool || !mayRun(run.model, models().servedBy(run.model), call.name)) return { asks: false };
+  const room = await roomConnections(run.roomId);
+  const tool = findTool(call.name, room);
+  if (!tool || !mayRun(run.model, models().servedBy(run.model), call.name, room)) return { asks: false };
   const privateThread = async () => tainted || !!(await threadsRepo().threadById(run.roomId, run.threadId))?.taint.length;
   if (!(tool.write || (tool.kind === "web" && await privateThread())) || await limitsReached(run)) return { asks: false };
-  const { github, approvalTimeoutSec } = await connectionsRepo().get(run.roomId);
+  const { github, approvalTimeoutSec } = room;
   const env = await toolEnv(process.env.TOOL_MODE, github ?? undefined);
   if (tool.check?.(call.input, env)) return { asks: false };
   const input = tool.kind === "github" ? { ...call.input, repo: repoOf(call.input, github ?? undefined) } : call.input;
