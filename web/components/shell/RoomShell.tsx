@@ -6,6 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Search } from "lucide-react";
 import { bff, bffOrNull, errorText } from "@/lib/client/bff";
 import { useLive, useLiveEvent } from "@/lib/client/LiveProvider";
+import { ThreadsProvider } from "@/lib/client/ThreadsProvider";
 import { PHONE_QUERY, useIsPhone } from "@/lib/client/useIsPhone";
 import { isPaletteShortcut } from "@/lib/keys";
 import { enterFrom } from "@/lib/motion";
@@ -42,7 +43,7 @@ export function RoomShell({ view, rooms, me, children }: { view: RoomView; rooms
   const reducedMotion = useReducedMotion() ?? false;
   const pathname = usePathname();
   const phone = useIsPhone();
-  const { chatId } = useParams<{ chatId?: string }>();
+  const { chatId, number } = useParams<{ chatId?: string; number?: string }>();
   const [panelOpen, setPanelOpen] = useState(true);
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [panelTab, setPanelTab] = useState("members");
@@ -183,10 +184,11 @@ export function RoomShell({ view, rooms, me, children }: { view: RoomView; rooms
   ];
 
   const activeChat = view.chats.find((c) => c.chatId === chatId);
+  const activeThread = view.threads.find((t) => String(t.number) === number);
   const isOwner = view.me.role === "owner";
 
   return (
-    <>
+    <ThreadsProvider view={view}>
       <MentionSound meId={me.userId} />
       <div className="flex h-dvh overflow-hidden bg-ink">
         <MobileNav open={overlay === "nav"}>
@@ -205,7 +207,7 @@ export function RoomShell({ view, rooms, me, children }: { view: RoomView; rooms
         </MobileNav>
         <main inert={phone && overlay !== null} className="flex min-w-0 flex-1 flex-col">
           <Header
-            roomName={room.name} chatName={activeChat?.name} members={members}
+            roomName={room.name} chatName={activeChat?.name ?? activeThread?.name} members={members}
             onMenu={() => setOverlay("nav")} onSearch={openSearch} onTogglePanel={togglePanel}
           />
           <div className="relative min-h-0 flex-1 overflow-hidden">
@@ -248,6 +250,6 @@ export function RoomShell({ view, rooms, me, children }: { view: RoomView; rooms
           invite link stops working.
         </Confirm>
       </Modal>
-    </>
+    </ThreadsProvider>
   );
 }

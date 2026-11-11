@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { ArrowUp, Paperclip, Pencil, Reply, Users, X } from "lucide-react";
+import { ArrowUp, Paperclip, Pencil, Reply, Square, Users, X } from "lucide-react";
 import { mentionQuery, type Mentionable } from "@/lib/client/mentions";
 import { dur, easeOut, instant } from "@/lib/motion";
 import type { Message } from "@/lib/types";
@@ -18,13 +18,21 @@ const TYPING_EVERY_MS = 3000;
 const MAX_HEIGHT_PX = 200;
 const MENTION_OPTIONS = 6;
 
+/**
+ * `uploads`: absent where files can't be sent, which hides the paperclip. `steering`: an agent is running here, so a
+ * message steers it, and Stop (`onStop`) sits beside Send.
+ */
 type Props = {
-  members: Mentionable[]; meId: string; mode: ComposerMode; uploads: ReturnType<typeof useUploads>;
+  members: Mentionable[]; meId: string; mode: ComposerMode; uploads?: ReturnType<typeof useUploads>; placeholder?: string;
+  steering?: boolean; stopping?: boolean;
   onModeChange: (mode: ComposerMode) => void; onSend: (text: string) => void; onSaveEdit: (m: Message, text: string) => void;
-  onEditLast: () => boolean; onTyping: () => void;
+  onEditLast: () => boolean; onTyping: () => void; onStop?: () => void;
 };
 
-export function Composer({ members, meId, mode, uploads, onModeChange, onSend, onSaveEdit, onEditLast, onTyping }: Props) {
+export function Composer({
+  members, meId, mode, uploads, placeholder = "Message", steering = false, stopping = false,
+  onModeChange, onSend, onSaveEdit, onEditLast, onTyping, onStop,
+}: Props) {
   const reduced = useReducedMotion();
   const listId = useId();
   const area = useRef<HTMLTextAreaElement>(null);
@@ -75,8 +83,8 @@ export function Composer({ members, meId, mode, uploads, onModeChange, onSend, o
 
   const editing = mode?.kind === "edit" ? mode.message : undefined;
   const trimmed = text.trim();
-  const canSubmit = trimmed.length <= MAX_TEXT && !uploads.busy &&
-    (editing ? !!trimmed || editing.attachments.length > 0 : !!trimmed || uploads.uploads.length > 0);
+  const canSubmit = trimmed.length <= MAX_TEXT && !uploads?.busy &&
+    (editing ? !!trimmed || editing.attachments.length > 0 : !!trimmed || !!uploads?.uploads.length);
 
   function change(value: string, caretAt: number) {
     setText(value);
@@ -133,7 +141,7 @@ export function Composer({ members, meId, mode, uploads, onModeChange, onSend, o
 
   function onPaste(e: ClipboardEvent<HTMLTextAreaElement>) {
     const files = [...e.clipboardData.files];
-    if (!files.length || editing) return;
+    if (!files.length || editing || !uploads) return;
     e.preventDefault();
     uploads.add(files);
   }
@@ -175,7 +183,7 @@ export function Composer({ members, meId, mode, uploads, onModeChange, onSend, o
         )}
       </AnimatePresence>
 
-      <div className="rounded-2xl border border-line-strong bg-surface-2 transition-colors focus-within:border-[#36403f]">
+      <div className={`rounded-2xl border bg-surface-2 transition-colors duration-300 ${steering ? "border-[#3b5420]" : "border-line-strong focus-within:border-[#36403f]"}`}>
         <AnimatePresence initial={false}>
           {mode && (
             <motion.div
@@ -200,7 +208,7 @@ export function Composer({ members, meId, mode, uploads, onModeChange, onSend, o
           )}
         </AnimatePresence>
 
-        {uploads.uploads.length > 0 && (
+        {uploads && uploads.uploads.length > 0 && (
           <div className="flex flex-wrap gap-2 px-3 pt-3">
             <AnimatePresence initial={false}>
               {uploads.uploads.map((u) => <UploadChip key={u.id} upload={u} onRemove={() => uploads.remove(u.id)} />)}
@@ -208,23 +216,27 @@ export function Composer({ members, meId, mode, uploads, onModeChange, onSend, o
           </div>
         )}
 
-        <div className="flex items-end gap-1.5 py-2 pl-2 pr-2">
-          <button
-            onClick={() => fileInput.current?.click()}
-            disabled={!!editing}
-            aria-label="Attach files"
-            className="grid size-[38px] shrink-0 place-items-center rounded-[11px] text-text-3 transition-[background,color,transform] hover:bg-surface-3 hover:text-text active:scale-95 disabled:pointer-events-none disabled:opacity-40"
-          >
-            <Paperclip aria-hidden="true" size={17} />
-          </button>
-          <input
-            ref={fileInput}
-            type="file"
-            multiple
-            hidden
-            onChange={(e) => { uploads.add([...(e.target.files ?? [])]); e.target.value = ""; }}
-          />
-          <label htmlFor="composer" className="sr-only">Message</label>
+        <div className={`flex items-end gap-1.5 py-2 pr-2 ${uploads ? "pl-2" : "pl-3.5"}`}>
+          {uploads && (
+            <>
+              <button
+                onClick={() => fileInput.current?.click()}
+                disabled={!!editing}
+                aria-label="Attach files"
+                className="grid size-[38px] shrink-0 place-items-center rounded-[11px] text-text-3 transition-[background,color,transform] hover:bg-surface-3 hover:text-text active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+              >
+                <Paperclip aria-hidden="true" size={17} />
+              </button>
+              <input
+                ref={fileInput}
+                type="file"
+                multiple
+                hidden
+                onChange={(e) => { uploads.add([...(e.target.files ?? [])]); e.target.value = ""; }}
+              />
+            </>
+          )}
+          <label htmlFor="composer" className="sr-only">{steering ? "Steer the agent" : "Message"}</label>
           <textarea
             id="composer"
             ref={area}
@@ -235,7 +247,7 @@ export function Composer({ members, meId, mode, uploads, onModeChange, onSend, o
             aria-controls={options.length ? listId : undefined}
             aria-activedescendant={options.length ? `${listId}-${highlight}` : undefined}
             value={text}
-            placeholder={editing ? "Edit your message" : "Message"}
+            placeholder={editing ? "Edit your message" : steering ? "Steer the agent…" : placeholder}
             onChange={(e) => change(e.target.value, e.target.selectionStart)}
             onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
             onKeyDown={onKeyDown}
@@ -247,16 +259,47 @@ export function Composer({ members, meId, mode, uploads, onModeChange, onSend, o
               {trimmed.length}/{MAX_TEXT}
             </span>
           )}
+          <AnimatePresence initial={false}>
+            {steering && onStop && (
+              <motion.button
+                key="stop"
+                initial={{ opacity: 0, scale: reduced ? 1 : 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: reduced ? 1 : 0.8 }}
+                transition={motionFast}
+                onClick={onStop}
+                disabled={stopping}
+                aria-label="Stop the run"
+                title="Stop the run"
+                className="grid size-[38px] shrink-0 place-items-center rounded-[11px] border border-line-strong bg-surface-3 text-text transition-[background,border-color,transform] hover:border-[#36403f] hover:bg-[#1c2225] active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+              >
+                <Square aria-hidden="true" size={12} fill="currentColor" strokeWidth={0} />
+              </motion.button>
+            )}
+          </AnimatePresence>
           <button
             onClick={submit}
             disabled={!canSubmit}
-            aria-label={editing ? "Save edit" : "Send"}
+            aria-label={editing ? "Save edit" : steering ? "Steer the running agent" : "Send"}
             className="grid size-[38px] shrink-0 place-items-center rounded-[11px] bg-lime text-lime-ink transition-[background,color,transform] hover:bg-[#d7fa8a] active:scale-95 disabled:bg-surface-3 disabled:text-text-3"
           >
             <ArrowUp aria-hidden="true" size={16} strokeWidth={2.6} />
           </button>
         </div>
       </div>
+      <AnimatePresence>
+        {steering && (
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={reduced ? instant : { duration: dur.base }}
+            className="pointer-events-none absolute inset-x-0 bottom-[3px] text-center font-mono text-[11px] text-[#5b6668] max-sm:hidden"
+          >
+            Enter steers the running agent
+          </motion.p>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -65,10 +65,16 @@ describe("groupThread", () => {
   });
 
   it("keeps messages outside runs and builds a live run without an answer", () => {
-    const blocks = groupThread([msg(1), answer(2, 1), msg(3), msg(4)], th({ status: "running", runFirstSeq: 3 }));
+    const blocks = groupThread([msg(1), answer(2, 1), msg(3), msg(4)], 3);
     expect(blocks.map((b) => b.kind)).toEqual(["run", "run"]);
     expect(blocks[1]).toMatchObject({ trigger: { seq: 3 }, steers: [{ seq: 4 }] });
     expect(blocks[1]).toMatchObject({ answer: undefined });
+  });
+
+  it("keeps the last run a block after it ends, until its answer arrives", () => {
+    const blocks = groupThread([msg(1), answer(2, 1), msg(3)], 3);
+    expect(blocks[1]).toMatchObject({ kind: "run", trigger: { seq: 3 }, answer: undefined });
+    expect(groupThread([msg(1), answer(2, 1)], 1)).toHaveLength(1);
   });
 
   it("passes through plain messages", () => {

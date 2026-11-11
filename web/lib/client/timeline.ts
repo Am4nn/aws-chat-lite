@@ -9,6 +9,9 @@ export type PendingMessage = {
   failed?: boolean;
 };
 
+/** Rows keep one identity from pending to stored, so a sent message doesn't re-enter when its ack lands. */
+export const keyOf = (m: { clientId?: string; seq?: number }) => (m.clientId ? `c:${m.clientId}` : `s:${m.seq}`);
+
 export type Timeline = { messages: Message[]; pending: PendingMessage[] };
 
 // History pages and live events overlap and can arrive out of order, so every merge dedupes by seq and re-sorts.

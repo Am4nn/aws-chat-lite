@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { budgetFill, clockTime, dayKey, dayLabel, excerpt, fileSize, formatElapsed, formatUsd, matchSnippet, shortWhen, splitHeadline, streamWords, typingText } from "./format";
+import { answerParagraphs, budgetFill, clockTime, dayKey, dayLabel, excerpt, fileSize, formatElapsed, formatStepTime, formatUsd, matchSnippet, shortWhen, splitHeadline, streamWords, typingText } from "./format";
 
 describe("format", () => {
   it("formatElapsed", () => {
@@ -93,4 +93,29 @@ describe("matchSnippet", () => {
   });
   it("falls back to the plain excerpt when the text doesn't contain it", () =>
     expect(matchSnippet("hello", "zz")).toEqual({ before: "hello", match: "", after: "" }));
+});
+
+describe("formatStepTime", () => {
+  it.each([
+    [412, "0.4s"],
+    [1100, "1.1s"],
+    [9_960, "10s"],
+    [38_200, "38s"],
+    [64_000, "1:04"],
+  ])("%i ms → %s", (ms, text) => {
+    expect(formatStepTime(ms)).toBe(text);
+  });
+});
+
+describe("answerParagraphs", () => {
+  it("splits paragraphs and holds back the trailing partial word while streaming", () => {
+    expect(answerParagraphs("one two\n\nthree fo", false)).toEqual([["one", "two"], ["three"]]);
+    expect(answerParagraphs("one two\n\nthree fo", true)).toEqual([["one", "two"], ["three", "fo"]]);
+  });
+
+  it("treats words before a paragraph break as complete and drops empty paragraphs", () => {
+    expect(answerParagraphs("one two\n\n", false)).toEqual([["one", "two"]]);
+    expect(answerParagraphs("a\n\n\n\nb", true)).toEqual([["a"], ["b"]]);
+    expect(answerParagraphs("", false)).toEqual([]);
+  });
 });
