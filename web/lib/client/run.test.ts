@@ -88,7 +88,7 @@ describe("applyRunEvent", () => {
 
   it("keeps the pick and takes the model from routed", () => {
     const v = run(
-      ev(1, { type: "run.started", pick: "auto", startedBy: "u" }),
+      ev(1, { type: "run.started", pick: "auto", startedBy: "u", agentName: "agent" }),
       ev(2, { type: "routed", model: "claude-haiku-5-5", by: "auto" }),
     );
     expect(v).toMatchObject({ pick: "auto", model: "claude-haiku-5-5", startedAt: "2026-11-11T10:00:00Z" });

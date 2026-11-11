@@ -3,7 +3,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { Square, Volume2 } from "lucide-react";
 import { errorText } from "@/lib/client/bff";
-import { fetchSpeech, play, playingKey, stop, subscribe } from "@/lib/client/speech";
+import { fetchSpeech, play, playingKey, prime, stop, subscribe } from "@/lib/client/speech";
 import { Spinner } from "@/components/ui/Spinner";
 import { useToast } from "@/components/overlays/Toast";
 
@@ -20,6 +20,7 @@ export function ReadAloudButton({ roomId, chatId, seq }: { roomId: string; chatI
 
   async function toggle() {
     if (playing) return stop();
+    prime();
     setLoading(true);
     try {
       const { url } = await fetchSpeech(roomId, chatId, seq);

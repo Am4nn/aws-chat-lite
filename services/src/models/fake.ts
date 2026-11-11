@@ -15,7 +15,7 @@ const directive = (text: string, key: string, min: number, max: number) => {
   return match ? clamp(Number(match[1]), min, max) : undefined;
 };
 const stripDirectives = (text: string) =>
-  text.replace(/\b(tools|words|drop):\d+|\b(route|call):\S+|\b(slow|fail|cutoff|refuse)\b/g, " ");
+  text.replace(/\b(tools|words|drop):\d+|\b(route|call|ask):\S+|\b(slow|fail|cutoff|refuse|recall)\b/g, " ");
 const firstWords = (text: string, n: number) => text.split(/\s+/).filter(Boolean).slice(0, n).join(" ");
 
 type Schema = { type?: string; format?: string; enum?: unknown[]; items?: Schema; properties?: Record<string, Schema>; required?: string[] };
@@ -38,6 +38,8 @@ function sampleInput(schema: Schema): unknown {
   }
 }
 
+/** Each ask:<agent> in the prompt is one delegate call, to that agent. */
+const ASK = /\s*\bask:(\S+)/g;
 /** Each sh`…`, py`…` or js`…` span in the prompt is one sandbox_run call. */
 const SPAN = /\b(sh|py|js)`([^`]*)`/g;
 const SPAN_LANGUAGES: Record<string, Language> = { sh: "shell", py: "python", js: "javascript" };
@@ -116,21 +118,37 @@ async function* run(req: ModelRequest, sleep: (ms: number) => Promise<void>): As
   const id = `call-${results + 1}`;
   const stop = cutoff ? "max_tokens" : "tool_use";
 
-  if (results < sandboxCalls.length) {
-    yield* toolTurn({ id, name: "sandbox_run", input: sandboxCalls[results]! }, stop);
-    return;
-  }
-  // call:<tool> uses the request's real tools, one per turn in the order named, in place of the lookups.
-  const named = [...asked.matchAll(/\bcall:(\S+)/g)];
-  if (named.length) {
-    const tool = named.flatMap(([, name]) => req.tools.filter((t) => t.name === name))[results - sandboxCalls.length];
-    if (tool) {
-      yield* toolTurn({ id, name: tool.name, input: sampleInput(tool.inputSchema) as Record<string, unknown> }, "tool_use");
+  // With a delegate tool, the asks are the only tool calls: each hands the prompt, less its asks, to its agent. A model
+  // without one (a helper's) reads them as words, so the task it was handed runs as any prompt would.
+  const asks = req.tools.some((t) => t.name === "delegate") ? [...asked.matchAll(ASK)].map(([, agent]) => agent!) : [];
+  if (asks.length) {
+    if (results < asks.length) {
+      yield* toolTurn({ id, name: "delegate", input: { agent: asks[results], task: prompt.replace(ASK, "").trim() } }, "tool_use");
       return;
     }
-  } else if (cutoff || results < sandboxCalls.length + toolTarget + steers) {
-    // A cut-off reply stops inside its tool call, so the call is there but the turn ends at the length limit.
-    yield* toolTurn({ id, name: "fake.lookup", input: { query, slow } }, stop);
+  } else {
+    if (results < sandboxCalls.length) {
+      yield* toolTurn({ id, name: "sandbox_run", input: sandboxCalls[results]! }, stop);
+      return;
+    }
+    // call:<tool> uses the request's real tools, one per turn in the order named, in place of the lookups.
+    const named = [...asked.matchAll(/\bcall:(\S+)/g)];
+    if (named.length) {
+      const tool = named.flatMap(([, name]) => req.tools.filter((t) => t.name === name))[results - sandboxCalls.length];
+      if (tool) {
+        yield* toolTurn({ id, name: tool.name, input: sampleInput(tool.inputSchema) as Record<string, unknown> }, "tool_use");
+        return;
+      }
+    } else if (cutoff || results < sandboxCalls.length + toolTarget + steers) {
+      // A cut-off reply stops inside its tool call, so the call is there but the turn ends at the length limit.
+      yield* toolTurn({ id, name: "fake.lookup", input: { query, slow } }, stop);
+      return;
+    }
+  }
+
+  if (/\brecall\b/.test(asked)) {
+    const notes = req.system.split("\n").filter((line) => line.startsWith("- ["));
+    yield* reply(notes.length ? notes.join("\n") : "Nothing in memory.");
     return;
   }
 

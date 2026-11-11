@@ -25,7 +25,8 @@ describe("dictation sessions on Floci", () => {
   it("a session reserves 60 s, its done refunds the rest, and a second done is refused", async () => {
     const { owner, roomId } = await room();
     const before = await spent(roomId);
-    const { sessionId } = await voiceRepo().mint(owner, roomId);
+    const sessionId = randomUUID();
+    await voiceRepo().mint(owner, roomId, sessionId);
     expect(await spent(roomId) - before).toBe(transcribeMicros(60));
     const { Item } = await docClient().send(new GetCommand({ TableName: tableName(), Key: { pk: `ROOM#${roomId}`, sk: `VOICE#${sessionId}` } }));
     expect(Item).toMatchObject({ userId: owner.userId, reservedSec: 60 });

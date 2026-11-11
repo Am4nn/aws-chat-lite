@@ -70,3 +70,25 @@ describe("reads that can span pages", () => {
     expect((await roomsRepo().previewInvite("code")).memberCount).toBe(3);
   });
 });
+
+describe("getRoomView", () => {
+  const view = (meta: Record<string, unknown>) => {
+    fakeTable((c) => {
+      if (c instanceof GetCommand) return { Item: { name: "Room", ownerId: "u1", ...meta } };
+      if (c instanceof QueryCommand) {
+        const prefix = c.input.ExpressionAttributeValues?.[":s"] ?? c.input.ExpressionAttributeValues?.[":a"];
+        if (prefix === "MEMBER#") return { Items: [{ userId: "u1", username: "aman", role: "owner" }] };
+        if (prefix === "AGENT#") return { Items: [{ pk: "ROOM#r1", sk: "AGENT#a1", agentId: "a1", name: "scout", builtIn: false }] };
+      }
+      return {};
+    });
+    return roomsRepo().getRoomView("r1", "u1");
+  };
+
+  it("has the room's agents, the built-in first, and its time zone, Asia/Kolkata until an admin sets one", async () => {
+    const { agents, timeZone } = await view({});
+    expect(agents.map((a) => a.agentId)).toEqual(["agent", "a1"]);
+    expect(timeZone).toBe("Asia/Kolkata");
+    expect((await view({ timeZone: "Europe/London" })).timeZone).toBe("Europe/London");
+  });
+});

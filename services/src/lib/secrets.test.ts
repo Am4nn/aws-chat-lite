@@ -36,6 +36,20 @@ describe("secretJson", () => {
     expect(await secretJson("a", read)).toEqual({ K: "v" });
   });
 
+  it("reads a secret that isn't JSON again next time, so fixing it takes effect on a warm container", async () => {
+    const read = vi.fn().mockResolvedValueOnce("a-placeholder").mockResolvedValue('{"K":"v"}');
+    await expect(secretJson("a", read)).rejects.toThrow("The secret a isn't valid JSON.");
+    expect(await secretJson("a", read)).toEqual({ K: "v" });
+  });
+
+  it("reads a secret missing a needed field again next time, and keeps it once it has them all", async () => {
+    const read = vi.fn().mockResolvedValueOnce('{"unset":"x"}').mockResolvedValue('{"K":"v"}');
+    expect(await secretJson("a", read, ["K"])).toEqual({ unset: "x" });
+    expect(await secretJson("a", read, ["K"])).toEqual({ K: "v" });
+    expect(await secretJson("a", read, ["K"])).toEqual({ K: "v" });
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
   it("never echoes a secret that isn't JSON", async () => {
     const error = await secretJson("cl-aws-model-keys", async () => "sk-not-json-at-all").catch((e) => e);
     expect(error).toEqual(new Error("The secret cl-aws-model-keys isn't valid JSON."));

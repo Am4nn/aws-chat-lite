@@ -17,8 +17,13 @@ export function addChat(stack: CoreStack) {
     encryption: s3.BucketEncryption.S3_MANAGED,
     enforceSSL: !isLocal, // Floci serves plain http.
     // A room file is uploaded to staging and copied into the room when its commit is accepted, so anything left in
-    // staging was abandoned or refused.
-    lifecycleRules: [{ prefix: "staging/", expiration: Duration.days(1) }],
+    // staging was abandoned or refused; a generated image is staged the same way. Read-aloud audio is a cache: an
+    // answer played again after 30 days is synthesized (and paid for) again.
+    lifecycleRules: [
+      { prefix: "staging/", expiration: Duration.days(1) },
+      { prefix: "generated/", expiration: Duration.days(1) },
+      { prefix: "speech/", expiration: Duration.days(30) },
+    ],
     cors: [{ allowedMethods: [s3.HttpMethods.POST, s3.HttpMethods.GET], allowedOrigins: siteOrigins, allowedHeaders: ["*"] }],
     // Uploads are user data, so on AWS the bucket outlives a `cdk destroy`; locally Floci's data is disposable. CDK's
     // autoDeleteObjects can't empty it first on Floci: its custom-resource Lambda calls S3 on port 443, which Floci

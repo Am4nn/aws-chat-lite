@@ -1,10 +1,5 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  // The shared agent, memory, schedule and media types are committed before the code that imports them. Drop a
-  // file's line once every one of its types has an importer.
-  "ignoreIssues": {
-    "services/src/threads/types.ts": ["types"]
-  },
   "workspaces": {
     "infra": {
       "entry": [
@@ -25,6 +20,7 @@
         "src/auth/presignup.ts",
         "src/runs/loop.ts",
         "src/runs/stream-handler.ts",
+        "src/schedules/fire.ts",
         "src/spike/*.ts",
         "src/**/*.live.test.ts",
         "src/**/*.load.test.ts"
@@ -35,7 +31,7 @@
     },
     "scripts": {
       "entry": [
-        "src/{floci-up,deploy-local,spike-check,spike-aws,grant,smoke,dev,stream-local,sandbox-local,mcp-test-local}.ts"
+        "src/{floci-up,deploy-local,spike-check,spike-aws,grant,smoke,dev,stream-local,sandbox-local,mcp-test-local,fire-schedule}.ts"
       ],
       "project": [
         "src/**/*.ts"

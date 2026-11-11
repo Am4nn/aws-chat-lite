@@ -67,6 +67,16 @@ describe("McpServers", () => {
     expect(toasts).toHaveBeenCalledWith("Connected test");
   });
 
+  it("marks the tab before leaving for the server's sign-in, so its return may show a toast", async () => {
+    vi.mocked(bff).mockResolvedValueOnce({ authorizeUrl: "https://test.example/authorize?state=s" });
+    const navigate = vi.spyOn(console, "error").mockImplementation(() => {});
+    render(<Panel initial={[conn("test")]} manage />);
+    fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
+    await waitFor(() => expect(sessionStorage.getItem("sign-in-started")).toBe("1"));
+    navigate.mockRestore();
+    sessionStorage.clear();
+  });
+
   it("removes a server only after the admin confirms", async () => {
     vi.mocked(bff).mockResolvedValueOnce({});
     render(<Panel initial={[conn("test")]} manage />);

@@ -13,8 +13,9 @@ export function addRuns(stack: CoreStack) {
   // The keys are set by hand, so AWS keeps them past a stack delete. Leave the generated value as is: changing the
   // generator makes CloudFormation write a new value over the hand-set keys.
   const removalPolicy = isLocal ? RemovalPolicy.DESTROY : RemovalPolicy.RETAIN;
-  // The provider keys live only in this secret, as JSON {ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL}. Its
-  // value is set outside CloudFormation, so no key ever appears in a template or a Lambda environment variable.
+  // The provider keys live only in this secret, as JSON {ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL,
+  // GEMINI_API_KEY}. Its value is set outside CloudFormation, so no key ever appears in a template or a Lambda
+  // environment variable.
   const keysName = `${prefix}-model-keys`;
   const modelKeys = new secretsmanager.Secret(stack, "ModelKeys", {
     secretName: keysName,

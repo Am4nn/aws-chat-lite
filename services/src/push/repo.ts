@@ -38,6 +38,12 @@ export function pushRepo() {
       await db.send(new PutCommand({
         TableName, Item: { ...subscriptionKey(userId, id), id, userId, createdAt: new Date().toISOString(), ...sub },
       }));
+      // A browser has one endpoint whoever signs in on it, so the user who held it before loses it: otherwise their
+      // pushes would keep showing on a device that is now someone else's.
+      const { Attributes } = await db.send(new PutCommand({
+        TableName, Item: { pk: `PUSHENDPOINT#${id}`, sk: "OWNER", userId }, ReturnValues: "ALL_OLD",
+      }));
+      if (Attributes?.userId && Attributes.userId !== userId) await remove(Attributes.userId as string, id);
       const oldestFirst = (await ofUser(userId)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
       await Promise.all(oldestFirst.slice(0, -MAX_DEVICES).map((s) => remove(userId, s.id)));
       return { id };

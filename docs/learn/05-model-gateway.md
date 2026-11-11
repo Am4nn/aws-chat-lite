@@ -13,12 +13,12 @@
 ## How to try it
 ```powershell
 npm run deploy:local                       # the fake gateway: every model id is served by the fake, at that id's rates
-npm run deploy:local -- --live-models      # real Claude and DeepSeek: copies the 3 keys from .env into Floci's secret
+npm run deploy:local -- --live-models      # real Claude, DeepSeek and Gemini: copies the 4 keys from .env into Floci's secret
 npm run dev                                # then pick a model in any composer
 REAL_MODELS=1 npm -w services run test:live  # the adapter against the real providers; stops itself at $0.50
 npm -w services run test:load              # 25 runs + 100 sockets on Floci (fake gateway), prints its timings
 ```
-`.env` (gitignored) holds `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY` and `DEEPSEEK_BASE_URL`. A plain `deploy:local` goes back to the fake, so tests and the load test never spend money.
+`.env` (gitignored) holds `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL` and `GEMINI_API_KEY` (for the image tool); `--live-models` stops before the deploy if any of the four is missing. A plain `deploy:local` goes back to the fake, so tests and the load test never spend money.
 
 The fake model gained directives (still read from the thread's first message):
 

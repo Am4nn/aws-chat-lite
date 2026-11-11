@@ -89,4 +89,19 @@ describe("SchedulesPanel", () => {
       body: { agentId: "agent", title: "Weekly review", prompt: "Review the week.", cadence: { kind: "weekly", day: "fri", time: "17:30" }, chatId: "c1" },
     }));
   });
+
+  it("closes the form after a create the server kept switched off, so a second press can't make a copy", async () => {
+    mockedBff.mockImplementation(async (path, init) => {
+      if (init?.body) throw new BffError(503, "Couldn't turn the schedule on; try again.");
+      return { schedules: [schedule()], timeZone: "Asia/Kolkata", max: 5 };
+    });
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "New" }));
+    const form = screen.getByRole("button", { name: "Create schedule" }).closest("form")!;
+    fireEvent.change(within(form).getByLabelText("Title"), { target: { value: "Weekly review" } });
+    fireEvent.change(within(form).getByLabelText("Prompt"), { target: { value: "Review the week." } });
+    fireEvent.click(within(form).getByRole("button", { name: "Create schedule" }));
+    await vi.waitFor(() => expect(toasts).toHaveBeenCalledWith("Couldn't turn the schedule on; try again.", "error"));
+    expect(screen.queryByRole("button", { name: "Create schedule" })).toBeNull();
+  });
 });

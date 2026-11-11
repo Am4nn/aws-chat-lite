@@ -94,3 +94,16 @@ export async function batchGet(keys: Record<string, string>[], opts: { consisten
   }
   return items;
 }
+
+/**
+ * `SET #f = :f, …` for each defined field. Every attribute name goes through a placeholder: DynamoDB rejects reserved
+ * words such as `status` and `steps` written bare in an expression.
+ */
+export function setFields(fields: Record<string, unknown>) {
+  const keys = Object.keys(fields).filter((k) => fields[k] !== undefined);
+  return {
+    UpdateExpression: `SET ${keys.map((k) => `#${k} = :${k}`).join(", ")}`,
+    ExpressionAttributeNames: Object.fromEntries(keys.map((k) => [`#${k}`, k])),
+    ExpressionAttributeValues: Object.fromEntries(keys.map((k) => [`:${k}`, fields[k]])),
+  };
+}

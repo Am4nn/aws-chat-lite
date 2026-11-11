@@ -9,8 +9,13 @@ describe("loadConfig", () => {
     expect(loadConfig("local", FLOCI)).toEqual({
       stage: "local", prefix: "cl-local", isLocal: true, region: "us-east-1",
       siteOrigins: ["http://localhost:3000", "http://localhost:3100"], s3PublicEndpoint: "http://localhost:4566",
-      modelGateway: "fake", toolMode: "fake",
+      modelGateway: "fake", toolMode: "fake", pushMode: "fake", voiceMode: "fake", transcribeLocalUrl: "ws://localhost:4601",
     });
+  });
+
+  it("sends real pushes locally only when asked with PUSH_MODE=live", () => {
+    expect(loadConfig("local", { ...FLOCI, PUSH_MODE: "live" }).pushMode).toBe("live");
+    expect(loadConfig("local", { ...FLOCI, PUSH_MODE: "anything" }).pushMode).toBe("fake");
   });
 
   it("serves real models locally only when asked with MODEL_GATEWAY=live", () => {
@@ -35,7 +40,7 @@ describe("loadConfig", () => {
   it("builds the aws stage in ap-southeast-2 with its prod settings and no endpoint override", () => {
     expect(loadConfig("aws", {}, TEST_CONTEXT)).toEqual({
       stage: "aws", prefix: "cl-aws", isLocal: false, region: "ap-southeast-2", siteOrigins: ["https://chat.amanarya.com"],
-      mcpBaseUrl: "https://chat.amanarya.com", modelGateway: "live", toolMode: "live",
+      mcpBaseUrl: "https://chat.amanarya.com", modelGateway: "live", toolMode: "live", pushMode: "live", voiceMode: "live",
       prod: { domainName: "chat.amanarya.com", ...TEST_CONTEXT },
     });
   });

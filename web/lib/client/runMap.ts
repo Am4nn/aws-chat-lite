@@ -69,8 +69,10 @@ type LaneState = { lane: number; label: string; groups: Group[]; lastAt: number;
  * delegate step, so the lane that waited for it resumes to their right. A model turn's tokens and cost are split
  * evenly over the calls it made; the turn that made none is the lane's answer.
  */
-export function runMap(events: RunEvent[], nowMs: number, agentName: string): RunMap {
+export function runMap(events: RunEvent[], nowMs: number): RunMap {
   if (!events.length) return { lanes: [], nodes: [], edges: [], width: 0, height: 0 };
+  const started = events.find((e) => e.type === "run.started");
+  const agentName = started?.type === "run.started" ? started.agentName : "agent";
   const t0 = Date.parse(events[0].at);
   const ended = events.find((e) => e.type === "run.finished");
   const endMs = ended ? Date.parse(ended.at) : nowMs;
@@ -139,7 +141,8 @@ export function runMap(events: RunEvent[], nowMs: number, agentName: string): Ru
         lane.view = applyToLane(lane.view, e);
         break;
       case "usage": {
-        if (e.job === "sandbox") {
+        // Sandbox time and Gemini images are billed while (or right after) their step runs, so they are its own cost.
+        if (e.job === "sandbox" || e.job === "image") {
           const node = lane.groups.flatMap((g) => g.nodes).at(-1);
           if (node) own.set(node, (own.get(node) ?? 0) + e.costMicros);
         }
@@ -263,7 +266,7 @@ export function timeShares(events: RunEvent[], by: "time" | "cost"): Share[] {
     if (e.type === "helper.finished") sums.helpers += time ? e.ms : e.costMicros;
     if (e.lane) continue;
     if (e.type === "usage" && e.job === "run") sums.thinking += time ? e.ms ?? 0 : e.costMicros;
-    if (e.type === "usage" && e.job === "sandbox" && !time) sums.tools += e.costMicros;
+    if (e.type === "usage" && (e.job === "sandbox" || e.job === "image") && !time) sums.tools += e.costMicros;
     if (e.type === "step.finished" && time && !delegates.has(e.step)) sums.tools += e.ms;
     if (e.type === "approval.requested") asked.set(e.step, Date.parse(e.at));
     if (e.type === "approval.settled" && time && asked.has(e.step)) sums.waiting += Date.parse(e.at) - asked.get(e.step)!;

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { FolderGit2, Hourglass, Pencil } from "lucide-react";
 import { bff, errorText } from "@/lib/client/bff";
+import { markFlowStarted } from "@/lib/client/flow-return";
 import { formatWait } from "@/lib/client/format";
 import { useLiveEvent } from "@/lib/client/LiveProvider";
 import { swap } from "@/lib/motion";
@@ -107,7 +108,9 @@ function GitHubSection({ roomId, data, manage, pick, onPickStarted, onChange }: 
     setBusy(true);
     try {
       const body = { redirectUri: `${window.location.origin}/bff/github/callback` };
-      window.location.assign((await bff<{ authorizeUrl: string }>(`/bff/api/rooms/${roomId}/connections/github/sign-in`, { body })).authorizeUrl);
+      const { authorizeUrl } = await bff<{ authorizeUrl: string }>(`/bff/api/rooms/${roomId}/connections/github/sign-in`, { body });
+      markFlowStarted();
+      window.location.assign(authorizeUrl);
     } catch (e) {
       toast(errorText(e), "error");
       setBusy(false);

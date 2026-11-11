@@ -34,16 +34,16 @@ describe("files API", () => {
   });
 
   it("the run Lambda reaches room files but never staged uploads", () => {
-    expect(objectPatterns("cl-local-run")).toEqual(["/workspaces/*"]);
-    expect(s3Statements("cl-local-run").flatMap((s: any) => [s.Action].flat()).sort())
-      .toEqual(["s3:DeleteObject", "s3:GetObject", "s3:PutObject"]);
+    const workspaces = s3Statements("cl-local-run").filter((s: any) => JSON.stringify(s.Resource).includes("/workspaces/*"));
+    expect(workspaces.flatMap((s: any) => [s.Action].flat()).sort()).toEqual(["s3:DeleteObject", "s3:GetObject", "s3:PutObject"]);
+    expect(objectPatterns("cl-local-run")).not.toContain("/staging/*");
     expect(fnNamed("cl-local-run").props.Environment.Variables.FILES_BUCKET).toBeDefined();
   });
 
   it("uploads nobody committed expire after a day", () => {
     const [bucket] = Object.values(template().findResources("AWS::S3::Bucket", { Properties: { BucketName: "cl-local-files" } })) as any[];
-    expect(bucket.Properties.LifecycleConfiguration.Rules).toEqual([
+    expect(bucket.Properties.LifecycleConfiguration.Rules).toContainEqual(
       expect.objectContaining({ Prefix: "staging/", ExpirationInDays: 1, Status: "Enabled" }),
-    ]);
+    );
   });
 });

@@ -54,17 +54,16 @@ describe("GET /oauth/authorize", () => {
   });
 
   it.each([
-    [{ scope: "admin" }, "invalid_scope"],
-    [{ code_challenge_method: "plain" }, "invalid_request"],
-    [{ response_type: "token" }, "unsupported_response_type"],
-    [{ resource: "https://other/mcp" }, "invalid_target"],
-  ])("other faults go back to the client: %j → %s", async (q, error) => {
+    [{ scope: "admin" }, "Ask for rooms:read, rooms:write or both."],
+    [{ code_challenge_method: "plain" }, "A PKCE code_challenge with method S256 is required."],
+    [{ response_type: "token" }, "Only response_type=code is supported."],
+    [{ resource: "https://other/mcp" }, "This server issues tokens for https://api.example/mcp only."],
+  ])("other faults are an error page too, since anyone can register any https address: %j", async (q, error) => {
     fakeTable({ "OAUTHCLIENT#c1": client });
     const res = await authorize(q);
-    expect(res.statusCode).toBe(302);
-    const url = new URL(String(res.headers?.location));
-    expect([url.origin + url.pathname, url.searchParams.get("error"), url.searchParams.get("state"), url.searchParams.get("iss")])
-      .toEqual([client.redirectUris[0], error, "st", "https://api.example"]);
+    expect(res.statusCode).toBe(400);
+    expect(res.headers?.location).toBeUndefined();
+    expect(res.body).toBe(error);
   });
 });
 

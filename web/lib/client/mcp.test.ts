@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import type { McpConnection, McpToolInfo } from "../types";
 import { callbackTarget, keptLine, toolLabel } from "./mcp";

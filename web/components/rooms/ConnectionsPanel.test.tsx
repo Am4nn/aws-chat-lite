@@ -70,6 +70,8 @@ describe("ConnectionsPanel", () => {
     await waitFor(() => expect(assign).toHaveBeenCalledWith("https://github.com/login/oauth/authorize?state=s"));
     expect(mockedBff).toHaveBeenCalledWith("/bff/api/rooms/r1/connections/github/sign-in", { body: { redirectUri: "http://localhost:3000/bff/github/callback" } });
     expect(mockedBff.mock.calls.some(([path]) => path.endsWith("/installations"))).toBe(false);
+    expect(sessionStorage.getItem("sign-in-started")).toBe("1");
+    sessionStorage.clear();
   });
 
   it("back from GitHub, opens the picker on what the admin's account can reach, once", async () => {

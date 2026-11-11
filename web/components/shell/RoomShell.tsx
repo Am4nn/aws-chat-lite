@@ -5,6 +5,7 @@ import { useParams, usePathname, useRouter, useSearchParams } from "next/navigat
 import { motion, useReducedMotion } from "motion/react";
 import { Activity, Bot, CalendarClock, Folder, NotebookPen, Plug, Search, UserPlus, Users, Workflow } from "lucide-react";
 import { bff, bffOrNull, errorText } from "@/lib/client/bff";
+import { takeFlowMark } from "@/lib/client/flow-return";
 import { useLive, useLiveEvent, useLiveStatus } from "@/lib/client/LiveProvider";
 import { ModelsProvider } from "@/lib/client/ModelsProvider";
 import { signOut } from "@/lib/client/signOut";
@@ -96,7 +97,6 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
   const onMap = !!activeThread && query.get("view") === "map";
   // A step picked on another run's Map (another thread's, or this thread's before its next run) isn't shown.
   const shownStep = onMap && picked?.runId === (query.get("run") ?? activeThread.runId) ? picked : null;
-  const shownReturn = useRef<string | null>(null);
 
   // The socket outlives room switches and subscribes only to the rooms the user was in when it connected, so each
   // room asks for its own events once the socket is open (again after every reconnect).
@@ -111,16 +111,15 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
 
   // Connecting an MCP server or signing in with GitHub comes back here with the result in the address. It is shown
   // once, with the Connections tab open (and the repo picker, after GitHub), then dropped from the address so a reload
-  // doesn't show it again. The ref stops Strict Mode's second effect run from showing it twice.
+  // doesn't show it again.
   useEffect(() => {
     const error = mcpError ?? githubError;
-    const result = error ?? (mcpName && `Connected ${mcpName}`) ?? (githubPick ? "github" : null);
-    if (!result || shownReturn.current === result) return;
-    shownReturn.current = result;
-    if (githubPick) setPickGitHub(true);
-    else toast(result, error ? "error" : "done");
-    setPanelTab("connections");
+    if (!mcpName && !error && !githubPick) return;
     window.history.replaceState(null, "", window.location.pathname);
+    if (!takeFlowMark()) return;
+    if (githubPick) setPickGitHub(true);
+    else toast(error ?? `Connected ${mcpName}`, error ? "error" : "done");
+    setPanelTab("connections");
   }, [mcpName, mcpError, githubError, githubPick, toast]);
 
   // Read once: the order only needs to know which threads the sidebar lists, and that changes by days, not seconds.

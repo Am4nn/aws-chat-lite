@@ -1,26 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { BUILT_IN } from "../agents/model.js";
 import { ValidationError } from "../lib/errors.js";
 import { PICK_REFUSED } from "../models/privacy.js";
 import { startOrSteer } from "../runs/start.js";
-import { mentionsAgent, rewriteTags, routeSend, tagNames } from "./route.js";
+import { rewriteTags, routeSend, tagNames } from "./route.js";
 
 const chat = { admit: vi.fn(), send: vi.fn(), linkThread: vi.fn() };
 const threads = { threadById: vi.fn(), threadByTag: vi.fn(), createThread: vi.fn() };
+const agents = { list: vi.fn() };
 vi.mock("../chat/repo.js", () => ({ chatRepo: () => chat }));
 vi.mock("../threads/repo.js", () => ({ threadsRepo: () => threads }));
+vi.mock("../agents/repo.js", () => ({ agentsRepo: () => agents }));
 vi.mock("../runs/start.js", () => ({ startOrSteer: vi.fn() }));
 vi.mock("../live/broadcast.js", () => ({ broadcastToRoom: vi.fn() }));
-
-describe("mentionsAgent", () => {
-  it("is true for @agent in the text", () => {
-    expect(mentionsAgent("hey @agent check")).toBe(true);
-  });
-
-  it("is false inside backticks and in an email address", () => {
-    expect(mentionsAgent("run `@agent check`")).toBe(false);
-    expect(mentionsAgent("mail a@agent.com")).toBe(false);
-  });
-});
 
 describe("rewriteTags", () => {
   it("turns a thread's #name into its #number and leaves other tags alone", () => {
@@ -53,6 +45,7 @@ describe("routeSend: the model pick", () => {
     chat.send.mockImplementation(async (_u, i: { chatId: string }) => ({ roomId: "r", chatId: i.chatId, seq: 1 }));
     threads.threadById.mockImplementation(async (_r, id: string) => (id === "t1" ? privateThread : null));
     threads.threadByTag.mockResolvedValue(null);
+    agents.list.mockResolvedValue([BUILT_IN]);
   });
 
   it("an unknown model is refused before the message is even admitted", async () => {
@@ -98,5 +91,42 @@ describe("routeSend: the model pick", () => {
     const { route } = await send({ chatId: "t1", model: "sonnet" });
     await route();
     expect(startOrSteer).toHaveBeenCalledWith(me, "r", "t1", expect.objectContaining({ seq: 1 }), "sonnet");
+  });
+});
+
+describe("routeSend: agent mentions in a people chat", () => {
+  const me = { userId: "u1", username: "aman" };
+  const scout = { ...BUILT_IN, agentId: "a-scout", name: "scout", builtIn: false };
+  const send = async (text: string) => {
+    const { route } = await routeSend(me, { roomId: "r", chatId: "general", clientId: "k1", text });
+    await route();
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    chat.admit.mockImplementation(async (_u, i: { text: string }) => ({ text: i.text, attachments: [] }));
+    chat.send.mockImplementation(async (_u, i: { chatId: string }) => ({ roomId: "r", chatId: i.chatId, seq: 1 }));
+    threads.threadById.mockResolvedValue(null);
+    threads.threadByTag.mockResolvedValue(null);
+    threads.createThread.mockResolvedValue({ thread: { threadId: "t9" }, message: { seq: 1 } });
+    agents.list.mockResolvedValue([BUILT_IN, scout]);
+  });
+
+  it("starts a thread with the agent the text mentions first", async () => {
+    await send("hey @scout and @agent, look");
+    expect(threads.createThread).toHaveBeenCalledWith(me, "r", expect.objectContaining({ agentId: "a-scout" }));
+    expect(startOrSteer).toHaveBeenCalledWith(me, "r", "t9", { seq: 1 }, undefined);
+    await send("@agent look");
+    expect(threads.createThread).toHaveBeenLastCalledWith(me, "r", expect.objectContaining({ agentId: "agent" }));
+  });
+
+  it("starts nothing for a mention in code, in an email address or of a longer name", async () => {
+    await send("run `@scout go`, mail a@scout.com, ask @scout-2");
+    expect(threads.createThread).not.toHaveBeenCalled();
+  });
+
+  it("reads the room's agents only for a text with an @ in it", async () => {
+    await send("just people here");
+    expect(agents.list).not.toHaveBeenCalled();
   });
 });

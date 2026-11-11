@@ -28,6 +28,19 @@ describe("pushRepo", () => {
     expect(put.input.Item).toMatchObject({ pk: "USER#u1", sk: `PUSH#${subscriptionId(endpoint)}`, userId: "u1", endpoint, keys });
   });
 
+  it("takes a browser over from the user who had it, so their pushes stop reaching it", async () => {
+    const endpoint = "https://fcm.googleapis.com/fcm/send/shared";
+    const id = subscriptionId(endpoint);
+    const send = vi.spyOn(docClient(), "send").mockImplementation((async (c: unknown) => {
+      if (c instanceof QueryCommand) return { Items: [] };
+      if (c instanceof PutCommand && c.input.Item?.pk === `PUSHENDPOINT#${id}`) return { Attributes: { userId: "u2" } };
+      return {};
+    }) as never);
+    await pushRepo().save("u1", { endpoint, keys });
+    const deleted = send.mock.calls.map(([c]) => c).filter((c) => c instanceof DeleteCommand) as DeleteCommand[];
+    expect(deleted.map((d) => d.input.Key)).toEqual([{ pk: "USER#u2", sk: `PUSH#${id}` }]);
+  });
+
   it("keeps a user's 10 newest devices", async () => {
     const send = fakeTable([3, 1, 11, 2, 4, 5, 6, 7, 8, 9, 10, 12].map(stored));
     await pushRepo().save("u1", { endpoint: "https://fcm.googleapis.com/fcm/send/12", keys });

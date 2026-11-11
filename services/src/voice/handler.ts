@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
 import { idOf, seqNumber } from "../chat/model.js";
 import { callerFromEvent, type User } from "../lib/auth.js";
@@ -31,8 +32,11 @@ export function makeHandler(deps: Deps) {
       const user = callerFromEvent(event);
       switch (event.routeKey) {
         case "POST /rooms/{roomId}/voice/sessions": {
-          const { sessionId } = await deps.voice.mint(user, roomId);
-          return json(200, { sessionId, url: await deps.transcribeUrl(sessionId), maxSeconds: MAX_DICTATION_SEC, sampleRate: SAMPLE_RATE });
+          // Signed before the reservation is charged: a session that never got a URL would never report back to refund it.
+          const sessionId = randomUUID();
+          const url = await deps.transcribeUrl(sessionId);
+          await deps.voice.mint(user, roomId, sessionId);
+          return json(200, { sessionId, url, maxSeconds: MAX_DICTATION_SEC, sampleRate: SAMPLE_RATE });
         }
 
         case "POST /rooms/{roomId}/voice/sessions/{sessionId}/done": {

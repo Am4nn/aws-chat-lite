@@ -4,7 +4,7 @@ import { CognitoIdentityProviderClient, AdminAddUserToGroupCommand } from "@aws-
 import { readOutputs } from "./deploy-local.js";
 
 export const WEB = process.env.WEB_URL ?? "http://localhost:3000";
-const PASSWORD = "password1";
+export const PASSWORD = "password1";
 export const results: [boolean, string][] = [];
 
 /** The tab's socket, which the app exposes on `window` outside production so a test can drive and drop it. */
@@ -92,3 +92,22 @@ export async function send(page: Page, text: string) {
 export const say = (page: Page, roomId: string, chatId: string, text: string) =>
   page.evaluate((r, c, t) => window.__live.request("send", { roomId: r, chatId: c, clientId: crypto.randomUUID(), text: t })
     .then(() => "ok", (e: Error) => e.message), roomId, chatId, text);
+
+export const PANEL = 'aside[aria-label="Room panel"]';
+
+/** Clicks the enabled button reading `text`, once it shows. */
+export async function clickButton(page: Page, text: string) {
+  await page.waitForFunction((t) => ([...document.querySelectorAll("button")] as HTMLButtonElement[])
+    .some((b) => b.textContent?.trim() === t && !b.disabled), { timeout: 15_000 }, text);
+  await page.evaluate((t) => ([...document.querySelectorAll("button")] as HTMLButtonElement[]).find((b) => b.textContent?.trim() === t && !b.disabled)!.click(), text);
+}
+
+export async function openTab(page: Page, label: string) {
+  // On a phone the panel slides in, so its tabs exist while still off screen. A locator clicks once the tab is in view
+  // and has stopped moving.
+  await page.locator(`${PANEL} [role=tab][aria-label="${label}"]`).click();
+}
+
+/** Whether the room panel's text includes every one of `texts`. */
+export const panelShows = (page: Page, texts: string[], timeout?: number) =>
+  until(page, (ts) => ts.every((t) => document.querySelector('aside[aria-label="Room panel"]')?.textContent?.includes(t)), texts, timeout);

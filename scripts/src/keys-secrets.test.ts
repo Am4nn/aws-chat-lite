@@ -3,23 +3,47 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { MODEL_KEY_NAMES, TOOL_KEY_NAMES, modelKeysSecret, toolKeysSecret } from "./keys-secrets.js";
+import { MODEL_KEY_NAMES, PUSH_KEY_NAMES, TOOL_KEY_NAMES, modelKeysSecret, pushKeysSecret, pushPublicKeySecret, toolKeysSecret } from "./keys-secrets.js";
 
 describe("modelKeysSecret", () => {
-  it("keeps only the three model keys from .env, as the secret's JSON", () => {
-    const env = "# models\nANTHROPIC_API_KEY=a\nDEEPSEEK_API_KEY=d\nDEEPSEEK_BASE_URL=https://api.deepseek.com\nGEMINI_API_KEY=g\n";
+  it("keeps only the four model keys from .env, as the secret's JSON", () => {
+    const env = "# models\nANTHROPIC_API_KEY=a\nDEEPSEEK_API_KEY=d\nDEEPSEEK_BASE_URL=https://api.deepseek.com\nGEMINI_API_KEY=g\nTAVILY_API_KEY=t\n";
     expect(JSON.parse(modelKeysSecret(env))).toEqual({
       ANTHROPIC_API_KEY: "a",
       DEEPSEEK_API_KEY: "d",
       DEEPSEEK_BASE_URL: "https://api.deepseek.com",
+      GEMINI_API_KEY: "g",
     });
-    expect(MODEL_KEY_NAMES).toEqual(["ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL"]);
+    expect(MODEL_KEY_NAMES).toEqual(["ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL", "GEMINI_API_KEY"]);
   });
 
   it("names every missing or empty key", () => {
     expect(() => modelKeysSecret("ANTHROPIC_API_KEY=a\nDEEPSEEK_API_KEY=\n")).toThrow(
-      ".env is missing DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL",
+      ".env is missing DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, GEMINI_API_KEY",
     );
+  });
+});
+
+describe("pushKeysSecret", () => {
+  it("keeps only the VAPID key pair and subject from .env, as the secret's JSON", () => {
+    const env = "VAPID_PUBLIC_KEY=pub\nVAPID_PRIVATE_KEY=priv\nVAPID_SUBJECT=mailto:a@example.com\nGEMINI_API_KEY=g\n";
+    expect(JSON.parse(pushKeysSecret(env))).toEqual({
+      VAPID_PUBLIC_KEY: "pub", VAPID_PRIVATE_KEY: "priv", VAPID_SUBJECT: "mailto:a@example.com",
+    });
+    expect(PUSH_KEY_NAMES).toEqual(["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"]);
+  });
+
+  it("names a missing key without echoing the others", () => {
+    const noSubject = "VAPID_PUBLIC_KEY=pub\nVAPID_PRIVATE_KEY=priv-c0ffee\n";
+    expect(() => pushKeysSecret(noSubject)).toThrow(".env is missing VAPID_SUBJECT");
+    expect(() => pushKeysSecret(noSubject)).not.toThrow(/c0ffee/);
+  });
+});
+
+describe("pushPublicKeySecret", () => {
+  it("holds only the public key, for the routes a browser calls", () => {
+    const env = "VAPID_PUBLIC_KEY=pub\nVAPID_PRIVATE_KEY=priv\nVAPID_SUBJECT=mailto:a@example.com\n";
+    expect(JSON.parse(pushPublicKeySecret(env))).toEqual({ VAPID_PUBLIC_KEY: "pub" });
   });
 });
 

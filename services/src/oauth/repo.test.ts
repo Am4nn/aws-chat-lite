@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DeleteCommand, GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, GetCommand, PutCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { docClient } from "../lib/db.js";
 import { NotFound } from "../lib/errors.js";
 import { hashOf } from "./model.js";
@@ -13,9 +13,15 @@ const nowSec = () => Math.floor(Date.now() / 1000);
 const grantId = "0e4a6f3c-2b1d-4c5e-9f8a-7b6c5d4e3f2a";
 const conditionFailed = () => Object.assign(new Error("condition"), { name: "ConditionalCheckFailedException" });
 
-/** Rate counters answer `hits`; reads answer `items` by pk; deletes fail their condition when `deleteFails`. */
-function fakeTable(opts: { hits?: number; items?: Record<string, object>; deleteFails?: boolean } = {}) {
+/**
+ * Rate counters answer `hits`; reads answer `items` by pk; deletes fail their condition when `deleteFails`, and
+ * transactions are cancelled for `transactFails`.
+ */
+function fakeTable(opts: { hits?: number; items?: Record<string, object>; deleteFails?: boolean; transactFails?: string } = {}) {
   return vi.spyOn(docClient(), "send").mockImplementation((async (c: unknown) => {
+    if (c instanceof TransactWriteCommand && opts.transactFails) {
+      throw Object.assign(new Error("cancelled"), { name: "TransactionCanceledException", CancellationReasons: [{ Code: opts.transactFails }] });
+    }
     if (c instanceof UpdateCommand && String(c.input.Key?.pk).startsWith("RATE#")) return { Attributes: { n: opts.hits ?? 1 } };
     if (c instanceof GetCommand) return { Item: opts.items?.[String(c.input.Key?.pk)] };
     if (c instanceof DeleteCommand && opts.deleteFails) throw conditionFailed();
@@ -94,9 +100,42 @@ describe("decide", () => {
 });
 
 describe("refresh", () => {
-  const grant = (refreshHash: string) => ({ grantId, clientId: "c1", userId: "u1", scopes: ["rooms:read"], refreshHash, accessHash: "x", accessExp: nowSec() + 60, ttl: nowSec() + 999 });
+  const grant = (refreshHash: string, over: object = {}) => ({
+    grantId, clientId: "c1", userId: "u1", username: "aman", scopes: ["rooms:read"], refreshHash, accessHash: "x", accessExp: nowSec() + 60,
+    ttl: nowSec() + 999, ...over,
+  });
   const form = (token: string) => new URLSearchParams({ grant_type: "refresh_token", refresh_token: token, client_id: "c1" });
   const token = `cl_rt_${grantId}_${"a".repeat(43)}`;
+  const newer = hashOf(`cl_rt_${grantId}_${"b".repeat(43)}`);
+  const client = { "OAUTHCLIENT#c1": { clientId: "c1", ttl: nowSec() + 999 } };
+  const active = async () => true;
+
+  it("the token just rotated, presented again within 30 s, is refused without revoking: one client refreshing twice at once", async () => {
+    const send = fakeTable({ items: { [`OAUTHGRANT#${grantId}`]: grant(newer, { prevRefreshHash: hashOf(token), rotatedAt: nowSec() - 5 }) } });
+    await expect(oauthRepo(active).token(form(token))).rejects.toMatchObject({ code: "invalid_grant" });
+    expect(sent(send, DeleteCommand)).toEqual([]);
+  });
+
+  it("the token just rotated, presented again later, revokes the grant", async () => {
+    const send = fakeTable({ items: { [`OAUTHGRANT#${grantId}`]: grant(newer, { prevRefreshHash: hashOf(token), rotatedAt: nowSec() - 60 }) } });
+    await expect(oauthRepo(active).token(form(token))).rejects.toMatchObject({ code: "invalid_grant" });
+    expect(sent(send, DeleteCommand)).toHaveLength(1);
+  });
+
+  it.each(["ConditionalCheckFailed", "TransactionConflict"])("losing the rotation to a concurrent refresh (%s) keeps the grant", async (code) => {
+    const send = fakeTable({ items: { [`OAUTHGRANT#${grantId}`]: grant(hashOf(token)), ...client }, transactFails: code });
+    await expect(oauthRepo(active).token(form(token))).rejects.toMatchObject({ code: "invalid_grant" });
+    expect(sent(send, DeleteCommand)).toEqual([]);
+  });
+
+  it("an account deleted or disabled since sign-in revokes the grant at its next refresh", async () => {
+    const send = fakeTable({ items: { [`OAUTHGRANT#${grantId}`]: grant(hashOf(token)), ...client } });
+    const asked: string[] = [];
+    await expect(oauthRepo(async (username) => (asked.push(username), false)).token(form(token))).rejects.toMatchObject({ code: "invalid_grant" });
+    expect(asked).toEqual(["aman"]);
+    expect(sent(send, DeleteCommand)[0]!.input.Key).toEqual({ pk: `OAUTHGRANT#${grantId}`, sk: "META" });
+    expect(sent(send, TransactWriteCommand)).toEqual([]);
+  });
 
   it("a refresh token that isn't the current one revokes the whole grant", async () => {
     const send = fakeTable({ items: { [`OAUTHGRANT#${grantId}`]: grant(hashOf(`cl_rt_${grantId}_${"b".repeat(43)}`)) } });
@@ -111,12 +150,13 @@ describe("refresh", () => {
   });
 
   it("rotates on the current hash only, so a concurrent rotation loses", async () => {
-    const send = fakeTable({ items: { [`OAUTHGRANT#${grantId}`]: grant(hashOf(token)), "OAUTHCLIENT#c1": { clientId: "c1", ttl: nowSec() + 999 } } });
-    const res = await oauthRepo().token(form(token)) as Record<string, unknown>;
+    const send = fakeTable({ items: { [`OAUTHGRANT#${grantId}`]: grant(hashOf(token)), ...client } });
+    const res = await oauthRepo(active).token(form(token)) as Record<string, unknown>;
     expect(res).toMatchObject({ token_type: "Bearer", expires_in: 3600, scope: "rooms:read" });
     expect(res.refresh_token).not.toBe(token);
     const json = JSON.stringify(send.mock.calls.map(([c]) => (c as { input: unknown }).input));
     expect(json).toContain(`"ConditionExpression":"refreshHash = :old"`);
+    expect(json).toContain("prevRefreshHash = :old, rotatedAt = :now");
     expect(json).not.toContain(String(res.access_token));
     expect(json).not.toContain(String(res.refresh_token));
   });

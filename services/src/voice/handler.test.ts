@@ -4,7 +4,7 @@ import { makeHandler, type Deps } from "./handler.js";
 function fakes() {
   const deps = {
     voice: {
-      mint: vi.fn(async () => ({ sessionId: "s1", mintedAt: "2026-11-11T00:00:00.000Z" })),
+      mint: vi.fn(async () => {}),
       done: vi.fn(async () => ({ billedSeconds: 7 })),
     },
     transcribeUrl: vi.fn(async (sessionId: string) => `ws://localhost:4601/x?session=${sessionId}`),
@@ -26,10 +26,17 @@ const me = { userId: "u1", username: "aman" };
 describe("voice handler", () => {
   it("starts a dictation: a session and the socket to stream it on", async () => {
     const { deps, handle } = fakes();
-    expect(result(await handle(ev("POST /rooms/{roomId}/voice/sessions")))).toEqual({
-      status: 200, body: { sessionId: "s1", url: "ws://localhost:4601/x?session=s1", maxSeconds: 60, sampleRate: 16000 },
-    });
-    expect(deps.voice.mint).toHaveBeenCalledWith(me, "r");
+    const { status, body } = result(await handle(ev("POST /rooms/{roomId}/voice/sessions")));
+    expect(status).toBe(200);
+    expect(body).toEqual({ sessionId: expect.any(String), url: `ws://localhost:4601/x?session=${body.sessionId}`, maxSeconds: 60, sampleRate: 16000 });
+    expect(deps.voice.mint).toHaveBeenCalledWith(me, "r", body.sessionId);
+  });
+
+  it("signs the socket before reserving the dictation, so a signing failure charges the room nothing", async () => {
+    const { deps, handle } = fakes();
+    deps.transcribeUrl.mockRejectedValueOnce(new Error("TRANSCRIBE_LOCAL_URL not set"));
+    expect((await handle(ev("POST /rooms/{roomId}/voice/sessions"))).statusCode).toBe(500);
+    expect(deps.voice.mint).not.toHaveBeenCalled();
   });
 
   it("ends a dictation with the seconds it ran", async () => {

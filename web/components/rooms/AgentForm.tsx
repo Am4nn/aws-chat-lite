@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent, type KeyboardEvent } from "react";
-import { FolderGit2, Globe, Server, SquareTerminal, type LucideIcon } from "lucide-react";
+import { FolderGit2, Globe, ImageIcon, Server, SquareTerminal, type LucideIcon } from "lucide-react";
 import type { Agent, AgentModel, ModelOption, ToolKind } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { panelInput } from "@/components/ui/Field";
@@ -13,6 +13,7 @@ export type AgentInput = { name: string; instructions: string; tools: ToolKind[]
 export const TOOL_KINDS: { kind: ToolKind; label: string; icon: LucideIcon; missing?: string }[] = [
   { kind: "sandbox", label: "Sandbox", icon: SquareTerminal },
   { kind: "web", label: "Web", icon: Globe },
+  { kind: "images", label: "Images", icon: ImageIcon },
   { kind: "github", label: "GitHub", icon: FolderGit2, missing: "Connect GitHub in Connections first." },
   { kind: "mcp", label: "MCP servers", icon: Server, missing: "Add an MCP server in Connections first." },
 ];

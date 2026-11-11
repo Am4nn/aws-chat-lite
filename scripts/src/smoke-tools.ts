@@ -7,12 +7,11 @@ import type { Page } from "puppeteer-core";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { readOutputs } from "./deploy-local.js";
-import { WEB, bff, check, eventually, send, socketOpen, until } from "./smoke-page.js";
+import { PANEL, WEB, bff, check, clickButton, eventually, openTab, panelShows, send, socketOpen, until } from "./smoke-page.js";
 
 type Person = { page: Page; name: string };
 type Thread = { threadId: string; number: number; status: string; steps: number };
 
-const PANEL = 'aside[aria-label="Room panel"]';
 const REPO = "fake-org/playground";
 const TITLE = `Comment on #1 in ${REPO}?`;
 const RUN_MS = 60_000;
@@ -40,22 +39,6 @@ const CARD_FRAMES = `new Promise((resolve) => {
   requestAnimationFrame(sample);
 })`;
 type Frames = { seen: number; moving: number };
-
-/** Clicks the enabled button reading `text`, once it shows. */
-async function clickButton(page: Page, text: string) {
-  await page.waitForFunction((t) => ([...document.querySelectorAll("button")] as HTMLButtonElement[])
-    .some((b) => b.textContent?.trim() === t && !b.disabled), { timeout: 15_000 }, text);
-  await page.evaluate((t) => ([...document.querySelectorAll("button")] as HTMLButtonElement[]).find((b) => b.textContent?.trim() === t && !b.disabled)!.click(), text);
-}
-
-async function openTab(page: Page, label: string) {
-  await page.waitForSelector(`${PANEL} [role=tab][aria-label="${label}"]`);
-  await page.click(`${PANEL} [role=tab][aria-label="${label}"]`);
-}
-
-/** Whether the room panel's text includes every one of `texts`. */
-const panelShows = (page: Page, texts: string[], timeout?: number) =>
-  until(page, (ts) => ts.every((t) => document.querySelector('aside[aria-label="Room panel"]')?.textContent?.includes(t)), texts, timeout);
 
 const mainShows = (page: Page, text: string, timeout = RUN_MS) =>
   until(page, (t) => document.querySelector("main")?.innerText.includes(t), text, timeout);

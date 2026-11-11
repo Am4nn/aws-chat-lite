@@ -1,4 +1,4 @@
-import { GetObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { budgetText } from "../budget/model.js";
@@ -8,8 +8,8 @@ import { seqKey } from "../chat/model.js";
 import type { User } from "../lib/auth.js";
 import { docClient, tableName } from "../lib/db.js";
 import { Conflict, Gone, NotFound, ValidationError } from "../lib/errors.js";
-import { filesBucket, missingObject, objects, s3 } from "../lib/s3.js";
-import { putBytes } from "../workspace/storage.js";
+import { filesBucket, s3 } from "../lib/s3.js";
+import { findObject, putBytes } from "../workspace/storage.js";
 import { speechMicros } from "./prices.js";
 import type { Speaker } from "./speaker.js";
 import { speechChunks, speechText } from "./speech-text.js";
@@ -17,16 +17,6 @@ import { speechChunks, speechText } from "./speech-text.js";
 const AUDIO_URL_EXPIRY_SEC = 3600;
 /** Enough to cut the wait for a long answer without crowding Polly's per-account request rate. */
 const PARALLEL_SYNTHESES = 4;
-
-async function stored(key: string): Promise<boolean> {
-  try {
-    await objects().send(new HeadObjectCommand({ Bucket: filesBucket(), Key: key }));
-    return true;
-  } catch (e) {
-    if (missingObject(e)) return false;
-    throw e;
-  }
-}
 
 const audioUrl = (key: string) =>
   getSignedUrl(s3(), new GetObjectCommand({ Bucket: filesBucket(), Key: key, ResponseContentType: "audio/mpeg" }), { expiresIn: AUDIO_URL_EXPIRY_SEC });
@@ -44,7 +34,7 @@ export async function speak(user: User, roomId: string, ref: { chatId: string; s
   if (message.deleted) throw new Gone("That answer was removed.");
 
   const key = `speech/${roomId}/${ref.chatId}/${ref.seq}.mp3`;
-  if (await stored(key)) return { url: await audioUrl(key), cached: true };
+  if (await findObject(key)) return { url: await audioUrl(key), cached: true };
 
   const text = speechText(String(message.text ?? ""));
   if (!text) throw new ValidationError("That answer has nothing to read aloud.");

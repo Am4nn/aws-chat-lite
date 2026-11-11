@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { roomsRepo } from "../rooms/repo.js";
 import { chatRepo } from "../chat/repo.js";
 import { attachmentKey } from "../chat/files.js";
+import { png } from "../models/image-fixtures.js";
 import { PICK_REFUSED } from "../models/privacy.js";
 import { routeSend } from "../threads/route.js";
 import { putBytes } from "../workspace/storage.js";
@@ -30,12 +31,12 @@ async function until<T>(what: string, probe: () => Promise<T | undefined>, ms = 
 }
 
 /** A room whose owner has uploaded a PNG, ready to attach. */
-async function withImage() {
+async function withImage(bytes: Uint8Array = PIXEL) {
   const owner = { userId: randomUUID(), username: "owner" };
   const { roomId, generalChatId } = await roomsRepo().createRoom(owner, "Vision");
   const key = attachmentKey(roomId, owner.userId, "pixel.png");
-  await putBytes(key, PIXEL, "image/png");
-  return { owner, roomId, generalChatId, image: { key, name: "pixel.png", size: PIXEL.length, type: "image/png" } };
+  await putBytes(key, bytes, "image/png");
+  return { owner, roomId, generalChatId, image: { key, name: "pixel.png", size: bytes.length, type: "image/png" } };
 }
 
 describe("images on Floci", { timeout: 60_000 }, () => {
@@ -50,6 +51,19 @@ describe("images on Floci", { timeout: 60_000 }, () => {
       (await chat.history(owner, roomId, threadId, {})).messages.find((m) => m.authorId === "agent"));
     expect(answer.agent).toMatchObject({ status: "done" });
     expect(answer.text.split("\n")[0]).toMatch(/\(saw 1 image\)$/);
+  });
+
+  it("an image Claude would refuse is only named, and the run still answers", async () => {
+    const { owner, roomId, generalChatId, image } = await withImage(png(1440, 12000));
+    const ask = { roomId, chatId: generalChatId, clientId: `k${++clients}`, text: "@agent what is this tools:0", attachments: [image] };
+    await (await routeSend(owner, ask)).route();
+
+    const [card] = (await chat.history(owner, roomId, generalChatId, {})).messages;
+    const threadId = card!.threadRef!.threadId;
+    const answer = await until("the answer", async () =>
+      (await chat.history(owner, roomId, threadId, {})).messages.find((m) => m.authorId === "agent"));
+    expect(answer.agent).toMatchObject({ status: "done" });
+    expect(answer.text.split("\n")[0]).not.toMatch(/saw/);
   });
 
   it("a DeepSeek pick with an image is refused before anything is stored", async () => {

@@ -23,7 +23,10 @@ describe("speech player", () => {
     FakeAudio.made = [];
     vi.stubGlobal("Audio", FakeAudio);
   });
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
 
   it("plays one answer at a time on one element and tells subscribers which", async () => {
     const { play, playingKey, subscribe } = await import("./speech");
@@ -40,6 +43,25 @@ describe("speech player", () => {
     expect(audio.src).toBe("https://s3/b.mp3");
     expect(seen).toEqual(["a", "b"]);
     expect(playingKey()).toBe("b");
+  });
+
+  it("prime() starts the shared element at once with silence, and the answer then plays on that same element", async () => {
+    const { prime, play, playingKey } = await import("./speech");
+    prime();
+    const audio = FakeAudio.made[0];
+    expect(audio.src).toMatch(/^data:audio\/wav;base64,/);
+    expect(audio.paused).toBe(false);
+    expect(playingKey()).toBeNull();
+
+    await play("a", "https://s3/a.mp3");
+    expect(FakeAudio.made).toHaveLength(1);
+    expect(audio.src).toBe("https://s3/a.mp3");
+  });
+
+  it("a refused prime is quiet", async () => {
+    const { prime } = await import("./speech");
+    vi.spyOn(FakeAudio.prototype, "play").mockReturnValue(Promise.reject(new Error("blocked")));
+    expect(() => prime()).not.toThrow();
   });
 
   it("stop() and the end of the audio leave nothing playing", async () => {

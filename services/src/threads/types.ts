@@ -43,7 +43,7 @@ export type Source = { title: string; url: string };
 export type ApprovalStatus = "pending" | "approved" | "denied" | "expired" | "cancelled";
 export type GitHubConnection = { installationId: number; account: string; repos: string[]; addedBy: string; addedAt: string };
 export type Scope = "rooms:read" | "rooms:write";
-export type McpToolInfo = { name: string; title?: string; description: string; inputSchema: object; readOnly: boolean };
+export type McpToolInfo = { name: string; description: string; inputSchema: object; readOnly: boolean };
 export type McpConnection = {
   name: string;
   url: string;
@@ -97,7 +97,8 @@ export type GeneratedImage = { path: string; aspect: Aspect };
 export type Budget = { spentMicros: number; capMicros: number; month: string; resetsAt: string };
 
 export type RunEventBody =
-  | { type: "run.started"; pick: ModelPick; startedBy: string }
+  /** `agentName`: who answers, as named when the run started, so the run reads the same after a rename or a delete. */
+  | { type: "run.started"; pick: ModelPick; startedBy: string; agentName: string }
   /** Once per run, before its first model call: the model id that answers. */
   | { type: "routed"; model: string; by: "pick" | "default" | "auto" }
   /** The provider's own content for a model call that ended, replayed verbatim on the next call; never streamed. */

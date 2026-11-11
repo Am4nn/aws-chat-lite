@@ -42,6 +42,18 @@ export interface StageConfig {
   modelGateway: "fake" | "live";
   /** Which GitHub App and web search the tools reach: a canned fake, or the real ones. Locally that is opt-in too. */
   toolMode: "fake" | "live";
+  /**
+   * Where notifications go: nowhere (the fake records each one in the table), or to the real push services. Real ones
+   * reach real phones, so local opts in.
+   */
+  pushMode: "fake" | "live";
+  /**
+   * Which Polly and Transcribe the voice Lambda uses: fakes, or the real ones. Floci has no Polly or
+   * Transcribe streaming, so local is always fake.
+   */
+  voiceMode: "fake" | "live";
+  /** Local only: the fake Transcribe streaming server on the developer's machine, which the browser dictates to. */
+  transcribeLocalUrl?: string;
   /** Local only: the secret the run function sends to the Docker sandbox server on the developer's machine. */
   sandboxToken?: string;
   /** Set on AWS only. */
@@ -70,6 +82,7 @@ export function loadConfig(stage: string | undefined, env: NodeJS.ProcessEnv, co
       stage, prefix: "cl-local", isLocal: true, region: "us-east-1",
       siteOrigins: ["http://localhost:3000", "http://localhost:3100"], s3PublicEndpoint: "http://localhost:4566",
       modelGateway: env.MODEL_GATEWAY === "live" ? "live" : "fake", toolMode: env.TOOL_MODE === "live" ? "live" : "fake",
+      pushMode: env.PUSH_MODE === "live" ? "live" : "fake", voiceMode: "fake", transcribeLocalUrl: "ws://localhost:4601",
       ...(env.SANDBOX_TOKEN && { sandboxToken: env.SANDBOX_TOKEN }),
     };
   }
@@ -77,7 +90,8 @@ export function loadConfig(stage: string | undefined, env: NodeJS.ProcessEnv, co
     if (env.AWS_ENDPOINT_URL) throw new Error("stage=aws: unset AWS_ENDPOINT_URL first (it is pointing at an emulator).");
     return {
       stage, prefix: "cl-aws", isLocal: false, region: "ap-southeast-2", siteOrigins: [`https://${DOMAIN_NAME}`],
-      mcpBaseUrl: `https://${DOMAIN_NAME}`, modelGateway: "live", toolMode: "live", prod: prodSettings(context),
+      mcpBaseUrl: `https://${DOMAIN_NAME}`, modelGateway: "live", toolMode: "live", pushMode: "live", voiceMode: "live",
+      prod: prodSettings(context),
     };
   }
   throw new Error(`stage must be local or aws (got "${stage}"). Pass -c stage=local`);
