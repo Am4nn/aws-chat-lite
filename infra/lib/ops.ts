@@ -1,9 +1,10 @@
-import { CfnOutput, Duration, Stack, Token } from "aws-cdk-lib";
+import { ArnFormat, CfnOutput, Duration, Stack, Token } from "aws-cdk-lib";
 import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
 import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as cwActions from "aws-cdk-lib/aws-cloudwatch-actions";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as subs from "aws-cdk-lib/aws-sns-subscriptions";
@@ -31,6 +32,17 @@ export function addOps(stack: Stack, alertEmail: string): void {
   const distributions = all.filter((c): c is cloudfront.Distribution => c instanceof cloudfront.Distribution);
 
   const topic = new sns.Topic(stack, "OpsTopic", { topicName: NAME, enforceSSL: true });
+  // A topic policy replaces SNS's default one, which is what let same-account services publish. Alarms publish as the
+  // CloudWatch service, so it is let back in, for this account's alarms in this region only.
+  topic.addToResourcePolicy(new iam.PolicyStatement({
+    principals: [new iam.ServicePrincipal("cloudwatch.amazonaws.com")],
+    actions: ["sns:Publish"],
+    resources: [topic.topicArn],
+    conditions: {
+      ArnLike: { "aws:SourceArn": stack.formatArn({ service: "cloudwatch", resource: "alarm", resourceName: "*", arnFormat: ArnFormat.COLON_RESOURCE_NAME }) },
+      StringEquals: { "aws:SourceAccount": stack.account },
+    },
+  }));
   // AWS mails a confirmation link first; nothing arrives until it is clicked.
   topic.addSubscription(new subs.EmailSubscription(alertEmail));
   const action = new cwActions.SnsAction(topic);

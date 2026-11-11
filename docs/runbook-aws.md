@@ -190,7 +190,13 @@ After the first deploy, AWS mails a confirmation link to the alert address. Clic
 - `aws sns list-subscriptions-by-topic --topic-arn $out.OpsTopicArn --query "Subscriptions[].SubscriptionArn" --output text --profile ig --region ap-southeast-2` prints an ARN, not `PendingConfirmation`;
 - a test alarm, `aws cloudwatch set-alarm-state --alarm-name cl-aws-health-errors --state-value ALARM --state-reason "runbook test" --profile ig --region ap-southeast-2`, sends an `ALARM: "cl-aws-health-errors"` mail within a minute, and an `OK` mail when the alarm next evaluates, within about 5 minutes.
 
-**Stop if:** no confirmation mail came. Check spam, then resend it from the console (SNS → Topics → `cl-aws-ops` → Subscriptions → Request confirmation).
+**Stop if:**
+- no confirmation mail came. Check spam, then resend it from the console (SNS → Topics → `cl-aws-ops` → Subscriptions → Request confirmation);
+- the subscription is confirmed but no `ALARM` mail came within about 5 minutes of `set-alarm-state`. Read what the alarm did:
+  ```powershell
+  aws cloudwatch describe-alarm-history --alarm-name cl-aws-health-errors --history-item-type Action --query "AlarmHistoryItems[].HistorySummary" --profile ig --region ap-southeast-2
+  ```
+  A `Failed to execute action` line that names `SNS:Publish` means the topic's policy refuses CloudWatch, so no alarm can mail. Ask for a fix; don't edit the topic policy in the console. Set the test alarm back first (its row in "When an alarm fires").
 
 ## 7. DNS and the site
 At Spaceship, add a record:

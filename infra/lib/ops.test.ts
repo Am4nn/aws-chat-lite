@@ -81,12 +81,22 @@ describe("ops", () => {
     }
   });
 
-  it("the topic mails the alert address over TLS only", () => {
+  it("the topic mails the alert address, and only this account's alarms may publish to it, over TLS", () => {
     const t = template("aws");
     t.hasResourceProperties("AWS::SNS::Subscription", { Protocol: "email", Endpoint: TEST_CONTEXT.alertEmail });
+    const [topic] = Object.keys(t.findResources("AWS::SNS::Topic"));
     const [policy] = Object.values(t.findResources("AWS::SNS::TopicPolicy")) as any[];
-    expect(policy.Properties.PolicyDocument.Statement).toContainEqual(expect.objectContaining({
-      Effect: "Deny", Condition: { Bool: { "aws:SecureTransport": "false" } },
+    const statements = policy.Properties.PolicyDocument.Statement;
+    expect(statements).toHaveLength(2);
+    expect(statements).toContainEqual(expect.objectContaining({
+      Effect: "Deny", Action: "sns:Publish", Condition: { Bool: { "aws:SecureTransport": "false" } },
+    }));
+    expect(statements).toContainEqual(expect.objectContaining({
+      Effect: "Allow", Principal: { Service: "cloudwatch.amazonaws.com" }, Action: "sns:Publish", Resource: { Ref: topic },
+      Condition: {
+        ArnLike: { "aws:SourceArn": { "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, ":cloudwatch:ap-southeast-2:000000000000:alarm:*"]] } },
+        StringEquals: { "aws:SourceAccount": "000000000000" },
+      },
     }));
   });
 
