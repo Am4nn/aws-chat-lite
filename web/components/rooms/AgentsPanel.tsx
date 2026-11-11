@@ -1,0 +1,153 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { Bot, Plus } from "lucide-react";
+import { canEditAgent, copyTargets, copyToast, type CopyResult } from "@/lib/client/agents";
+import { bff, errorText } from "@/lib/client/bff";
+import { useLiveEvent } from "@/lib/client/LiveProvider";
+import { swap } from "@/lib/motion";
+import type { Agent, ModelOption, Role, RoomSummary, ToolKind } from "@/lib/types";
+import { Confirm } from "@/components/overlays/Confirm";
+import { Modal } from "@/components/overlays/Modal";
+import { useToast } from "@/components/overlays/Toast";
+import { Button } from "@/components/ui/Button";
+import { MenuItem, RowMenu } from "@/components/ui/RowMenu";
+import { Spinner } from "@/components/ui/Spinner";
+import { AgentForm, TOOL_KINDS, type AgentInput } from "./AgentForm";
+
+type Agents = { agents: Agent[]; kinds: ToolKind[] };
+type Me = { userId: string; role: Role };
+
+/**
+ * The room's agents: anyone uses any of them and adds their own; an agent's creator or an admin changes it. The
+ * server's list is the truth, fetched again when the agents change and when the room does (its connections decide
+ * which tool kinds are on offer).
+ */
+export function AgentsPanel({ roomId, me, rooms, models, archived }: {
+  roomId: string; me: Me; rooms: RoomSummary[]; models: ModelOption[]; archived: boolean;
+}) {
+  const toast = useToast();
+  const [data, setData] = useState<Agents | null>(null);
+  const [version, setVersion] = useState(0);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<Agent | null>(null);
+  const [busy, setBusy] = useState(false);
+  const base = `/bff/api/rooms/${roomId}/agents`;
+  const targets = copyTargets(rooms, roomId);
+  const refetch = (e: { roomId: string }) => e.roomId === roomId && setVersion((v) => v + 1);
+  useLiveEvent("agents.changed", refetch);
+  useLiveEvent("room.updated", refetch);
+
+  useEffect(() => {
+    let current = true;
+    bff<Agents>(base)
+      .then((d) => current && setData(d))
+      .catch((e) => toast(errorText(e), "error"));
+    return () => { current = false; };
+  }, [base, version, toast]);
+
+  async function save(agent: Agent | undefined, input: AgentInput) {
+    setBusy(true);
+    try {
+      // The built-in @agent can't be renamed, so its name isn't sent at all.
+      const { instructions, tools, model } = input;
+      if (agent) await bff(`${base}/${agent.agentId}`, { method: "PATCH", body: agent.builtIn ? { instructions, tools, model } : input });
+      else await bff(base, { body: input });
+      setEditing(null);
+      setVersion((v) => v + 1);
+    } catch (e) {
+      toast(errorText(e), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(agent: Agent) {
+    try {
+      await bff(`${base}/${agent.agentId}`, { method: "DELETE", body: {} });
+      setDeleting(null);
+      setVersion((v) => v + 1);
+      toast(`@${agent.name} deleted`);
+    } catch (e) {
+      toast(errorText(e), "error");
+    }
+  }
+
+  async function copy(agent: Agent, room: RoomSummary) {
+    setMenuFor(null);
+    try {
+      toast(copyToast(room.name, await bff<CopyResult>(`${base}/${agent.agentId}/copy`, { body: { toRoomId: room.roomId } })));
+    } catch (e) {
+      toast(errorText(e), "error");
+    }
+  }
+
+  if (!data) return <div className="flex h-9 items-center justify-center text-text-3"><Spinner /></div>;
+
+  return (
+    <div className="flex flex-col gap-2">
+      <ul className="flex flex-col gap-1">
+        {data.agents.map((a) => {
+          const canEdit = !archived && canEditAgent(a, me);
+          const canCopy = !a.builtIn && targets.length > 0;
+          return (
+            <li key={a.agentId}>
+              <AnimatePresence mode="wait" initial={false}>
+                {editing === a.agentId
+                  ? (
+                    <motion.div key="form" {...swap}>
+                      <AgentForm initial={a} kinds={data.kinds} models={models} busy={busy} onCancel={() => setEditing(null)} onSubmit={(input) => save(a, input)} />
+                    </motion.div>
+                  )
+                  : (
+                    <motion.div key="row" {...swap} className="flex min-h-12 items-center gap-2.5 rounded-[10px] px-2 py-1.5 hover:bg-surface-2">
+                      <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-[#172014] text-lime"><Bot aria-hidden="true" size={14} /></span>
+                      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <span className="flex items-center gap-1.5">
+                          <span className="truncate font-mono text-[13px] font-medium">@{a.name}</span>
+                          <span className="shrink-0 rounded-md bg-surface-3 px-1.5 py-px text-[11px] text-text-2">{modelChip(a, models)}</span>
+                        </span>
+                        <span className="flex items-center gap-1.5 text-[11.5px] text-text-3">
+                          <span className="flex gap-1" aria-label={`Tools: ${toolNames(a.tools)}`} role="img">
+                            {TOOL_KINDS.filter((k) => a.tools.includes(k.kind)).map(({ kind, icon: Icon }) => <Icon key={kind} aria-hidden="true" size={12} />)}
+                          </span>
+                          <span className="truncate">{a.builtIn ? "built in" : `by ${a.createdByName}`}</span>
+                        </span>
+                      </span>
+                      {(canEdit || canCopy) && (
+                        <RowMenu open={menuFor === a.agentId} onToggle={(o) => setMenuFor(o ? a.agentId : null)} name={`@${a.name}`}>
+                          {canEdit && <MenuItem onClick={() => { setMenuFor(null); setEditing(a.agentId); }}>Edit</MenuItem>}
+                          {canCopy && targets.map((r) => <MenuItem key={r.roomId} onClick={() => copy(a, r)}>Copy to {r.name}</MenuItem>)}
+                          {canEdit && !a.builtIn && <MenuItem danger onClick={() => { setMenuFor(null); setDeleting(a); }}>Delete</MenuItem>}
+                        </RowMenu>
+                      )}
+                    </motion.div>
+                  )}
+              </AnimatePresence>
+            </li>
+          );
+        })}
+      </ul>
+      {!archived && (editing === "new"
+        ? <AgentForm kinds={data.kinds} models={models} busy={busy} onCancel={() => setEditing(null)} onSubmit={(input) => save(undefined, input)} />
+        : <Button onClick={() => setEditing("new")} className="w-full"><Plus aria-hidden="true" size={14} />New agent</Button>)}
+
+      <Modal open={!!deleting} onClose={() => setDeleting(null)} title={`Delete @${deleting?.name}?`}>
+        {deleting && (
+          <Confirm action="Delete agent" onCancel={() => setDeleting(null)} onConfirm={() => remove(deleting)}>
+            Its schedules are deleted too. Its threads stay, and @agent answers them from now on.
+          </Confirm>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+function modelChip(agent: Agent, models: ModelOption[]) {
+  if (agent.model === "room") return "room default";
+  return models.find((m) => m.pick === agent.model)?.short ?? agent.model;
+}
+
+const toolNames = (tools: ToolKind[]) => TOOL_KINDS.filter((k) => tools.includes(k.kind)).map((k) => k.label).join(", ") || "none";

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, type KeyboardEvent } from "react";
+import { useContext, useState, type KeyboardEvent } from "react";
+import { agentLabel, RoomAgentsContext } from "@/lib/client/agents";
 import { bff, errorText } from "@/lib/client/bff";
 import { slugName } from "@/lib/client/threads";
 import { useThreads } from "@/lib/client/ThreadsProvider";
@@ -8,7 +9,7 @@ import type { ThreadSummary } from "@/lib/types";
 import { useToast } from "@/components/overlays/Toast";
 
 /**
- * The thread's number and name; anyone can rename it in place. The new name shows while it saves, and a refusal
+ * The thread's number, name and agent; anyone can rename it in place. The new name shows while it saves, and a refusal
  * (most often the name being taken) puts the old one back with the server's reason.
  */
 export function ThreadTitle({ thread: t }: { thread: ThreadSummary }) {
@@ -16,6 +17,7 @@ export function ThreadTitle({ thread: t }: { thread: ThreadSummary }) {
   const { apply } = useThreads();
   const [draft, setDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
+  const agent = agentLabel(t.agentId, useContext(RoomAgentsContext));
 
   async function save() {
     const name = draft?.replace(/^-+|-+$/g, "");
@@ -67,6 +69,7 @@ export function ThreadTitle({ thread: t }: { thread: ThreadSummary }) {
             className="-mx-1 min-w-0 max-w-[40vw] rounded-md border border-[#36403f] bg-ink px-1 outline-none"
           />
         )}
+      <span className="shrink-0 font-mono text-[12.5px] font-normal text-text-3 max-sm:hidden">{agent}</span>
     </h1>
   );
 }

@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type DragEvent } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type DragEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Hash, Paperclip } from "lucide-react";
+import { RoomAgentsContext } from "@/lib/client/agents";
 import { errorText } from "@/lib/client/bff";
 import { excerpt } from "@/lib/client/format";
 import { useLive, useLiveStatus } from "@/lib/client/LiveProvider";
@@ -61,6 +62,7 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
   const [mode, setMode] = useState<ComposerMode>(null);
   const [pick, setPick] = useModelPick(chatId);
   const { byId } = useThreads();
+  const agents = useContext(RoomAgentsContext);
   const [dragging, setDragging] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const visible = useSyncExternalStore(subscribeVisibility, () => document.visibilityState === "visible", () => true);
@@ -218,7 +220,7 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
         ? <ArchivedNotice />
         : (
           <Composer
-            members={members} meId={me.userId} mode={mode} uploads={uploads} onModeChange={setMode}
+            members={members} agents={agents} meId={me.userId} mode={mode} uploads={uploads} onModeChange={setMode}
             onSend={send} onSaveEdit={saveEdit}
             // A people chat can start a run too, with @agent or by sending into a thread; files make what it sees private.
             pill={(

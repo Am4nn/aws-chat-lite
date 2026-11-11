@@ -1,8 +1,10 @@
 "use client";
 
+import { useContext } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ChevronRight, Reply } from "lucide-react";
+import { agentLabel, RoomAgentsContext } from "@/lib/client/agents";
 import { runLabel, runMeta, stateText } from "@/lib/client/threads";
 import { useThreads } from "@/lib/client/ThreadsProvider";
 import { useNow } from "@/lib/client/useNow";
@@ -51,13 +53,15 @@ function ThreadCard({ thread: t, href, readOnly, onReply }: { thread: ThreadSumm
   const running = t.status === "running";
   const now = useNow(running);
   const kind = running || t.status === "waiting" || t.status === "done" ? t.status : "ended";
+  const agent = agentLabel(t.agentId, useContext(RoomAgentsContext));
 
   return (
     <div className="flex max-w-[480px] flex-col gap-1 rounded-[14px] border border-line-strong bg-surface-1 py-2.5 pl-3.5 pr-2">
       <div className="flex min-w-0 items-center gap-2.5">
         <ThreadStatusIcon status={t.status} />
         <span className="min-w-0 truncate text-[13.5px] font-medium">
-          <span className="font-mono text-[12.5px] font-normal text-text-3">#{t.number}</span> {t.name}
+          <span className="font-mono text-[12.5px] font-normal text-text-3">#{t.number}</span> {t.name}{" "}
+          <span className="font-mono text-[12px] font-normal text-text-3">{agent}</span>
           {t.status !== "idle" && <span className="sr-only">, {stateText(t.status)}</span>}
         </span>
         <span className="ml-auto flex shrink-0 items-center">

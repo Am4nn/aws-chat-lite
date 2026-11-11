@@ -47,6 +47,19 @@ describe("matchForward (/bff/api/* → HTTP API allowlist)", () => {
     ["POST", ["rooms", "r", "connections", "mcp", "test", "reconnect"], "/rooms/r/connections/mcp/test/reconnect"],
     ["POST", ["rooms", "r", "connections", "mcp", "test", "refresh"], "/rooms/r/connections/mcp/test/refresh"],
     ["DELETE", ["rooms", "r", "connections", "mcp", "test"], "/rooms/r/connections/mcp/test"],
+    ["GET", ["rooms", "r", "agents"], "/rooms/r/agents"],
+    ["POST", ["rooms", "r", "agents"], "/rooms/r/agents"],
+    ["PATCH", ["rooms", "r", "agents", "a"], "/rooms/r/agents/a"],
+    ["DELETE", ["rooms", "r", "agents", "a"], "/rooms/r/agents/a"],
+    ["POST", ["rooms", "r", "agents", "a", "copy"], "/rooms/r/agents/a/copy"],
+    ["GET", ["rooms", "r", "memory"], "/rooms/r/memory"],
+    ["PATCH", ["rooms", "r", "memory", "m"], "/rooms/r/memory/m"],
+    ["DELETE", ["rooms", "r", "memory", "m"], "/rooms/r/memory/m"],
+    ["GET", ["rooms", "r", "schedules"], "/rooms/r/schedules"],
+    ["POST", ["rooms", "r", "schedules"], "/rooms/r/schedules"],
+    ["PATCH", ["rooms", "r", "schedules", "s"], "/rooms/r/schedules/s"],
+    ["DELETE", ["rooms", "r", "schedules", "s"], "/rooms/r/schedules/s"],
+    ["PUT", ["rooms", "r", "timezone"], "/rooms/r/timezone"],
   ])("%s %j → %s", (method, segs, path) => {
     expect(matchForward(method, segs)).toBe(path);
   });
@@ -76,6 +89,9 @@ describe("matchForward (/bff/api/* → HTTP API allowlist)", () => {
     ["POST", ["rooms", "r", "connections", "mcp", "test"]],
     // A flow is finished only by the OAuth return route, never straight from a page.
     ["POST", ["mcp-flows", "finish"]],
+    // Memory is written by agents; members only edit and delete it.
+    ["POST", ["rooms", "r", "memory"]],
+    ["GET", ["rooms", "r", "timezone"]],
   ])("refuses %s %j", (method, segs) => {
     expect(matchForward(method, segs)).toBeNull();
   });
