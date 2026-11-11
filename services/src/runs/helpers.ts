@@ -1,8 +1,9 @@
+import { modelInfo } from "../models/catalog.js";
 import type { ToolCall } from "../models/gateway.js";
 import { resolvePick } from "../models/picks.js";
 import { summaryLine } from "../threads/model.js";
 import { threadsRepo } from "../threads/repo.js";
-import type { Agent, RunEvent } from "../threads/types.js";
+import type { Agent, RunEvent, ToolKind } from "../threads/types.js";
 import { answerOf, inLane } from "./context.js";
 import { notifyRun } from "./notify.js";
 import { runsRepo } from "./repo.js";
@@ -66,7 +67,7 @@ export async function startHelper(run: RoutedRun, call: ToolCall): Promise<{ hel
   // Helpers work one at a time, each in the lane after the last one's.
   const helpers = events.filter((e) => e.type === "helper.started");
   const lane = helpers.find((e) => e.step === step)?.lane ?? helpers.length + 1;
-  const helper: RoutedRun = { ...run, agent, others: [], steps: step, helper: { lane, step, task, parent: run.agent.name } };
+  const helper: RoutedRun = { ...run, agent: { ...agent, tools: helperKinds(agent.tools, run.model) }, others: [], steps: step, helper: { lane, step, task, parent: run.agent.name } };
   const [thread, roomDefault] = await Promise.all([threadsRepo().threadById(run.roomId, run.threadId), roomDefaultModel(run.roomId)]);
   const pick = resolvePick(undefined, agent.model === "room" ? roomDefault : agent.model, thread?.taint ?? []);
   const writer = await runs.eventWriter(run.runId, lane);
@@ -78,6 +79,13 @@ export async function startHelper(run: RoutedRun, call: ToolCall): Promise<{ hel
   }
   return { helper: { ...helper, model: choice.model, costMicros: choice.costMicros } };
 }
+
+/**
+ * A helper's answer goes to its parent's model. GitHub, MCP and the sandbox return content that makes the thread
+ * private, after which a parent that may not see private content could only refuse, so its helpers get the web alone.
+ */
+export const helperKinds = (kinds: ToolKind[], parentModel: string): ToolKind[] =>
+  modelInfo(parentModel).privateOk ? kinds : kinds.filter((k) => k === "web");
 
 /**
  * The delegate step's end: the helper's ending in its own lane, then the main lane's step with the helper's answer as
