@@ -1,31 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { App } from "aws-cdk-lib";
-import { Template } from "aws-cdk-lib/assertions";
-import { CoreStack } from "./core-stack.js";
-import { loadConfig } from "./config.js";
-
-const cache: Record<string, Template> = {};
-const template = (stage: "local" | "aws" = "local") => {
-  if (cache[stage]) return cache[stage];
-  const env = stage === "local" ? { AWS_ENDPOINT_URL: "http://localhost:4566" } : {};
-  const config = loadConfig(stage, env);
-  const stack = new CoreStack(new App(), `cl-${stage}-core`, { config, env: { account: "000000000000", region: config.region } });
-  return (cache[stage] = Template.fromStack(stack));
-};
-
-const fnNamed = (name: string, stage: "local" | "aws" = "local") => {
-  const fns = Object.entries(template(stage).findResources("AWS::Lambda::Function", { Properties: { FunctionName: name } }));
-  expect(fns).toHaveLength(1);
-  const [logicalId, fn] = fns[0]! as [string, any];
-  return { logicalId, props: fn.Properties };
-};
-
-const statementsOf = (fn: { props: any }) => {
-  const role = fn.props.Role["Fn::GetAtt"][0];
-  return Object.values(template().findResources("AWS::IAM::Policy"))
-    .filter((p: any) => p.Properties.Roles.some((r: any) => r.Ref === role))
-    .flatMap((p: any) => p.Properties.PolicyDocument.Statement);
-};
+import { fnNamed, statementsOf, template } from "./test-templates.js";
 
 describe("run stream", () => {
   it("is a 15-minute Lambda behind a streaming Function URL with no IAM auth and CORS for any origin", () => {
