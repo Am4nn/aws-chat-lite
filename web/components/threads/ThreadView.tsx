@@ -5,7 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ArrowDown, Bot } from "lucide-react";
 import { errorText } from "@/lib/client/bff";
 import { useLive } from "@/lib/client/LiveProvider";
-import { groupThread } from "@/lib/client/threads";
+import { groupThread, isLive } from "@/lib/client/threads";
 import { useThreads } from "@/lib/client/ThreadsProvider";
 import { addPending, dropPending, failPending, keyOf, type PendingMessage } from "@/lib/client/timeline";
 import { dur, easeOut, instant } from "@/lib/motion";
@@ -38,7 +38,8 @@ export function ThreadView({ roomId, initialThread, me, members, archived, initi
   const uploads = useUploads(roomId);
   const thread = useThreads().byId(initialThread.threadId) ?? initialThread;
   const threadId = thread.threadId;
-  const running = thread.status === "running";
+  // Waiting on an approval is still live: a message steers the run, and Stop ends it.
+  const running = isLive(thread.status);
   const chat = useChatTimeline({ roomId, chatId: threadId, meId: me.userId, initial });
   const { timeline, setTimeline, latest, apply, markFresh } = chat;
   const scroll = useStickToBottom();

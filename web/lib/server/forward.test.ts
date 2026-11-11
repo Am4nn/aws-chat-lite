@@ -25,6 +25,13 @@ describe("matchForward (/bff/api/* → HTTP API allowlist)", () => {
     ["PUT", ["rooms", "r", "budget"], "/rooms/r/budget"],
     ["PATCH", ["rooms", "r", "threads", "t"], "/rooms/r/threads/t"],
     ["POST", ["rooms", "r", "threads"], "/rooms/r/threads"],
+    ["GET", ["rooms", "r", "connections"], "/rooms/r/connections"],
+    ["GET", ["rooms", "r", "connections", "github", "installations"], "/rooms/r/connections/github/installations"],
+    ["PUT", ["rooms", "r", "connections", "github"], "/rooms/r/connections/github"],
+    ["DELETE", ["rooms", "r", "connections", "github"], "/rooms/r/connections/github"],
+    ["PUT", ["rooms", "r", "approval-timeout"], "/rooms/r/approval-timeout"],
+    ["GET", ["rooms", "r", "audit"], "/rooms/r/audit"],
+    ["POST", ["runs", "abc", "approvals", "2"], "/runs/abc/approvals/2"],
   ])("%s %j → %s", (method, segs, path) => {
     expect(matchForward(method, segs)).toBe(path);
   });
@@ -44,6 +51,8 @@ describe("matchForward (/bff/api/* → HTTP API allowlist)", () => {
     ["GET", []],
     ["DELETE", ["rooms", "r", "threads", "t"]],
     ["GET", ["runs", "abc", "stream-ticket"]],
+    ["DELETE", ["rooms", "r", "connections", "slack"]],
+    ["GET", ["runs", "abc", "approvals", "2"]],
   ])("refuses %s %j", (method, segs) => {
     expect(matchForward(method, segs)).toBeNull();
   });

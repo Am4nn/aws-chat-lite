@@ -53,10 +53,10 @@ export function isArchived(t: { status: ThreadStatus; lastActivityAt: string }, 
  * waiting one never does: its `deadAt` lies past the approval's expiry, and the expiry wakes it.
  */
 export function summary(
-  { pk: _pk, sk: _sk, activeRunId: _run, deadAt, named: _named, from: _from, taint, ...rest }: Record<string, unknown>, nowMs: number,
+  { pk: _pk, sk: _sk, activeRunId: _run, named: _named, from: _from, taint, ...rest }: Record<string, unknown>, nowMs: number,
 ): ThreadSummary {
   let thread = rest as Omit<ThreadSummary, "archived" | "taint">;
-  if (thread.status === "running" && nowMs > Date.parse(String(deadAt))) {
+  if (thread.status === "running" && nowMs > Date.parse(thread.deadAt ?? "")) {
     const { currentStep: _step, ...dead } = thread;
     thread = { ...dead, status: "failed", summary: DEAD_REASON };
   }

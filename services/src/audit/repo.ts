@@ -5,7 +5,14 @@ import { roomKey } from "../lib/keys.js";
 import type { AuditEntry } from "../threads/types.js";
 
 const PAGE = 50;
+const DETAIL_MAX = 200;
 const auditSk = (cursor: string) => `AUDIT#${cursor}`;
+
+/** One line of at most 200 characters, cut by code point so an emoji isn't split: a log row, not a copy of the message. */
+function oneLine(text: string): string {
+  const chars = [...text.replace(/\s+/g, " ").trim()];
+  return chars.length > DETAIL_MAX ? `${chars.slice(0, DETAIL_MAX).join("")}…` : chars.join("");
+}
 
 /** An entry as stored: under its room, sorted by time first, so a page of the newest is one Query. */
 export const auditItem = (roomId: string, entry: AuditEntry) => ({ pk: roomKey(roomId), sk: auditSk(`${entry.at}#${entry.id}`), ...entry });
@@ -21,7 +28,7 @@ export function auditRepo() {
      * so the repeat finds its entry already there and is a no-op.
      */
     async record(roomId: string, e: Omit<AuditEntry, "id"> & { id?: string }): Promise<AuditEntry> {
-      const entry = { ...e, id: e.id ?? randomUUID() };
+      const entry = { ...e, id: e.id ?? randomUUID(), detail: oneLine(e.detail) };
       try {
         await db.send(new PutCommand({
           TableName, Item: auditItem(roomId, entry),

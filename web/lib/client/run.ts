@@ -1,9 +1,15 @@
-import type { Message, ModelPick, RunEndStatus, RunEvent } from "../types";
+import type { ApprovalStatus, Message, ModelPick, RunEndStatus, RunEvent, Source } from "../types";
 import { keyOf, type PendingMessage } from "./timeline";
 
 export type RunItem =
   | { kind: "step"; step: number; name: string; detail: string; status: "running" | "done" | "failed"; output?: string; ms?: number; startedAt: string }
-  | { kind: "steer"; messageSeq: number; authorName: string; text: string; at: string };
+  | { kind: "steer"; messageSeq: number; authorName: string; text: string; at: string }
+  | {
+    kind: "approval"; step: number; title: string; call: { id: string; name: string; input: Record<string, unknown> }; expiresAt: string;
+    status: ApprovalStatus; by?: string;
+  };
+
+export type ApprovalItem = Extract<RunItem, { kind: "approval" }>;
 
 export type RunView = {
   lastSeq: number;
@@ -11,6 +17,8 @@ export type RunView = {
   reason?: string;
   items: RunItem[];
   text: string;
+  /** What the run's web tools read, once per url, in the order they came. */
+  sources: Source[];
   /** Where the newest model turn's text starts in `text`, so a reset of that turn can cut it back out. */
   turnStart?: { turn: number; at: number };
   costMicros: number;
@@ -20,7 +28,7 @@ export type RunView = {
   endedAt?: string;
 };
 
-export const emptyRun = (): RunView => ({ lastSeq: 0, status: "running", items: [], text: "", costMicros: 0 });
+export const emptyRun = (): RunView => ({ lastSeq: 0, status: "running", items: [], text: "", sources: [], costMicros: 0 });
 
 export function applyRunEvent(v: RunView, e: RunEvent): RunView {
   if (e.seq <= v.lastSeq) return v;
@@ -42,15 +50,28 @@ export function applyRunEvent(v: RunView, e: RunEvent): RunView {
       return v.turnStart?.turn === e.turn ? { ...next, text: v.text.slice(0, v.turnStart.at) } : next;
     case "step.started":
       return { ...next, items: [...v.items, { kind: "step", step: e.step, name: e.call.name, detail: e.detail, status: "running", startedAt: e.at }] };
-    case "step.finished":
+    case "step.finished": {
+      const sources = [...v.sources];
+      for (const s of e.sources ?? []) if (!sources.some((x) => x.url === s.url)) sources.push(s);
       return {
         ...next,
         items: v.items.map((i) =>
           i.kind === "step" && i.step === e.step ? { ...i, status: e.ok ? "done" : "failed", output: e.output, ms: e.ms } : i,
         ),
+        sources,
       };
+    }
     case "approval.requested":
+      return {
+        ...next,
+        items: [...v.items, { kind: "approval", step: e.step, title: e.title, call: e.call, expiresAt: e.expiresAt, status: "pending" }],
+      };
     case "approval.settled":
+      return {
+        ...next,
+        items: v.items.map((i) => (i.kind === "approval" && i.step === e.step ? { ...i, status: e.decision, by: e.by } : i)),
+      };
+    case "files.synced":
       return next;
     case "usage":
       return { ...next, costMicros: v.costMicros + e.costMicros };
@@ -61,6 +82,7 @@ export function applyRunEvent(v: RunView, e: RunEvent): RunView {
 
 export type RunRow =
   | { kind: "step"; key: string; step: Extract<RunItem, { kind: "step" }> }
+  | { kind: "approval"; key: string; approval: ApprovalItem }
   | {
     kind: "steer"; key: string; text: string; state: "read" | "queued" | "unread" | "sending" | "failed";
     authorName?: string; at?: string; clientId?: string;
@@ -77,6 +99,7 @@ export function runRows(v: RunView, steers: Message[], pending: PendingMessage[]
   const read = new Set<number>();
   const rows: RunRow[] = v.items.map((i) => {
     if (i.kind === "step") return { kind: "step", key: `step:${i.step}`, step: i };
+    if (i.kind === "approval") return { kind: "approval", key: `approval:${i.step}`, approval: i };
     read.add(i.messageSeq);
     return { kind: "steer", key: keyOf(bySeq.get(i.messageSeq) ?? { seq: i.messageSeq }), text: i.text, authorName: i.authorName, at: i.at, state: "read" };
   });

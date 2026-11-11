@@ -29,6 +29,15 @@ describe("record", () => {
     await expect(auditRepo().record("r1", { ...entry, id: "run1#7" })).resolves.toMatchObject({ id: "run1#7" });
   });
 
+  it("keeps a long detail, such as a whole message, to one line of 200 characters", async () => {
+    fakeTable(() => ({}));
+    const asked = await auditRepo().record("r1", { ...entry, kind: "asked", detail: `Review PR 4
+
+${"😀".repeat(300)}` });
+    expect(asked.detail).toBe(`Review PR 4 ${"😀".repeat(188)}…`);
+    expect((await auditRepo().record("r1", entry)).detail).toBe("Commented on #1");
+  });
+
   it("gives an entry without an id a fresh one", async () => {
     fakeTable(() => ({}));
     expect((await auditRepo().record("r1", entry)).id).toMatch(/^[0-9a-f-]{36}$/);

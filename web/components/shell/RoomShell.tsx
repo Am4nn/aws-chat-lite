@@ -33,6 +33,7 @@ import { ThreadTitle } from "@/components/threads/ThreadTitle";
 import { BudgetCard } from "./BudgetCard";
 import { Header } from "./Header";
 import { Backdrop, MobileNav } from "./MobileNav";
+import { NeedsYouToast } from "./NeedsYouToast";
 import { Panel } from "./Panel";
 import { RoomSwitcher } from "./RoomSwitcher";
 import { Sidebar } from "./Sidebar";
@@ -195,6 +196,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
   return (
     <>
       <MentionSound meId={me.userId} />
+      <NeedsYouToast roomId={roomId} openThreadId={activeThread?.threadId} panelOpen={panelOpen} />
       <div className="flex h-dvh overflow-hidden bg-ink">
         <MobileNav open={overlay === "nav"}>
           <Sidebar
