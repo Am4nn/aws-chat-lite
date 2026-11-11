@@ -57,6 +57,9 @@ export async function sendToUser(userId: string, event: object, opts: { exceptCo
   await Promise.all(connIds.filter((c) => c !== opts.exceptConnId).map((c) => sendToConnection(c, event)));
 }
 
+/** Tells the room's open pages to refetch it after a change to its settings. */
+export const roomUpdated = (roomId: string) => broadcastToRoom(roomId, { type: "room.updated", roomId });
+
 /**
  * Subscriptions are written when a socket connects, so they go stale when someone leaves or is removed. Checking
  * them against a consistent read of the members on every send means a removed member stops getting events at once.

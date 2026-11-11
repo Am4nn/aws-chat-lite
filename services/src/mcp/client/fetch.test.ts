@@ -62,6 +62,14 @@ describe("guardedFetch refusals (no request made)", () => {
 });
 
 describe("guardedFetch answers", () => {
+  it("resolves a local host with the given lookup, unchecked", async () => {
+    const lookup = vi.fn(((_host: string, o: { all?: boolean }, cb: (e: null, a: unknown, f?: number) => void) =>
+      o.all ? cb(null, [{ address: "127.0.0.1", family: 4 }]) : cb(null, "127.0.0.1", 4)) as never);
+    const res = await guardedFetch({ localHosts: ["host.docker.internal"], lookup })(`http://host.docker.internal:${port}/`);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(lookup).toHaveBeenCalled();
+  });
+
   it("hands a redirect back instead of following it", async () => {
     const res = await local(`${base}/redirect`);
     expect(res.status).toBe(302);

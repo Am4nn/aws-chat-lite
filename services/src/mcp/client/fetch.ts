@@ -1,5 +1,6 @@
 import type dns from "node:dns";
 import http from "node:http";
+import type net from "node:net";
 import https from "node:https";
 import { pipeline, Transform } from "node:stream";
 import { ReadableStream } from "node:stream/web";
@@ -14,9 +15,9 @@ const BODILESS = [204, 205, 304];
 
 /**
  * A `fetch` for talking to remote MCP and OAuth servers, which are chosen by admins and point us at further URLs.
- * Every address it connects to must be public (except `localHosts`), checked in the socket lookup so DNS rebinding
- * can't slip past. It never follows a redirect: a 3xx goes back to the caller, so a server can't bounce us to a
- * private address. `timeoutMs` is a deadline for the whole exchange, answer included, so a server that drips bytes
+ * Every address it connects to must be public (except `localHosts`, which `lookup` still resolves), checked in the
+ * socket lookup so DNS rebinding can't slip past. It never follows a redirect: a 3xx goes back to the caller, so a
+ * server can't bounce us to a private address. `timeoutMs` is a deadline for the whole exchange, answer included, so a server that drips bytes
  * can't hold the caller either.
  */
 export function guardedFetch({ localHosts = [], lookup, timeoutMs = REQUEST_TIMEOUT_MS, maxBytes = MAX_ANSWER_BYTES }: Options = {}): typeof fetch {
@@ -39,7 +40,7 @@ export function guardedFetch({ localHosts = [], lookup, timeoutMs = REQUEST_TIME
       });
       const out = (url.protocol === "https:" ? https : http).request(
         url,
-        { method: request.method, headers, signal: request.signal, lookup: localHosts.includes(url.hostname) ? undefined : checkedLookup },
+        { method: request.method, headers, signal: request.signal, lookup: localHosts.includes(url.hostname) ? (lookup as net.LookupFunction | undefined) : checkedLookup },
         (res) => {
           answered = res;
           const status = res.statusCode ?? 0;

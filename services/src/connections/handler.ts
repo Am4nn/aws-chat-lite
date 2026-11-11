@@ -3,7 +3,7 @@ import { auditRepo } from "../audit/repo.js";
 import { requireMember } from "../chat/membership.js";
 import { callerFromEvent, subFromEvent } from "../lib/auth.js";
 import { errorResponse, json, parseBody } from "../lib/http.js";
-import { broadcastToRoom } from "../live/broadcast.js";
+import { roomUpdated } from "../live/broadcast.js";
 import { listInstallations } from "../tools/github/app.js";
 import { toolEnv } from "../tools/index.js";
 import type { ToolEnv } from "../tools/types.js";
@@ -36,10 +36,10 @@ export function makeHandler(repo: ConnectionsRepo, githubApp: GitHubApp, notifyR
     try {
       switch (event.routeKey) {
         case "GET /rooms/{roomId}/connections": {
-          const { github, approvalTimeoutSec, canManage } = await repo.view(roomId, subFromEvent(event));
+          const { github, mcp, approvalTimeoutSec, canManage } = await repo.view(roomId, subFromEvent(event));
           const slug = (await githubApp()).keys.githubAppSlug;
           return json(200, {
-            github, approvalTimeoutMin: Math.round(approvalTimeoutSec / 60), canManage,
+            github, mcp, approvalTimeoutMin: Math.round(approvalTimeoutSec / 60), canManage,
             installUrl: slug ? `https://github.com/apps/${slug}/installations/new` : null,
           });
         }
@@ -66,8 +66,6 @@ export function makeHandler(repo: ConnectionsRepo, githubApp: GitHubApp, notifyR
     }
   };
 }
-
-const roomUpdated = (roomId: string) => broadcastToRoom(roomId, { type: "room.updated", roomId });
 
 // Built on first use, so tests can import makeHandler without a table configured.
 let liveHandler: ReturnType<typeof makeHandler> | undefined;

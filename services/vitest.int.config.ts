@@ -16,6 +16,9 @@ export default defineConfig({
       TABLE_NAME: "cl-local-main",
       FILES_BUCKET: "cl-local-files",
       S3_PUBLIC_ENDPOINT: "http://localhost:4566",
+      // The deployed key, so tokens sealed here open in the Lambdas and the other way round.
+      TOKEN_KEY_SECRET: "cl-local-token-key",
+      SITE_ORIGINS: "http://localhost:3000,http://localhost:3100",
     },
   },
 });
