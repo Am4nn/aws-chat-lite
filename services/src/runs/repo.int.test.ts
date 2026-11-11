@@ -114,6 +114,14 @@ describe("runs repo on Floci", () => {
     expect(await runs.getRun(run.runId)).toMatchObject({ steps: 2, costMicros: 120 });
   });
 
+  it("stepDone clears the thread's current step, so it reads as thinking between steps", async () => {
+    const { run } = await runningThread();
+    const during = await runs.progress(run, { steps: 1, currentStep: "fake.lookup" });
+    const after = await runs.stepDone(run);
+    expect(after.currentStep).toBeUndefined();
+    expect(after).toMatchObject({ steps: 1, rev: during.rev + 1, status: "running" });
+  });
+
   it("requestStop: any member flags the running run; an idle thread has nothing to stop", async () => {
     const { owner, roomId, thread, run } = await runningThread();
     expect(await requestStop(owner, roomId, thread.threadId)).toEqual({ runId: run.runId });

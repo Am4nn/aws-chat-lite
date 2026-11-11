@@ -167,11 +167,10 @@ export async function toolStep(run: Run, call: ToolCall): Promise<{ steps: numbe
   // An earlier attempt finished the tool and logged it, and only failed after: its result stands.
   if (logged("step.finished")) return { steps: step };
   const started = logged("step.started") ?? await writer.append({ type: "step.started", step, call, detail: toolDetail(call) });
-  const thread = await runs.progress(run, { steps: step, currentStep: call.name });
-  await notifyRun(run.roomId, thread, started.seq);
+  await notifyRun(run.roomId, await runs.progress(run, { steps: step, currentStep: call.name }), started.seq);
   const t0 = Date.now();
   const { output, ok } = await runTool(call, { sleep });
   const finished = await writer.append({ type: "step.finished", step, output, ms: Date.now() - t0, ok });
-  await notifyRun(run.roomId, thread, finished.seq);
+  await notifyRun(run.roomId, await runs.stepDone(run), finished.seq);
   return { steps: step };
 }

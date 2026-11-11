@@ -165,6 +165,15 @@ export function runsRepo() {
       return summary(Attributes!, Date.now());
     },
 
+    /** A tool returned: the thread no longer names a current step until the next one starts. */
+    async stepDone(run: Run): Promise<ThreadSummary> {
+      const { Attributes } = await db.send(new UpdateCommand({
+        TableName, Key: threadKey(run), UpdateExpression: "REMOVE currentStep ADD #rev :one",
+        ExpressionAttributeNames: { "#rev": "rev" }, ExpressionAttributeValues: { ":one": 1 }, ReturnValues: "ALL_NEW",
+      }));
+      return summary(Attributes!, Date.now());
+    },
+
     /** Asks a running run to stop; false when it is no longer running. */
     async flagStop(runId: string, username: string): Promise<boolean> {
       try {
