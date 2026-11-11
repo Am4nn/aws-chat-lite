@@ -59,18 +59,6 @@ export function formatWait(sec: number): string {
   return minutes ? `${hours} h ${minutes} min` : `${hours} h`;
 }
 
-const MINUTE = 60_000;
-const HOUR = 60 * MINUTE;
-const DAY = 24 * HOUR;
-
-export function timeAgo(iso: string, now: number): string {
-  const ago = now - Date.parse(iso);
-  if (ago < MINUTE) return "just now";
-  if (ago < HOUR) return `${Math.floor(ago / MINUTE)}m ago`;
-  if (ago < DAY) return `${Math.floor(ago / HOUR)}h ago`;
-  return `${Math.floor(ago / DAY)}d ago`;
-}
-
 export function typingText(names: string[]): string {
   if (names.length === 0) return "";
   if (names.length === 1) return `${names[0]} is typing…`;
