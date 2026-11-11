@@ -1,13 +1,4 @@
-/** Bad input from the caller → HTTP 400. */
-export class ValidationError extends Error {}
-/** The caller's role doesn't allow this → 403. */
-export class Forbidden extends Error {}
-/** No such room, or you're not in it (we never reveal which) → 404. */
-export class NotFound extends Error {}
-/** The name or slot is taken → 409. */
-export class Conflict extends Error {}
-/** The invite link expired or was revoked → 410. */
-export class Gone extends Error {}
+import { ValidationError } from "../lib/errors.js";
 
 /** Room display name: 1–40 characters after trimming, case kept. */
 export function roomName(input: unknown): string {

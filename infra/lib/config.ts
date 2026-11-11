@@ -7,6 +7,13 @@ export interface StageConfig {
   isLocal: boolean;
   /** Floci's us-east-1 locally, Sydney (ap-southeast-2) on real AWS. */
   region: "us-east-1" | "ap-southeast-2";
+  /** Where the web app is served from: the browser origins allowed to upload to and download from the files bucket. */
+  siteOrigins: string[];
+  /**
+   * S3 as the browser reaches it, when that differs from what the Lambdas use: locally Floci's port on the host,
+   * because a Lambda's own S3 endpoint is an address inside Docker.
+   */
+  s3PublicEndpoint?: string;
 }
 
 function isFlociEndpoint(url: string | undefined): boolean {
@@ -27,11 +34,14 @@ export function loadConfig(stage: string | undefined, env: NodeJS.ProcessEnv): S
         "stage=local but AWS_ENDPOINT_URL must point at Floci (e.g. http://localhost:4566). Refusing to touch real AWS.",
       );
     }
-    return { stage, prefix: "cl-local", isLocal: true, region: "us-east-1" };
+    return {
+      stage, prefix: "cl-local", isLocal: true, region: "us-east-1",
+      siteOrigins: ["http://localhost:3000", "http://localhost:3100"], s3PublicEndpoint: "http://localhost:4566",
+    };
   }
   if (stage === "aws") {
     if (env.AWS_ENDPOINT_URL) throw new Error("stage=aws: unset AWS_ENDPOINT_URL first (it is pointing at an emulator).");
-    return { stage, prefix: "cl-aws", isLocal: false, region: "ap-southeast-2" };
+    return { stage, prefix: "cl-aws", isLocal: false, region: "ap-southeast-2", siteOrigins: ["https://chat.amanarya.com"] };
   }
   throw new Error(`stage must be local or aws (got "${stage}"). Pass -c stage=local`);
 }

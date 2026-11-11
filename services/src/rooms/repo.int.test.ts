@@ -1,13 +1,24 @@
 import { describe, it, expect, vi } from "vitest";
 import { randomUUID } from "node:crypto";
-import { DeleteCommand, GetCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, GetCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { roomsRepo } from "./repo.js";
+import { chatRepo } from "../chat/repo.js";
+import { markConnected } from "../live/presence.js";
 import { docClient, tableName } from "../lib/db.js";
-import { Conflict, Forbidden, Gone, NotFound } from "./model.js";
+import { Conflict, Forbidden, Gone, NotFound, ValidationError } from "../lib/errors.js";
 
 // Runs against DynamoDB on Floci: npm run floci:up && npm run deploy:local, then npm -w services run test:int
 const repo = roomsRepo();
 const user = (name: string) => ({ userId: randomUUID(), username: name });
+
+/** A room with its owner and one member who joined through the invite link. */
+async function roomWithMember() {
+  const owner = user("owner");
+  const member = user("member");
+  const { roomId, generalChatId } = await repo.createRoom(owner, "Pair");
+  await repo.acceptInvite((await repo.rotateInvite(roomId, owner.userId)).code, member);
+  return { owner, member, roomId, generalChatId };
+}
 
 describe("rooms repo on Floci", () => {
   it("createRoom writes the room, its owner and #general; listMyRooms finds it", async () => {
@@ -86,9 +97,10 @@ describe("rooms repo on Floci", () => {
       await repo.getRoomView(roomId, owner.userId);
       const sent = send.mock.calls.map(([command]) => command);
       const roleRead = sent.find((c) => c instanceof GetCommand && String(c.input.Key?.sk).startsWith("MEMBER#"));
-      const viewQuery = sent.find((c) => c instanceof QueryCommand && !c.input.IndexName);
+      const viewQueries = sent.filter((c) => c instanceof QueryCommand && !c.input.IndexName) as QueryCommand[];
       expect((roleRead as GetCommand).input.ConsistentRead).toBe(true);
-      expect((viewQuery as QueryCommand).input.ConsistentRead).toBe(true);
+      expect(viewQueries.length).toBeGreaterThan(0);
+      for (const q of viewQueries) expect(q.input.ConsistentRead).toBe(true);
     } finally {
       send.mockRestore();
     }
@@ -171,5 +183,134 @@ describe("rooms repo on Floci", () => {
     await expect(repo.setRole(roomId, a.userId, a2.userId, "member")).rejects.toBeInstanceOf(Forbidden);
     await repo.removeMember(roomId, owner.userId, a2.userId);
     await expect(repo.getRoomView(roomId, a2.userId)).rejects.toBeInstanceOf(NotFound);
+  });
+
+  it("a member can leave, taking their socket subscriptions with them; the owner can't", async () => {
+    const { owner, member, roomId } = await roomWithMember();
+    const subscription = { pk: `ROOM#${roomId}`, sk: `CONN#${randomUUID()}`, userId: member.userId };
+    await docClient().send(new PutCommand({ TableName: tableName(), Item: subscription }));
+    await expect(repo.leaveRoom(roomId, owner.userId)).rejects.toBeInstanceOf(Forbidden);
+    expect(await repo.leaveRoom(roomId, member.userId)).toEqual({});
+    await expect(repo.getRoomView(roomId, member.userId)).rejects.toBeInstanceOf(NotFound);
+    expect((await repo.getRoomView(roomId, owner.userId)).members.map((m) => m.userId)).toEqual([owner.userId]);
+    const { Item } = await docClient().send(new GetCommand({
+      TableName: tableName(), Key: { pk: subscription.pk, sk: subscription.sk }, ConsistentRead: true,
+    }));
+    expect(Item).toBeUndefined();
+  });
+
+  it("archive: owner only; the room leaves everyone's list and the view says archived", async () => {
+    const { owner, member, roomId } = await roomWithMember();
+    await expect(repo.archiveRoom(roomId, member.userId)).rejects.toBeInstanceOf(Forbidden);
+    await repo.archiveRoom(roomId, owner.userId);
+    for (const u of [owner, member]) {
+      expect((await repo.listMyRooms(u.userId)).map((r) => r.roomId)).not.toContain(roomId);
+      expect((await repo.getRoomView(roomId, u.userId)).room.archived).toBe(true);
+    }
+  });
+
+  it("an archived room is read-only: its link is revoked, and no chats, links or joins", async () => {
+    const owner = user("owner");
+    const { roomId } = await repo.createRoom(owner, "Read-only");
+    const { code } = await repo.rotateInvite(roomId, owner.userId);
+    await repo.archiveRoom(roomId, owner.userId);
+    await expect(repo.previewInvite(code)).rejects.toThrow("This invite link was revoked.");
+    await expect(repo.acceptInvite(code, user("late"))).rejects.toBeInstanceOf(Gone);
+    await expect(repo.createChat(roomId, owner.userId, "more")).rejects.toThrow(new Gone("This room is archived."));
+    await expect(repo.rotateInvite(roomId, owner.userId)).rejects.toThrow(new Gone("This room is archived."));
+  });
+
+  it("a join on a still-live link can't land in a room archived in the meantime", async () => {
+    const owner = user("owner");
+    const late = user("late");
+    const { roomId } = await repo.createRoom(owner, "Race");
+    const { code } = await repo.rotateInvite(roomId, owner.userId);
+    // The archive committing between the join's read of the link and its write.
+    await docClient().send(new UpdateCommand({
+      TableName: tableName(), Key: { pk: `ROOM#${roomId}`, sk: "META" },
+      UpdateExpression: "SET archived = :t", ExpressionAttributeValues: { ":t": true },
+    }));
+    await expect(repo.acceptInvite(code, late)).rejects.toThrow(new Gone("This room is archived."));
+    const { Item } = await docClient().send(new GetCommand({
+      TableName: tableName(), Key: { pk: `ROOM#${roomId}`, sk: `MEMBER#${late.userId}` }, ConsistentRead: true,
+    }));
+    expect(Item).toBeUndefined();
+  });
+
+  it("an archive whose member read missed a join is refused, so no member is left unarchived", async () => {
+    const owner = user("owner");
+    const late = user("late");
+    const { roomId } = await repo.createRoom(owner, "Join race");
+    const { code } = await repo.rotateInvite(roomId, owner.userId);
+    const db = docClient();
+    const send = db.send.bind(db);
+    // The join committing right after the archive has read the members.
+    const spy = vi.spyOn(db, "send").mockImplementation((async (c: QueryCommand) => {
+      const out = await send(c as never);
+      if (c instanceof QueryCommand && c.input.ExpressionAttributeValues?.[":m"] === "MEMBER#") {
+        spy.mockRestore();
+        await repo.acceptInvite(code, late);
+      }
+      return out;
+    }) as never);
+    await expect(repo.archiveRoom(roomId, owner.userId)).rejects.toBeInstanceOf(Conflict);
+    expect((await repo.getRoomView(roomId, late.userId)).room.archived).toBe(false);
+    await repo.archiveRoom(roomId, owner.userId);
+    expect((await repo.getRoomView(roomId, late.userId)).room.archived).toBe(true);
+  });
+
+  it("a room too big for one archive transaction is refused in words, not with a server error", async () => {
+    const owner = user("owner");
+    const { roomId } = await repo.createRoom(owner, "Crowd");
+    await Promise.all(Array.from({ length: 99 }, (_, i) => docClient().send(new PutCommand({
+      TableName: tableName(), Item: { pk: `ROOM#${roomId}`, sk: `MEMBER#m${i}`, userId: `m${i}`, role: "member" },
+    }))));
+    await expect(repo.archiveRoom(roomId, owner.userId)).rejects.toBeInstanceOf(ValidationError);
+    expect((await repo.getRoomView(roomId, owner.userId)).room.archived).toBe(false);
+  });
+
+  it("the room view reads only the caller's own read state", async () => {
+    const { owner, member, roomId } = await roomWithMember();
+    const send = vi.spyOn(docClient(), "send");
+    try {
+      await repo.getRoomView(roomId, member.userId);
+      const conditions = send.mock.calls.map(([c]) => c)
+        .filter((c) => c instanceof QueryCommand)
+        .map((q) => Object.values((q as QueryCommand).input.ExpressionAttributeValues ?? {}).map(String));
+      expect(conditions.flat().filter((v) => v.startsWith("READ#"))).toEqual([`READ#${member.userId}#`]);
+      expect(conditions.flat()).not.toContain(`READ#${owner.userId}#`);
+    } finally {
+      send.mockRestore();
+    }
+  });
+
+  it("muting a chat shows in the view; a chat from another room is NotFound", async () => {
+    const { owner, roomId, generalChatId } = await roomWithMember();
+    const other = await repo.createRoom(user("o2"), "Other");
+    expect(await repo.setChatPrefs(roomId, owner.userId, generalChatId, true)).toEqual({ muted: true });
+    expect((await repo.getRoomView(roomId, owner.userId)).chats[0]).toMatchObject({ chatId: generalChatId, muted: true });
+    await expect(repo.setChatPrefs(roomId, owner.userId, other.generalChatId, true)).rejects.toBeInstanceOf(NotFound);
+  });
+
+  it("the view counts unread messages and mentions per chat; the room list totals mentions", async () => {
+    const { owner, member, roomId, generalChatId } = await roomWithMember();
+    const chat = chatRepo();
+    const at = { roomId, chatId: generalChatId };
+    await chat.send(owner, { ...at, clientId: "a", text: "hello" });
+    await chat.send(owner, { ...at, clientId: "b", text: "hey @member" });
+    expect((await repo.getRoomView(roomId, member.userId)).chats[0])
+      .toMatchObject({ lastSeq: 2, unread: 2, mentions: 1, muted: false });
+    expect((await repo.getRoomView(roomId, owner.userId)).chats[0]).toMatchObject({ unread: 0, mentions: 0 });
+    expect((await repo.listMyRooms(member.userId)).find((r) => r.roomId === roomId)).toMatchObject({ mentions: 1 });
+  });
+
+  it("members show online from their presence, with when they were last seen", async () => {
+    const { owner, member, roomId } = await roomWithMember();
+    await markConnected(member.userId);
+    const { members } = await repo.getRoomView(roomId, owner.userId);
+    expect(members.find((m) => m.userId === member.userId)).toMatchObject({ online: true, lastSeen: expect.any(String) });
+    const ownerSeen = members.find((m) => m.userId === owner.userId);
+    expect(ownerSeen).toMatchObject({ online: false });
+    expect(ownerSeen).not.toHaveProperty("lastSeen");
   });
 });

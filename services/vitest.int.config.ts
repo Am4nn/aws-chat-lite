@@ -11,6 +11,8 @@ export default defineConfig({
       AWS_SECRET_ACCESS_KEY: "test",
       AWS_REGION: "us-east-1",
       TABLE_NAME: "cl-local-main",
+      FILES_BUCKET: "cl-local-files",
+      S3_PUBLIC_ENDPOINT: "http://localhost:4566",
     },
   },
 });

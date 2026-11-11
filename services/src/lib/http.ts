@@ -1,4 +1,5 @@
 import type { APIGatewayProxyStructuredResultV2 } from "aws-lambda";
+import { Conflict, Forbidden, Gone, NotFound, Unavailable, ValidationError } from "./errors.js";
 
 /** JSON response for API Gateway HTTP API (payload v2). */
 export function json(statusCode: number, body: unknown): APIGatewayProxyStructuredResultV2 {
@@ -19,4 +20,17 @@ export function parseBody(event: { body?: string; isBase64Encoded?: boolean }): 
   } catch {
     return null;
   }
+}
+
+/** Error class → HTTP status. Anything else is a 500 (logged). */
+export function errorResponse(e: unknown): APIGatewayProxyStructuredResultV2 {
+  const msg = (e as Error).message;
+  if (e instanceof ValidationError) return json(400, { error: msg });
+  if (e instanceof Forbidden) return json(403, { error: msg });
+  if (e instanceof NotFound) return json(404, { error: msg });
+  if (e instanceof Conflict) return json(409, { error: msg });
+  if (e instanceof Gone) return json(410, { error: msg });
+  if (e instanceof Unavailable) return json(503, { error: msg });
+  console.error(e);
+  return json(500, { error: "Something went wrong." });
 }

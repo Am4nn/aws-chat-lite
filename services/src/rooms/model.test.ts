@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { roomName, chatName, ValidationError } from "./model.js";
+import { ValidationError } from "../lib/errors.js";
+import { roomName, chatName } from "./model.js";
 
 describe("chatName", () => {
   it("lowercases and trims", () => expect(chatName(" General ")).toBe("general"));

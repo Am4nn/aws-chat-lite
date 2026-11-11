@@ -21,10 +21,10 @@ describe("auth", () => {
     });
   });
 
-  it("aws: email required, no PreSignUp trigger", () => {
+  it("aws: email required, and the PreSignUp trigger (which only reserves names there)", () => {
     const pools = template("aws").findResources("AWS::Cognito::UserPool");
     const props = (Object.values(pools)[0] as any).Properties;
-    expect(props.LambdaConfig?.PreSignUp).toBeUndefined();
+    expect(props.LambdaConfig?.PreSignUp).toBeDefined();
     expect(props.Schema).toEqual(expect.arrayContaining([expect.objectContaining({ Name: "email", Required: true })]));
   });
 

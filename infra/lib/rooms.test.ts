@@ -17,10 +17,16 @@ const ROUTES = [
   "PATCH /rooms/{roomId}/members/{userId}", "DELETE /rooms/{roomId}/members/{userId}",
   "POST /rooms/{roomId}/invite", "GET /rooms/{roomId}/invite", "DELETE /rooms/{roomId}/invite",
   "GET /invites/{code}", "POST /invites/{code}/accept",
+  "PATCH /rooms/{roomId}/chats/{chatId}/prefs", "POST /rooms/{roomId}/leave", "POST /rooms/{roomId}/archive",
 ];
 
 describe("rooms API", () => {
-  const routes = () => Object.values(template().findResources("AWS::ApiGatewayV2::Route")).map((r: any) => r.Properties);
+  const routes = () => {
+    const [httpApi] = Object.keys(template().findResources("AWS::ApiGatewayV2::Api", { Properties: { ProtocolType: "HTTP" } }));
+    return Object.values(template().findResources("AWS::ApiGatewayV2::Route"))
+      .map((r: any) => r.Properties)
+      .filter((p) => p.ApiId.Ref === httpApi);
+  };
 
   it("has every route", () => {
     const keys = routes().map((p) => p.RouteKey);
@@ -49,7 +55,18 @@ describe("rooms API", () => {
       .map((f: any) => f.Properties.FunctionName);
   };
 
-  it("only the rooms Lambda gets table access (the public health check and sign-up trigger get none)", () => {
-    expect(tableWriters()).toEqual(["cl-local-rooms"]);
+  it("only the rooms, chat and live Lambdas get table access (the public health check and sign-up trigger get none)", () => {
+    expect(tableWriters().sort()).toEqual(["cl-local-chat", "cl-local-live", "cl-local-rooms"]);
+  });
+
+  it("the rooms Lambda may post to open sockets", () => {
+    const t = template();
+    const [fn] = Object.values(t.findResources("AWS::Lambda::Function", { Properties: { FunctionName: "cl-local-rooms" } })) as any[];
+    const role = fn.Properties.Role["Fn::GetAtt"][0];
+    const actions = Object.values(t.findResources("AWS::IAM::Policy"))
+      .filter((p: any) => p.Properties.Roles.some((r: any) => r.Ref === role))
+      .flatMap((p: any) => p.Properties.PolicyDocument.Statement.flatMap((s: any) => [s.Action].flat()));
+    expect(actions).toContain("execute-api:ManageConnections");
+    expect(fn.Properties.Environment.Variables.WS_CALLBACK_URL).toBeDefined();
   });
 });

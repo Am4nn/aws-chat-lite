@@ -10,10 +10,15 @@
   "dependencies": {
     "@aws-sdk/client-apigatewaymanagementapi": "^3.1163.0",
     "@aws-sdk/client-dynamodb": "^3.1163.0",
+    "@aws-sdk/client-s3": "^3.1166.0",
     "@aws-sdk/lib-dynamodb": "^3.1163.0",
+    "@aws-sdk/s3-presigned-post": "^3.1166.0",
+    "@aws-sdk/s3-request-presigner": "^3.1166.0",
     "@aws/durable-execution-sdk-js": "^3.0.0"
   },
   "devDependencies": {
-    "@types/aws-lambda": "^8"
+    "@types/aws-lambda": "^8",
+    "@types/ws": "^8",
+    "ws": "^8"
   }
 }

@@ -10,9 +10,9 @@ export interface Auth {
 }
 
 /**
- * Cognito users, the `creators` group (who may create rooms) and the JWT authorizer for the HTTP API.
- * Floci sends no email, so locally a PreSignUp trigger confirms every account at once; on AWS sign-up needs an
- * email address and a confirmation code.
+ * Cognito users, the `creators` group (who may create rooms) and the JWT authorizer for the HTTP API. A PreSignUp
+ * trigger refuses reserved usernames everywhere. Floci sends no email, so locally that trigger also confirms every
+ * account at once; on AWS sign-up needs an email address and a confirmation code.
  */
 export function addAuth(stack: CoreStack): Auth {
   const { prefix, isLocal } = stack.stageConfig;
@@ -22,13 +22,12 @@ export function addAuth(stack: CoreStack): Auth {
     signInAliases: { username: true },
     passwordPolicy: { minLength: 8, requireSymbols: false, requireUppercase: false, requireDigits: false },
     removalPolicy: RemovalPolicy.DESTROY,
-    ...(isLocal
-      ? { lambdaTriggers: { preSignUp: stack.addFunction("presignup", "auth/presignup.ts") } }
-      : {
-        standardAttributes: { email: { required: true, mutable: true } },
-        autoVerify: { email: true },
-        accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
-      }),
+    lambdaTriggers: { preSignUp: stack.addFunction("presignup", "auth/presignup.ts") },
+    ...(!isLocal && {
+      standardAttributes: { email: { required: true, mutable: true } },
+      autoVerify: { email: true },
+      accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
+    }),
   });
   const client = userPool.addClient("Web", {
     userPoolClientName: `${prefix}-web`,

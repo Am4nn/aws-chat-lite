@@ -5,7 +5,10 @@ const FLOCI = { AWS_ENDPOINT_URL: "http://localhost:4566" };
 
 describe("loadConfig", () => {
   it("builds the local stage when pointed at Floci", () => {
-    expect(loadConfig("local", FLOCI)).toEqual({ stage: "local", prefix: "cl-local", isLocal: true, region: "us-east-1" });
+    expect(loadConfig("local", FLOCI)).toEqual({
+      stage: "local", prefix: "cl-local", isLocal: true, region: "us-east-1",
+      siteOrigins: ["http://localhost:3000", "http://localhost:3100"], s3PublicEndpoint: "http://localhost:4566",
+    });
   });
 
   it("accepts the *.floci.io endpoint", () => {
@@ -13,7 +16,9 @@ describe("loadConfig", () => {
   });
 
   it("builds the aws stage in ap-southeast-2 with no endpoint override", () => {
-    expect(loadConfig("aws", {})).toEqual({ stage: "aws", prefix: "cl-aws", isLocal: false, region: "ap-southeast-2" });
+    expect(loadConfig("aws", {})).toEqual({
+      stage: "aws", prefix: "cl-aws", isLocal: false, region: "ap-southeast-2", siteOrigins: ["https://chat.amanarya.com"],
+    });
   });
 
   it("refuses local without a Floci endpoint (would hit real AWS)", () => {

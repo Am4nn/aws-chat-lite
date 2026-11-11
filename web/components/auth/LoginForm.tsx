@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { bff } from "@/lib/client/bff";
+import { rememberTimeZone } from "@/lib/client/useTimeZone";
 import { dur, easeOut, spring } from "@/lib/motion";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
@@ -16,6 +17,9 @@ export function LoginForm({ next, emailSignup }: { next: string; emailSignup: bo
   const [sentTo, setSentTo] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  // Set before the first chat renders, so even the first visit's server-rendered times are in the reader's zone.
+  useEffect(() => { rememberTimeZone(); }, []);
 
   const set = (key: keyof typeof form) => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [key]: e.target.value }));
 

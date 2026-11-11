@@ -34,6 +34,12 @@ const SETUP_NOTES = [
   "Floci returns Function URLs as `<id>.lambda-url.us-east-1.127.0.0.1:4566`, which `new URL()` rejects; call them as `<id>.lambda-url.us-east-1.localhost.floci.io:4566`.",
   "Cognito groups work on Floci: `AdminAddUserToGroup` (npm run grant) then a fresh sign-in gives an ID token with `cognito:groups: [\"creators\"]`. The JWT issuer is `http://127.0.0.1:4566/<pool>`.",
   "CDK: naming a `WebSocketLambdaIntegration` \"Default\" collides with the `$default` route's logical ID (`SectionAlreadyContains`); use distinct names.",
+  "S3 presigned URLs: a Lambda's own S3 endpoint is an address inside Docker, so URLs for the browser are signed against `S3_PUBLIC_ENDPOINT=http://localhost:4566` with path-style addressing. Floci enforces what matters here: the POST policy's `content-length-range` (an 11 MB upload gets 400), bucket CORS (an unlisted origin's preflight gets 403), and the signed `response-content-type` / `response-content-disposition` overrides on GET.",
+  "CDK `autoDeleteObjects` fails on Floci: its custom-resource Lambda calls S3 on port 443 (`ECONNREFUSED`), which Floci doesn't serve. The local files bucket uses `RemovalPolicy.DESTROY` without it.",
+  "Floci answers any `/ws/...` path on an execute-api host itself (an empty 403, `/ws` alone gives 500) before routing, so no HTTP API route may live under `/ws/`; the ticket route is `POST /live/ticket`.",
+  "WebSocket `$disconnect` after a clean client `close()` reaches the Lambda anywhere from about 1 s to over 20 s later on Floci (closing the page is prompt), so offline presence can lag locally.",
+  "Floci's GSI queries see writes at once, and no run has raised `TransactionConflict`, so GSI lag and clashing concurrent transactions don't show up locally.",
+  "Floci doesn't roll back a failed stack update (\"Rollback is not implemented\"): the stack stays `UPDATE_ROLLBACK_FAILED`, and `ContinueUpdateRollback` doesn't clear it. Delete the stack and deploy again (Floci data is disposable).",
 ];
 
 const reportPath = fileURLToPath(new URL("../../docs/learn/floci-compat.md", import.meta.url));

@@ -6,6 +6,9 @@ export const dur = { fast: 0.15, base: 0.3, slow: 0.45 } as const;
 /** A decelerating curve: quick to respond, gentle to settle. */
 export const easeOut = [0.2, 0.9, 0.2, 1] as const;
 
+/** For reduced motion: Motion's own setting still fades opacity, and these moments must be instant. */
+export const instant = { duration: 0 } as const;
+
 export const spring = {
   /** Selection highlights gliding between rows: snappy with a slight overshoot. */
   glide: { type: "spring", stiffness: 520, damping: 38, mass: 0.9 } satisfies Transition,

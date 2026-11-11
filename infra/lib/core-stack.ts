@@ -1,7 +1,8 @@
 import { fileURLToPath } from "node:url";
-import { Stack, StackProps, RemovalPolicy, CfnOutput, Duration } from "aws-cdk-lib";
+import { ArnFormat, Stack, StackProps, RemovalPolicy, CfnOutput, Duration } from "aws-cdk-lib";
 import { Construct } from "constructs";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
@@ -9,6 +10,8 @@ import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations
 import type { StageConfig } from "./config.js";
 import { addAuth, type Auth } from "./auth.js";
 import { addRooms } from "./rooms.js";
+import { addLive } from "./live.js";
+import { addChat } from "./chat.js";
 
 /** Path to a handler file in services/src */
 export const servicePath = (file: string) =>
@@ -24,6 +27,9 @@ export class CoreStack extends Stack {
   readonly api: apigwv2.HttpApi;
   readonly stageConfig: StageConfig;
   readonly auth: Auth;
+  readonly live: ReturnType<typeof addLive>;
+  /** Where browsers open the live socket. */
+  readonly wsUrl: string;
 
   constructor(scope: Construct, id: string, props: CoreStackProps) {
     super(scope, id, props);
@@ -49,9 +55,14 @@ export class CoreStack extends Stack {
     this.api = new apigwv2.HttpApi(this, "Api", { apiName: `${prefix}-api` });
     this.auth = addAuth(this);
     this.route("GET", "/health", this.addFunction("health", "health.ts"), { public: true });
-    addRooms(this);
+    this.live = addLive(this);
+    this.wsUrl = props.config.isLocal ? `ws://${this.flociWsEndpoint()}` : this.live.stage.url;
+    this.allowBroadcast(this.live.liveFn);
+    this.allowBroadcast(addRooms(this));
+    addChat(this);
 
     new CfnOutput(this, "ApiUrl", { value: this.api.apiEndpoint });
+    new CfnOutput(this, "WsUrl", { value: this.wsUrl });
     new CfnOutput(this, "TableName", { value: this.table.tableName });
   }
 
@@ -63,6 +74,29 @@ export class CoreStack extends Stack {
       integration: new HttpLambdaIntegration(`Int-${method}-${path}`, fn),
       authorizer: opts.public ? undefined : this.auth.authorizer,
     });
+  }
+
+  /**
+   * Lets `fn` post to open sockets (API Gateway's management API). POST only, where CDK's own grant allows every
+   * method: nothing here reads a connection's details or closes one.
+   */
+  allowBroadcast(fn: NodejsFunction) {
+    fn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ["execute-api:ManageConnections"],
+      resources: [this.formatArn({
+        service: "execute-api", resource: this.live.wsApi.apiId, arnFormat: ArnFormat.SLASH_RESOURCE_NAME,
+        resourceName: `${this.live.stage.stageName}/POST/@connections/*`,
+      })],
+    }));
+    fn.addEnvironment("WS_CALLBACK_URL", this.stageConfig.isLocal ? `http://${this.flociWsEndpoint()}` : this.live.stage.callbackUrl);
+  }
+
+  /**
+   * Floci serves each WebSocket API, sockets and management calls alike, on its own host; the amazonaws.com URLs
+   * CloudFormation reports for it don't resolve locally.
+   */
+  private flociWsEndpoint() {
+    return `${this.live.wsApi.apiId}.execute-api.localhost.floci.io:4566/${this.live.stage.stageName}`;
   }
 
   /** A Lambda from services/src with STAGE and TABLE_NAME set. Table read/write is opt-in, so each function gets least privilege. */
