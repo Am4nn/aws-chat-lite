@@ -7,7 +7,7 @@ describe("taint", () => {
     expect(messageTaint({ attachments: [] })).toEqual([]);
     expect(messageTaint({})).toEqual([]);
   });
-  it("merges sorted and unique", () => expect(mergeTaint(["attachment"], [], ["attachment"])).toEqual(["attachment"]));
+  it("merges sorted and unique", () => expect(mergeTaint(["sandbox"], [], ["attachment", "sandbox"])).toEqual(["attachment", "sandbox"]));
 });
 
 describe("pickRefusal", () => {
@@ -28,9 +28,9 @@ describe("runRefusal", () => {
 
 describe("copy", () => {
   it("is fixed", () => {
-    expect(PICK_REFUSED).toBe("This has private content (attachments), so DeepSeek is off here. Pick another model.");
+    expect(PICK_REFUSED).toBe("This has private content (attachments, sandbox files), so DeepSeek is off here. Pick another model.");
     expect(RUN_REFUSED).toBe(
-      "This thread now has private content (attachments), so DeepSeek stopped. Send again with another model.",
+      "This thread now has private content (attachments, sandbox files), so DeepSeek stopped. Send again with another model.",
     );
   });
 });

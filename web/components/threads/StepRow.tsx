@@ -4,7 +4,7 @@ import { useEffect, useId, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ChevronRight } from "lucide-react";
 import { formatElapsed, formatStepTime } from "@/lib/client/format";
-import type { RunItem } from "@/lib/client/run";
+import { splitSyncLines, type RunItem } from "@/lib/client/run";
 import { dur, easeOut, instant, spring } from "@/lib/motion";
 
 type Step = Extract<RunItem, { kind: "step" }>;
@@ -45,6 +45,7 @@ export function StepRow({ step, enter }: { step: Step; enter: boolean }) {
   const [open, setOpen] = useState(false);
   const elapsed = useElapsed(step.startedAt, running);
   const ended = !running && seenRunning;
+  const { output, lines } = step.files ? splitSyncLines(step.output ?? "", step.files) : { output: step.output, lines: [] };
 
   return (
     <motion.div
@@ -104,8 +105,9 @@ export function StepRow({ step, enter }: { step: Step; enter: boolean }) {
             className="overflow-hidden"
           >
             <pre className="mb-2 ml-10 mr-3 mt-0.5 whitespace-pre-wrap break-words rounded-[10px] border border-[#1a1f22] bg-[#0f1213] px-3 py-2.5 font-mono text-[11.5px] leading-[1.6] text-[#b7c2c1]">
-              {step.output || "No output."}
+              {output || "No output."}
             </pre>
+            {lines.map((line) => <p key={line} className="mb-1 ml-10 mr-3 break-words text-[12px] text-text-3">{line}</p>)}
           </motion.div>
         )}
       </AnimatePresence>

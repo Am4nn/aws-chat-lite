@@ -19,6 +19,7 @@ export type RoomView = {
   budget: Budget;
   defaultModel: ModelPick;
   models: ModelOption[];
+  sandboxInternet: boolean;
 };
 
 export type Reaction = "thumbs" | "heart" | "joy" | "tada" | "eyes" | "check";
@@ -56,6 +57,8 @@ export type LiveEvent =
   | { type: "run.updated"; roomId: string; thread: ThreadSummary; lastSeq: number; budget: Budget }
   | { type: "thread.updated"; roomId: string; thread: ThreadSummary }
   | { type: "budget.updated"; roomId: string; budget: Budget }
+  | { type: "files.updated"; roomId: string; files: RoomFile[]; deleted: string[] }
+  | { type: "files.updated"; roomId: string; refetch: true }
   | { type: "pong" };
 
 export const isAdmin = (role: Role) => role === "owner" || role === "admin";
@@ -90,7 +93,7 @@ export type ThreadSummary = {
 // Model choice: mirrors services/src/models/catalog.ts and privacy.ts.
 export type ModelPick = "auto" | "sonnet" | "haiku" | "opus" | "fable" | "deepseek-flash" | "deepseek-pro" | "fake";
 export type ModelOption = { pick: ModelPick; id?: string; label: string; short: string; price: string; privateOk: boolean };
-export type TaintSource = "attachment";
+export type TaintSource = "attachment" | "sandbox";
 
 export type Budget = { spentMicros: number; capMicros: number; month: string; resetsAt: string };
 
@@ -103,7 +106,14 @@ type RunEventBody =
   | { type: "text.reset"; turn: number }
   | { type: "step.started"; step: number; call: { id: string; name: string; input: Record<string, unknown> }; detail: string }
   | { type: "step.finished"; step: number; output: string; ms: number; ok: boolean }
-  | { type: "usage"; model: string; job: "route" | "name" | "run"; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; costMicros: number }
+  | ({ type: "files.synced"; step: number } & FilesSynced)
+  | { type: "usage"; model: string; job: "route" | "name" | "run" | "sandbox"; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; costMicros: number }
   | { type: "run.finished"; status: RunEndStatus; reason?: string; ms: number; steps: number; costMicros: number };
 
 export type RunEvent = RunEventBody & { seq: number; at: string };
+
+// Room files: mirrors services/src/workspace/types.ts.
+export type FileAuthor = { kind: "member"; userId: string; name: string } | { kind: "thread"; threadId: string; number: number };
+export type RoomFile = { path: string; size: number; contentType: string; v: number; updatedAt: string; updatedBy: FileAuthor };
+/** A long list ends with an "…and N more" entry. */
+export type FilesSynced = { written: string[]; deleted: string[]; notes: string[] };

@@ -17,6 +17,8 @@
     "grant": "npm -w scripts run grant --",
     "dev": "npm -w scripts run dev",
     "stream:local": "npm -w scripts run stream-local",
+    "sandbox:build": "docker build -t cl-sandbox:1 scripts/sandbox-image",
+    "sandbox:local": "npm -w scripts run sandbox-local",
     "smoke": "npm -w scripts run smoke",
     "check": "knip && npm run typecheck --workspaces --if-present"
   },

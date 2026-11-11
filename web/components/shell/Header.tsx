@@ -1,15 +1,14 @@
 import type { ReactNode } from "react";
 import { ChevronRight, Hash, Lock, Menu, PanelRight, Search } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
-import type { Member } from "@/lib/types";
+import { taintHint } from "@/lib/client/models";
+import type { Member, TaintSource } from "@/lib/types";
 
 const STACK = 4;
 
-const PRIVATE_HINT = "Private: has attachments, so DeepSeek is off.";
-
-/** `thread`: on a thread page, its title and run status in place of a chat's name. `private`: that thread has files. */
-export function Header({ roomName, chatName, thread, isPrivate = false, members, onMenu, onSearch, onTogglePanel }: {
-  roomName: string; chatName?: string; thread?: ReactNode; isPrivate?: boolean; members: Member[];
+/** `thread`: on a thread page, its title and run status in place of a chat's name. `taint`: what made that thread private. */
+export function Header({ roomName, chatName, thread, taint = [], members, onMenu, onSearch, onTogglePanel }: {
+  roomName: string; chatName?: string; thread?: ReactNode; taint?: TaintSource[]; members: Member[];
   onMenu: () => void; onSearch: () => void; onTogglePanel: () => void;
 }) {
   // Whoever is online leads the stack, so presence is visible even in a big room.
@@ -28,8 +27,8 @@ export function Header({ roomName, chatName, thread, isPrivate = false, members,
         </h1>
       )}
       {thread}
-      {isPrivate && (
-        <span role="img" aria-label={PRIVATE_HINT} title={PRIVATE_HINT} className="shrink-0 text-text-3">
+      {taint.length > 0 && (
+        <span role="img" aria-label={taintHint(taint)} title={taintHint(taint)} className="shrink-0 text-text-3">
           <Lock aria-hidden="true" size={14} />
         </span>
       )}

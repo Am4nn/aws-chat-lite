@@ -35,7 +35,7 @@ export async function runLoop({ runId }: { runId: string }, ctx: DurableContext)
       }
       for (const call of turn.toolCalls) {
         const result = await step(`tool-${i}-${call.id}`, () => toolStep(run, call));
-        run = { ...run, steps: result.steps };
+        run = { ...run, steps: result.steps, costMicros: result.costMicros };
         if (result.end) {
           await close(`close-${i}`, result.end, true);
           return;

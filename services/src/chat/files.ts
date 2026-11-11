@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { GetObjectCommand, HeadObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { ValidationError } from "../lib/errors.js";
+import { filesBucket, missingObject, objects, s3 } from "../lib/s3.js";
 import { MAX_FILE_BYTES, validAttachment, type Attachment, type Message } from "./model.js";
 
 const UPLOAD_EXPIRY_SEC = 5 * 60;
@@ -11,33 +12,6 @@ const MAX_SAFE_NAME = 120;
 
 /** Raster images only: an SVG or HTML file shown inline could run script. */
 const INLINE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
-
-let cached: S3Client | undefined;
-let objectsClient: S3Client | undefined;
-
-/**
- * Signing is local computation, so this client only has to produce URLs the browser can reach. Locally that is
- * Floci's host as the browser sees it (the Lambda's own endpoint is an address inside Docker), path style because
- * that's how Floci serves buckets; on AWS it is the regional S3 endpoint.
- */
-function s3() {
-  const endpoint = process.env.S3_PUBLIC_ENDPOINT;
-  return (cached ??= new S3Client(endpoint ? { endpoint, forcePathStyle: true } : {}));
-}
-
-/**
- * For the Lambda's own calls to S3. An endpoint override (AWS_ENDPOINT_URL, which Floci sets inside its Lambdas and the
- * config forbids on AWS) means Floci, which serves buckets path-style.
- */
-function objects() {
-  return (objectsClient ??= new S3Client(process.env.AWS_ENDPOINT_URL ? { forcePathStyle: true } : {}));
-}
-
-function bucket() {
-  const b = process.env.FILES_BUCKET;
-  if (!b) throw new Error("FILES_BUCKET not set");
-  return b;
-}
 
 /** The uploader's id in the key is what lets `send` refuse someone else's upload. */
 export function attachmentKey(roomId: string, userId: string, name: string): string {
@@ -56,7 +30,7 @@ export async function presignUpload(roomId: string, userId: string, input: unkno
   const name = typeof raw.name === "string" ? raw.name : "";
   const { key, type } = validAttachment({ ...raw, key: attachmentKey(roomId, userId, name) }, roomId, userId);
   const { url, fields } = await createPresignedPost(s3(), {
-    Bucket: bucket(), Key: key, Expires: UPLOAD_EXPIRY_SEC, Fields: { "Content-Type": type },
+    Bucket: filesBucket(), Key: key, Expires: UPLOAD_EXPIRY_SEC, Fields: { "Content-Type": type },
     Conditions: [["content-length-range", 1, MAX_FILE_BYTES], ["eq", "$Content-Type", type]],
   });
   return { url, fields, key };
@@ -68,11 +42,10 @@ export async function presignUpload(roomId: string, userId: string, input: unkno
  */
 export async function storedAttachment(a: Attachment): Promise<Attachment> {
   try {
-    const head = await objects().send(new HeadObjectCommand({ Bucket: bucket(), Key: a.key }));
+    const head = await objects().send(new HeadObjectCommand({ Bucket: filesBucket(), Key: a.key }));
     return { ...a, size: Number(head.ContentLength), type: head.ContentType ?? "application/octet-stream" };
   } catch (e) {
-    // S3 answers a missing key with 403, not 404, to a caller without ListBucket (as this Lambda is on AWS).
-    if (["NotFound", "Forbidden"].includes((e as Error).name)) throw new ValidationError("That upload isn't there; try again.");
+    if (missingObject(e)) throw new ValidationError("That upload isn't there; try again.");
     throw e;
   }
 }
@@ -84,7 +57,7 @@ export async function storedAttachment(a: Attachment): Promise<Attachment> {
 export function presignDownload(a: Attachment): Promise<string> {
   const filename = a.name.replace(/[^\x20-\x7e]|["\\]/g, "_");
   return getSignedUrl(s3(), new GetObjectCommand({
-    Bucket: bucket(), Key: a.key,
+    Bucket: filesBucket(), Key: a.key,
     ...(inlineType(a.type)
       ? { ResponseContentType: a.type }
       : { ResponseContentDisposition: `attachment; filename="${filename}"` }),

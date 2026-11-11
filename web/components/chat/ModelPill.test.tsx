@@ -51,6 +51,11 @@ describe("ModelPill", () => {
     await closed();
   });
 
+  it("says what made the thread private", () => {
+    pill("member", { value: "opus", taint: ["attachment", "sandbox"] });
+    expect(screen.getByRole("img", { name: "Private: has attachments and sandbox files, so DeepSeek is off." })).toBeTruthy();
+  });
+
   it("shows the DeepSeek rows as unavailable on a private thread", () => {
     pill();
     const flash = screen.getByRole("menuitemradio", { name: /DeepSeek Flash/ });

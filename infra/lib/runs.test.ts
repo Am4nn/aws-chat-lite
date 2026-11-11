@@ -2,10 +2,11 @@ import { describe, it, expect } from "vitest";
 import { fnNamed, statementsOf, template } from "./test-templates.js";
 
 describe("run engine", () => {
-  it("the run function is durable for 130 minutes, keeps executions 7 days and times out at 15 minutes", () => {
+  it("the run function is durable for 130 minutes, keeps executions 7 days, times out at 15 minutes and has 1 GB", () => {
     const { props } = fnNamed("cl-local-run");
     expect(props.DurableConfig).toEqual({ ExecutionTimeout: 7800, RetentionPeriodInDays: 7 });
     expect(props.Timeout).toBe(900);
+    expect(props.MemorySize).toBe(1024);
     expect(props.Environment.Variables).toMatchObject({ MODEL_GATEWAY: "fake" });
     expect(props.Environment.Variables.WS_CALLBACK_URL).toBeDefined();
   });
@@ -19,6 +20,11 @@ describe("run engine", () => {
     expect(fnNamed("cl-aws-run", "aws").props.Environment.Variables).toMatchObject({
       MODEL_GATEWAY: "live", MODEL_KEYS_SECRET: "cl-aws-model-keys",
     });
+  });
+
+  it("gives the run function the local sandbox token only when the deploy passes one", () => {
+    expect(fnNamed("cl-local-run").props.Environment.Variables.SANDBOX_TOKEN).toBeUndefined();
+    expect(fnNamed("cl-local-run", "local", { SANDBOX_TOKEN: "t" }).props.Environment.Variables).toMatchObject({ SANDBOX_TOKEN: "t" });
   });
 
   it("keeps the hand-set keys secret on AWS and lets cdk destroy remove it locally", () => {

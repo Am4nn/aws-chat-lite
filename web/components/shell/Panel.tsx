@@ -13,6 +13,7 @@ type PanelTab = { id: string; label: string; content: ReactNode };
  * On a phone it is an overlay instead, sliding in from the right edge (`overlayOpen`), and CSS decides which form
  * shows, so the first paint is right before any script runs.
  * Closed, it is inert: hidden from screen readers and out of the tab order, so focus never lands on invisible buttons.
+ * Five tabs with counts can outgrow its width, so the tab strip then scrolls sideways (without a scrollbar).
  */
 export function Panel({ open, overlayOpen, active, onActiveChange, tabs }: {
   open: boolean; overlayOpen: boolean; active: string; onActiveChange: (id: string) => void; tabs: PanelTab[];
@@ -30,14 +31,14 @@ export function Panel({ open, overlayOpen, active, onActiveChange, tabs }: {
       className={`shrink-0 overflow-hidden border-l border-line bg-surface-1 max-md:fixed max-md:inset-y-0 max-md:right-0 max-md:z-40 max-md:w-[min(320px,calc(100vw-48px))]! max-md:transition-transform max-md:duration-300 max-md:ease-[cubic-bezier(.2,.9,.2,1)] ${overlayOpen ? "max-md:shadow-[0_0_60px_rgba(0,0,0,.5)]" : "max-md:translate-x-full"}`}
     >
       <div className="flex h-full w-[320px] flex-col gap-4 p-4 max-md:w-full">
-        <div role="tablist" className="flex shrink-0 rounded-[11px] border border-line bg-surface-2 p-[3px]">
+        <div role="tablist" className="flex shrink-0 overflow-x-auto rounded-[11px] [scrollbar-width:none] border border-line bg-surface-2 p-[3px]">
           {tabs.map((t) => (
             <button
               key={t.id}
               role="tab"
               aria-selected={t.id === current.id}
               onClick={() => onActiveChange(t.id)}
-              className={`relative isolate h-8 flex-auto whitespace-nowrap rounded-lg px-2 text-[12.5px] font-medium transition-[color,transform] active:scale-[0.97] ${t.id === current.id ? "text-text" : "text-text-2 hover:text-text"}`}
+              className={`relative isolate h-8 flex-auto whitespace-nowrap rounded-lg px-1 text-[12.5px] font-medium transition-[color,transform] active:scale-[0.97] ${t.id === current.id ? "text-text" : "text-text-2 hover:text-text"}`}
             >
               {t.id === current.id && <motion.span layoutId="panel-tab" transition={spring.glide} className="absolute inset-0 -z-10 rounded-lg bg-[#1c2225]" />}
               {t.label}

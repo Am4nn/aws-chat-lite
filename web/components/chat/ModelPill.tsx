@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Check, ChevronDown, Lock } from "lucide-react";
 import { bff, errorText } from "@/lib/client/bff";
-import { nextEnabled, pickMenu, pillLabel, shownPick } from "@/lib/client/models";
+import { nextEnabled, pickMenu, pillLabel, shownPick, taintHint } from "@/lib/client/models";
 import { useModels } from "@/lib/client/ModelsProvider";
 import { useClickOutside } from "@/lib/client/useClickOutside";
 import { useEscape } from "@/lib/client/useEscape";
@@ -14,7 +14,6 @@ import type { ModelPick, TaintSource } from "@/lib/types";
 import { useToast } from "@/components/overlays/Toast";
 
 const LOCKED_HINT = "The running agent keeps its model.";
-const PRIVATE_HINT = "It has attachments. Private content never goes to DeepSeek.";
 
 /**
  * The composer's model choice. `value`: the chat's own pick, if it has one; without it the pill shows what the room
@@ -125,7 +124,7 @@ export function ModelPill({ value, onChange, taint, locked = false }: {
               <p className="flex h-8 items-center gap-2 px-2.5 text-[12px] text-text-3">
                 <Lock aria-hidden="true" size={12} className="shrink-0" />
                 Private thread: DeepSeek is off
-                <span role="img" aria-label={PRIVATE_HINT} title={PRIVATE_HINT} className="ml-auto grid size-4 place-items-center rounded-full border border-line-strong text-[10px]">?</span>
+                <span role="img" aria-label={taintHint(taint)} title={taintHint(taint)} className="ml-auto grid size-4 place-items-center rounded-full border border-line-strong text-[10px]">?</span>
               </p>
             )}
             {menu.items.map((item, i) => (

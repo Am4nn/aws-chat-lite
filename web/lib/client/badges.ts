@@ -7,18 +7,6 @@ export function chatBadge({ unread, mentions, muted }: Pick<Chat, "unread" | "me
   return { count: unread > 0 && !muted ? unread : null, mention: mentions > 0 ? mentions : null };
 }
 
-const MINUTE = 60_000;
-const HOUR = 60 * MINUTE;
-const DAY = 24 * HOUR;
-
-export function lastSeenText(iso: string, now: number): string {
-  const ago = now - Date.parse(iso);
-  if (ago < MINUTE) return "last seen just now";
-  if (ago < HOUR) return `last seen ${Math.floor(ago / MINUTE)}m ago`;
-  if (ago < DAY) return `last seen ${Math.floor(ago / HOUR)}h ago`;
-  return `last seen ${Math.floor(ago / DAY)}d ago`;
-}
-
 /**
  * A live message in a chat I'm not looking at. Unread is everything past my read marker (lastSeq − unread), the way the
  * server counts it, so a repeat delivery changes nothing and one arriving out of order still counts. Mentions are

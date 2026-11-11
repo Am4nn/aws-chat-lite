@@ -4,8 +4,8 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { MoreHorizontal } from "lucide-react";
-import { lastSeenText } from "@/lib/client/badges";
 import { bff, errorText } from "@/lib/client/bff";
+import { timeAgo } from "@/lib/client/format";
 import { useClickOutside } from "@/lib/client/useClickOutside";
 import { useEscape } from "@/lib/client/useEscape";
 import { dur, easeOut, spring } from "@/lib/motion";
@@ -93,7 +93,7 @@ export function MemberList({ roomId, members, myRole, myUserId }: { roomId: stri
               <span className="flex min-w-0 flex-col">
                 <span className="truncate leading-4">{m.username}{m.userId === myUserId && <span className="text-text-3"> (you)</span>}{m.online && <span className="sr-only">, online</span>}</span>
                 {!m.online && m.lastSeen && (
-                  <span suppressHydrationWarning className="truncate font-mono text-[11px] leading-4 text-text-3">{lastSeenText(m.lastSeen, now)}</span>
+                  <span suppressHydrationWarning className="truncate font-mono text-[11px] leading-4 text-text-3">last seen {timeAgo(m.lastSeen, now)}</span>
                 )}
               </span>
               <span className="ml-auto"><RoleBadge role={m.role} /></span>

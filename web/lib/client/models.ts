@@ -16,6 +16,11 @@ export function pickMenu(models: ModelOption[], s: MenuState) {
   return { items, privateNote: items.some((i) => i.disabled), canSetDefault: s.isAdmin && s.value !== s.roomDefault };
 }
 
+const TAINT_WORDS: Record<TaintSource, string> = { attachment: "attachments", sandbox: "sandbox files" };
+
+/** Why DeepSeek is off on a private thread, for the header's lock and the model menu. */
+export const taintHint = (taint: TaintSource[]) => `Private: has ${taint.map((t) => TAINT_WORDS[t]).join(" and ")}, so DeepSeek is off.`;
+
 /**
  * What a send from this chat runs on: its own pick, else the room default. The server turns a default that may not
  * see private content into Auto, so the pill shows Auto too.

@@ -25,6 +25,8 @@ import { MemberList } from "@/components/rooms/MemberList";
 import { InvitePanel } from "@/components/rooms/InvitePanel";
 import { inviteUrl } from "@/components/rooms/invite";
 import { MentionSound } from "@/components/chat/MentionSound";
+import { FilesPanel } from "@/components/files/FilesPanel";
+import { useRoomFiles } from "@/components/files/useRoomFiles";
 import { SearchPanel } from "@/components/chat/SearchPanel";
 import { RunCapsule } from "@/components/threads/RunCapsule";
 import { RunPanel } from "@/components/threads/RunPanel";
@@ -71,6 +73,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
   const timeZone = useTimeZone(serverTimeZone);
   const activeThread = number ? threads.byNumber(Number(number)) : undefined;
   const members = usePresence(view.members, me.userId);
+  const files = useRoomFiles(roomId);
   const exitRoom = useRoomExit({ roomId, rooms, onExited: () => setDialog(null) });
 
   // The socket outlives room switches and subscribes only to the rooms the user was in when it connected, so each
@@ -221,7 +224,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
                 {activeThread.runId && <RunCapsule key={activeThread.threadId} thread={activeThread} />}
               </>
             )}
-            isPrivate={!!activeThread?.taint.length}
+            taint={activeThread?.taint}
             onMenu={() => setOverlay("nav")} onSearch={openSearch} onTogglePanel={togglePanel}
           />
           <div className="relative min-h-0 flex-1 overflow-hidden">
@@ -236,7 +239,16 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
           active={panelTab}
           onActiveChange={setPanelTab}
           tabs={[
-            ...(activeThread ? [{ id: "context", label: "Context", content: <RunPanel thread={activeThread} /> }] : []),
+            ...(activeThread ? [{ id: "context", label: "Context", content: <RunPanel thread={activeThread} files={files.files} /> }] : []),
+            {
+              id: "files", label: `Files · ${files.files.length}`,
+              content: (
+                <FilesPanel
+                  roomId={roomId} store={files} threads={threads.threads} internet={view.sandboxInternet}
+                  canSwitch={isAdmin(view.me.role) && !room.archived} canWrite={!room.archived}
+                />
+              ),
+            },
             { id: "members", label: `Members · ${members.length}`, content: <MemberList roomId={roomId} members={members} myRole={view.me.role} myUserId={me.userId} /> },
             ...(isAdmin(view.me.role) && !room.archived ? [{ id: "invite", label: "Invite", content: <InvitePanel roomId={roomId} /> }] : []),
             { id: "search", label: "Search", content: <SearchPanel roomId={roomId} chats={view.chats} serverTimeZone={serverTimeZone} focusSignal={searchFocus} onPick={() => setOverlay(null)} /> },

@@ -13,17 +13,20 @@ type Stage = "local" | "aws";
  */
 const app = () => new App({ context: { "aws:cdk:bundling-stacks": [] } });
 
-const configFor = (stage: Stage) => loadConfig(stage, stage === "local" ? { AWS_ENDPOINT_URL: "http://localhost:4566" } : {});
+/** A stage's config, as a deploy from a shell with `env` set would load it. */
+const configFor = (stage: Stage, env: NodeJS.ProcessEnv = {}) =>
+  loadConfig(stage, { ...(stage === "local" && { AWS_ENDPOINT_URL: "http://localhost:4566" }), ...env });
 
 const cache = new Map<string, Template>();
 
-/** The core stack's template for a stage, synthesized once per test file. */
-export function template(stage: Stage = "local"): Template {
-  let t = cache.get(stage);
+/** The core stack's template for a stage (and deploy env), synthesized once per test file. */
+export function template(stage: Stage = "local", env: NodeJS.ProcessEnv = {}): Template {
+  const key = `${stage} ${JSON.stringify(env)}`;
+  let t = cache.get(key);
   if (!t) {
-    const config = configFor(stage);
+    const config = configFor(stage, env);
     t = Template.fromStack(new CoreStack(app(), `cl-${stage}-core`, { config, env: { account: "000000000000", region: config.region } }));
-    cache.set(stage, t);
+    cache.set(key, t);
   }
   return t;
 }
@@ -36,8 +39,8 @@ export function spikeTemplate(): Template {
 }
 
 /** The one Lambda function with this name, with its logical id. */
-export function fnNamed(name: string, stage: Stage = "local") {
-  const fns = Object.entries(template(stage).findResources("AWS::Lambda::Function", { Properties: { FunctionName: name } }));
+export function fnNamed(name: string, stage: Stage = "local", env: NodeJS.ProcessEnv = {}) {
+  const fns = Object.entries(template(stage, env).findResources("AWS::Lambda::Function", { Properties: { FunctionName: name } }));
   expect(fns).toHaveLength(1);
   const [logicalId, fn] = fns[0]! as [string, any];
   return { logicalId, props: fn.Properties };

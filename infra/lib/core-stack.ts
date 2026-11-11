@@ -12,9 +12,11 @@ import { addAuth, type Auth } from "./auth.js";
 import { addRooms } from "./rooms.js";
 import { addLive } from "./live.js";
 import { addChat } from "./chat.js";
+import { addFiles } from "./files.js";
 import { addThreads } from "./threads.js";
 import { addRuns } from "./runs.js";
 import { addStream } from "./stream.js";
+import { addSandbox } from "./sandbox.js";
 
 /** Path to a handler file in services/src */
 export const servicePath = (file: string) =>
@@ -63,8 +65,10 @@ export class CoreStack extends Stack {
     this.wsUrl = props.config.isLocal ? `ws://${this.flociWsEndpoint()}` : this.live.stage.url;
     this.allowBroadcast(this.live.liveFn);
     this.allowBroadcast(addRooms(this));
-    addChat(this);
+    const files = addChat(this);
     this.runs = addRuns(this);
+    addSandbox(this, this.runs.runFn);
+    addFiles(this, files);
     // A message sent in a thread over the socket starts or steers its run.
     this.allowRunStart(this.live.liveFn);
     const threadsFn = addThreads(this);

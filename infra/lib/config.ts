@@ -16,6 +16,8 @@ export interface StageConfig {
   s3PublicEndpoint?: string;
   /** Which models answer: the fake, or the real providers. Real models cost money, so local opts in. */
   modelGateway: "fake" | "live";
+  /** Local only: the secret the run function sends to the Docker sandbox server on the developer's machine. */
+  sandboxToken?: string;
 }
 
 function isFlociEndpoint(url: string | undefined): boolean {
@@ -40,6 +42,7 @@ export function loadConfig(stage: string | undefined, env: NodeJS.ProcessEnv): S
       stage, prefix: "cl-local", isLocal: true, region: "us-east-1",
       siteOrigins: ["http://localhost:3000", "http://localhost:3100"], s3PublicEndpoint: "http://localhost:4566",
       modelGateway: env.MODEL_GATEWAY === "live" ? "live" : "fake",
+      ...(env.SANDBOX_TOKEN && { sandboxToken: env.SANDBOX_TOKEN }),
     };
   }
   if (stage === "aws") {

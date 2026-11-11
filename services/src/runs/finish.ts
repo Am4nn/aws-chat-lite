@@ -3,6 +3,7 @@ import { broadcastToRoom } from "../live/broadcast.js";
 import { summaryLine } from "../threads/model.js";
 import { threadsRepo } from "../threads/repo.js";
 import type { RunEndStatus } from "../threads/types.js";
+import { closeSandbox } from "../workspace/session.js";
 import { answerOf } from "./context.js";
 import { notifyRun } from "./notify.js";
 import { runsRepo, type Run } from "./repo.js";
@@ -22,7 +23,7 @@ async function announce(answer: Message) {
  * `run.finished` would already have stopped reading. A close that finds the run already closed (a retried step)
  * reports the ending that is stored, whatever this attempt meant to write, and announces the answer only if the
  * attempt before it stopped short of `run.finished`. The card shows the answer's first line for a finished run, and
- * otherwise why the run ended.
+ * otherwise why the run ended. Every ending also closes the run's sandbox.
  */
 export async function finishRun(
   run: Run, end: { status: RunEndStatus; reason?: string }, opts: { seenSeq: number; force: boolean },
@@ -33,6 +34,8 @@ export async function finishRun(
   const summary = end.status === "done" ? summaryLine(final) : end.reason ?? "";
   const { result, answer, endedAt } = await runs.closeRun(run, { ...end, text, summary, ...opts });
   if (result === "unread") return result;
+  // Before `run.finished`, so a run that reads as ended never still holds a sandbox session.
+  await closeSandbox(run.runId);
 
   let last = events.at(-1);
   const finished = last?.type === "run.finished";

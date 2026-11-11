@@ -1,6 +1,7 @@
 import type { ModelMessage, ModelProvider, ModelRequest, ProviderChunk, StopReason } from "./gateway.js";
 import { NAME_PROMPT } from "./gateway.js";
 import { sleep as wait } from "../lib/sleep.js";
+import type { Language } from "../sandbox/sandbox.js";
 import { ROUTER_PROMPT } from "./picks.js";
 
 const BODY_WORDS =
@@ -16,6 +17,10 @@ const directive = (text: string, key: string, min: number, max: number) => {
 const stripDirectives = (text: string) =>
   text.replace(/\b(tools|words|drop):\d+|\broute:\S+|\b(slow|fail|cutoff|refuse)\b/g, " ");
 const firstWords = (text: string, n: number) => text.split(/\s+/).filter(Boolean).slice(0, n).join(" ");
+
+/** Each sh`…`, py`…` or js`…` span in the prompt is one sandbox_run call. */
+const SPAN = /\b(sh|py|js)`([^`]*)`/g;
+const SPAN_LANGUAGES: Record<string, Language> = { sh: "shell", py: "python", js: "javascript" };
 
 const charsOf = (m: ModelMessage) => {
   if (m.role === "tool") return m.output.length;
@@ -58,24 +63,33 @@ async function* run(req: ModelRequest, sleep: (ms: number) => Promise<void>): As
     return;
   }
 
-  if (/\bfail\b/.test(prompt)) throw new Error("fake model failure");
-  if (/\brefuse\b/.test(prompt)) {
+  const spans = [...prompt.matchAll(SPAN)].map(([, lang, code]) => ({ language: SPAN_LANGUAGES[lang!]!, code: code! }));
+  const sandboxOffered = req.tools.some((t) => t.name === "sandbox_run");
+  const sandboxCalls = sandboxOffered ? spans : [];
+  // Directives are read outside the spans, so code that says "fail" or "slow" is only code.
+  const asked = prompt.replace(SPAN, " ");
+
+  if (/\bfail\b/.test(asked)) throw new Error("fake model failure");
+  if (/\brefuse\b/.test(asked)) {
     yield* finish("refusal");
     return;
   }
 
-  const slow = /\bslow\b/.test(prompt);
-  const cutoff = /\bcutoff\b/.test(prompt);
-  const query = firstWords(stripDirectives(prompt), 6);
-  const toolTarget = directive(prompt, "tools", 0, 5) ?? 2;
+  const slow = /\bslow\b/.test(asked);
+  const cutoff = /\bcutoff\b/.test(asked);
+  const query = firstWords(stripDirectives(asked), 6);
+  const toolTarget = directive(asked, "tools", 0, 5) ?? (spans.length ? 0 : 2);
   const firstToolIndex = req.messages.findIndex((m) => m.role === "tool");
   const results = req.messages.filter((m) => m.role === "tool").length;
   const steers =
     firstToolIndex < 0 ? 0 : req.messages.slice(firstToolIndex).filter((m) => m.role === "user").length;
 
   // A cut-off reply stops inside its tool call, so the call is there but the turn ends at the length limit.
-  if (cutoff || results < toolTarget + steers) {
-    const call = { id: `call-${results + 1}`, name: "fake.lookup", input: { query, slow } };
+  if (cutoff || results < sandboxCalls.length + toolTarget + steers) {
+    const id = `call-${results + 1}`;
+    const call = results < sandboxCalls.length
+      ? { id, name: "sandbox_run", input: sandboxCalls[results]! }
+      : { id, name: "fake.lookup", input: { query, slow } };
     calls.push(call.id);
     outputChars += JSON.stringify(call).length;
     yield { type: "tool_call", call };
@@ -83,11 +97,12 @@ async function* run(req: ModelRequest, sleep: (ms: number) => Promise<void>): As
     return;
   }
 
-  const words = directive(prompt, "words", 1, 400) ?? 48;
-  const drop = directive(prompt, "drop", 0, 400);
+  const words = directive(asked, "words", 1, 400) ?? 48;
+  const drop = directive(asked, "drop", 0, 400);
   const body = Array.from({ length: words }, (_, i) => BODY_WORDS[i % BODY_WORDS.length]);
   body[words - 1] += ".";
-  const pieces = [`Fake answer for "${query}".\n\n`, ...body.map((w, i) => (i < words - 1 ? `${w} ` : w))];
+  const noSandbox = spans.length && !sandboxOffered ? "(no sandbox here) " : "";
+  const pieces = [`${noSandbox}Fake answer for "${query}".\n\n`, ...body.map((w, i) => (i < words - 1 ? `${w} ` : w))];
   for (const text of drop === undefined ? pieces : pieces.slice(0, drop)) {
     if (outputChars / 4 >= req.maxTokens) {
       yield* finish("max_tokens");

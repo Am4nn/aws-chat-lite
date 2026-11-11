@@ -1,5 +1,7 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterAll, afterEach, beforeAll } from "vitest";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import type { Server } from "node:http";
 import { GetCommand, PutCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { docClient, tableName } from "../lib/db.js";
 import { roomsRepo } from "../rooms/repo.js";
@@ -13,6 +15,11 @@ import { startOrSteer } from "./start.js";
 import { answerOf } from "./context.js";
 import { DEAD_AFTER_MS } from "./model.js";
 import { failRun, modelTurn, nameThread, routeRun, toolStep } from "./steps.js";
+import { dockerSandbox } from "../sandbox/docker.js";
+import { startSandboxServer } from "../sandbox/server.js";
+import { workspaceRepo } from "../workspace/repo.js";
+import { closeSandbox } from "../workspace/session.js";
+import { getBytes } from "../workspace/storage.js";
 
 // Failures injected into this process's table calls, against DynamoDB on Floci (npm run deploy:local first). The run
 // loop's step bodies are called directly: a durable retry runs the same body again with the same input, so calling
@@ -20,6 +27,18 @@ import { failRun, modelTurn, nameThread, routeRun, toolStep } from "./steps.js";
 process.env.MODEL_GATEWAY = "fake";
 process.env.RUN_FN_NAME = "cl-local-run";
 process.env.RUN_FN_QUALIFIER = "live";
+// Sandbox steps run in this process against the sandbox server on this machine, which needs Docker and the image.
+Object.assign(process.env, {
+  SANDBOX_KIND: "docker", SANDBOX_URL: "http://127.0.0.1:4700",
+  SANDBOX_TOKEN: readFileSync(new URL("../../../.secrets/sandbox-token", import.meta.url), "utf8").trim(),
+});
+let sandboxServer: Server | undefined;
+beforeAll(async () => {
+  if (await fetch("http://127.0.0.1:4700/").then(() => true, () => false)) return;
+  sandboxServer = startSandboxServer(dockerSandbox(), { token: process.env.SANDBOX_TOKEN! });
+  await new Promise((resolve) => sandboxServer!.once("listening", resolve));
+});
+afterAll(() => new Promise<void>((resolve) => (sandboxServer ? sandboxServer.close(() => resolve()) : resolve())));
 
 const runs = runsRepo();
 const user = (name: string) => ({ userId: randomUUID(), username: name });
@@ -254,15 +273,32 @@ describe("run steps and starts under injected failures", () => {
     const { run } = await runningThread("go tools:1");
     fail(puts("step.finished"));
     await expect(toolStep(run, call)).rejects.toThrow("injected failure");
-    expect(await toolStep(run, call)).toEqual({ steps: 1 });
+    expect(await toolStep(run, call)).toEqual({ steps: 1, costMicros: run.costMicros });
     expect(await count(run.runId, "step.started")).toBe(1);
     expect(await count(run.runId, "step.finished")).toBe(1);
   });
 
+  it("a sandbox step that fails after its code ran saves the files on retry without running the code again", async () => {
+    const { run } = await runningThread("go");
+    const append = { id: "call-1", name: "sandbox_run", input: { language: "shell", code: "echo x >> log.txt" } };
+    // The room usage read comes after the code ran, while its changes are being saved.
+    fail((c) => c instanceof GetCommand && c.input.ProjectionExpression === "filesBytes, filesCount");
+    try {
+      await expect(toolStep(run, append)).rejects.toThrow("injected failure");
+      expect(await toolStep(run, append)).toMatchObject({ steps: 1 });
+      const file = await workspaceRepo().get(run.roomId, "log.txt");
+      expect(new TextDecoder().decode(await getBytes(file!.objectKey))).toBe("x\n");
+      expect(await count(run.runId, "step.finished")).toBe(1);
+      expect((await runs.allEvents(run.runId)).filter((e) => e.type === "usage" && e.job === "sandbox")).toHaveLength(1);
+    } finally {
+      await closeSandbox(run.runId);
+    }
+  }, 60_000);
+
   it("a tool step checks the run's limits first, so a turn with many tool calls can't pass 200 steps", async () => {
     const { run } = await runningThread("go tools:1");
     expect(await toolStep({ ...run, steps: 200 }, call)).toEqual({
-      steps: 200, end: { status: "failed", reason: "Step limit reached (200 steps)." },
+      steps: 200, costMicros: run.costMicros, end: { status: "failed", reason: "Step limit reached (200 steps)." },
     });
     expect(await count(run.runId, "step.started")).toBe(0);
   });

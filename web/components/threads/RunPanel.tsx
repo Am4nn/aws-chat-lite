@@ -1,15 +1,20 @@
 "use client";
 
+import { runFiles } from "@/lib/client/files";
 import { formatUsd } from "@/lib/client/format";
 import { modelLabel } from "@/lib/client/models";
 import { useModels } from "@/lib/client/ModelsProvider";
 import { runElapsed } from "@/lib/client/threads";
 import { useNow } from "@/lib/client/useNow";
-import type { ThreadSummary } from "@/lib/types";
+import type { RoomFile, ThreadSummary } from "@/lib/types";
 
-/** The room panel's view of this thread's latest run: how many steps, how long and what it cost so far. */
-export function RunPanel({ thread: t }: { thread: ThreadSummary }) {
+/**
+ * The room panel's view of this thread's latest run: how many steps, how long and what it cost so far, and the room
+ * files it wrote.
+ */
+export function RunPanel({ thread: t, files }: { thread: ThreadSummary; files: RoomFile[] }) {
   const now = useNow(t.status === "running");
+  const written = t.runId ? runFiles(files, t) : [];
   const { models } = useModels();
   return (
     <section className="flex flex-col gap-2">
@@ -31,6 +36,14 @@ export function RunPanel({ thread: t }: { thread: ThreadSummary }) {
           </>
         )
         : <p className="text-[12.5px] text-text-3">Nothing has run here yet.</p>}
+      {written.length > 0 && (
+        <>
+          <h2 className="mt-2 text-[11.5px] font-semibold text-text-3">Files</h2>
+          <ul className="flex flex-col gap-1">
+            {written.map((path) => <li key={path} title={path} className="truncate font-mono text-[12px] text-text-2">{path}</li>)}
+          </ul>
+        </>
+      )}
     </section>
   );
 }

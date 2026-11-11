@@ -65,6 +65,16 @@ export async function until<A>(page: Page, condition: (arg: A) => unknown, arg?:
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Polls a read until its answer passes, for state that only the server can confirm. */
+export async function eventually<T>(read: () => Promise<T>, ok: (value: T) => boolean, timeout = 60_000): Promise<T> {
+  const end = Date.now() + timeout;
+  for (;;) {
+    const value = await read();
+    if (ok(value) || Date.now() > end) return value;
+    await sleep(500);
+  }
+}
+
 export const socketOpen = (page: Page) => until(page, () => window.__live?.status === "open", undefined, 12_000);
 export const shows = (page: Page, text: string, timeout?: number) =>
   until(page, (t) => document.querySelector("main")?.innerText.includes(t), text, timeout);

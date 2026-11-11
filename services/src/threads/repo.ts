@@ -8,6 +8,7 @@ import type { Message } from "../chat/model.js";
 import { chatRepo, type Admitted } from "../chat/repo.js";
 import { broadcastToRoom } from "../live/broadcast.js";
 import { PROVISIONAL, isNumberedName, summary, threadName, threadSk, uniqueCandidates } from "./model.js";
+import type { TaintSource } from "../models/privacy.js";
 import type { ThreadSummary } from "./types.js";
 
 type Item = Record<string, unknown>;
@@ -170,6 +171,14 @@ export function threadsRepo() {
         }
       }
       return null;
+    },
+
+    /** The taint is a string set, so adding to it never drops a source another write added. */
+    async addTaint(roomId: string, number: number, taint: TaintSource[]): Promise<void> {
+      await db.send(new UpdateCommand({
+        TableName, Key: threadKey(roomId, number), UpdateExpression: "ADD #taint :t, #rev :one", ConditionExpression: "attribute_exists(pk)",
+        ExpressionAttributeNames: { "#taint": "taint", "#rev": "rev" }, ExpressionAttributeValues: { ":t": new Set(taint), ":one": 1 },
+      }));
     },
 
     async threadById(roomId: string, threadId: string): Promise<ThreadSummary | null> {
