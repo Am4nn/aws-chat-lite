@@ -8,11 +8,9 @@ const ev = (routeKey: string, opts: { body?: unknown; id?: string } = {}) => ({
   requestContext: { authorizer: { jwt: { claims: { sub: "u1", "cognito:username": "aman" } } } },
 }) as any;
 
-const keys = { publicKey: "BPublicKey", privateKey: "private-key-material", subject: "mailto:a@b.c" };
-
-function handler(pushKeys: object = keys) {
+function handler(publicKey: string | null = "BPublicKey") {
   const repo = { save: vi.fn(async () => ({ id: "abc" })), remove: vi.fn(async () => {}) };
-  return { repo, handle: makeHandler(repo, async () => pushKeys) };
+  return { repo, handle: makeHandler(repo, async () => publicKey ?? undefined) };
 }
 
 const subscription = {
@@ -21,15 +19,14 @@ const subscription = {
 };
 
 describe("push routes", () => {
-  it("GET /push/key gives the browser the public key and nothing else", async () => {
+  it("GET /push/key gives the browser the public key", async () => {
     const res = await handler().handle(ev("GET /push/key"));
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body!)).toEqual({ publicKey: "BPublicKey" });
-    expect(res.body).not.toContain("private-key-material");
   });
 
   it("GET /push/key is null where push has no keys, which hides the toggle", async () => {
-    expect(JSON.parse((await handler({}).handle(ev("GET /push/key"))).body!)).toEqual({ publicKey: null });
+    expect(JSON.parse((await handler(null).handle(ev("GET /push/key"))).body!)).toEqual({ publicKey: null });
   });
 
   it("PUT /me/push saves a real push subscription for the caller", async () => {

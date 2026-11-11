@@ -36,9 +36,9 @@ describe("run engine", () => {
 
   it("keeps the keys secrets on AWS and lets cdk destroy remove them locally", () => {
     const local = Object.values(template().findResources("AWS::SecretsManager::Secret")) as any[];
-    expect(local.map((s) => s.DeletionPolicy)).toEqual(["Delete", "Delete", "Delete", "Delete"]);
+    expect(local.map((s) => s.DeletionPolicy)).toEqual(["Delete", "Delete", "Delete", "Delete", "Delete"]);
     const secrets = Object.values(template("aws").findResources("AWS::SecretsManager::Secret"));
-    expect(secrets).toHaveLength(4);
+    expect(secrets).toHaveLength(5);
     for (const secret of secrets) expect(secret).toMatchObject({ DeletionPolicy: "Retain", UpdateReplacePolicy: "Retain" });
   });
 

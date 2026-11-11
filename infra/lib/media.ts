@@ -13,29 +13,35 @@ export function addMedia(stack: CoreStack, files: s3.Bucket) {
   const { prefix, isLocal, pushMode, voiceMode, transcribeLocalUrl, s3PublicEndpoint } = stack.stageConfig;
   const filesEnvironment = { FILES_BUCKET: files.bucketName, ...(s3PublicEndpoint && { S3_PUBLIC_ENDPOINT: s3PublicEndpoint }) };
 
-  // JSON {VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT}, set outside CloudFormation like the model keys. Push
-  // services tie each browser subscription to the public key, so on AWS the secret outlives a stack delete: new keys
-  // would silently orphan every subscribed device. Until the keys are set it holds JSON without them, which reads as
-  // push being off; CloudFormation's default would be a random password, which isn't JSON.
-  const keysName = `${prefix}-push-keys`;
-  const pushKeys = new secretsmanager.Secret(stack, "PushKeys", {
-    secretName: keysName,
-    description: "VAPID keys that sign web push notifications",
+  // JSON {VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT}, set outside CloudFormation like the model keys. The
+  // routes a browser calls need only the public key, and a secret is read whole, so they get a copy of it in a secret
+  // of its own and never see the private key. Push services tie each browser subscription to the public key, so on AWS
+  // both outlive a stack delete: new keys would silently orphan every subscribed device. Until the keys are set each
+  // holds JSON without them, which reads as push being off; CloudFormation's default would be a random password, which
+  // isn't JSON.
+  const pushSecret = (id: string, secretName: string, description: string) => new secretsmanager.Secret(stack, id, {
+    secretName,
+    description,
     generateSecretString: { secretStringTemplate: "{}", generateStringKey: "unset" },
     removalPolicy: isLocal ? RemovalPolicy.DESTROY : RemovalPolicy.RETAIN,
   });
+  const keysName = `${prefix}-push-keys`;
+  const publicKeyName = `${prefix}-push-public-key`;
+  const pushKeys = pushSecret("PushKeys", keysName, "VAPID keys that sign web push notifications");
+  const publicKey = pushSecret("PushPublicKey", publicKeyName, "The VAPID public key browsers subscribe to web push with");
   const pushFn = stack.addFunction("push", "push/delivery/handler.ts", {}, {
     timeout: Duration.seconds(30),
     environment: { PUSH_MODE: pushMode, PUSH_KEYS_SECRET: keysName },
   });
   // Lambda retries a failed async event twice by default; a late duplicate notification is worse than a missed one.
   pushFn.configureAsyncInvoke({ retryAttempts: 0, maxEventAge: Duration.minutes(5) });
-  const routesFn = stack.addFunction("push-routes", "push/handler.ts", {}, { environment: { PUSH_KEYS_SECRET: keysName } });
+  const routesFn = stack.addFunction("push-routes", "push/handler.ts", {}, { environment: { PUSH_PUBLIC_KEY_SECRET: publicKeyName } });
+  pushKeys.grantRead(pushFn);
+  publicKey.grantRead(routesFn);
   for (const fn of [pushFn, routesFn]) {
     // Subscriptions are only ever put or deleted whole, never updated.
     stack.table.grantReadData(fn);
     stack.table.grant(fn, "dynamodb:PutItem", "dynamodb:DeleteItem");
-    pushKeys.grantRead(fn);
   }
   stack.route("GET", "/push/key", routesFn);
   stack.route("PUT", "/me/push", routesFn);

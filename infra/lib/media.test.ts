@@ -17,7 +17,8 @@ const s3Statements = (name: string) => statementsOf(fnNamed(name)).filter((s: an
 /** Each S3 object pattern the function may touch (e.g. "/speech/*"), with its sorted actions. */
 const s3Rights = (name: string) => Object.fromEntries(s3Statements(name).flatMap((s: any) =>
   [s.Resource].flat().map((r: any) => [r["Fn::Join"][1].at(-1), [s.Action].flat().sort()])));
-const pushKeysId = () => Object.keys(template().findResources("AWS::SecretsManager::Secret", { Properties: { Name: "cl-local-push-keys" } }))[0];
+const secretNamed = (name: string) => template().findResources("AWS::SecretsManager::Secret", { Properties: { Name: name } });
+const secretId = (name: string) => Object.keys(secretNamed(name))[0];
 const secretReads = (name: string) => statementsOf(fnNamed(name))
   .filter((s: any) => [s.Action].flat().includes("secretsmanager:GetSecretValue")).map((s: any) => s.Resource.Ref);
 
@@ -33,17 +34,25 @@ describe("media: push and voice", () => {
     }
   });
 
-  it("the push keys live in their own secret, kept on AWS, which only the push worker and routes may read", () => {
-    const [local] = Object.values(template().findResources("AWS::SecretsManager::Secret", { Properties: { Name: "cl-local-push-keys" } })) as any[];
-    expect(local.DeletionPolicy).toBe("Delete");
-    // CloudFormation would otherwise fill a new secret with a random password, which isn't JSON.
-    expect(local.Properties.GenerateSecretString).toEqual({ SecretStringTemplate: "{}", GenerateStringKey: "unset" });
-    template("aws").hasResource("AWS::SecretsManager::Secret", { Properties: { Name: "cl-aws-push-keys" }, DeletionPolicy: "Retain" });
-    for (const name of ["cl-local-push", "cl-local-push-routes"]) {
-      expect(secretReads(name), name).toEqual([pushKeysId()]);
-      expect(fnNamed(name).props.Environment.Variables, name).toMatchObject({ PUSH_KEYS_SECRET: "cl-local-push-keys" });
+  it("the push keys and a copy of the public key live in their own secrets, kept on AWS", () => {
+    for (const secret of ["push-keys", "push-public-key"]) {
+      const [local] = Object.values(secretNamed(`cl-local-${secret}`)) as any[];
+      expect(local.DeletionPolicy, secret).toBe("Delete");
+      // CloudFormation would otherwise fill a new secret with a random password, which isn't JSON.
+      expect(local.Properties.GenerateSecretString, secret).toEqual({ SecretStringTemplate: "{}", GenerateStringKey: "unset" });
+      template("aws").hasResource("AWS::SecretsManager::Secret", { Properties: { Name: `cl-aws-${secret}` }, DeletionPolicy: "Retain" });
     }
-    for (const name of ["cl-local-run", "cl-local-voice", "cl-local-live"]) expect(secretReads(name), name).not.toContain(pushKeysId());
+  });
+
+  it("only the push worker may read the private key; the routes facing browsers read only the public one", () => {
+    expect(secretReads("cl-local-push")).toEqual([secretId("cl-local-push-keys")]);
+    expect(fnNamed("cl-local-push").props.Environment.Variables).toMatchObject({ PUSH_KEYS_SECRET: "cl-local-push-keys" });
+    expect(secretReads("cl-local-push-routes")).toEqual([secretId("cl-local-push-public-key")]);
+    expect(fnNamed("cl-local-push-routes").props.Environment.Variables).toEqual(expect.objectContaining({
+      PUSH_PUBLIC_KEY_SECRET: "cl-local-push-public-key",
+    }));
+    expect(fnNamed("cl-local-push-routes").props.Environment.Variables).not.toHaveProperty("PUSH_KEYS_SECRET");
+    for (const name of ["cl-local-run", "cl-local-voice", "cl-local-live"]) expect(secretReads(name), name).not.toContain(secretId("cl-local-push-keys"));
   });
 
   it("the push worker gets 30 s and is never retried: a late duplicate notification is worse than a missed one", () => {

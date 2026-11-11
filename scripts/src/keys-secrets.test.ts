@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { MODEL_KEY_NAMES, PUSH_KEY_NAMES, TOOL_KEY_NAMES, modelKeysSecret, pushKeysSecret, toolKeysSecret } from "./keys-secrets.js";
+import { MODEL_KEY_NAMES, PUSH_KEY_NAMES, TOOL_KEY_NAMES, modelKeysSecret, pushKeysSecret, pushPublicKeySecret, toolKeysSecret } from "./keys-secrets.js";
 
 describe("modelKeysSecret", () => {
   it("keeps only the four model keys from .env, as the secret's JSON", () => {
@@ -37,6 +37,13 @@ describe("pushKeysSecret", () => {
     const noSubject = "VAPID_PUBLIC_KEY=pub\nVAPID_PRIVATE_KEY=priv-c0ffee\n";
     expect(() => pushKeysSecret(noSubject)).toThrow(".env is missing VAPID_SUBJECT");
     expect(() => pushKeysSecret(noSubject)).not.toThrow(/c0ffee/);
+  });
+});
+
+describe("pushPublicKeySecret", () => {
+  it("holds only the public key, for the routes a browser calls", () => {
+    const env = "VAPID_PUBLIC_KEY=pub\nVAPID_PRIVATE_KEY=priv\nVAPID_SUBJECT=mailto:a@example.com\n";
+    expect(JSON.parse(pushPublicKeySecret(env))).toEqual({ VAPID_PUBLIC_KEY: "pub" });
   });
 });
 

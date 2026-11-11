@@ -22,6 +22,11 @@ export function pushKeysSecret(envText: string): string {
   return JSON.stringify(pick(envText, PUSH_KEY_NAMES));
 }
 
+/** The JSON of the secret that holds a copy of the push public key alone. */
+export function pushPublicKeySecret(envText: string): string {
+  return JSON.stringify(pick(envText, ["VAPID_PUBLIC_KEY"]));
+}
+
 /**
  * The tool keys secret's JSON. GitHub hands out the App's private key as a .pem file, so .env names the file and the
  * key itself goes into the secret. Errors name the setting, never the file's contents.

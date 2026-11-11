@@ -8,7 +8,7 @@ import { flociHost, localEnv, useLocalEnv } from "./env.js";
 import { assertOurFlociUp } from "./floci-owner.js";
 import { cleanStaleStacks } from "./stale.js";
 import { devEnvFile } from "./dev-env.js";
-import { MODEL_KEY_NAMES, PUSH_KEY_NAMES, TOOL_KEY_NAMES, modelKeysSecret, pushKeysSecret, toolKeysSecret } from "./keys-secrets.js";
+import { MODEL_KEY_NAMES, PUSH_KEY_NAMES, TOOL_KEY_NAMES, modelKeysSecret, pushKeysSecret, pushPublicKeySecret, toolKeysSecret } from "./keys-secrets.js";
 import { localSandboxToken } from "./sandbox-token.js";
 
 const infraDir = fileURLToPath(new URL("../../infra/", import.meta.url));
@@ -66,8 +66,10 @@ async function main() {
   cdk(["deploy", "cl-local-core", "-c", "stage=local", "--require-approval", "never", "--outputs-file", "cdk.out/outputs-local.json"], cdkEnv);
   if (modelKeys) await putSecret("cl-local-model-keys", modelKeys, MODEL_KEY_NAMES, "model");
   if (toolKeys) await putSecret("cl-local-tool-keys", toolKeys, TOOL_KEY_NAMES, "tool");
-  if (pushKeys) await putSecret("cl-local-push-keys", pushKeys, PUSH_KEY_NAMES, "push");
-  else console.log("push keys not in .env: notifications are off locally");
+  if (pushKeys) {
+    await putSecret("cl-local-push-keys", pushKeys, PUSH_KEY_NAMES, "push");
+    await putSecret("cl-local-push-public-key", pushPublicKeySecret(envText), ["VAPID_PUBLIC_KEY"], "push public");
+  } else console.log("push keys not in .env: notifications are off locally");
   const out = readOutputs("cl-local-core");
   const api = `http://${flociHost(out.ApiUrl)}`;
   writeFileSync(webEnvPath, devEnvFile({ apiUrl: api, userPoolClientId: out.UserPoolClientId, streamUrl: out.StreamUrl }));
