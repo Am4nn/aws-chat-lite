@@ -15,6 +15,8 @@ export type RoomView = {
   me: { role: Role };
   chats: Chat[];
   members: Member[];
+  defaultModel: ModelPick;
+  models: ModelOption[];
 };
 
 export type Reaction = "thumbs" | "heart" | "joy" | "tada" | "eyes" | "check";
@@ -38,7 +40,7 @@ export type Message = {
   mentions: string[];
   everyone: boolean;
   threadRef?: { threadId: string; kind: "started" | "delivered" };
-  agent?: { runId: string; status: RunEndStatus; reason?: string; steps: number; costMicros: number; ms: number; model: string; firstSeq: number };
+  agent?: { runId: string; status: RunEndStatus; reason?: string; steps: number; costMicros: number; ms: number; model: string; pick: ModelPick; firstSeq: number };
   /** How many times the message has changed (edit, delete, reaction); absent until the first change. */
   v?: number;
 };
@@ -77,17 +79,25 @@ export type ThreadSummary = {
   createdBy: string;
   lastActivityAt: string;
   archived: boolean;
+  taint: TaintSource[];
 };
+
+// Model choice: mirrors services/src/models/catalog.ts and privacy.ts.
+export type ModelPick = "auto" | "sonnet" | "haiku" | "opus" | "fable" | "deepseek-flash" | "deepseek-pro" | "fake";
+export type ModelOption = { pick: ModelPick; id?: string; label: string; short: string; price: string; privateOk: boolean };
+export type TaintSource = "attachment";
 
 export type Budget = { spentMicros: number; capMicros: number; month: string; resetsAt: string };
 
 type RunEventBody =
-  | { type: "run.started"; model: string; startedBy: string }
+  | { type: "run.started"; pick: ModelPick; startedBy: string }
+  | { type: "routed"; model: string; by: "pick" | "default" | "auto" }
+  | { type: "model.turn"; model: string; content: unknown }
   | { type: "steer"; messageSeq: number; authorName: string; text: string }
   | { type: "text"; text: string }
   | { type: "step.started"; step: number; call: { id: string; name: string; input: Record<string, unknown> }; detail: string }
   | { type: "step.finished"; step: number; output: string; ms: number; ok: boolean }
-  | { type: "usage"; model: string; inputTokens: number; outputTokens: number; costMicros: number }
+  | { type: "usage"; model: string; job: "route" | "name" | "run"; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; costMicros: number }
   | { type: "run.finished"; status: RunEndStatus; reason?: string; ms: number; steps: number; costMicros: number };
 
 export type RunEvent = RunEventBody & { seq: number; at: string };

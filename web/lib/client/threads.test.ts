@@ -4,7 +4,7 @@ import { applyThreadUpdate, groupThread, liveCount, sidebarThreads, threadMeta }
 
 const th = (o: Partial<ThreadSummary>): ThreadSummary => ({
   roomId: "r", threadId: "t1", number: 1, name: "n", status: "idle", rev: 1, steps: 0, costMicros: 0,
-  createdBy: "u", lastActivityAt: "2026-11-11T10:00:00Z", archived: false, ...o,
+  createdBy: "u", lastActivityAt: "2026-11-11T10:00:00Z", archived: false, taint: [], ...o,
 });
 
 describe("thread list", () => {
@@ -56,7 +56,7 @@ describe("threadMeta", () => {
 describe("groupThread", () => {
   const msg = (seq: number, o: Partial<Message> = {}) => ({ seq, authorId: "u", text: String(seq), ...o }) as Message;
   const answer = (seq: number, firstSeq: number) =>
-    msg(seq, { authorId: "agent", agent: { runId: "r", status: "done", steps: 1, costMicros: 0, ms: 1, model: "m", firstSeq } });
+    msg(seq, { authorId: "agent", agent: { runId: "r", status: "done", steps: 1, costMicros: 0, ms: 1, model: "m", pick: "auto", firstSeq } });
 
   it("folds trigger, steers and answer into one run block", () => {
     const blocks = groupThread([msg(1), msg(2), answer(3, 1)]);
