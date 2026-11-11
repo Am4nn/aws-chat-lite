@@ -65,9 +65,14 @@ describe("ops", () => {
   it("the API and socket alarms", () => {
     const t = template("aws");
     expect(alarmNamed(t, "cl-aws-api-5xx")).toMatchObject({ Namespace: "AWS/ApiGateway", MetricName: "5xx", Threshold: 5, Period: 300 });
-    expect(alarmNamed(t, "cl-aws-ws-integration-errors")).toMatchObject({
-      Namespace: "AWS/ApiGateway", MetricName: "IntegrationError", Threshold: 5, Period: 300,
+    // A refused connect is a 4xx from the integration, which anyone holding the socket's URL can cause.
+    expect(alarmNamed(t, "cl-aws-ws-execution-errors")).toMatchObject({
+      Namespace: "AWS/ApiGateway", MetricName: "ExecutionError", Threshold: 5, Period: 300,
     });
+    expect(alarms(t).some(([, a]) => a.Properties.MetricName === "IntegrationError")).toBe(false);
+    expect(metricsOf(t, "Socket errors").map((m) => [m[1], m[4].label])).toEqual([
+      ["IntegrationError", "cl-aws-ws 4xx/5xx from the Lambda"], ["ExecutionError", "cl-aws-ws couldn't call the Lambda"],
+    ]);
   });
 
   it("every alarm notifies the ops topic both ways", () => {

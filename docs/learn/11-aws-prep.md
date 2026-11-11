@@ -12,7 +12,7 @@
 All of it is aws-only: the local (Floci) template has no CloudFront, alarm, SNS, dashboard or new log group, so `deploy:local` is unchanged.
 - **Prod settings.** The domain is a constant in `infra/lib/config.ts`. The two account-specific values, the alert email and the us-east-1 certificate ARN, sit in the gitignored `infra/cdk.context.json`, which the CDK CLI loads by itself (`infra/cdk.context.example.json` shows the shape). An aws synth with a value missing or malformed fails and names that file; a local synth never reads it.
 - **The site** (`infra/lib/web.ts`): the Next.js server built by OpenNext on a Lambda Function URL (`cl-aws-web`), its static files in an S3 bucket, and one CloudFront distribution on `chat.amanarya.com` in front of them, the run stream and the API's MCP and OAuth paths. The web gate refuses any request that skipped CloudFront; it is the step's only change to web app code.
-- **Ops** (`infra/lib/ops.ts`): an SNS topic `cl-aws-ops` that mails the alert address, an errors alarm for every Lambda we named, a 5xx alarm per HTTP API, an integration-errors alarm per WebSocket API, one account-wide throttles alarm, and the `cl-aws-ops` dashboard.
+- **Ops** (`infra/lib/ops.ts`): an SNS topic `cl-aws-ops` that mails the alert address, an errors alarm for every Lambda we named, a 5xx alarm per HTTP API, an execution-errors alarm per WebSocket API, one account-wide throttles alarm, and the `cl-aws-ops` dashboard.
 - **Hardening:** the table (with point-in-time recovery), the user pool, the files bucket and the secrets survive `cdk destroy`; every Lambda and the API's access log keep one month of logs; the HTTP API and the socket's `live` stage are throttled to 50 requests a second, bursts of 100.
 - **An AwsSolutions gate** (`infra/lib/compliance.ts`): cdk-nag runs on every aws synth, and a finding without a written reason fails it.
 - **The runbook** (`docs/runbook-aws.md`) and its test (`infra/lib/runbook.test.ts`).
@@ -78,7 +78,7 @@ Nothing is pruned, so a page still open from the last deploy can load its old bu
 **Choosing alarm metrics by symptom.** Each alarm watches something a user would notice, and its description says what they feel ("messages don't send and live updates stop") and links to the runbook's `## When an alarm fires`:
 - `<function>-errors`: 3 or more in 5 minutes. A function maps to a feature, so the alarm's name says what broke;
 - `cl-aws-api-5xx`: 5 or more server errors in 5 minutes;
-- `cl-aws-ws-integration-errors`: the socket failed to reach its Lambda 5 or more times;
+- `cl-aws-ws-execution-errors`: the socket API couldn't call its Lambda 5 or more times. Not `IntegrationError`, which also counts the Lambda's 4xx answers: every `$connect` refused for a bad ticket is one, and the socket's URL is in the page's JavaScript, so anyone could have set it off. The Lambda's own failures have `cl-aws-live-errors`;
 - `cl-aws-lambda-throttles`: account-wide, because one function using up the concurrency quota throttles all the others (and instagram-lite shares the quota).
 
 Every alarm has one evaluation period, treats missing data as fine (a quiet function is a healthy one), and mails both on alarm and on OK, so the mail thread shows when it ended. There are no CPU- or duration-style alarms: those are causes, and the dashboard shows them once a symptom fires. Thresholds are guesses until a week of real traffic.

@@ -63,8 +63,10 @@ export function addOps(stack: Stack, alertEmail: string): void {
       `${name} failed 3+ times in 5 minutes: whatever it serves is failing for users.`)),
     ...httpApis.map(({ api, name }) => alarm(`${name}-5xx`, api.metricServerError(sum), 5,
       `${name} returned 5+ server errors in 5 minutes: pages and actions fail for users.`)),
-    ...wsApis.map(({ api, name }) => alarm(`${name}-integration-errors`, api.metric("IntegrationError", sum), 5,
-      `${name} failed to reach its Lambda 5+ times in 5 minutes: messages don't send and live updates stop.`)),
+    // Not IntegrationError: it counts the Lambda's 4xx answers too, and every refused connect is one, so anyone with the
+    // socket's public URL could set it off. The Lambda's own failures have its errors alarm.
+    ...wsApis.map(({ api, name }) => alarm(`${name}-execution-errors`, api.metric("ExecutionError", sum), 5,
+      `${name} couldn't call its Lambda 5+ times in 5 minutes: messages don't send and live updates stop.`)),
     // Throttles are counted per account: one function using up the concurrency quota throttles all the others.
     alarm("cl-aws-lambda-throttles", lambda.Function.metricAllThrottles(sum), 5,
       "Lambda turned away 5+ calls in 5 minutes because the account ran out of concurrency: users see errors everywhere."),
@@ -86,7 +88,9 @@ export function addOps(stack: Stack, alertEmail: string): void {
   row([
     ["Socket connects", wsApis.map(({ api, name }) => api.metric("ConnectCount", { ...sum, label: name }))],
     ["Socket messages", wsApis.map(({ api, name }) => api.metric("MessageCount", { ...sum, label: name }))],
-    ["Socket integration errors", wsApis.map(({ api, name }) => api.metric("IntegrationError", { ...sum, label: name }))],
+    ["Socket errors", wsApis.flatMap(({ api, name }) => [
+      api.metric("IntegrationError", { ...sum, label: `${name} 4xx/5xx from the Lambda` }),
+      api.metric("ExecutionError", { ...sum, label: `${name} couldn't call the Lambda` })])],
   ]);
   row([
     ["Lambda errors", fns.map(({ fn, name }) => fn.metricErrors({ ...sum, label: name }))],

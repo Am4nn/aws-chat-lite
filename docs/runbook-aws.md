@@ -283,7 +283,7 @@ fields @timestamp, @log, @message
 Open `$out.OpsDashboardUrl`.
 
 **Check:**
-- every alarm is OK (17 of them: one errors alarm per function, `cl-aws-api-5xx`, `cl-aws-ws-integration-errors` and `cl-aws-lambda-throttles`);
+- every alarm is OK (17 of them: one errors alarm per function, `cl-aws-api-5xx`, `cl-aws-ws-execution-errors` and `cl-aws-lambda-throttles`);
 - every function has lines on the Lambda graphs.
 
 **The expected idle floor per month:**
@@ -334,7 +334,7 @@ Each alarm mail says what users feel and links here. When it clears, the `OK` ma
 | Alarm | What users feel | What to do |
 |---|---|---|
 | `cl-aws-web-errors` | Pages or actions fail: the site is down for them | Check the logs. A deploy just before? Redeploy the last good commit |
-| `cl-aws-live-errors` or `cl-aws-ws-integration-errors` | Messages don't send; typing, presence and live updates stop | Check `cl-aws-live`'s logs; a timeout means a route took more than 29 s |
+| `cl-aws-live-errors` or `cl-aws-ws-execution-errors` | Messages don't send; typing, presence and live updates stop | Check `cl-aws-live`'s logs; a timeout means a route took more than 29 s. The dashboard's "Socket errors" graph also counts refused connects (a stale or forged ticket) as 4xx/5xx from the Lambda; those are normal and alarm nothing |
 | `cl-aws-chat-errors` | History, search or file links fail | Check the logs |
 | `cl-aws-rooms-errors` | Rooms, invites or members fail | Check the logs |
 | `cl-aws-threads-errors` | New threads don't start | Check the logs |
