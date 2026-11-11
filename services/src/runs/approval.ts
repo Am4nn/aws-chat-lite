@@ -9,7 +9,7 @@ import type { ApprovalStatus } from "../threads/types.js";
 import { DEAD_AFTER_MS } from "./model.js";
 import { notifyRun } from "./notify.js";
 import { runsRepo, type Run } from "./repo.js";
-import { limitsReached, models, roomConnections, toolRoom } from "./steps.js";
+import { limitsReached, models, roomConnections, toolRoom, type RoutedRun } from "./steps.js";
 import { mayRun } from "./tools.js";
 
 /*
@@ -27,10 +27,10 @@ type Gate = { asks: false } | { asks: true; timeoutSec: number; title: string; i
  * runs on the repo the card named even if the connection changes during the wait. `tainted` is the taint the model's
  * turn saw, which the thread's own can lag behind.
  */
-export async function gateOf(run: Run & { model: string }, call: ToolCall, tainted: boolean): Promise<Gate> {
+export async function gateOf(run: RoutedRun, call: ToolCall, tainted: boolean): Promise<Gate> {
   const room = await roomConnections(run.roomId);
   const tool = findTool(call.name, room);
-  if (!tool || !mayRun(run.model, models().servedBy(run.model), call.name, room)) return { asks: false };
+  if (!tool || !mayRun(run.model, models().servedBy(run.model), call.name, room, run.agent.tools)) return { asks: false };
   const privateThread = async () => tainted || !!(await threadsRepo().threadById(run.roomId, run.threadId))?.taint.length;
   if (!(tool.write || (tool.kind === "web" && await privateThread())) || await limitsReached(run)) return { asks: false };
   const { github, approvalTimeoutSec } = room;

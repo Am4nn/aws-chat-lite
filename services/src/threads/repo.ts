@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { BUILT_IN } from "../agents/model.js";
 import type { User } from "../lib/auth.js";
 import { conditionFailed, docClient, failedAt, tableName } from "../lib/db.js";
 import { Conflict, NotFound } from "../lib/errors.js";
@@ -88,11 +89,14 @@ export function threadsRepo() {
      * are then written together, and the message is sent into the new chat. Numbers have no gaps as long as creates
      * succeed: one refused after the counter moved (its name held by a chat) skips its number. A thread started from
      * a people-chat message (`from`) takes that message's admission and is a copy of it, so the message counts once
-     * towards the rate limit and its mentions once.
+     * towards the rate limit and its mentions once. A thread made with a `name` (already valid) is named from the
+     * start: the name, then name-2 … name-9, and the numbered name only when all of those are taken.
      */
     async createThread(
       user: User, roomId: string,
-      input: { text: unknown; clientId: string; from?: { chatId: string; seq: number }; admitted?: Admitted },
+      input: {
+        text: unknown; clientId: string; from?: { chatId: string; seq: number }; admitted?: Admitted; agentId?: string; name?: string;
+      },
     ): Promise<{ thread: ThreadSummary; message: Message }> {
       const chat = chatRepo();
       const admitted = input.admitted ?? await chat.admit(user, { roomId, text: input.text });
@@ -102,24 +106,31 @@ export function threadsRepo() {
       }));
       const number = Number(Attributes!.threadSeq);
       const threadId = randomUUID();
-      const name = PROVISIONAL(number);
-      const item = {
-        ...threadKey(roomId, number), roomId, threadId, number, name, named: false, status: "idle", rev: 1, steps: 0,
-        costMicros: 0, createdBy: user.userId, lastActivityAt: new Date().toISOString(), ...(input.from && { from: input.from }),
+      const numbered = PROVISIONAL(number);
+      const base = {
+        ...threadKey(roomId, number), roomId, threadId, number, agentId: input.agentId ?? BUILT_IN.agentId, status: "idle", rev: 1,
+        steps: 0, costMicros: 0, createdBy: user.userId, lastActivityAt: new Date().toISOString(), ...(input.from && { from: input.from }),
       };
-      try {
-        await db.send(new TransactWriteCommand({
-          TransactItems: [
-            { Put: { TableName, Item: item } },
-            { Put: { TableName, Item: { ...chatMetaKey(threadId), roomId, lastSeq: 0, kind: "thread", number } } },
-            { Put: { TableName, Item: { ...nameKey(roomId, name), chatId: threadId, kind: "thread" }, ConditionExpression: "attribute_not_exists(pk)" } },
-          ],
-        }));
-      } catch (e) {
-        // Only older data can hold this guard (new chats can't take thread-<N> names); a retry gets the next number.
-        if (failedAt(e, 2)) throw new Conflict(`#${name} is already a chat's name; try again.`);
-        throw e;
+      const names = [...(input.name ? uniqueCandidates(input.name).filter((n) => !isNumberedName(n)) : []), numbered];
+      let item: Item | undefined;
+      for (const name of names) {
+        const candidate = { ...base, name, named: name !== numbered };
+        try {
+          await db.send(new TransactWriteCommand({
+            TransactItems: [
+              { Put: { TableName, Item: candidate } },
+              { Put: { TableName, Item: { ...chatMetaKey(threadId), roomId, lastSeq: 0, kind: "thread", number } } },
+              { Put: { TableName, Item: { ...nameKey(roomId, name), chatId: threadId, kind: "thread" }, ConditionExpression: "attribute_not_exists(pk)" } },
+            ],
+          }));
+          item = candidate;
+          break;
+        } catch (e) {
+          if (!failedAt(e, 2)) throw e;
+        }
       }
+      // Only older data can hold a numbered name's guard (new chats can't take thread-<N> names); a retry gets the next number.
+      if (!item) throw new Conflict(`#${numbered} is already a chat's name; try again.`);
       const message = await chat.send(
         user, { roomId, chatId: threadId, clientId: input.clientId, text: input.text }, admitted, { copy: !!input.from },
       );

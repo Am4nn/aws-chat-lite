@@ -15,7 +15,7 @@ const directive = (text: string, key: string, min: number, max: number) => {
   return match ? clamp(Number(match[1]), min, max) : undefined;
 };
 const stripDirectives = (text: string) =>
-  text.replace(/\b(tools|words|drop):\d+|\b(route|call):\S+|\b(slow|fail|cutoff|refuse)\b/g, " ");
+  text.replace(/\b(tools|words|drop):\d+|\b(route|call):\S+|\b(slow|fail|cutoff|refuse|recall)\b/g, " ");
 const firstWords = (text: string, n: number) => text.split(/\s+/).filter(Boolean).slice(0, n).join(" ");
 
 type Schema = { type?: string; format?: string; enum?: unknown[]; items?: Schema; properties?: Record<string, Schema>; required?: string[] };
@@ -127,6 +127,12 @@ async function* run(req: ModelRequest, sleep: (ms: number) => Promise<void>): As
   } else if (cutoff || results < sandboxCalls.length + toolTarget + steers) {
     // A cut-off reply stops inside its tool call, so the call is there but the turn ends at the length limit.
     yield* toolTurn({ id, name: "fake.lookup", input: { query, slow } }, stop);
+    return;
+  }
+
+  if (/\brecall\b/.test(asked)) {
+    const notes = req.system.split("\n").filter((line) => line.startsWith("- ["));
+    yield* reply(notes.length ? notes.join("\n") : "Nothing in memory.");
     return;
   }
 
