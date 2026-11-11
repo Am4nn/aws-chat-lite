@@ -1,7 +1,7 @@
 import {
   GetCommand, PutCommand, QueryCommand, TransactWriteCommand, UpdateCommand, type TransactWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
-import { conditionFailed, docClient, failedAt, queryAll, tableName } from "../lib/db.js";
+import { conditionFailed, docClient, failedAt, queryAll, setFields, tableName } from "../lib/db.js";
 import { LAST_SEQ, forReaders, seqKey, type Message, type StoredMessage } from "../chat/model.js";
 import type { ModelPick } from "../models/catalog.js";
 import { summary, threadSk } from "../threads/model.js";
@@ -57,19 +57,6 @@ const callKey = (runId: string, call: string) => ({ pk: `RUN#${runId}`, sk: `CAL
  * presumed dead) must not overwrite the run that took its place.
  */
 const whileOwned = (run: Run) => ({ ConditionExpression: "activeRunId = :runId", values: { ":runId": run.runId } });
-
-/**
- * `SET #f = :f, …` for each defined field. Every attribute name goes through a placeholder: DynamoDB rejects reserved
- * words such as `status` and `steps` written bare in an expression.
- */
-export function setFields(fields: Record<string, unknown>) {
-  const keys = Object.keys(fields).filter((k) => fields[k] !== undefined);
-  return {
-    UpdateExpression: `SET ${keys.map((k) => `#${k} = :${k}`).join(", ")}`,
-    ExpressionAttributeNames: Object.fromEntries(keys.map((k) => [`#${k}`, k])),
-    ExpressionAttributeValues: Object.fromEntries(keys.map((k) => [`:${k}`, fields[k]])),
-  };
-}
 
 const withoutKeys = ({ pk: _pk, sk: _sk, ...rest }: Item) => rest;
 

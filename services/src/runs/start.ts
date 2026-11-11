@@ -5,7 +5,7 @@ import { agentOrDefault } from "../agents/model.js";
 import { agentsRepo } from "../agents/repo.js";
 import { auditRepo } from "../audit/repo.js";
 import type { User } from "../lib/auth.js";
-import { docClient, failedAt, tableName, transactionConflict } from "../lib/db.js";
+import { docClient, failedAt, setFields, tableName, transactionConflict } from "../lib/db.js";
 import { NotFound } from "../lib/errors.js";
 import { roomKey } from "../lib/keys.js";
 import type { Message } from "../chat/model.js";
@@ -18,7 +18,7 @@ import { threadsRepo } from "../threads/repo.js";
 import { finishRun } from "./finish.js";
 import { DEAD_AFTER_MS, DEAD_REASON } from "./model.js";
 import { notifyRun } from "./notify.js";
-import { runsRepo, setFields, type Run, type TransactItem } from "./repo.js";
+import { runsRepo, type Run, type TransactItem } from "./repo.js";
 
 const CLAIM_ATTEMPTS = 5;
 

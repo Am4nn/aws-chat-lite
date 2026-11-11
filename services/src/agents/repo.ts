@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { User } from "../lib/auth.js";
 import { bestEffort } from "../lib/best-effort.js";
-import { conditionFailed, docClient, failedAt, queryAll, tableName, transactionConflict } from "../lib/db.js";
+import { conditionFailed, docClient, failedAt, queryAll, setFields, tableName, transactionConflict } from "../lib/db.js";
 import { Conflict, Forbidden, NotFound, ValidationError } from "../lib/errors.js";
 import { roomKey } from "../lib/keys.js";
 import { requireMember } from "../chat/membership.js";
@@ -24,16 +24,6 @@ const changed = (name: string) => new Conflict(`@${name} just changed; try again
 /** The built-in is stored only once an admin edits it, and then only the fields they changed. */
 function toAgent({ pk: _pk, sk: _sk, ...item }: Record<string, unknown>): StoredAgent {
   return item.agentId === BUILT_IN.agentId ? { ...BUILT_IN, ...item } : item as StoredAgent;
-}
-
-/** `SET #f0 = :f0, …` over the given fields; placeholders throughout, as `name` is a reserved word. */
-function setFields(fields: Record<string, unknown>) {
-  const keys = Object.keys(fields);
-  return {
-    UpdateExpression: `SET ${keys.map((_, i) => `#f${i} = :f${i}`).join(", ")}`,
-    ExpressionAttributeNames: Object.fromEntries(keys.map((k, i) => [`#f${i}`, k])),
-    ExpressionAttributeValues: Object.fromEntries(keys.map((k, i) => [`:f${i}`, fields[k]])),
-  };
 }
 
 /** Best effort: the write has happened, and a page that misses the event gets the agents on its next load. */

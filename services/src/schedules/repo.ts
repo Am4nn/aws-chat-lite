@@ -2,11 +2,12 @@ import { randomUUID } from "node:crypto";
 import { GetCommand, PutCommand, TransactWriteCommand, UpdateCommand, type TransactWriteCommandInput } from "@aws-sdk/lib-dynamodb";
 import type { User } from "../lib/auth.js";
 import { bestEffort } from "../lib/best-effort.js";
-import { conditionFailed, docClient, failedAt, queryAll, tableName, transactionConflict } from "../lib/db.js";
+import { conditionFailed, docClient, failedAt, queryAll, setFields, tableName, transactionConflict } from "../lib/db.js";
 import { Forbidden, NotFound, ValidationError } from "../lib/errors.js";
 import { counterKey, roomKey } from "../lib/keys.js";
 import { requireMember } from "../chat/membership.js";
 import { broadcastToRoom } from "../live/broadcast.js";
+import { BUILT_IN } from "../agents/model.js";
 import { can, type Role } from "../rooms/access.js";
 import type { Schedule } from "../threads/types.js";
 import { nextFire, parseCadence } from "./cadence.js";
@@ -17,8 +18,6 @@ type ScheduleInput = { agentId: unknown; title: unknown; prompt: unknown; cadenc
 type SchedulePatch = Partial<Omit<ScheduleInput, "agentId"> & { enabled: unknown }>;
 
 const MAX_SCHEDULES = 5;
-/** The room's default agent has no item until an admin edits it, so there is nothing to check it against. */
-const BUILT_IN_AGENT_ID = "agent";
 /** Well past Scheduler's last retry of an occurrence (an hour), after which no duplicate can arrive. */
 const FIRE_CLAIM_TTL_SEC = 7 * 86_400;
 const CONFLICT_ATTEMPTS = 3;
@@ -182,7 +181,8 @@ export function schedulesRepo() {
         createdBy: user.userId, createdByName: user.username, createdAt: nowIso(),
       };
       try {
-        await insert(roomId, schedule, [chatCheck(roomId, chatId), ...(agentId === BUILT_IN_AGENT_ID ? [] : [agentCheck(roomId, agentId)])]);
+        // The built-in has no item until an admin edits it, so there is nothing to check it against.
+        await insert(roomId, schedule, [chatCheck(roomId, chatId), ...(agentId === BUILT_IN.agentId ? [] : [agentCheck(roomId, agentId)])]);
       } catch (e) {
         if (failedAt(e, 0)) throw new ValidationError("A room has at most 5 schedules.");
         if (failedAt(e, 1)) throw new NotFound("Chat not found.");
@@ -210,9 +210,7 @@ export function schedulesRepo() {
             {
               Update: {
                 TableName, Key: scheduleKey(roomId, id), ConditionExpression: "attribute_exists(pk)",
-                UpdateExpression: `SET ${names.map((n) => `#${n} = :${n}`).join(", ")}`,
-                ExpressionAttributeNames: Object.fromEntries(names.map((n) => [`#${n}`, n])),
-                ExpressionAttributeValues: Object.fromEntries(names.map((n) => [`:${n}`, fields[n as keyof Schedule]])),
+                ...setFields(fields),
               },
             },
             ...(fields.chatId !== undefined ? [chatCheck(roomId, fields.chatId)] : []),
