@@ -32,8 +32,8 @@ export function startStreamServer(port = 4600): Server {
       }, sink);
     } catch (e) {
       console.error("run stream failed", runId, e);
-      if (!res.headersSent) res.writeHead(500, CORS);
-      res.end();
+      if (res.headersSent) res.end();
+      else refuse(sink, 500, "The stream failed.");
     }
   });
   // Loopback only: the stream is for this machine's browser, and the tickets would otherwise be open to the network.

@@ -1,5 +1,6 @@
 import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
 import { callerFromEvent } from "../lib/auth.js";
+import { ValidationError } from "../lib/errors.js";
 import { errorResponse, json, parseBody } from "../lib/http.js";
 import { budgetRepo, type BudgetRepo } from "../budget/repo.js";
 import { capFromUsd } from "../budget/model.js";
@@ -29,8 +30,15 @@ export function makeHandler(
         case "POST /rooms/{roomId}/threads": {
           const user = callerFromEvent(event);
           const roomId = params.roomId!;
+          if (typeof body.text !== "string" || !body.text.trim()) throw new ValidationError("A new thread needs a first message.");
           const created = await threads.createThread(user, roomId, { text: body.text, clientId: idOf(body.clientId, "clientId") });
-          await startRun(user, roomId, created.thread.threadId, created.message);
+          // The thread and its message exist now, so a failed start is no reason to fail the request: a client that
+          // retried would make a second thread. The next message in the thread starts the run.
+          try {
+            await startRun(user, roomId, created.thread.threadId, created.message);
+          } catch (e) {
+            console.error("run start failed", roomId, created.thread.threadId, e);
+          }
           // Read again so the reply shows the run that just started.
           const thread = await threads.threadById(roomId, created.thread.threadId);
           return json(201, { thread, message: created.message });
