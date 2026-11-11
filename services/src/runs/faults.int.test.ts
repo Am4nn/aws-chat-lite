@@ -195,7 +195,7 @@ describe("run steps and starts under injected failures", () => {
     const { run } = await runningThread("go tools:1");
     fail(puts("step.finished"));
     await expect(toolStep(run, call)).rejects.toThrow("injected failure");
-    expect(await toolStep(run, call)).toEqual({ steps: 1 });
+    expect(await toolStep(run, call)).toEqual({ steps: 1, costMicros: run.costMicros });
     expect(await count(run.runId, "step.started")).toBe(1);
     expect(await count(run.runId, "step.finished")).toBe(1);
   });
@@ -203,7 +203,7 @@ describe("run steps and starts under injected failures", () => {
   it("a tool step checks the run's limits first, so a turn with many tool calls can't pass 200 steps", async () => {
     const { run } = await runningThread("go tools:1");
     expect(await toolStep({ ...run, steps: 200 }, call)).toEqual({
-      steps: 200, end: { status: "failed", reason: "Step limit reached (200 steps)." },
+      steps: 200, costMicros: run.costMicros, end: { status: "failed", reason: "Step limit reached (200 steps)." },
     });
     expect(await count(run.runId, "step.started")).toBe(0);
   });
