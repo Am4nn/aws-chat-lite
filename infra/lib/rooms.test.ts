@@ -17,7 +17,7 @@ const ROUTES = [
   "PATCH /rooms/{roomId}/members/{userId}", "DELETE /rooms/{roomId}/members/{userId}",
   "POST /rooms/{roomId}/invite", "GET /rooms/{roomId}/invite", "DELETE /rooms/{roomId}/invite",
   "GET /invites/{code}", "POST /invites/{code}/accept",
-  "PATCH /rooms/{roomId}/chats/{chatId}/prefs", "POST /rooms/{roomId}/leave", "POST /rooms/{roomId}/archive",
+  "PATCH /rooms/{roomId}/chats/{chatId}/prefs", "POST /rooms/{roomId}/leave", "POST /rooms/{roomId}/archive", "PUT /rooms/{roomId}/model",
 ];
 
 describe("rooms API", () => {

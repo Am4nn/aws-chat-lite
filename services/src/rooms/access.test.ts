@@ -13,6 +13,7 @@ const MATRIX: [Action, Role, Role | undefined, boolean][] = [
   ["setRole", "admin", "member", false], ["setRole", "admin", "admin", false], ["setRole", "member", "member", false],
   ["archive", "owner", undefined, true], ["archive", "admin", undefined, false], ["archive", "member", undefined, false],
   ["setBudget", "owner", undefined, true], ["setBudget", "admin", undefined, false], ["setBudget", "member", undefined, false],
+  ["setModel", "owner", undefined, true], ["setModel", "admin", undefined, true], ["setModel", "member", undefined, false],
   ["leave", "owner", undefined, false], ["leave", "admin", undefined, true], ["leave", "member", undefined, true],
 ];
 

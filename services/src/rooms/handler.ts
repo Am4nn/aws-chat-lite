@@ -1,5 +1,7 @@
 import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
 import { errorResponse, json, parseBody } from "../lib/http.js";
+import { ValidationError } from "../lib/errors.js";
+import { parsePick } from "../models/picks.js";
 import { callerFromEvent, claimsFromEvent, subFromEvent } from "../lib/auth.js";
 import { broadcastToRoom, sendToUser } from "../live/broadcast.js";
 import { isCreator } from "./claims.js";
@@ -8,9 +10,9 @@ import { roomsRepo, type RoomsRepo } from "./repo.js";
 type Event = APIGatewayProxyEventV2WithJWTAuthorizer;
 
 /**
- * Rooms API: one Lambda, routed by API Gateway's routeKey. A write that changes what members see (chats, members,
- * archive) tells the room's open sockets, which refetch the room view. That is best effort: the write has already
- * happened, and the event carries no data, so a client that misses it loses nothing it won't get on its next load.
+ * Rooms API: one Lambda, routed by API Gateway's routeKey. A write that changes what members see (chats, members, the
+ * default model, archive) tells the room's open sockets, which refetch the room view. That is best effort: the write has
+ * already happened, and the event carries no data, so a client that misses it loses nothing it won't get on its next load.
  */
 export function makeHandler(repo: RoomsRepo, notifyRoom: (roomId: string, alsoUserId?: string) => Promise<unknown>) {
   const changed = async (statusCode: number, result: unknown, roomId: string, alsoUserId?: string) => {
@@ -53,6 +55,12 @@ export function makeHandler(repo: RoomsRepo, notifyRoom: (roomId: string, alsoUs
           return changed(200, await repo.leaveRoom(params.roomId!, subFromEvent(event)), params.roomId!, subFromEvent(event));
         case "POST /rooms/{roomId}/archive":
           return changed(200, await repo.archiveRoom(params.roomId!, subFromEvent(event)), params.roomId!);
+        case "PUT /rooms/{roomId}/model": {
+          const pick = parsePick(body.model, process.env.STAGE ?? "");
+          if (!pick) throw new ValidationError("Pick a model.");
+          const defaultModel = await repo.setDefaultModel(callerFromEvent(event), params.roomId!, pick);
+          return changed(200, { defaultModel }, params.roomId!);
+        }
         case "POST /rooms/{roomId}/invite":
           return json(201, await repo.rotateInvite(params.roomId!, subFromEvent(event)));
         case "GET /rooms/{roomId}/invite":

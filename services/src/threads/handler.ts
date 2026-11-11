@@ -4,6 +4,7 @@ import { errorResponse, json, parseBody } from "../lib/http.js";
 import { budgetRepo, type BudgetRepo } from "../budget/repo.js";
 import { capFromUsd } from "../budget/model.js";
 import { idOf } from "../chat/model.js";
+import { parsePick } from "../models/picks.js";
 import { startOrSteer } from "../runs/start.js";
 import { issueStreamTicket } from "../runs/stream-tickets.js";
 import { claimableName, threadName } from "./model.js";
@@ -29,8 +30,10 @@ export function makeHandler(
         case "POST /rooms/{roomId}/threads": {
           const user = callerFromEvent(event);
           const roomId = params.roomId!;
+          // A new thread holds only this text (files come over the socket), so no pick is refused for privacy here.
+          const pick = parsePick(body.model, process.env.STAGE ?? "");
           const created = await threads.createThread(user, roomId, { text: body.text, clientId: idOf(body.clientId, "clientId") });
-          await startRun(user, roomId, created.thread.threadId, created.message);
+          await startRun(user, roomId, created.thread.threadId, created.message, pick);
           // Read again so the reply shows the run that just started.
           const thread = await threads.threadById(roomId, created.thread.threadId);
           return json(201, { thread, message: created.message });

@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
-import { TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { docClient, failedAt, tableName, transactionConflict } from "../lib/db.js";
 import { NotFound } from "../lib/errors.js";
 import type { Message } from "../chat/model.js";
+import type { ModelPick } from "../models/catalog.js";
+import { resolvePick } from "../models/picks.js";
+import { mergeTaint, messageTaint, type TaintSource } from "../models/privacy.js";
 import { summary, threadSk } from "../threads/model.js";
 import type { RunEvent } from "../threads/types.js";
 import { threadsRepo } from "../threads/repo.js";
@@ -15,6 +18,28 @@ import { runsRepo, setFields, type Run } from "./repo.js";
 interface User { userId: string; username: string }
 
 let lambda: LambdaClient | undefined;
+
+/** A room that never set a default model uses Auto. */
+async function roomDefaultModel(roomId: string): Promise<ModelPick> {
+  const { Item } = await docClient().send(new GetCommand({
+    TableName: tableName(), Key: { pk: `ROOM#${roomId}`, sk: "META" },
+    ProjectionExpression: "#m", ExpressionAttributeNames: { "#m": "defaultModel" },
+  }));
+  return (Item?.defaultModel as ModelPick | undefined) ?? "auto";
+}
+
+/**
+ * The thread's ADD clause: its rev, and the message's taint when it has any. The taint is a string set, so adding to
+ * it never drops a source another write added, and a thread that went private stays private.
+ */
+function threadAdds(taint: TaintSource[]) {
+  const tainted = taint.length > 0;
+  return {
+    clause: `ADD #rev :one${tainted ? ", #taint :taint" : ""}`,
+    names: { "#rev": "rev", ...(tainted && { "#taint": "taint" }) },
+    values: { ":one": 1, ...(tainted && { ":taint": new Set(taint) }) },
+  };
+}
 
 /**
  * True when the claim went through; false when the thread already has a live run, which makes the message a steer.
@@ -40,20 +65,29 @@ async function claimed(claim: TransactWriteCommand): Promise<boolean> {
  * already in the thread, past the run's cursor, and the run reads it before its next model call.
  *
  * A run whose `startedAt` is older than the execution timeout can't still be alive, so it no longer counts as active.
+ *
+ * A new run takes the message's `pick`, else the room default; a default that may not see a private thread's content
+ * becomes Auto. A steer's pick is ignored: the run keeps the model it started with. Either way a message with an
+ * attachment makes the thread private.
  */
-export async function startOrSteer(user: User, roomId: string, threadId: string, message: Message): Promise<{ runId: string; started: boolean }> {
+export async function startOrSteer(
+  user: User, roomId: string, threadId: string, message: Message, pick?: ModelPick,
+): Promise<{ runId: string; started: boolean }> {
   const db = docClient();
   const TableName = tableName();
   const runs = runsRepo();
   const threads = threadsRepo();
-  const thread = await threads.threadById(roomId, threadId);
+  const [thread, roomDefault] = await Promise.all([threads.threadById(roomId, threadId), roomDefaultModel(roomId)]);
   if (!thread) throw new NotFound("Thread not found.");
+  const taint = messageTaint(message);
+  const adds = threadAdds(taint);
+  const chosen = resolvePick(pick, roomDefault, mergeTaint(thread.taint, taint));
   const key = { pk: `ROOM#${roomId}`, sk: threadSk(thread.number) };
   const now = new Date();
   const startedAt = now.toISOString();
   const run: Run = {
-    runId: randomUUID(), roomId, threadId, number: thread.number, status: "running", model: "fake", startedBy: user.username,
-    startedAt, firstSeq: message.seq, seenSeq: message.seq, steps: 0, costMicros: 0,
+    runId: randomUUID(), roomId, threadId, number: thread.number, status: "running", pick: chosen.pick, pickBy: chosen.by,
+    startedBy: user.username, startedAt, firstSeq: message.seq, seenSeq: message.seq, steps: 0, costMicros: 0,
   };
   const start = setFields({
     activeRunId: run.runId, runId: run.runId, runFirstSeq: message.seq, status: "running", startedAt, steps: 0, costMicros: 0,
@@ -65,11 +99,11 @@ export async function startOrSteer(user: User, roomId: string, threadId: string,
       { Put: { TableName, Item: { pk: `RUN#${run.runId}`, sk: "META", ...run }, ConditionExpression: "attribute_not_exists(pk)" } },
       {
         Update: {
-          TableName, Key: key, UpdateExpression: `${start.UpdateExpression} REMOVE endedAt, currentStep ADD #rev :one`,
+          TableName, Key: key, UpdateExpression: `${start.UpdateExpression} REMOVE endedAt, currentStep ${adds.clause}`,
           ConditionExpression: "attribute_not_exists(activeRunId) OR #startedAt < :deadAt",
-          ExpressionAttributeNames: { ...start.ExpressionAttributeNames, "#rev": "rev" },
+          ExpressionAttributeNames: { ...start.ExpressionAttributeNames, ...adds.names },
           ExpressionAttributeValues: {
-            ...start.ExpressionAttributeValues, ":one": 1, ":deadAt": new Date(now.getTime() - DEAD_AFTER_MS).toISOString(),
+            ...start.ExpressionAttributeValues, ...adds.values, ":deadAt": new Date(now.getTime() - DEAD_AFTER_MS).toISOString(),
           },
         },
       },
@@ -77,8 +111,8 @@ export async function startOrSteer(user: User, roomId: string, threadId: string,
   });
   if (!await claimed(claim)) {
     const { Attributes } = await db.send(new UpdateCommand({
-      TableName, Key: key, UpdateExpression: "SET lastActivityAt = :now ADD #rev :one", ExpressionAttributeNames: { "#rev": "rev" },
-      ExpressionAttributeValues: { ":now": startedAt, ":one": 1 }, ReturnValues: "ALL_NEW",
+      TableName, Key: key, UpdateExpression: `SET lastActivityAt = :now ${adds.clause}`, ExpressionAttributeNames: adds.names,
+      ExpressionAttributeValues: { ":now": startedAt, ...adds.values }, ReturnValues: "ALL_NEW",
     }));
     // The run may have closed since the start failed; then it closed after reading this message, as its last steer.
     const runId = String(Attributes!.activeRunId ?? Attributes!.runId ?? "");
@@ -88,7 +122,7 @@ export async function startOrSteer(user: User, roomId: string, threadId: string,
 
   let first: RunEvent;
   try {
-    first = await (await runs.eventWriter(run.runId)).append({ type: "run.started", model: run.model, startedBy: run.startedBy });
+    first = await (await runs.eventWriter(run.runId)).append({ type: "run.started", pick: run.pick, startedBy: run.startedBy });
     // The execution name is the run id, so a repeated start can't begin a second execution of the same run.
     await (lambda ??= new LambdaClient({})).send(new InvokeCommand({
       FunctionName: process.env.RUN_FN_NAME, Qualifier: process.env.RUN_FN_QUALIFIER, InvocationType: "Event",
