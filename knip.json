@@ -12,7 +12,6 @@
       "types"
     ],
     "services/src/tools/types.ts": [
-      "files",
       "types"
     ]
   },
