@@ -21,6 +21,8 @@ import { addMcpConnections } from "./mcp-connections.js";
 import { addMcpServer } from "./mcp-server.js";
 import { addOAuth } from "./oauth.js";
 import { addSandbox } from "./sandbox.js";
+import { addSchedules } from "./schedules.js";
+import { addAgents } from "./agents.js";
 
 /** Path to a handler file in services/src */
 export const servicePath = (file: string) =>
@@ -91,6 +93,7 @@ export class CoreStack extends Stack {
     addMcpConnections(this);
     addOAuth(this);
     addMcpServer(this, files);
+    addAgents(this, addSchedules(this));
     const { streamUrl } = addStream(this);
     threadsFn.addEnvironment("STREAM_URL", streamUrl);
 

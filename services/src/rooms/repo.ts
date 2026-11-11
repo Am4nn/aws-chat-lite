@@ -10,8 +10,10 @@ import { findMember, requireMember } from "../chat/membership.js";
 import { isOnline, type Presence } from "../live/presence.js";
 import { budgetOf, monthKey } from "../budget/model.js";
 import { modelOptions, type ModelOption, type ModelPick } from "../models/catalog.js";
+import { agentsRepo } from "../agents/repo.js";
+import { DEFAULT_TIME_ZONE } from "../schedules/zone.js";
 import { claimableName, summary } from "../threads/model.js";
-import type { Budget, ThreadSummary } from "../threads/types.js";
+import type { Agent, Budget, ThreadSummary } from "../threads/types.js";
 import { can, type Action, type Role } from "./access.js";
 import { chatName, roomName } from "./model.js";
 import { INVITE_TTL_SEC, inviteState, newInviteCode } from "./invites.js";
@@ -28,6 +30,10 @@ interface RoomView {
   models: ModelOption[];
   /** Whether the room's sandbox reaches the internet; off until an admin turns it on. */
   sandboxInternet: boolean;
+  /** The built-in @agent first, then the others by name. */
+  agents: Agent[];
+  /** The IANA zone the room's schedules fire in. */
+  timeZone: string;
 }
 
 const nowSec = () => Math.floor(Date.now() / 1000);
@@ -160,7 +166,7 @@ export function roomsRepo() {
     },
 
     /**
-     * The room, its chats, threads and members, this month's agent usage and only your own read state, each by
+     * The room, its chats, threads, members and agents, this month's agent usage and only your own read state, each by
      * sort-key prefix within the room's partition (which also holds every member's read state, every socket's
      * subscription and past months' usage). The reads are consistent, so a room you just created or joined is there on
      * the very next page load. Each chat's message count lives in the chat's own partition and each member's presence
@@ -172,9 +178,10 @@ export function roomsRepo() {
         ExpressionAttributeValues: { ":p": roomKey(roomId), ":s": prefix },
       });
       const month = monthKey(new Date());
-      const [{ Item: meta }, chats, threads, members, myReads, [usage]] = await Promise.all([
+      const [{ Item: meta }, chats, threads, members, myReads, [usage], agents] = await Promise.all([
         db.send(new GetCommand({ TableName, Key: { pk: roomKey(roomId), sk: "META" }, ConsistentRead: true })),
         inRoom("CHAT#"), inRoom("THREAD#"), inRoom("MEMBER#"), inRoom(`READ#${userId}#`), inRoom(`USAGE#${month}`),
+        agentsRepo().list(roomId),
       ]);
       const me = members.find((m) => m.userId === userId);
       if (!me || !meta) throw new NotFound("Room not found.");
@@ -211,6 +218,8 @@ export function roomsRepo() {
         defaultModel: (meta.defaultModel as ModelPick | undefined) ?? "auto",
         models: modelOptions(process.env.STAGE ?? ""),
         sandboxInternet: !!meta.sandboxInternet,
+        agents,
+        timeZone: (meta.timeZone as string | undefined) ?? DEFAULT_TIME_ZONE,
       };
     },
 
