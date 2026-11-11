@@ -11,8 +11,9 @@ type Event = APIGatewayProxyEventV2WithJWTAuthorizer;
 
 /**
  * Rooms API: one Lambda, routed by API Gateway's routeKey. A write that changes what members see (chats, members, the
- * default model, archive) tells the room's open sockets, which refetch the room view. That is best effort: the write has
- * already happened, and the event carries no data, so a client that misses it loses nothing it won't get on its next load.
+ * default model, the sandbox's internet, archive) tells the room's open sockets, which refetch the room view. That is
+ * best effort: the write has already happened, and the event carries no data, so a client that misses it loses nothing
+ * it won't get on its next load.
  */
 export function makeHandler(repo: RoomsRepo, notifyRoom: (roomId: string, alsoUserId?: string) => Promise<unknown>) {
   const changed = async (statusCode: number, result: unknown, roomId: string, alsoUserId?: string) => {
@@ -60,6 +61,11 @@ export function makeHandler(repo: RoomsRepo, notifyRoom: (roomId: string, alsoUs
           if (!pick) throw new ValidationError("Pick a model.");
           const defaultModel = await repo.setDefaultModel(callerFromEvent(event), params.roomId!, pick);
           return changed(200, { defaultModel }, params.roomId!);
+        }
+        case "PUT /rooms/{roomId}/sandbox": {
+          if (typeof body.internet !== "boolean") throw new ValidationError("internet must be true or false.");
+          const sandboxInternet = await repo.setSandboxInternet(callerFromEvent(event), params.roomId!, body.internet);
+          return changed(200, { sandboxInternet }, params.roomId!);
         }
         case "POST /rooms/{roomId}/invite":
           return json(201, await repo.rotateInvite(params.roomId!, subFromEvent(event)));

@@ -14,6 +14,7 @@ export function addRooms(stack: CoreStack) {
   stack.route("POST", "/rooms/{roomId}/leave", fn);
   stack.route("POST", "/rooms/{roomId}/archive", fn);
   stack.route("PUT", "/rooms/{roomId}/model", fn);
+  stack.route("PUT", "/rooms/{roomId}/sandbox", fn);
   stack.route("POST", "/rooms/{roomId}/invite", fn);
   stack.route("GET", "/rooms/{roomId}/invite", fn);
   stack.route("DELETE", "/rooms/{roomId}/invite", fn);

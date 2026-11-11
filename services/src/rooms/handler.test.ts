@@ -7,7 +7,7 @@ import type { RoomsRepo } from "./repo.js";
 function fakeRepo(over: Partial<Record<keyof RoomsRepo, unknown>> = {}): RoomsRepo {
   const base: Record<string, unknown> = {};
   const names: (keyof RoomsRepo)[] = ["createRoom", "listMyRooms", "getRoomView", "createChat", "setRole", "removeMember",
-    "rotateInvite", "getInvite", "revokeInvite", "previewInvite", "acceptInvite", "setChatPrefs", "leaveRoom", "archiveRoom", "setDefaultModel"];
+    "rotateInvite", "getInvite", "revokeInvite", "previewInvite", "acceptInvite", "setChatPrefs", "leaveRoom", "archiveRoom", "setDefaultModel", "setSandboxInternet"];
   for (const n of names) {
     const v = over[n];
     base[n] = async () => { if (v instanceof Error) throw v; return v ?? {}; };
@@ -133,6 +133,25 @@ describe("rooms handler", () => {
     expect(JSON.parse(res.body as string)).toEqual({ defaultModel: "haiku" });
     expect(setDefaultModel).toHaveBeenCalledWith({ userId: "u1", username: "aman" }, "r", "haiku");
     expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith("r", undefined);
+  });
+
+  it("PUT /sandbox: a member is a 403, an admin turns internet on and the room hears, a non-boolean is a 400", async () => {
+    const put = (repo: RoomsRepo, notify: () => Promise<void>, internet: unknown) =>
+      makeHandler(repo, notify)(ev("PUT /rooms/{roomId}/sandbox", { params: { roomId: "r" }, body: { internet } }));
+    const setSandboxInternet = vi.fn(async (_u: unknown, _r: string, on: boolean) => on);
+    const repo = { ...fakeRepo(), setSandboxInternet } as unknown as RoomsRepo;
+    const notify = vi.fn(async () => {});
+
+    expect((await put(fakeRepo({ setSandboxInternet: new Forbidden("no") }), notify, true)).statusCode).toBe(403);
+    expect((await put(repo, notify, "yes")).statusCode).toBe(400);
+    expect(setSandboxInternet).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
+
+    const res = await put(repo, notify, true);
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body as string)).toEqual({ sandboxInternet: true });
+    expect(setSandboxInternet).toHaveBeenCalledWith({ userId: "u1", username: "aman" }, "r", true);
     expect(notify).toHaveBeenCalledWith("r", undefined);
   });
 
