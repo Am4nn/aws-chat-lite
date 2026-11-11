@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { BatchGetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
-import { Unavailable } from "./errors.js";
-import { batchGet, docClient, queryAll, transactionConflict } from "./db.js";
+import { BatchGetCommand, DeleteCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { Gone, Unavailable } from "./errors.js";
+import { batchGet, docClient, queryAll, takeOnce, transactionConflict } from "./db.js";
 
 process.env.TABLE_NAME = "t";
 process.env.AWS_REGION = "us-east-1";
@@ -50,5 +50,23 @@ describe("transactionConflict", () => {
     expect(transactionConflict(cancelled("None", "TransactionConflict"))).toBe(true);
     expect(transactionConflict(cancelled("None", "ConditionalCheckFailed"))).toBe(false);
     expect(transactionConflict(new Error("boom"))).toBe(false);
+  });
+});
+
+describe("takeOnce", () => {
+  it("deletes the item as it reads it, only while it exists and hasn't expired", async () => {
+    const send = vi.spyOn(docClient(), "send").mockImplementation((async () => ({ Attributes: { pk: "F#s", roomId: "r" } })) as never);
+    expect(await takeOnce({ pk: "F#s", sk: "META" }, new Gone("expired"))).toEqual({ pk: "F#s", roomId: "r" });
+    const { input } = send.mock.calls[0]![0] as DeleteCommand;
+    expect(input).toMatchObject({
+      TableName: "t", Key: { pk: "F#s", sk: "META" }, ReturnValues: "ALL_OLD",
+      ConditionExpression: "attribute_exists(pk) AND #ttl > :now", ExpressionAttributeNames: { "#ttl": "ttl" },
+    });
+    expect(Number(input.ExpressionAttributeValues![":now"])).toBeCloseTo(Date.now() / 1000, -1);
+  });
+
+  it("throws the given error when it is gone", async () => {
+    vi.spyOn(docClient(), "send").mockRejectedValue(Object.assign(new Error("c"), { name: "ConditionalCheckFailedException" }) as never);
+    await expect(takeOnce({ pk: "F#s", sk: "META" }, new Gone("expired"))).rejects.toThrow(new Gone("expired"));
   });
 });

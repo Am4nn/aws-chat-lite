@@ -1,9 +1,10 @@
 import type dns from "node:dns";
 import type { User } from "../../lib/auth.js";
+import { FlowFailed } from "../../lib/errors.js";
 import { roomUpdated } from "../../live/broadcast.js";
 import type { McpConnection } from "../../threads/types.js";
 import { guardedFetch } from "../client/fetch.js";
-import { FlowFailed, mcpRepo } from "../client/repo.js";
+import { mcpRepo } from "../client/repo.js";
 import { tokenKey } from "../client/seal.js";
 
 /**

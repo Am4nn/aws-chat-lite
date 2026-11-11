@@ -1,5 +1,5 @@
 import type { APIGatewayProxyStructuredResultV2 } from "aws-lambda";
-import { Conflict, Forbidden, Gone, NotFound, Unavailable, Upstream, ValidationError } from "./errors.js";
+import { Conflict, FlowFailed, Forbidden, Gone, NotFound, Unavailable, Upstream, ValidationError } from "./errors.js";
 
 /** JSON response for API Gateway HTTP API (payload v2). */
 export function json(statusCode: number, body: unknown): APIGatewayProxyStructuredResultV2 {
@@ -24,6 +24,10 @@ export function parseBody(event: { body?: string; isBase64Encoded?: boolean }): 
 
 /** Error class → HTTP status. Anything else is a 500 (logged). */
 export function errorResponse(e: unknown): APIGatewayProxyStructuredResultV2 {
+  if (e instanceof FlowFailed) {
+    const res = errorResponse(e.error);
+    return json(res.statusCode!, { ...JSON.parse(String(res.body)), roomId: e.roomId });
+  }
   const msg = (e as Error).message;
   if (e instanceof ValidationError) return json(400, { error: msg });
   if (e instanceof Forbidden) return json(403, { error: msg });
@@ -34,4 +38,11 @@ export function errorResponse(e: unknown): APIGatewayProxyStructuredResultV2 {
   if (e instanceof Unavailable) return json(503, { error: msg });
   console.error(e);
   return json(500, { error: "Something went wrong." });
+}
+
+/** A sign-in may return only to one of the site's own pages, so its code can't be handed to another site. */
+export function siteCallback(redirectUri: unknown, path: string): string {
+  const callbacks = (process.env.SITE_ORIGINS ?? "").split(",").filter(Boolean).map((origin) => origin + path);
+  if (typeof redirectUri !== "string" || !callbacks.includes(redirectUri)) throw new ValidationError("That isn't chat-lite's sign-in return address.");
+  return redirectUri;
 }
