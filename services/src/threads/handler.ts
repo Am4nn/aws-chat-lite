@@ -1,4 +1,5 @@
 import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
+import { decideApproval } from "../approvals/decide.js";
 import { callerFromEvent } from "../lib/auth.js";
 import { ValidationError } from "../lib/errors.js";
 import { errorResponse, json, parseBody } from "../lib/http.js";
@@ -14,12 +15,12 @@ import { threadsRepo, type ThreadsRepo } from "./repo.js";
 type Event = APIGatewayProxyEventV2WithJWTAuthorizer;
 
 /**
- * Threads over HTTP: start one, rename one, the room's agent budget, and the one-time URL that opens a run's event
- * stream. No route deletes a thread.
+ * Threads over HTTP: start one, rename one, the room's agent budget, the one-time URL that opens a run's event
+ * stream, and a member's decision on a write the agent asked to make. No route deletes a thread.
  */
 export function makeHandler(
   threads: Pick<ThreadsRepo, "createThread" | "rename" | "threadById">, budget: Pick<BudgetRepo, "setCap">,
-  startRun: typeof startOrSteer, issueTicket: typeof issueStreamTicket,
+  startRun: typeof startOrSteer, issueTicket: typeof issueStreamTicket, decide: typeof decideApproval,
 ) {
   return async (event: Event): Promise<APIGatewayProxyStructuredResultV2> => {
     const params = event.pathParameters ?? {};
@@ -59,6 +60,12 @@ export function makeHandler(
           const base = (process.env.STREAM_URL ?? "").replace(/\/$/, "");
           return json(200, { url: `${base}/runs/${runId}/stream?ticket=${ticket}` });
         }
+        case "POST /runs/{runId}/approvals/{step}": {
+          const step = Number(params.step);
+          if (!Number.isInteger(step) || step < 1) throw new ValidationError("No such step.");
+          if (body.decision !== "approve" && body.decision !== "deny") throw new ValidationError("Decide approve or deny.");
+          return json(200, await decide(callerFromEvent(event), params.runId!, step, body.decision));
+        }
         default:
           return json(404, { error: "No such route." });
       }
@@ -70,4 +77,5 @@ export function makeHandler(
 
 // Built on first use, so tests can import makeHandler without a table configured.
 let liveHandler: ReturnType<typeof makeHandler> | undefined;
-export const handler = (event: Event) => (liveHandler ??= makeHandler(threadsRepo(), budgetRepo(), startOrSteer, issueStreamTicket))(event);
+export const handler = (event: Event) =>
+  (liveHandler ??= makeHandler(threadsRepo(), budgetRepo(), startOrSteer, issueStreamTicket, decideApproval))(event);

@@ -35,7 +35,8 @@ async function storedRun(texts: string[], { dead = false } = {}) {
   const { thread, message } = await threadsRepo().createThread(owner, roomId, { text: "go", clientId: `k${++clients}` });
   const run: Run = {
     runId: randomUUID(), roomId, threadId: thread.threadId, number: thread.number, status: dead ? "running" : "done",
-    model: "fake", pick: "auto", pickBy: "default", startedBy: owner.username, startedAt: new Date(Date.now() - (dead ? 136 * 60_000 : 0)).toISOString(), firstSeq: message.seq, seenSeq: message.seq, steps: 0, costMicros: 0,
+    model: "fake", pick: "auto", pickBy: "default", startedBy: owner.username, startedAt: new Date(Date.now() - (dead ? 136 * 60_000 : 0)).toISOString(),
+    deadAt: new Date(Date.now() + (dead ? -60_000 : 7_800_000)).toISOString(), firstSeq: message.seq, seenSeq: message.seq, steps: 0, costMicros: 0,
   };
   await docClient().send(new PutCommand({ TableName: tableName(), Item: { pk: `RUN#${run.runId}`, sk: "META", ...run } }));
   const writer = await runs.eventWriter(run.runId);

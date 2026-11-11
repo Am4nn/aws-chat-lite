@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { auditRepo } from "../audit/repo.js";
 import type { User } from "../lib/auth.js";
 import { docClient, failedAt, tableName, transactionConflict } from "../lib/db.js";
 import { NotFound } from "../lib/errors.js";
@@ -67,8 +68,8 @@ async function claimed(items: TransactItem[], replaced?: TransactItem): Promise<
  * thread's active run, then the run's durable execution is started. With a run active, the message is a steer: it is
  * already in the thread, past the run's cursor, and the run reads it before its next model call.
  *
- * A run whose `startedAt` is older than the execution timeout can't still be alive, so it no longer counts as active,
- * and the claim marks it failed as it takes the thread.
+ * A run past its `deadAt` can't still be alive, so it no longer counts as active, and the claim marks it failed as it
+ * takes the thread.
  *
  * A new run takes the message's `pick`, else the room default; a default that may not see a private thread's content
  * becomes Auto. A steer's pick is ignored: the run keeps the model it started with. Either way a message with an
@@ -89,13 +90,13 @@ export async function startOrSteer(
   const key = { pk: roomKey(roomId), sk: threadSk(thread.number) };
   const now = new Date();
   const startedAt = now.toISOString();
-  const deadAt = new Date(now.getTime() - DEAD_AFTER_MS).toISOString();
+  const deadAt = new Date(now.getTime() + DEAD_AFTER_MS).toISOString();
   const run: Run = {
     runId: randomUUID(), roomId, threadId, number: thread.number, status: "running", pick: chosen.pick, pickBy: chosen.by,
-    startedBy: user.username, startedAt, firstSeq: message.seq, seenSeq: message.seq, steps: 0, costMicros: 0,
+    startedBy: user.username, startedAt, deadAt, firstSeq: message.seq, seenSeq: message.seq, steps: 0, costMicros: 0,
   };
   const start = setFields({
-    activeRunId: run.runId, runId: run.runId, runFirstSeq: message.seq, status: "running", startedAt, steps: 0, costMicros: 0,
+    activeRunId: run.runId, runId: run.runId, runFirstSeq: message.seq, status: "running", startedAt, deadAt, steps: 0, costMicros: 0,
     lastActivityAt: startedAt,
   });
 
@@ -104,16 +105,17 @@ export async function startOrSteer(
     {
       Update: {
         TableName, Key: key, UpdateExpression: `${start.UpdateExpression} REMOVE endedAt, currentStep, #model ${adds.clause}`,
-        ConditionExpression: "attribute_not_exists(activeRunId) OR #startedAt < :deadAt",
+        ConditionExpression: "attribute_not_exists(activeRunId) OR #deadAt < :now",
         ExpressionAttributeNames: { ...start.ExpressionAttributeNames, ...adds.names, "#model": "model" },
-        ExpressionAttributeValues: { ...start.ExpressionAttributeValues, ...adds.values, ":deadAt": deadAt },
+        ExpressionAttributeValues: { ...start.ExpressionAttributeValues, ...adds.values, ":now": startedAt },
       },
     },
   ];
-  // Only a thread whose last run started before the dead line can be holding a dead one.
-  const last = thread.runId && (thread.startedAt ?? "") < deadAt ? await runs.getRun(thread.runId) : undefined;
+  // A run's `deadAt` is never earlier than its start plus this, so only a run that started this long ago can be dead.
+  const deadLine = new Date(now.getTime() - DEAD_AFTER_MS).toISOString();
+  const last = thread.runId && (thread.startedAt ?? "") < deadLine ? await runs.getRun(thread.runId) : undefined;
   const failed = setFields({ status: "failed", reason: DEAD_REASON, endedAt: startedAt });
-  const replaced: TransactItem | undefined = last?.status === "running" ? {
+  const replaced: TransactItem | undefined = last?.status === "running" && last.deadAt < startedAt ? {
     Update: {
       TableName, Key: { pk: `RUN#${last.runId}`, sk: "META" }, ...failed, ConditionExpression: "#status = :running",
       ExpressionAttributeValues: { ...failed.ExpressionAttributeValues, ":running": "running" },
@@ -133,6 +135,9 @@ export async function startOrSteer(
   let first: RunEvent;
   try {
     first = await (await runs.eventWriter(run.runId)).append({ type: "run.started", pick: run.pick, startedBy: run.startedBy });
+    await auditRepo().record(roomId, {
+      id: `${run.runId}#${first.seq}`, at: first.at, actor: user.username, kind: "asked", threadNumber: thread.number, detail: message.text,
+    });
     // The execution name is the run id, so a repeated start can't begin a second execution of the same run.
     await (lambda ??= new LambdaClient({})).send(new InvokeCommand({
       FunctionName: process.env.RUN_FN_NAME, Qualifier: process.env.RUN_FN_QUALIFIER, InvocationType: "Event",

@@ -6,7 +6,7 @@ import { LAST_SEQ, forReaders, seqKey, type Message, type StoredMessage } from "
 import type { ModelPick } from "../models/catalog.js";
 import { summary, threadSk } from "../threads/model.js";
 import type { RunEndStatus, RunEvent, RunEventBody, ThreadSummary } from "../threads/types.js";
-import { eventSk } from "./model.js";
+import { DEAD_AFTER_MS, eventSk } from "./model.js";
 
 /** A run's META item: one durable execution answering one thread message (plus any steers it reads). */
 export type Run = {
@@ -22,6 +22,8 @@ export type Run = {
   model?: string;
   startedBy: string;
   startedAt: string;
+  /** Past this the run can't be alive: the claim plus the execution's own limit, moved past each approval's expiry. */
+  deadAt: string;
   endedAt?: string;
   reason?: string;
   /** The message that started the run. */
@@ -32,6 +34,10 @@ export type Run = {
   costMicros: number;
   stopRequestedBy?: string;
   answerSeq?: number;
+  /** Set while the run waits on the approval for this step. */
+  waitingStep?: number;
+  /** Time spent waiting on approvals, which the run's time limit leaves out. */
+  pausedMs?: number;
 };
 
 type Item = Record<string, unknown>;
@@ -223,18 +229,69 @@ export function runsRepo() {
       }));
     },
 
-    /** Asks a running run to stop; false when it is no longer running. */
-    async flagStop(runId: string, username: string): Promise<boolean> {
+    /** Asks a running run to stop. Returns the run as flagged, or undefined when it is no longer running. */
+    async flagStop(runId: string, username: string): Promise<Run | undefined> {
       try {
-        await db.send(new UpdateCommand({
+        const { Attributes } = await db.send(new UpdateCommand({
           TableName, Key: runKey(runId), UpdateExpression: "SET stopRequestedBy = :by", ConditionExpression: "#status = :running",
           ExpressionAttributeNames: { "#status": "status" }, ExpressionAttributeValues: { ":by": username, ":running": "running" },
+          ReturnValues: "ALL_NEW",
         }));
-        return true;
+        return withoutKeys(Attributes!) as Run;
       } catch (e) {
-        if (conditionFailed(e)) return false;
+        if (conditionFailed(e)) return undefined;
         throw e;
       }
+    },
+
+    /**
+     * The run waits on a member: its thread shows the approval, and its dead time moves past the approval's expiry.
+     * The stop flag comes back from the same write, so a stop that landed before it is seen here.
+     */
+    async markWaiting(
+      run: Run, approval: { step: number; title: string; expiresAt: string }, deadAt: string,
+    ): Promise<{ thread: ThreadSummary | null; stopRequestedBy?: string }> {
+      const set = setFields({ status: "waiting", approval, deadAt });
+      const owned = whileOwned(run);
+      const [{ Attributes: meta }, thread] = await Promise.all([
+        db.send(new UpdateCommand({
+          TableName, Key: runKey(run.runId), ...setFields({ waitingStep: approval.step, deadAt }), ReturnValues: "ALL_NEW",
+        })),
+        threadUpdate(new UpdateCommand({
+          TableName, Key: threadKey(run), ...set, UpdateExpression: `${set.UpdateExpression} ADD #rev :one`,
+          ConditionExpression: owned.ConditionExpression, ExpressionAttributeNames: { ...set.ExpressionAttributeNames, "#rev": "rev" },
+          ExpressionAttributeValues: { ...set.ExpressionAttributeValues, ...owned.values, ":one": 1 }, ReturnValues: "ALL_NEW",
+        })),
+      ]);
+      return { thread, stopRequestedBy: meta!.stopRequestedBy as string | undefined };
+    },
+
+    /**
+     * Back to running once the approval settles. The wait joins the run's paused time only while the run still waits on
+     * that step, so a retried settle can't count it twice. The dead time comes back from the approval's expiry to what
+     * the run's own clock allows, which leaves out only the time it really waited.
+     */
+    async doneWaiting(run: Run, step: number, waitedMs: number): Promise<ThreadSummary | null> {
+      try {
+        await db.send(new UpdateCommand({
+          TableName, Key: runKey(run.runId), UpdateExpression: "REMOVE waitingStep ADD pausedMs :waited",
+          ConditionExpression: "waitingStep = :step", ExpressionAttributeValues: { ":waited": waitedMs, ":step": step },
+        }));
+      } catch (e) {
+        if (!conditionFailed(e)) throw e;
+      }
+      const pausedMs = (await getRun(run.runId))?.pausedMs ?? 0;
+      const deadAt = new Date(Date.parse(run.startedAt) + pausedMs + DEAD_AFTER_MS).toISOString();
+      const owned = whileOwned(run);
+      const [, thread] = await Promise.all([
+        db.send(new UpdateCommand({ TableName, Key: runKey(run.runId), ...setFields({ deadAt }) })),
+        threadUpdate(new UpdateCommand({
+          TableName, Key: threadKey(run), UpdateExpression: "SET #status = :running, #deadAt = :deadAt REMOVE approval ADD #rev :one",
+          ConditionExpression: owned.ConditionExpression, ExpressionAttributeNames: { "#status": "status", "#deadAt": "deadAt", "#rev": "rev" },
+          ExpressionAttributeValues: { ":running": "running", ":deadAt": deadAt, ...owned.values, ":one": 1 }, ReturnValues: "ALL_NEW",
+        })),
+      ]);
+      return thread;
     },
 
     /**
@@ -291,7 +348,7 @@ export function runsRepo() {
               ...(owns ? [{
                 Update: {
                   TableName, Key: threadKey(run), ...thread,
-                  UpdateExpression: `${thread.UpdateExpression} REMOVE activeRunId, currentStep ADD #rev :one`,
+                  UpdateExpression: `${thread.UpdateExpression} REMOVE activeRunId, currentStep, approval ADD #rev :one`,
                   ConditionExpression: ownership.ConditionExpression,
                   ExpressionAttributeNames: { ...thread.ExpressionAttributeNames, "#rev": "rev" },
                   ExpressionAttributeValues: { ...thread.ExpressionAttributeValues, ...ownership.values, ":one": 1 },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FAKE_TOOLS, runTool, SANDBOX_TOOL, toolDetail, toolsFor } from "./tools.js";
+import { FAKE_TOOLS, mayRun, runTool, SANDBOX_TOOL, toolDetail, toolsFor } from "./tools.js";
 
 const recorder = () => {
   const waits: number[] = [];
@@ -50,6 +50,11 @@ describe("toolDetail", () => {
     expect(toolDetail({ id: "call-2", name: "other", input: {} })).toBe("other");
   });
 
+  it("shows a room tool's own line", () => {
+    expect(toolDetail({ id: "c", name: "github_comment", input: { number: 4 } })).toBe("Commenting on #4");
+    expect(toolDetail({ id: "c", name: "web_search", input: { query: "durable functions" } })).toBe("durable functions");
+  });
+
   it("shows a sandbox run's language and its first line of code, cut at 60 characters", () => {
     const run = (code: string) => toolDetail({ id: "c", name: "sandbox_run", input: { language: "python", code } });
     expect(run("\nprint(1)\nprint(2)")).toBe("Running python: print(1)");
@@ -58,13 +63,28 @@ describe("toolDetail", () => {
 });
 
 describe("toolsFor", () => {
-  const names = (model: string, served: "anthropic" | "deepseek" | "fake") => toolsFor(model, served).map((t) => t.name);
+  type Served = "anthropic" | "deepseek" | "fake";
+  const names = (model: string, served: Served, connected = false) => toolsFor(model, served, connected).map((t) => t.name);
+  const web = ["web_search", "web_fetch"];
 
-  it("offers the sandbox only to models that may see private content, and the fake tools only to the fake", () => {
-    expect(names("deepseek-flash", "fake")).toEqual(["fake.lookup"]);
-    expect(names("deepseek-flash", "deepseek")).toEqual([]);
-    expect(names("claude-sonnet-5-5", "anthropic")).toEqual(["sandbox_run"]);
-    expect(names("fake", "fake")).toEqual(["fake.lookup", "sandbox_run"]);
+  it("offers the sandbox only to models that may see private content, the fake tools only to the fake, and the web to all", () => {
+    expect(names("deepseek-flash", "fake")).toEqual(["fake.lookup", ...web]);
+    expect(names("deepseek-flash", "deepseek")).toEqual(web);
+    expect(names("claude-sonnet-5-5", "anthropic")).toEqual(["sandbox_run", ...web]);
+    expect(names("fake", "fake")).toEqual(["fake.lookup", "sandbox_run", ...web]);
+  });
+
+  it("offers GitHub only when the room is connected, and never to a model kept from private content", () => {
+    expect(names("claude-sonnet-5-5", "anthropic", true).filter((n) => n.startsWith("github_"))).toHaveLength(9);
+    expect(names("deepseek-flash", "deepseek", true)).toEqual(web);
+  });
+
+  it("lets a GitHub call run without a connection, so the tool itself says it isn't connected, but never for DeepSeek", () => {
+    expect(mayRun("claude-sonnet-5-5", "anthropic", "github_read_file")).toBe(true);
+    expect(mayRun("deepseek-flash", "deepseek", "github_read_file")).toBe(false);
+    expect(mayRun("deepseek-flash", "deepseek", "web_fetch")).toBe(true);
+    expect(mayRun("deepseek-flash", "deepseek", "sandbox_run")).toBe(false);
+    expect(mayRun("claude-sonnet-5-5", "anthropic", "fake.lookup")).toBe(false);
   });
 
   it("describes sandbox_run with its languages and a timeout of 1 to 300 seconds", () => {

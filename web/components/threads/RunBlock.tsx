@@ -14,6 +14,7 @@ import { dur, easeOut, instant, spring } from "@/lib/motion";
 import type { Message, RunEndStatus } from "@/lib/types";
 import { Spinner } from "@/components/ui/Spinner";
 import { AnswerText } from "./AnswerText";
+import { ApprovalCard } from "./ApprovalCard";
 import { RunningArc, StepRow } from "./StepRow";
 
 type Props = {
@@ -55,8 +56,9 @@ export function RunBlock({ runId, answer, steers, pending, active, meName, membe
   const rows = runRows(run, steers, stored ? [] : pending);
   const loaded = run.lastSeq > 0;
   const status = stored?.status ?? (run.status === "running" ? undefined : run.status);
-  const stepRunning = rows.some((r) => r.kind === "step" && r.step.status === "running");
-  const thinking = !stored && active && !unavailable && run.status === "running" && !stepRunning && !run.text;
+  // A step at work, or a write waiting on a member, is what the run is doing; it isn't thinking.
+  const busy = rows.some((r) => (r.kind === "step" && r.step.status === "running") || (r.kind === "approval" && r.approval.status === "pending"));
+  const thinking = !stored && active && !unavailable && run.status === "running" && !busy && !run.text;
   const showRows = stored ? open && (loaded || unavailable) : rows.length > 0 || unavailable || thinking;
   const text = answer?.text ?? run.text;
   const fade = (on: boolean) => ({
@@ -97,14 +99,20 @@ export function RunBlock({ runId, answer, steers, pending, active, meName, membe
             className="flex flex-col gap-0.5 overflow-hidden"
           >
             {unavailable && <p className="px-3 text-[13px] text-text-3">This run&apos;s steps couldn&apos;t be loaded.</p>}
-            {rows.map((row) => (row.kind === "step"
-              ? <StepRow key={row.key} step={row.step} enter={!stored} />
-              : (
-                <SteerBubble
-                  key={row.key} row={row} mine={!row.authorName || row.authorName === meName} startedAt={run.startedAt}
-                  enter={!stored} onRetry={onRetry} onDiscard={onDiscard}
-                />
-              )))}
+            {/* Motion hands the outer presence's "no first animation" to everything mounted inside it later, which would
+                stop every new row from entering. The rows' own presence keeps only the rows of the first paint still. */}
+            <AnimatePresence initial={false}>
+              {rows.map((row) => {
+                if (row.kind === "step") return <StepRow key={row.key} step={row.step} enter={!stored} />;
+                if (row.kind === "approval") return <ApprovalCard key={row.key} runId={runId} approval={row.approval} meName={meName} enter={!stored} />;
+                return (
+                  <SteerBubble
+                    key={row.key} row={row} mine={!row.authorName || row.authorName === meName} startedAt={run.startedAt}
+                    enter={!stored} onRetry={onRetry} onDiscard={onDiscard}
+                  />
+                );
+              })}
+            </AnimatePresence>
             {thinking && (
               <div className="flex h-10 items-center gap-3 px-3">
                 <span className="grid size-4 place-items-center"><RunningArc /></span>

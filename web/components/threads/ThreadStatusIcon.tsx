@@ -7,8 +7,9 @@ import type { ThreadStatus } from "@/lib/types";
 const CROSSFADE = { duration: 0.15 };
 
 /**
- * A thread's state at a glance: a turning arc while it works, a check once done, a small square when it stopped any
- * other way (or hasn't run). A change crossfades in place, so the row around it never moves.
+ * A thread's state at a glance: a turning arc while it works, an amber dot while it needs someone, a check once done,
+ * a small square when it stopped any other way (or hasn't run). A change crossfades in place, so the row around it never
+ * moves.
  */
 export function ThreadStatusIcon({ status, size = 14, done = "text-sky", track = false }: {
   status: ThreadStatus; size?: number; done?: string;
@@ -16,7 +17,7 @@ export function ThreadStatusIcon({ status, size = 14, done = "text-sky", track =
   track?: boolean;
 }) {
   const reduced = useReducedMotion();
-  const kind = status === "running" ? "running" : status === "done" ? "done" : "still";
+  const kind = status === "running" || status === "waiting" || status === "done" ? status : "still";
   return (
     <span className="grid shrink-0 place-items-center" style={{ width: size, height: size }}>
       <AnimatePresence initial={false}>
@@ -39,6 +40,7 @@ export function ThreadStatusIcon({ status, size = 14, done = "text-sky", track =
               <path d="m5 12 4.5 4.5L19 7" />
             </svg>
           )}
+          {kind === "waiting" && <span aria-hidden="true" className="block rounded-full bg-amber" style={{ width: size * 0.56, height: size * 0.56 }} />}
           {kind === "still" && <span aria-hidden="true" className="block rounded-[2px] bg-text-3" style={{ width: size * 0.5, height: size * 0.5 }} />}
         </motion.span>
       </AnimatePresence>

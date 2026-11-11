@@ -54,7 +54,7 @@ describe("modelKeys", () => {
     vi.resetModules();
     const fresh = await import("./keys.js");
     const error = await fresh.modelKeys({ MODEL_KEYS_SECRET: "cl-aws-model-keys" }, async () => "sk-not-json-at-all").catch((e) => e);
-    expect(error).toEqual(new Error("The model keys secret isn't valid JSON."));
+    expect(error).toEqual(new Error("The secret cl-aws-model-keys isn't valid JSON."));
     expect(String(error.stack)).not.toContain("sk-not");
   });
 });

@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { DEAD_AFTER_MS } from "../runs/model.js";
 import { ARCHIVE_AFTER_SEC, PROVISIONAL, claimableName, isArchived, isNumberedName, summary, leadingTag, summaryLine, threadName, threadSk, uniqueCandidates } from "./model.js";
 
 describe("threadName", () => {
@@ -43,8 +42,9 @@ describe("isArchived", () => {
     expect(isArchived({ status: "done", lastActivityAt: idle(ARCHIVE_AFTER_SEC + 1) }, now)).toBe(true);
     expect(isArchived({ status: "done", lastActivityAt: idle(ARCHIVE_AFTER_SEC - 1) }, now)).toBe(false);
   });
-  it("never archives a running thread", () => {
+  it("never archives a running thread, or one waiting on an approval", () => {
     expect(isArchived({ status: "running", lastActivityAt: idle(30 * 86400) }, now)).toBe(false);
+    expect(isArchived({ status: "waiting", lastActivityAt: idle(30 * 86400) }, now)).toBe(false);
   });
 });
 
@@ -66,13 +66,14 @@ describe("summary", () => {
   const now = Date.parse("2026-11-11T00:00:00Z");
   const stored = {
     pk: "ROOM#r", sk: "THREAD#0000000001", roomId: "r", threadId: "t", number: 1, name: "thread-1", named: false,
-    activeRunId: "run", from: { chatId: "c", seq: 3 }, status: "done", rev: 4, steps: 2, costMicros: 9, createdBy: "u",
+    activeRunId: "run", deadAt: "2026-11-11T02:10:00Z", from: { chatId: "c", seq: 3 }, status: "done", rev: 4, steps: 2, costMicros: 9, createdBy: "u",
     lastActivityAt: new Date(now - (ARCHIVE_AFTER_SEC + 1) * 1000).toISOString(),
   };
   it("keeps the bookkeeping on the server and works out archived", () => {
     const t = summary(stored, now);
     for (const k of ["pk", "sk", "named", "activeRunId", "from"]) expect(t).not.toHaveProperty(k);
-    expect(t).toMatchObject({ threadId: "t", number: 1, status: "done", rev: 4, archived: true });
+    // Clients read deadAt to retire a dead run at the same moment the server does.
+    expect(t).toMatchObject({ threadId: "t", number: 1, status: "done", rev: 4, archived: true, deadAt: "2026-11-11T02:10:00Z" });
   });
 
   it("gives the taint as a sorted list, read from the stored string set, and [] when there is none", () => {
@@ -80,12 +81,23 @@ describe("summary", () => {
     expect(summary({ ...stored, taint: new Set(["attachment"]) }, now).taint).toEqual(["attachment"]);
   });
 
-  it("shows a run past the execution timeout as failed, so its thread stops looking live and can archive", () => {
-    const startedAt = new Date(now - DEAD_AFTER_MS - 1).toISOString();
-    const dead = { ...stored, status: "running", startedAt, currentStep: "fake.lookup" };
+  it("shows a running run past its deadAt as failed, so its thread stops looking live and can archive", () => {
+    const dead = { ...stored, status: "running", startedAt: "2026-11-10T00:00:00Z", deadAt: new Date(now - 1).toISOString(), currentStep: "fake.lookup" };
     const t = summary(dead, now);
     expect(t).toMatchObject({ status: "failed", summary: "The run stopped responding.", archived: true });
     expect(t).not.toHaveProperty("currentStep");
-    expect(summary({ ...dead, startedAt: new Date(now - DEAD_AFTER_MS + 1000).toISOString() }, now).status).toBe("running");
+  });
+
+  it("goes by deadAt, not the start, so a run that waited on an approval still reads live", () => {
+    const later = new Date(now + 60_000).toISOString();
+    expect(summary({ ...stored, status: "running", startedAt: "2026-11-10T00:00:00Z", deadAt: later }, now).status).toBe("running");
+    expect(summary({ ...stored, status: "waiting", deadAt: later }, now).status).toBe("waiting");
+  });
+
+  it("shows a waiting run past its deadAt as failed too, without its approval: the expiry would have woken a live one", () => {
+    const approval = { step: 1, title: "Comment?", expiresAt: "2026-11-10T00:00:00Z" };
+    const t = summary({ ...stored, status: "waiting", approval, deadAt: new Date(now - 1).toISOString() }, now);
+    expect(t).toMatchObject({ status: "failed", summary: "The run stopped responding." });
+    expect(t).not.toHaveProperty("approval");
   });
 });

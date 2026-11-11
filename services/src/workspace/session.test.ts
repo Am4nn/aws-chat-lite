@@ -10,8 +10,7 @@ import { QuotaError } from "./repo.js";
 import { closeSandbox, runSandbox, type SandboxDeps, type Session } from "./session.js";
 import type { FileAuthor, StoredFile } from "./types.js";
 
-const STARTED = new Date().toISOString();
-const RUN = { runId: "run-1", roomId: "r", threadId: "t-7", number: 7, startedAt: STARTED };
+const RUN = { runId: "run-1", roomId: "r", threadId: "t-7", number: 7, deadAt: new Date(Date.now() + DEAD_AFTER_MS).toISOString() };
 const THREAD: FileAuthor = { kind: "thread", threadId: "t-7", number: 7 };
 const BEA: FileAuthor = { kind: "member", userId: "u-bea", name: "bea" };
 const text = (s: string) => new TextEncoder().encode(s);
@@ -191,6 +190,13 @@ describe("runSandbox", () => {
     await run();
     expect(box.log.starts[0]!.lifetimeSec).toBeGreaterThan(DEAD_AFTER_MS / 1000 - 10);
     expect(box.log.starts[0]!.lifetimeSec).toBeLessThanOrEqual(DEAD_AFTER_MS / 1000);
+  });
+
+  it("lets a run that waited on an approval keep its session until its moved dead time", async () => {
+    const { box, deps } = await setup();
+    const waited = { ...RUN, deadAt: new Date(Date.now() + 20 * 3_600_000).toISOString() };
+    await runSandbox(waited, 1, shell(), { deps });
+    expect(box.log.starts[0]!.lifetimeSec).toBeGreaterThan(20 * 3600 - 10);
   });
 
   it("saves a new file to the room as the thread's, and tells the room", async () => {

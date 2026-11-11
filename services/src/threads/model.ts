@@ -1,6 +1,6 @@
 import { ValidationError } from "../lib/errors.js";
 import type { TaintSource } from "../models/privacy.js";
-import { DEAD_AFTER_MS, DEAD_REASON } from "../runs/model.js";
+import { DEAD_REASON } from "../runs/model.js";
 import type { ThreadStatus, ThreadSummary } from "./types.js";
 
 export const ARCHIVE_AFTER_SEC = 604_800;
@@ -41,22 +41,23 @@ export function uniqueCandidates(name: string): string[] {
   return [name, ...rest].filter((n) => NAME.test(n));
 }
 
-/** A running thread is never archived, however long it has been quiet. */
+/** A thread with a live run, running or waiting on an approval, is never archived, however long it has been quiet. */
 export function isArchived(t: { status: ThreadStatus; lastActivityAt: string }, nowMs: number): boolean {
-  return t.status !== "running" && nowMs - Date.parse(t.lastActivityAt) > ARCHIVE_AFTER_SEC * 1000;
+  return t.status !== "running" && t.status !== "waiting" && nowMs - Date.parse(t.lastActivityAt) > ARCHIVE_AFTER_SEC * 1000;
 }
 
 /**
  * A stored thread as clients get it: the bookkeeping fields stay on the server, `archived` is worked out now, and the
  * taint, stored as a string set (which DynamoDB can only add to, and which has no order), becomes a sorted list. A
- * run past its execution timeout died without closing, so it shows as failed until the next message replaces it.
+ * live run past its `deadAt` died without closing, so it shows as failed until the next message replaces it. That holds
+ * for a waiting one too: its `deadAt` lies past the approval's expiry, which would have woken a live run.
  */
 export function summary(
   { pk: _pk, sk: _sk, activeRunId: _run, named: _named, from: _from, taint, ...rest }: Record<string, unknown>, nowMs: number,
 ): ThreadSummary {
   let thread = rest as Omit<ThreadSummary, "archived" | "taint">;
-  if (thread.status === "running" && nowMs - Date.parse(thread.startedAt ?? "") > DEAD_AFTER_MS) {
-    const { currentStep: _step, ...dead } = thread;
+  if ((thread.status === "running" || thread.status === "waiting") && nowMs > Date.parse(thread.deadAt ?? "")) {
+    const { currentStep: _step, approval: _approval, ...dead } = thread;
     thread = { ...dead, status: "failed", summary: DEAD_REASON };
   }
   return { ...thread, taint: [...((taint as Set<TaintSource> | undefined) ?? [])].sort(), archived: isArchived(thread, nowMs) };

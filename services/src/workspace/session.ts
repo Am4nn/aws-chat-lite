@@ -6,7 +6,6 @@ import { conditionFailed, docClient, tableName } from "../lib/db.js";
 import { Conflict } from "../lib/errors.js";
 import { roomKey } from "../lib/keys.js";
 import { broadcastToRoom } from "../live/broadcast.js";
-import { DEAD_AFTER_MS } from "../runs/model.js";
 import type { Run } from "../runs/repo.js";
 import { sandbox } from "../sandbox/index.js";
 import { LANGUAGES, MAX_TIMEOUT_SEC, SandboxGone, type ExecResult, type Language, type Sandbox, type WorkspaceFile } from "../sandbox/sandbox.js";
@@ -44,7 +43,7 @@ export interface SandboxDeps {
   notify: (roomId: string, event: FilesUpdated) => Promise<unknown>;
 }
 
-type RunRef = Pick<Run, "runId" | "roomId" | "threadId" | "number" | "startedAt">;
+type RunRef = Pick<Run, "runId" | "roomId" | "threadId" | "number" | "deadAt">;
 type SandboxCall = { language: Language; code: string; timeoutSec: number };
 
 const BAD_INPUT = "sandbox_run needs language (shell, python or javascript) and code.";
@@ -140,7 +139,7 @@ async function openSession(run: RunRef, box: Sandbox, deps: SandboxDeps): Promis
   const stored = await deps.sessions.get(run.runId);
   if (stored) return stored;
   const wanted = await deps.sessions.internet(run.roomId);
-  const lifetimeSec = Math.max(60, Math.floor((Date.parse(run.startedAt) + DEAD_AFTER_MS - Date.now()) / 1000));
+  const lifetimeSec = Math.max(60, Math.floor((Date.parse(run.deadAt) - Date.now()) / 1000));
   const { handle, internet } = await box.start({ runId: run.runId, internet: wanted, lifetimeSec });
   const opened: Session = { handle, internet, offlineHere: wanted && !internet, startedAt: new Date().toISOString(), synced: {} };
   if (await deps.sessions.create(run.runId, opened)) return opened;

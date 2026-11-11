@@ -45,8 +45,10 @@ describe("rooms API", () => {
       .map((f: any) => f.Properties.FunctionName);
   };
 
-  it("only the rooms, chat, files, live, threads and run Lambdas get table access (the public health check and sign-up trigger get none)", () => {
-    expect(tableWriters().sort()).toEqual(["cl-local-chat", "cl-local-files", "cl-local-live", "cl-local-rooms", "cl-local-run", "cl-local-threads"]);
+  it("only the rooms, chat, files, live, threads, run and connections Lambdas get table access (the public health check and sign-up trigger get none)", () => {
+    expect(tableWriters().sort()).toEqual([
+      "cl-local-chat", "cl-local-connections", "cl-local-files", "cl-local-live", "cl-local-rooms", "cl-local-run", "cl-local-threads",
+    ]);
   });
 
   it("the rooms Lambda may post to open sockets", () => {

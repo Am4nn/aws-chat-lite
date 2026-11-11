@@ -65,7 +65,7 @@ export const isAdmin = (role: Role) => role === "owner" || role === "admin";
 
 // Agent threads: mirrors services/src/threads/types.ts.
 export type RunEndStatus = "done" | "stopped" | "failed" | "capped";
-export type ThreadStatus = "idle" | "running" | RunEndStatus;
+export type ThreadStatus = "idle" | "running" | "waiting" | RunEndStatus;
 
 export type ThreadSummary = {
   roomId: string;
@@ -78,12 +78,15 @@ export type ThreadSummary = {
   runFirstSeq?: number;
   startedAt?: string;
   endedAt?: string;
+  /** Past this a run still marked running is dead. */
+  deadAt?: string;
   steps: number;
   currentStep?: string;
   costMicros: number;
   /** The model the latest run answers on, once it has routed. */
   model?: string;
   summary?: string;
+  approval?: { step: number; title: string; expiresAt: string };
   createdBy: string;
   lastActivityAt: string;
   archived: boolean;
@@ -93,7 +96,7 @@ export type ThreadSummary = {
 // Model choice: mirrors services/src/models/catalog.ts and privacy.ts.
 export type ModelPick = "auto" | "sonnet" | "haiku" | "opus" | "fable" | "deepseek-flash" | "deepseek-pro" | "fake";
 export type ModelOption = { pick: ModelPick; id?: string; label: string; short: string; price: string; privateOk: boolean };
-export type TaintSource = "attachment" | "sandbox";
+export type TaintSource = "attachment" | "github" | "sandbox";
 
 export type Budget = { spentMicros: number; capMicros: number; month: string; resetsAt: string };
 
@@ -105,12 +108,21 @@ type RunEventBody =
   | { type: "text"; text: string; turn: number }
   | { type: "text.reset"; turn: number }
   | { type: "step.started"; step: number; call: { id: string; name: string; input: Record<string, unknown> }; detail: string }
-  | { type: "step.finished"; step: number; output: string; ms: number; ok: boolean }
+  | { type: "step.finished"; step: number; output: string; ms: number; ok: boolean; sources?: Source[] }
   | ({ type: "files.synced"; step: number } & FilesSynced)
+  | { type: "approval.requested"; step: number; call: { id: string; name: string; input: Record<string, unknown> }; title: string; expiresAt: string }
+  | { type: "approval.settled"; step: number; decision: Exclude<ApprovalStatus, "pending">; by?: string }
   | { type: "usage"; model: string; job: "route" | "name" | "run" | "sandbox"; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; costMicros: number }
   | { type: "run.finished"; status: RunEndStatus; reason?: string; ms: number; steps: number; costMicros: number };
 
 export type RunEvent = RunEventBody & { seq: number; at: string };
+
+// Tools and approvals: mirrors services/src/threads/types.ts.
+export type Source = { title: string; url: string };
+export type ApprovalStatus = "pending" | "approved" | "denied" | "expired" | "cancelled";
+export type GitHubConnection = { installationId: number; account: string; repos: string[]; addedBy: string; addedAt: string };
+export type AuditKind = "asked" | "tool" | "approved" | "denied" | "expired" | "cancelled" | "connected" | "disconnected" | "timeout";
+export type AuditEntry = { id: string; at: string; actor: string; kind: AuditKind; threadNumber?: number; tool?: string; detail: string };
 
 // Room files: mirrors services/src/workspace/types.ts.
 export type FileAuthor = { kind: "member"; userId: string; name: string } | { kind: "thread"; threadId: string; number: number };

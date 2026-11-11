@@ -7,11 +7,18 @@ describe("taint", () => {
     expect(messageTaint({ attachments: [] })).toEqual([]);
     expect(messageTaint({})).toEqual([]);
   });
-  it("merges sorted and unique", () => expect(mergeTaint(["sandbox"], [], ["attachment", "sandbox"])).toEqual(["attachment", "sandbox"]));
+  it("merges sorted and unique", () => {
+    expect(mergeTaint(["attachment"], [], ["attachment"])).toEqual(["attachment"]);
+    expect(mergeTaint(["sandbox"], ["github"], ["attachment", "sandbox"])).toEqual(["attachment", "github", "sandbox"]);
+  });
 });
 
 describe("pickRefusal", () => {
-  it("refuses DeepSeek on private content", () => expect(pickRefusal("deepseek-flash", ["attachment"])).toBe(PICK_REFUSED));
+  it("refuses DeepSeek on private content", () => {
+    expect(pickRefusal("deepseek-flash", ["attachment"])).toBe(PICK_REFUSED);
+    expect(pickRefusal("deepseek-flash", ["github"])).toBe(PICK_REFUSED);
+    expect(PICK_REFUSED).toContain("GitHub data");
+  });
   it("allows everything else", () => {
     expect(pickRefusal("sonnet", ["attachment"])).toBeNull();
     expect(pickRefusal("deepseek-flash", [])).toBeNull();
@@ -28,9 +35,9 @@ describe("runRefusal", () => {
 
 describe("copy", () => {
   it("is fixed", () => {
-    expect(PICK_REFUSED).toBe("This has private content (attachments, sandbox files), so DeepSeek is off here. Pick another model.");
+    expect(PICK_REFUSED).toBe("This has private content (attachments, GitHub data, sandbox files), so DeepSeek is off here. Pick another model.");
     expect(RUN_REFUSED).toBe(
-      "This thread now has private content (attachments, sandbox files), so DeepSeek stopped. Send again with another model.",
+      "This thread now has private content (attachments, GitHub data, sandbox files), so DeepSeek stopped. Send again with another model.",
     );
   });
 });

@@ -1,9 +1,10 @@
+import type { ToolCall } from "../models/gateway.js";
 import type { ModelPick, TokenUsage } from "../models/catalog.js";
 import type { TaintSource } from "../models/privacy.js";
 import type { FilesSynced } from "../workspace/types.js";
 
 export type RunEndStatus = "done" | "stopped" | "failed" | "capped";
-export type ThreadStatus = "idle" | "running" | RunEndStatus;
+export type ThreadStatus = "idle" | "running" | "waiting" | RunEndStatus;
 
 export type ThreadSummary = {
   roomId: string;
@@ -17,6 +18,8 @@ export type ThreadSummary = {
   runFirstSeq?: number;
   startedAt?: string;
   endedAt?: string;
+  /** Past this a run still marked running is dead; unset on threads from before runs had one. */
+  deadAt?: string;
   steps: number;
   currentStep?: string;
   costMicros: number;
@@ -25,11 +28,19 @@ export type ThreadSummary = {
   /** Why the thread is private, sorted; [] while it has no private content. */
   taint: TaintSource[];
   summary?: string;
+  /** Set while status is "waiting". */
+  approval?: { step: number; title: string; expiresAt: string };
   createdBy: string;
   lastActivityAt: string;
   /** Derived on read, never stored. */
   archived: boolean;
 };
+
+export type Source = { title: string; url: string };
+export type ApprovalStatus = "pending" | "approved" | "denied" | "expired" | "cancelled";
+export type GitHubConnection = { installationId: number; account: string; repos: string[]; addedBy: string; addedAt: string };
+export type AuditKind = "asked" | "tool" | "approved" | "denied" | "expired" | "cancelled" | "connected" | "disconnected" | "timeout";
+export type AuditEntry = { id: string; at: string; actor: string; kind: AuditKind; threadNumber?: number; tool?: string; detail: string };
 
 export type Budget = { spentMicros: number; capMicros: number; month: string; resetsAt: string };
 
@@ -45,9 +56,11 @@ export type RunEventBody =
   /** An attempt at `turn` failed after writing, and the retry answers again: that turn's text and native turn are void. */
   | { type: "text.reset"; turn: number }
   | { type: "step.started"; step: number; call: { id: string; name: string; input: Record<string, unknown> }; detail: string }
-  | { type: "step.finished"; step: number; output: string; ms: number; ok: boolean }
+  | { type: "step.finished"; step: number; output: string; ms: number; ok: boolean; sources?: Source[] }
   /** What a sandbox step saved to or deleted from the room's files, and what it couldn't. */
   | ({ type: "files.synced"; step: number } & FilesSynced)
+  | { type: "approval.requested"; step: number; call: ToolCall; title: string; expiresAt: string }
+  | { type: "approval.settled"; step: number; decision: Exclude<ApprovalStatus, "pending">; by?: string }
   /** Sandbox time is billed as `model: "sandbox"` with no tokens. */
   | ({ type: "usage"; model: string; job: "route" | "name" | "run" | "sandbox"; costMicros: number } & TokenUsage)
   | { type: "run.finished"; status: RunEndStatus; reason?: string; ms: number; steps: number; costMicros: number };

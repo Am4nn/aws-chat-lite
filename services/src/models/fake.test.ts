@@ -200,6 +200,58 @@ describe("fakeModel", () => {
     expect(await route("route:opus x")).toBe("opus");
   });
 
+  describe("call:<tool>", () => {
+    const comment = {
+      name: "github_comment",
+      description: "Comment",
+      inputSchema: {
+        type: "object",
+        properties: { repo: { type: "string" }, number: { type: "integer" }, body: { type: "string" } },
+        required: ["number", "body"],
+      },
+    };
+    const fetchSpec = {
+      name: "web_fetch",
+      description: "Fetch",
+      inputSchema: {
+        type: "object",
+        properties: {
+          url: { type: "string", format: "uri" },
+          files: { type: "array", items: { type: "object", properties: { path: { type: "string" } }, required: ["path"] } },
+          kind: { type: "string", enum: ["issues", "pulls"] },
+          draft: { type: "boolean" },
+        },
+        required: ["url", "files", "kind", "draft"],
+      },
+    };
+    const tools = [comment, fetchSpec];
+
+    it("calls the named tool once with sample input, then answers", async () => {
+      const first = user("go call:github_comment");
+      expect(toolCalls(await collect(request([first], { tools })))).toEqual([
+        { id: "call-1", name: "github_comment", input: { number: 1, body: "fake" } },
+      ]);
+      const after = await collect(request([first, toolResult(1)], { tools }));
+      expect(toolCalls(after)).toHaveLength(0);
+      expect(textOf(after)).toContain('Fake answer for "go".');
+    });
+
+    it("calls several tools in order and fills each type", async () => {
+      const first = user("go call:web_fetch call:github_comment");
+      const one = toolCalls(await collect(request([first], { tools })));
+      expect(one).toEqual([
+        { id: "call-1", name: "web_fetch", input: { url: "https://example.com/", files: [{ path: "fake" }], kind: "issues", draft: false } },
+      ]);
+      expect(toolCalls(await collect(request([first, toolResult(1)], { tools })))[0].name).toBe("github_comment");
+    });
+
+    it("skips a tool the request doesn't offer", async () => {
+      const chunks = await collect(request([user("go call:github_comment")]));
+      expect(toolCalls(chunks)).toHaveLength(0);
+      expect(textOf(chunks)).toContain('Fake answer for "go".');
+    });
+  });
+
   describe("sandbox spans", () => {
     const sandboxTool = { name: "sandbox_run", description: "", inputSchema: {} };
     const withSandbox = { tools: [sandboxTool] };
@@ -226,6 +278,16 @@ describe("fakeModel", () => {
     it("reads no directives inside a span", async () => {
       const chunks = await collect(request([user("go sh`echo fail tools:3`")], withSandbox));
       expect(toolCalls(chunks).map((c) => c.name)).toEqual(["sandbox_run"]);
+    });
+
+    it("runs the spans before any call:<tool>", async () => {
+      const first = user("go sh`ls` call:web_search");
+      const tools = [sandboxTool, { name: "web_search", description: "", inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] } }];
+      expect(toolCalls(await collect(request([first], { tools })))[0]!.name).toBe("sandbox_run");
+      expect(toolCalls(await collect(request([first, toolResult(1)], { tools })))).toEqual([
+        { id: "call-2", name: "web_search", input: { query: "fake" } },
+      ]);
+      expect(toolCalls(await collect(request([first, toolResult(1), toolResult(2)], { tools })))).toHaveLength(0);
     });
   });
 

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { motion, useReducedMotion } from "motion/react";
-import { Bot, Search } from "lucide-react";
+import { Bot, Folder, Plug, Search, UserPlus, Users } from "lucide-react";
 import { bff, bffOrNull, errorText } from "@/lib/client/bff";
 import { useLive, useLiveStatus } from "@/lib/client/LiveProvider";
 import { ModelsProvider } from "@/lib/client/ModelsProvider";
@@ -19,6 +19,7 @@ import { CommandPalette, type PaletteItem } from "@/components/overlays/CommandP
 import { Confirm } from "@/components/overlays/Confirm";
 import { Modal } from "@/components/overlays/Modal";
 import { useToast } from "@/components/overlays/Toast";
+import { ConnectionsPanel } from "@/components/rooms/ConnectionsPanel";
 import { CreateChat } from "@/components/rooms/CreateChat";
 import { CreateRoom } from "@/components/rooms/CreateRoom";
 import { MemberList } from "@/components/rooms/MemberList";
@@ -35,6 +36,7 @@ import { ThreadTitle } from "@/components/threads/ThreadTitle";
 import { BudgetCard } from "./BudgetCard";
 import { Header } from "./Header";
 import { Backdrop, MobileNav } from "./MobileNav";
+import { NeedsYouToast } from "./NeedsYouToast";
 import { Panel } from "./Panel";
 import { RoomSwitcher } from "./RoomSwitcher";
 import { Sidebar } from "./Sidebar";
@@ -198,6 +200,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
   return (
     <ModelsProvider view={view}>
       <MentionSound meId={me.userId} />
+      <NeedsYouToast roomId={roomId} openThreadId={activeThread?.threadId} panelOpen={panelOpen} />
       <div className="flex h-dvh overflow-hidden bg-ink">
         <MobileNav open={overlay === "nav"}>
           <Sidebar
@@ -239,9 +242,9 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
           active={panelTab}
           onActiveChange={setPanelTab}
           tabs={[
-            ...(activeThread ? [{ id: "context", label: "Context", content: <RunPanel thread={activeThread} files={files.files} /> }] : []),
+            ...(activeThread ? [{ id: "context", label: "Context", icon: Bot, content: <RunPanel thread={activeThread} files={files.files} /> }] : []),
             {
-              id: "files", label: `Files · ${files.files.length}`,
+              id: "files", label: `Files · ${files.files.length}`, icon: Folder,
               content: (
                 <FilesPanel
                   roomId={roomId} store={files} threads={threads.threads} internet={view.sandboxInternet}
@@ -249,9 +252,10 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
                 />
               ),
             },
-            { id: "members", label: `Members · ${members.length}`, content: <MemberList roomId={roomId} members={members} myRole={view.me.role} myUserId={me.userId} /> },
-            ...(isAdmin(view.me.role) && !room.archived ? [{ id: "invite", label: "Invite", content: <InvitePanel roomId={roomId} /> }] : []),
-            { id: "search", label: "Search", content: <SearchPanel roomId={roomId} chats={view.chats} serverTimeZone={serverTimeZone} focusSignal={searchFocus} onPick={() => setOverlay(null)} /> },
+            { id: "members", label: `Members · ${members.length}`, icon: Users, content: <MemberList roomId={roomId} members={members} myRole={view.me.role} myUserId={me.userId} /> },
+            ...(isAdmin(view.me.role) && !room.archived ? [{ id: "invite", label: "Invite", icon: UserPlus, content: <InvitePanel roomId={roomId} /> }] : []),
+            { id: "connections", label: "Connections", icon: Plug, content: <ConnectionsPanel roomId={roomId} archived={room.archived} /> },
+            { id: "search", label: "Search", icon: Search, content: <SearchPanel roomId={roomId} chats={view.chats} serverTimeZone={serverTimeZone} focusSignal={searchFocus} onPick={() => setOverlay(null)} /> },
           ]}
         />
         <Backdrop open={overlay !== null} onClose={() => setOverlay(null)} />

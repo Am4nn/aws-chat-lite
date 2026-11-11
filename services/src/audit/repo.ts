@@ -1,0 +1,59 @@
+import { randomUUID } from "node:crypto";
+import { PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { conditionFailed, docClient, tableName } from "../lib/db.js";
+import { roomKey } from "../lib/keys.js";
+import type { AuditEntry } from "../threads/types.js";
+
+const PAGE = 50;
+const DETAIL_MAX = 200;
+const auditSk = (cursor: string) => `AUDIT#${cursor}`;
+
+/** One line of at most 200 characters, cut by code point so an emoji isn't split: a log row, not a copy of the message. */
+function oneLine(text: string): string {
+  const chars = [...text.replace(/\s+/g, " ").trim()];
+  return chars.length > DETAIL_MAX ? `${chars.slice(0, DETAIL_MAX).join("")}…` : chars.join("");
+}
+
+/** An entry as stored: under its room, sorted by time first, so a page of the newest is one Query. */
+export const auditItem = (roomId: string, entry: AuditEntry) => ({ pk: roomKey(roomId), sk: auditSk(`${entry.at}#${entry.id}`), ...entry });
+
+/** A room's append-only log of what its agent asked for and did, and who changed its connections. */
+export function auditRepo() {
+  const db = docClient();
+  const TableName = tableName();
+
+  return {
+    /**
+     * Never overwrites. A caller that may run twice (a retried durable step) passes the same `id` and `at` each time,
+     * so the repeat finds its entry already there and is a no-op.
+     */
+    async record(roomId: string, e: Omit<AuditEntry, "id"> & { id?: string }): Promise<AuditEntry> {
+      const entry = { ...e, id: e.id ?? randomUUID(), detail: oneLine(e.detail) };
+      try {
+        await db.send(new PutCommand({
+          TableName, Item: auditItem(roomId, entry),
+          ConditionExpression: "attribute_not_exists(sk)",
+        }));
+      } catch (err) {
+        if (!conditionFailed(err)) throw err;
+      }
+      return entry;
+    },
+
+    /** `before` is the `next` of the previous page. */
+    async list(roomId: string, before?: string): Promise<{ entries: AuditEntry[]; next?: string }> {
+      const { Items = [], LastEvaluatedKey } = await db.send(new QueryCommand({
+        TableName,
+        KeyConditionExpression: "pk = :pk AND begins_with(sk, :audit)",
+        ExpressionAttributeValues: { ":pk": roomKey(roomId), ":audit": auditSk("") },
+        ScanIndexForward: false,
+        Limit: PAGE,
+        ExclusiveStartKey: before ? { pk: roomKey(roomId), sk: auditSk(before) } : undefined,
+      }));
+      return {
+        entries: Items.map(({ pk: _pk, sk: _sk, ...entry }) => entry as AuditEntry),
+        next: LastEvaluatedKey && String(LastEvaluatedKey.sk).slice(auditSk("").length),
+      };
+    },
+  };
+}

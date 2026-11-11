@@ -83,14 +83,16 @@ async function runningThread(text: string, startedAt = new Date().toISOString())
   const { owner, roomId, thread: t, message } = await thread(text);
   const run = {
     runId: randomUUID(), roomId, threadId: t.threadId, number: t.number, status: "running", model: "fake", pick: "auto",
-    pickBy: "default", startedBy: owner.username, startedAt, firstSeq: message.seq, seenSeq: message.seq, steps: 0,
+    pickBy: "default", startedBy: owner.username, startedAt, deadAt: new Date(Date.parse(startedAt) + DEAD_AFTER_MS).toISOString(),
+    firstSeq: message.seq, seenSeq: message.seq, steps: 0,
     costMicros: 0,
   } satisfies Run;
   await docClient().send(new PutCommand({ TableName: tableName(), Item: { pk: `RUN#${run.runId}`, sk: "META", ...run } }));
   await docClient().send(new UpdateCommand({
     TableName: tableName(), Key: { pk: `ROOM#${roomId}`, sk: threadSk(t.number) },
-    UpdateExpression: "SET activeRunId = :r, runId = :r, #status = :running, startedAt = :at",
-    ExpressionAttributeNames: { "#status": "status" }, ExpressionAttributeValues: { ":r": run.runId, ":running": "running", ":at": startedAt },
+    UpdateExpression: "SET activeRunId = :r, runId = :r, #status = :running, startedAt = :at, deadAt = :dead",
+    ExpressionAttributeNames: { "#status": "status" },
+    ExpressionAttributeValues: { ":r": run.runId, ":running": "running", ":at": startedAt, ":dead": run.deadAt },
   }));
   return { owner, roomId, thread: t, run };
 }

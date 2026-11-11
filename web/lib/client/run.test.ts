@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Message, RunEvent } from "../types";
+import { settledLine } from "./approvals";
 import { applyRunEvent, emptyRun, runRows, splitSyncLines, stepsLabel } from "./run";
 
 type Body = Record<string, unknown>;
@@ -100,6 +101,45 @@ describe("applyRunEvent", () => {
   });
 });
 
+describe("applyRunEvent: approvals and sources", () => {
+  const call = { id: "c", name: "github_comment", input: { number: 4, body: "LGTM" } };
+  const asked = ev(1, { type: "approval.requested", step: 1, call, title: "Comment on #4 in a/b?", expiresAt: "2026-11-11T12:00:00Z" });
+
+  it("an approval request becomes a pending item, and its settlement updates it in place", () => {
+    const pending = run(asked);
+    expect(pending.items).toEqual([{
+      kind: "approval", step: 1, title: "Comment on #4 in a/b?", call, expiresAt: "2026-11-11T12:00:00Z", status: "pending",
+    }]);
+    const settled = run(asked, ev(2, { type: "approval.settled", step: 1, decision: "approved", by: "bea" }));
+    expect(settled.items).toHaveLength(1);
+    expect(settled.items[0]).toMatchObject({ status: "approved", by: "bea" });
+    expect(settledLine(settled.items[0] as Parameters<typeof settledLine>[0])).toBe("Approved by bea");
+  });
+
+  it("an approval the stop beat to its step says so, and one whose step ran doesn't", () => {
+    const settled = ev(2, { type: "approval.settled", step: 1, decision: "approved", by: "bea" });
+    const stopped = ev(3, { type: "run.finished", status: "stopped", reason: "Stopped by aman.", ms: 1, steps: 0, costMicros: 0 });
+    expect(run(asked, settled, stopped).items[0]).toMatchObject({ status: "approved", stoppedFirst: true });
+    const ran = run(asked, settled, ev(3, { type: "step.started", step: 1, call, detail: "" }), { ...stopped, seq: 4 } as RunEvent);
+    expect(ran.items[0]).not.toHaveProperty("stoppedFirst");
+  });
+
+  it("an approval is its own row, in event order", () => {
+    const v = run(ev(1, { type: "step.started", step: 1, call, detail: "" }), ev(2, { type: "step.finished", step: 1, output: "", ms: 1, ok: true }), { ...asked, seq: 3, step: 2 } as RunEvent);
+    expect(runRows(v, [], []).map((r) => r.key)).toEqual(["step:1", "approval:2"]);
+  });
+
+  it("collects each step's sources once per url", () => {
+    const src = (url: string) => ({ title: url, url });
+    const v = run(
+      ev(1, { type: "step.finished", step: 1, output: "", ms: 1, ok: true, sources: [src("https://a.dev/1"), src("https://b.dev")] }),
+      ev(2, { type: "step.finished", step: 2, output: "", ms: 1, ok: true, sources: [src("https://a.dev/1")] }),
+      ev(3, { type: "step.finished", step: 3, output: "", ms: 1, ok: true }),
+    );
+    expect(v.sources.map((x) => x.url)).toEqual(["https://a.dev/1", "https://b.dev"]);
+  });
+});
+
 describe("runRows", () => {
   const step = (seq: number, n: number) => ev(seq, { type: "step.started", step: n, call: { id: "c", name: "x", input: {} }, detail: "" });
   const steer = (seq: number, messageSeq: number) => ev(seq, { type: "steer", messageSeq, authorName: "ann", text: "t" + messageSeq });
@@ -108,7 +148,7 @@ describe("runRows", () => {
   it("lists steps and read steers in event order, then queued steers, then unsent ones", () => {
     const v = run(step(1, 1), steer(2, 5), step(3, 2));
     const rows = runRows(v, [m(5), m(6)], [{ clientId: "p1", text: "later", createdAt: "", attachments: [] }]);
-    expect(rows.map((r) => (r.kind === "step" ? r.key : `${r.key} ${r.state}`))).toEqual([
+    expect(rows.map((r) => (r.kind === "steer" ? `${r.key} ${r.state}` : r.key))).toEqual([
       "step:1", "s:5 read", "step:2", "s:6 queued", "c:p1 sending",
     ]);
   });

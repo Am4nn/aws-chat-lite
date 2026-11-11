@@ -17,10 +17,10 @@ const MIN = 60_000;
  */
 function fakeRun(
   log: { event: RunEvent; visibleAt?: number }[],
-  opts: { memberUntilMs?: number; run?: { status: Run["status"]; startedAt: string; endedAt?: string } } = {},
+  opts: { memberUntilMs?: number; run?: { status: Run["status"]; startedAt: string; deadAt?: string; endedAt?: string } } = {},
 ) {
   let now = 0;
-  const run = { status: "running" as const, startedAt: iso(0), ...opts.run };
+  const run = { status: "running" as const, startedAt: iso(0), deadAt: iso(130 * MIN), ...opts.run };
   const deps: StreamDeps = {
     consume: async (ticket, runId) => (ticket === "good" && runId === "run1" ? { userId: "u1", roomId: "r1" } : null),
     events: async (_runId, after) => log.filter((l) => (l.visibleAt ?? 0) <= now && l.event.seq > after).map((l) => l.event),
@@ -140,7 +140,7 @@ describe("streamRun", () => {
   });
 
   it("a run that died without run.finished, with nothing past the cursor, is a 410 at connect", async () => {
-    const { deps, now } = fakeRun([{ event: event(1) }], { run: { status: "running", startedAt: iso(-136 * MIN) } });
+    const { deps, now } = fakeRun([{ event: event(1) }], { run: { status: "running", startedAt: iso(-136 * MIN), deadAt: iso(-MIN) } });
     const { out, sink } = recorder(now);
     await streamRun({ runId: "run1", ticket: "good", lastEventId: "1" }, sink, deps);
     expect(out.status).toBe(410);
@@ -148,12 +148,21 @@ describe("streamRun", () => {
   });
 
   it("a dead run's stream sends what is left, then ends at the next 30 s check", async () => {
-    const { deps, now } = fakeRun([{ event: event(1) }], { run: { status: "running", startedAt: iso(-136 * MIN) } });
+    const { deps, now } = fakeRun([{ event: event(1) }], { run: { status: "running", startedAt: iso(-136 * MIN), deadAt: iso(-MIN) } });
     const { out, sink } = recorder(now);
     await streamRun({ runId: "run1", ticket: "good" }, sink, deps);
     expect(out.status).toBe(200);
     expect(ids(out.writes)).toEqual(["1"]);
     expect(out.endedAt).toBe(30_000);
+  });
+
+  it("a run waiting on an approval for longer than two hours is still alive", async () => {
+    const log = [{ event: event(1) }, { event: event(2, finished), visibleAt: 60_000 }];
+    const { deps, now } = fakeRun(log, { run: { status: "running", startedAt: iso(-200 * MIN), deadAt: iso(60 * MIN) } });
+    const { out, sink } = recorder(now);
+    await streamRun({ runId: "run1", ticket: "good", lastEventId: "1" }, sink, deps);
+    expect(out.status).toBe(200);
+    expect(ids(out.writes)).toEqual(["2"]);
   });
 
   it("a run closed without run.finished gets 30 s for it to land, then its stream ends", async () => {

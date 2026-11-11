@@ -19,7 +19,12 @@ describe("endReason", () => {
   it("ends at the time limit", () => {
     expect(endReason(base, 1_000 + 7_200_001)?.reason).toBe("Time limit reached (2 hours).");
   });
-  it("counts a run as dead five minutes after its 130-minute execution timeout", () => {
+  it("leaves time spent waiting for an approval off the time limit", () => {
+    const later = 1_000 + 9_000_000;
+    expect(endReason({ ...base, pausedMs: 3_600_000 }, later)).toBeNull();
+    expect(endReason({ ...base, pausedMs: 0 }, later)?.reason).toBe("Time limit reached (2 hours).");
+  });
+  it("counts a run as dead 135 minutes after its claim or its approval's expiry", () => {
     expect(DEAD_AFTER_MS).toBe(135 * 60_000);
   });
   it("continues otherwise", () => expect(endReason(base, now)).toBeNull());
