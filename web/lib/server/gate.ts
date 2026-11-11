@@ -6,7 +6,11 @@ type GateResult =
   | { type: "redirect"; location: string };
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
-const isPublic = (path: string) => path === "/login" || path.startsWith("/invite/") || path.startsWith("/bff/");
+// Static files with nothing private in them, which the browser loads where a sign-in redirect can't help: a service
+// worker script that redirects fails to install, and the browser reads the manifest without cookies.
+const APP_FILES = new Set(["/sw.js", "/manifest.webmanifest", "/icon", "/apple-icon", "/pcm-worklet.js"]);
+const isPublic = (path: string) =>
+  path === "/login" || path.startsWith("/invite/") || path.startsWith("/bff/") || APP_FILES.has(path);
 
 /**
  * CSRF defence for /bff/* on top of SameSite=Lax cookies, using the standard pair of checks:
