@@ -13,7 +13,7 @@ const puts = () => mockedBff.mock.calls.filter(([, init]) => init?.method === "P
 beforeEach(() => {
   mockedBff.mockReset();
   mockedBff.mockImplementation(async (path, init) => {
-    if (path.endsWith("/connections")) return { github: null, approvalTimeoutMin: 120, canManage: true, installUrl: null };
+    if (path.endsWith("/connections")) return { github: null, mcp: [], approvalTimeoutMin: 120, canManage: true, installUrl: null };
     if (path.endsWith("/approval-timeout")) return { approvalTimeoutMin: (init?.body as { minutes: number }).minutes };
     return { entries: [] };
   });
