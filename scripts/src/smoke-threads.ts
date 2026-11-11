@@ -8,7 +8,7 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { readOutputs } from "./deploy-local.js";
 import { clsFrom, gapless, streamedExactly } from "./smoke-helpers.js";
-import { WEB, bff, check, send, shows, sleep, socketOpen, toastSays, until } from "./smoke-page.js";
+import { WEB, bff, check, eventually, send, shows, socketOpen, toastSays, until } from "./smoke-page.js";
 
 type Person = { page: Page; name: string };
 type Thread = { threadId: string; number: number; name: string; status: string; steps: number; runFirstSeq?: number };
@@ -88,15 +88,6 @@ const OPEN_CARD_AND_COUNT_VIEWS = `new Promise((resolve) => {
   window.__cards()[0].querySelector("a").click();
 })`;
 
-/** Polls a read until its answer passes, for state that only the server can confirm. */
-async function eventually<T>(read: () => Promise<T>, ok: (value: T) => boolean, timeout = RUN_MS): Promise<T> {
-  const end = Date.now() + timeout;
-  for (;;) {
-    const value = await read();
-    if (ok(value) || Date.now() > end) return value;
-    await sleep(500);
-  }
-}
 
 
 export async function threadChecks(stamp: number, owner: Person, guest: Person) {
