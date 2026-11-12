@@ -1,6 +1,6 @@
 # Runbook: chat-lite on real AWS
 
-This is how chat-lite goes live at `https://chat.amanarya.com`, in Sydney (`ap-southeast-2`), as the stack `cl-aws-core`. It uses the same account as instagram-lite but its own stack, and it never touches instagram-lite's resources. Aman runs every step by hand; nothing in the repo calls AWS on its own.
+This is how chat-lite goes live at `https://chat.amanarya.com`, in Sydney (`ap-southeast-2`), as the stack `cl-aws-core`. It uses the same account as instagram-lite but its own stack, and it never touches instagram-lite's resources. Aman runs every step by hand; nothing in the repo calls AWS on its own. Once the site is live, step 12 sets up the pipeline that deploys every push to master from then on.
 
 Every numbered step ends with:
 - **Check:** a command and the output that means it worked;
@@ -10,6 +10,7 @@ Every numbered step ends with:
 - **Shell:** PowerShell, from the repo root. `cdk` commands run in `infra\` (each block says so).
 - **`cdk` reads the profile from the environment:** run `$env:AWS_PROFILE = 'ig'; $env:AWS_REGION = 'ap-southeast-2'` once per shell before any `cdk` command. CDK can't resolve an `aws login` session through `--profile`, and the `ig` profile keeps no region, so without both it stops with "Unable to resolve AWS account".
 - **Every `aws` command** carries `--profile ig --region ap-southeast-2`. The only exception is ACM, with `--region us-east-1`, because CloudFront reads certificates only from there.
+- **Two stacks on aws:** `cl-aws-pipeline`, and `cl-aws-core` inside the pipeline's prod stage, so the pipeline and a laptop deploy ship the same template. The CDK CLI names the core stack by its path, `cl-aws-pipeline/Prod/cl-aws-core`; in CloudFormation and the outputs file it is still `cl-aws-core`.
 - **Build the web app before every `cdk synth`, `diff`, `deploy` and `destroy`:** `npm -w web run build:open-next`. The stack ships whatever is in `web\.open-next`, and a synth without it fails with `Build the web app first`.
 - **Values never written down here:** the account ID, the alert address, the certificate ARN and every key. The runbook says where each one lives. Two helpers read them when you need them:
   ```powershell
@@ -97,7 +98,7 @@ It has the same two keys as `infra\cdk.context.example.json`. Then build and syn
 ```powershell
 npm -w web run build:open-next
 cd infra
-npx cdk synth cl-aws-core -c stage=aws --strict -q
+npx cdk synth -c stage=aws --strict -q
 cd ..
 ```
 
@@ -116,11 +117,11 @@ cd infra
 # Only if step 1 found no CDKToolkit:
 $account = aws sts get-caller-identity --query Account --output text --profile ig --region ap-southeast-2
 npx cdk bootstrap aws://$account/ap-southeast-2 -c stage=aws
-npx cdk diff cl-aws-core -c stage=aws
-npx cdk deploy cl-aws-core -c stage=aws --outputs-file cdk.out/outputs-aws.json
+npx cdk diff cl-aws-pipeline/Prod/cl-aws-core -c stage=aws
+npx cdk deploy cl-aws-pipeline/Prod/cl-aws-core -c stage=aws --outputs-file cdk.out/outputs-aws.json
 cd ..
 ```
-- **Read the diff.** Only `cl-aws-core` appears, and on the first deploy every resource is new (`[+]`). On a later deploy, stop if it would replace or delete the table, the user pool, the files bucket or a secret.
+- **Read the diff.** Only `cl-aws-core` appears (the pipeline comes in step 12), and on the first deploy every resource is new (`[+]`). On a later deploy, stop if it would replace or delete the table, the user pool, the files bucket or a secret.
 - **Deploy.** It lists the IAM changes and asks you to approve them; read them, then answer `y`. The CloudFront distribution takes several minutes.
 
 **Check:**
@@ -133,7 +134,7 @@ cd ..
   - the run function's durable config;
   - a log group that already exists (step 1).
 
-  Copy the first `CREATE_FAILED` reason from the output and ask for a fix. A failed first create still keeps the retained resources (the table, the user pool, the files bucket and the secrets), so before the next attempt delete them with step 12's second list, and delete the rolled-back stack with `npx cdk destroy`.
+  Copy the first `CREATE_FAILED` reason from the output and ask for a fix. A failed first create still keeps the retained resources (the table, the user pool, the files bucket and the secrets), so before the next attempt delete them with step 13's second list, and delete the rolled-back stack with `npx cdk destroy cl-aws-pipeline/Prod/cl-aws-core -c stage=aws` from `infra\`.
 - **CDK asks for a newer bootstrap version:** run the bootstrap line, which upgrades `CDKToolkit` in place, then deploy again.
 
 ## 5. Keys
@@ -315,6 +316,76 @@ The next day, check Billing.
 
 **Stop if:** any alarm fires. Follow the next section.
 
+## 12. CI/CD setup
+From here on, a push to master deploys itself: GitHub Actions checks every pull request with no AWS credentials, and the pipeline `cl-aws-pipeline` in this account pulls master, checks it again, synthesizes once and deploys `cl-aws-core`. How it works is in [docs/learn/13-ci-cd.md](learn/13-ci-cd.md). These steps are once only. Cost: about $1.50 to $3.50 a month at a few deploys a week, mostly CodeBuild minutes.
+
+### 12.1 The GitHub connection
+In the console, in Sydney: **Developer Tools → Settings → Connections → Create connection**.
+1. Provider **GitHub**, name `chat-lite-github`, then **Connect to GitHub**.
+2. **Install a new app**. GitHub asks where to install "AWS Connector for GitHub": pick your account, **Only select repositories**, `aws-chat-lite`, then **Install**. Back in AWS, the app appears in the box; click **Connect**.
+
+**Check:** this prints `chat-lite-github` and `AVAILABLE`:
+```powershell
+aws codeconnections list-connections --provider-type-filter GitHub --query "Connections[].[ConnectionName,ConnectionStatus]" --output text --profile ig --region ap-southeast-2
+```
+
+**Stop if:** it says `PENDING`. The handshake didn't finish: open the connection in the console and click **Update pending connection**.
+
+### 12.2 The three parameters
+The pipeline reads the account's values from Parameter Store (standard parameters are free), because GitHub never holds them. They are copied from `infra\cdk.context.json` and the connection, never typed or printed:
+```powershell
+$ctx = Get-Content infra\cdk.context.json -Raw | ConvertFrom-Json
+aws ssm put-parameter --name /chat-lite/alert-email --type String --value $ctx.alertEmail --query Version --profile ig --region ap-southeast-2
+aws ssm put-parameter --name /chat-lite/certificate-arn --type String --value $ctx.certificateArn --query Version --profile ig --region ap-southeast-2
+$conn = aws codeconnections list-connections --provider-type-filter GitHub --query "Connections[?ConnectionName=='chat-lite-github'].ConnectionArn" --output text --profile ig --region ap-southeast-2
+aws ssm put-parameter --name /chat-lite/github-connection-arn --type String --value $conn --query Version --profile ig --region ap-southeast-2
+```
+To change one later, run its line again with `--overwrite`. The next pipeline run picks up the alert email and the certificate, which the synth reads; a new connection ARN only takes effect with a laptop `npx cdk deploy cl-aws-pipeline -c stage=aws`, because CloudFormation reads it when it deploys the pipeline.
+
+**Check:** this prints `3` and nothing else, so all three exist:
+```powershell
+aws ssm get-parameters --names /chat-lite/alert-email /chat-lite/certificate-arn /chat-lite/github-connection-arn --query "[length(Parameters), InvalidParameters]" --output text --profile ig --region ap-southeast-2
+```
+
+### 12.3 Deploy the pipeline
+```powershell
+npm -w web run build:open-next
+cd infra
+npx cdk diff cl-aws-pipeline/Prod/cl-aws-core -c stage=aws
+npx cdk diff cl-aws-pipeline -c stage=aws
+npx cdk deploy cl-aws-pipeline -c stage=aws
+cd ..
+```
+- **Read the first diff:** it is what the pipeline's first run will deploy to `cl-aws-core`. A stack last deployed before the pipeline existed shows only in-place changes (`[~]`): the distribution `Site…`'s origin IDs and two tag keys on the `Web…` bucket, which CDK names after the stack's path, plus `aws:cdk:path` metadata. Stop if any line is `[-]` or says it would replace a resource.
+- **Deploy.** Only `cl-aws-pipeline` deploys; it lists its IAM changes, so read them and answer `y`. AWS then mails a confirmation link for the pipeline's topic (`cl-aws-pipeline`) to the alert address: click it, or no approval request or failure reaches you.
+
+**Check:** creating the pipeline starts its first run. Follow it in the console (**CodePipeline → cl-aws-pipeline**), or with:
+```powershell
+aws codepipeline get-pipeline-state --name cl-aws-pipeline --query "stageStates[].[stageName,latestExecution.status]" --output text --profile ig --region ap-southeast-2
+```
+About 45 minutes later all five stages say `Succeeded`: `Source`, `Build` (the checks, the tests, the web build and the synth), `UpdatePipeline`, `Assets`, and `Prod`. In `Prod`, `CheckBroadening` approves itself unless IAM widens, the deploy runs, then `HealthCheck` and the 15-minute `WatchAlarms`. Then `aws cloudformation describe-stacks --stack-name cl-aws-core --query "Stacks[0].StackStatus" --output text --profile ig --region ap-southeast-2` prints `UPDATE_COMPLETE`, and step 7's checks still pass.
+
+**Stop if:**
+- `Source` fails: the connection isn't `AVAILABLE`, or the GitHub app can't see the repo (12.1);
+- `Build` fails on a parameter: one is missing (12.2's check). On anything else, open the action's log and ask for a fix;
+- `HealthCheck` fails: run step 7's checks;
+- `WatchAlarms` fails: an alarm fired after the deploy. Follow "When an alarm fires", then "Roll back" below.
+
+### Day to day
+- **Ship:** merge a pull request into master, then watch the run as above. A failed run mails the pipeline topic.
+- **Approve a broadening:** when a change adds IAM permissions or security group rules, `CheckBroadening` mails a link to the diff and waits. Read the diff; if every change is expected, open the pipeline, then **Prod → CheckBroadening.Confirm → Review → Approve**. Reject, and nothing deploys.
+- **Pause:** stop new runs at the build, so nothing is billed or deployed, and let a run in flight finish its current action:
+  ```powershell
+  aws codepipeline disable-stage-transition --pipeline-name cl-aws-pipeline --stage-name Build --transition-type Inbound --reason "paused" --profile ig --region ap-southeast-2
+  aws codepipeline enable-stage-transition --pipeline-name cl-aws-pipeline --stage-name Build --transition-type Inbound --profile ig --region ap-southeast-2
+  ```
+  The first line pauses, the second resumes. Runs that arrive while paused wait at the transition, and only the newest one goes on.
+- **Roll back:** what happens by itself, and what doesn't:
+  - a deploy that fails rolls back by itself: CloudFormation returns `cl-aws-core` to its last template, and the run stops;
+  - a deploy that succeeds and then trips an alarm stays deployed: `WatchAlarms` fails the run and mails, but undoes nothing. Revert the commit on master (`git revert <sha>`, through a pull request), and the pipeline deploys the revert;
+  - faster, when users are hurting: pause, check out the last good commit, run step 4's build, diff and deploy from the laptop, then revert on master and resume.
+- **A pipeline that broke itself:** the pipeline deploys its own changes first, so a bad change to `infra/lib/pipeline-stack.ts` can stop every later run. Check out a good commit and run `npx cdk deploy cl-aws-pipeline -c stage=aws` from `infra\`.
+
 ## When an alarm fires
 Each alarm mail says what users feel and links here. When it clears, the `OK` mail follows.
 
@@ -360,19 +431,20 @@ fields @timestamp, routeKey, status, integrationError
 
 **Two ways out:**
 - **To stop spend at once,** lower the room's cap below what it has spent (runs stop at their next model call), and stop the running threads.
-- **To roll back a bad deploy,** check out the last good commit and repeat step 4's build and deploy.
+- **To roll back a bad deploy,** revert it on master; the pipeline deploys the revert (step 12, "Roll back"). Before the pipeline exists, check out the last good commit and repeat step 4's build and deploy.
 
 Don't patch resources in the console: the next deploy would undo or trip over it. Ask for a fix.
 
-## 12. Tear down
+## 13. Tear down
 ```powershell
 npm -w web run build:open-next
 cd infra
-npx cdk destroy cl-aws-core -c stage=aws
+npx cdk destroy cl-aws-pipeline -c stage=aws
+npx cdk destroy cl-aws-pipeline/Prod/cl-aws-core -c stage=aws
 cd ..
 $account = aws sts get-caller-identity --query Account --output text --profile ig --region ap-southeast-2
 ```
-The destroy takes everything except users' data and the keys. CloudFront takes several minutes to disable and delete.
+The pipeline goes first, so it can't deploy the app again halfway through; destroying it leaves `cl-aws-core` alone. Its artifact bucket is kept (CodePipeline's default); empty and delete it in the S3 console if you want it gone. The second destroy takes everything except users' data and the keys. CloudFront takes several minutes to disable and delete.
 
 **These stay, on purpose:**
 
@@ -382,6 +454,9 @@ The destroy takes everything except users' data and the keys. CloudFront takes s
 | user pool `cl-aws-users` | `$pool = aws cognito-idp list-user-pools --max-results 60 --query "UserPools[?Name=='cl-aws-users'].Id" --output text --profile ig --region ap-southeast-2`, then `aws cognito-idp delete-user-pool --user-pool-id $pool --profile ig --region ap-southeast-2` |
 | files bucket `cl-aws-files-<account>` | `aws s3 rb "s3://cl-aws-files-$account" --force --profile ig --region ap-southeast-2` (empties it first) |
 | secrets `cl-aws-model-keys`, `cl-aws-tool-keys`, `cl-aws-token-key`, `cl-aws-push-keys` and `cl-aws-push-public-key` | `aws secretsmanager delete-secret --secret-id <name> --force-delete-without-recovery --profile ig --region ap-southeast-2`. Without the flag, the name stays taken for 7 to 30 days |
+| the pipeline's parameters `/chat-lite/alert-email`, `/chat-lite/certificate-arn` and `/chat-lite/github-connection-arn` | `aws ssm delete-parameters --names /chat-lite/alert-email /chat-lite/certificate-arn /chat-lite/github-connection-arn --profile ig --region ap-southeast-2` |
+| the GitHub connection `chat-lite-github` | Console: **Developer Tools → Settings → Connections → Delete**, then uninstall "AWS Connector for GitHub" under your GitHub **Settings → Applications** |
+| the pipeline's log groups (`/aws/codebuild/Pipeline*`, `/aws/lambda/cl-aws-pipeline*`), which never expire | Delete each with `aws logs delete-log-group --log-group-name <name> --profile ig --region ap-southeast-2` |
 
 Delete them only when you really want friends' data, accounts and keys gone. A fresh deploy fails while the table, the bucket or a secret exists, because their names are taken. There's no deploy that adopts the old ones, so to keep the data, update the stack in place rather than destroying it.
 

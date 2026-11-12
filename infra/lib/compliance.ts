@@ -113,3 +113,48 @@ export function addComplianceChecks(stack: Stack): void {
     if (fn.runtime.name === lambda.Runtime.NODEJS_22_X.name) NagSuppressions.addResourceSuppressions(fn, [NODE_22]);
   }
 }
+
+/** A build project's name in a policy: a reference to the project, since CloudFormation names it. */
+const PROJECT_REF = "<[A-Za-z0-9]+>";
+
+/** The grants CDK Pipelines writes for every action and build project, each wildcard matched exactly. */
+const PIPELINE_GENERATED = [
+  rule("IAM5", "Each action reads its input artifacts from the pipeline's own artifact bucket and writes its output there.", [
+    /^Action::s3:(GetObject|GetBucket|List|DeleteObject|Abort)\*$/,
+    /^Resource::<PipelineArtifactsBucket[0-9A-F]{8}\.Arn>\/\*$/,
+  ]),
+  rule("IAM5", "Each build project writes its own CodeBuild log group and test report groups, named after the project.", [
+    ownArn("logs", `log-group:/aws/codebuild/(\\*|${PROJECT_REF}:\\*)`),
+    ownArn("codebuild", `report-group/(\\*|${PROJECT_REF}-\\*)`),
+  ]),
+  rule("IAM5", "The self-update assumes CDK's bootstrap roles, which IAM can only name by pattern; their tag limits it to those.",
+    [/^Resource::arn:\*:iam::(\d{12}|<AWS::AccountId>):role\/\*$/]),
+  rule("IAM5", "The broadening check invokes CDK's auto-approve Lambda, whichever version is live.",
+    [/^Resource::<PipelinePipelinesSecurityCheckCDKPipelinesAutoApprove[0-9A-F]{8}\.Arn>:\*$/]),
+  rule("CB4", "Builds encrypt artifacts with S3's own key; a customer-managed KMS key would cost $1 a month and guards nothing more in one account."),
+];
+
+/** CDK Pipelines' own roles whose actions name no resource: stack lookups, approval results, assuming tagged roles. */
+const PIPELINE_ANY_RESOURCE = [
+  "Pipeline/UpdatePipeline/SelfMutation/Role/DefaultPolicy", "Pipeline/Assets/FileRole/DefaultPolicy",
+  "Pipeline/PipelinesSecurityCheck/CDKSecurityCheck/Role/DefaultPolicy",
+  "Pipeline/PipelinesSecurityCheck/CDKPipelinesAutoApprove/ServiceRole/DefaultPolicy",
+];
+const ANY_RESOURCE = [/^Resource::\*$/];
+
+/** The same gate for the pipeline stack, where almost every finding is in what CDK Pipelines generates. */
+export function addPipelineComplianceChecks(stack: Stack): void {
+  Aspects.of(stack).add(new AwsSolutionsChecks());
+  const path = (id: string) => `${stack.node.path}/${id}`;
+  NagSuppressions.addResourceSuppressions(stack.node.findChild("Pipeline"), PIPELINE_GENERATED, true);
+  NagSuppressions.addResourceSuppressionsByPath(stack, PIPELINE_ANY_RESOURCE.map(path), [
+    rule("IAM5", "CDK Pipelines grants these on every resource; the broadening check's AssumeRole is limited to the deploy role by tag.", ANY_RESOURCE),
+  ]);
+  NagSuppressions.addResourceSuppressionsByPath(stack, path("Pipeline/Pipeline/Prod/WatchAlarms/WatchAlarms/Role/DefaultPolicy"), [
+    rule("IAM5", "The alarm watch only reads alarm states, with DescribeAlarms, which takes no resource narrower than every alarm.", ANY_RESOURCE),
+  ]);
+  NagSuppressions.addResourceSuppressionsByPath(stack, path("Pipeline/Pipeline/ArtifactsBucket"), [
+    rule("S1", "Only the pipeline's own roles read and write its artifacts; server access logs would need a second bucket."),
+  ]);
+  NagSuppressions.addResourceSuppressionsByPath(stack, path("Pipeline/PipelinesSecurityCheck/CDKPipelinesAutoApprove/ServiceRole"), [BASIC_EXECUTION]);
+}

@@ -23,14 +23,14 @@ npm -w web run build:open-next        # the stack ships web/.open-next; a synth 
 cd infra
 env -u AWS_PROFILE -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_ENDPOINT_URL \
   AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null AWS_EC2_METADATA_DISABLED=true CDK_DISABLE_CLI_TELEMETRY=true \
-  npx cdk synth cl-aws-core -c stage=aws -c alertEmail=ops@example.com \
+  npx cdk synth -c stage=aws -c alertEmail=ops@example.com \
   -c certificateArn=arn:aws:acm:us-east-1:123456789012:certificate/00000000-0000-0000-0000-000000000000 --strict --no-notices -q
 cd ..
 npm -w infra test                     # template tests, including the runbook's
 ```
 Then read:
-- `infra/cdk.out/cl-aws-core.template.json`: search for `AWS::CloudFront::Distribution` (its `CacheBehaviors`), `AWS::CloudWatch::Alarm` and `DeletionPolicy`;
-- `infra/cdk.out/AwsSolutions--cl-aws-core-NagReport.csv`: every rule, compliant or suppressed with its reason.
+- the core stack's template, `infra/cdk.out/assembly-cl-aws-pipeline-Prod/clawspipelineProdclawscore*.template.json` since the pipeline's prod stage holds it ([13](13-ci-cd.md)): search for `AWS::CloudFront::Distribution` (its `CacheBehaviors`), `AWS::CloudWatch::Alarm` and `DeletionPolicy`;
+- `infra/cdk.out/AwsSolutions-Prod-cl-aws-core-NagReport.csv`: every rule, compliant or suppressed with its reason.
 
 Drop `-c alertEmail=…` to see the synth fail and name `infra/cdk.context.json`.
 
