@@ -1,6 +1,7 @@
 import { broadcastToRoom, sendToConnection, sendToUser } from "../live/broadcast.js";
 import { subscribe } from "../live/connections.js";
 import type { User } from "../lib/auth.js";
+import { bestEffort } from "../lib/best-effort.js";
 import { UserError, ValidationError } from "../lib/errors.js";
 import { requestStop } from "../runs/stop.js";
 import { routeSend } from "../threads/route.js";
@@ -30,8 +31,9 @@ async function perform(connId: string, user: User, f: Frame): Promise<Outcome> {
         replyToSeq: f.replyToSeq === undefined ? undefined : seqNumber(f.replyToSeq),
         threadId: f.threadId === undefined ? undefined : idOf(f.threadId, "threadId"), model: f.model,
       });
+      // The message is stored either way, and a client that misses the event catches up; the agent must still hear it.
       const notify = async () => {
-        await broadcastToRoom(message.roomId, { type: "message.new", message });
+        await bestEffort("message.new broadcast", () => broadcastToRoom(message.roomId, { type: "message.new", message }));
         await route();
       };
       return { data: message, notify };
