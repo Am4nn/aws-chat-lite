@@ -113,7 +113,11 @@ export async function mediaChecks(stamp: number, owner: Person, guest: Person) {
   await sleep(3500);
   await A.click('button.ml-auto[aria-label="Stop dictating"]');
   const typed = await until(A, (t) => (document.querySelector("textarea#composer") as HTMLTextAreaElement).value.includes(t), TRANSCRIPT, 10_000);
-  const spent = (await eventually(room, (r) => (r.budget.spentMicros - before) % TRANSCRIBE_MICROS_PER_SEC === 0 && r.budget.spentMicros > before)).budget.spentMicros - before;
+  // The 60 s reserved at the start is itself a whole number of seconds, so wait for the settle to bring it under that.
+  const spent = (await eventually(room, (r) => {
+    const moved = r.budget.spentMicros - before;
+    return moved > 0 && moved < 60 * TRANSCRIBE_MICROS_PER_SEC && moved % TRANSCRIBE_MICROS_PER_SEC === 0;
+  })).budget.spentMicros - before;
   const seconds = spent / TRANSCRIBE_MICROS_PER_SEC;
   check(typed && Number.isInteger(seconds) && seconds >= 3 && seconds <= 10,
     `dictation types "${TRANSCRIPT}" into the box, and the budget moves by ${spent} µ$ (${seconds} s at 167 µ$/s, after a 60 s reservation)`);

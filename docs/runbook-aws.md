@@ -8,6 +8,7 @@ Every numbered step ends with:
 
 ## Conventions
 - **Shell:** PowerShell, from the repo root. `cdk` commands run in `infra\` (each block says so).
+- **`cdk` reads the profile from the environment:** run `$env:AWS_PROFILE = 'ig'` once per shell before any `cdk` command. CDK can't resolve an `aws login` session through `--profile` and stops with "Unable to resolve AWS account".
 - **Every `aws` command** carries `--profile ig --region ap-southeast-2`. The only exception is ACM, with `--region us-east-1`, because CloudFront reads certificates only from there.
 - **Build the web app before every `cdk synth`, `diff`, `deploy` and `destroy`:** `npm -w web run build:open-next`. The stack ships whatever is in `web\.open-next`, and a synth without it fails with `Build the web app first`.
 - **Values never written down here:** the account ID, the alert address, the certificate ARN and every key. The runbook says where each one lives. Two helpers read them when you need them:
@@ -96,7 +97,7 @@ It has the same two keys as `infra\cdk.context.example.json`. Then build and syn
 ```powershell
 npm -w web run build:open-next
 cd infra
-npx cdk synth cl-aws-core -c stage=aws --strict -q --profile ig
+npx cdk synth cl-aws-core -c stage=aws --strict -q
 cd ..
 ```
 
@@ -114,9 +115,9 @@ npm -w web run build:open-next
 cd infra
 # Only if step 1 found no CDKToolkit:
 $account = aws sts get-caller-identity --query Account --output text --profile ig --region ap-southeast-2
-npx cdk bootstrap aws://$account/ap-southeast-2 -c stage=aws --profile ig
-npx cdk diff cl-aws-core -c stage=aws --profile ig
-npx cdk deploy cl-aws-core -c stage=aws --profile ig --outputs-file cdk.out/outputs-aws.json
+npx cdk bootstrap aws://$account/ap-southeast-2 -c stage=aws
+npx cdk diff cl-aws-core -c stage=aws
+npx cdk deploy cl-aws-core -c stage=aws --outputs-file cdk.out/outputs-aws.json
 cd ..
 ```
 - **Read the diff.** Only `cl-aws-core` appears, and on the first deploy every resource is new (`[+]`). On a later deploy, stop if it would replace or delete the table, the user pool, the files bucket or a secret.
@@ -367,7 +368,7 @@ Don't patch resources in the console: the next deploy would undo or trip over it
 ```powershell
 npm -w web run build:open-next
 cd infra
-npx cdk destroy cl-aws-core -c stage=aws --profile ig
+npx cdk destroy cl-aws-core -c stage=aws
 cd ..
 $account = aws sts get-caller-identity --query Account --output text --profile ig --region ap-southeast-2
 ```

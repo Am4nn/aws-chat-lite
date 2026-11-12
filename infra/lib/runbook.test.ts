@@ -56,6 +56,13 @@ describe("the AWS runbook", () => {
     for (const block of blocks) expect(block).toMatch(/^\s*\$account = aws sts get-caller-identity/m);
   });
 
+  it("runs cdk under AWS_PROFILE, since cdk can't resolve an `aws login` session through --profile", () => {
+    const cdk = runbook.split("\n").filter((line) => line.includes("npx cdk "));
+    expect(cdk.length).toBeGreaterThan(0);
+    for (const line of cdk) expect(line).not.toContain("--profile");
+    expect(runbook).toContain("$env:AWS_PROFILE = 'ig'");
+  });
+
   it("has the heading every alarm links to", () => {
     expect(runbook).toMatch(/^## When an alarm fires$/m);
   });

@@ -3,7 +3,8 @@
 import { useState, type ReactNode } from "react";
 import { Command } from "cmdk";
 import { AnimatePresence, motion } from "motion/react";
-import { Bot, Search } from "lucide-react";
+import { Search } from "lucide-react";
+import { AgentAvatar } from "@/components/ui/AgentAvatar";
 import { dur, easeOut } from "@/lib/motion";
 
 export type PaletteItem = { id: string; group: string; label: string; hint?: string; icon: ReactNode; run: () => void };
@@ -71,7 +72,7 @@ export function CommandPalette({ open, onClose, items, agentNames, onAsk }: {
                     onSelect={() => { onClose(); onAsk!(ask); }}
                     className="flex h-11 cursor-pointer items-center gap-2.5 rounded-[10px] px-2.5 text-[13.5px] text-text-2 data-[selected=true]:bg-surface-3 data-[selected=true]:text-text"
                   >
-                    <span className="grid size-[26px] shrink-0 place-items-center rounded-lg bg-lime-wash text-lime"><Bot aria-hidden="true" size={14} /></span>
+                    <AgentAvatar size={26} />
                     <span className="min-w-0 truncate">{ask}</span>
                     <span className="ml-auto shrink-0 font-mono text-[11.5px] text-text-3">new thread</span>
                   </Command.Item>

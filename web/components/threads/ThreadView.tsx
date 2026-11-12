@@ -2,7 +2,6 @@
 
 import { useState, type ReactNode } from "react";
 import { useReducedMotion } from "motion/react";
-import { Bot } from "lucide-react";
 import { errorText } from "@/lib/client/bff";
 import { useLive } from "@/lib/client/LiveProvider";
 import { useModelPick } from "@/lib/client/ModelsProvider";
@@ -21,6 +20,7 @@ import { useOutbox } from "@/components/chat/useOutbox";
 import { useUploads } from "@/components/chat/useUploads";
 import { RunBlock } from "./RunBlock";
 import { UserBubble } from "./UserBubble";
+import { AgentAvatar } from "@/components/ui/AgentAvatar";
 import { useStickToBottom } from "./useStickToBottom";
 
 const PREFETCH_PX = 400;
@@ -140,9 +140,7 @@ export function ThreadView({ roomId, initialThread, me, members, archived, initi
 function ThreadIntro({ thread }: { thread: ThreadSummary }) {
   return (
     <div className="flex items-center gap-3 pb-1">
-      <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-lime-wash text-lime">
-        <Bot aria-hidden="true" size={19} />
-      </span>
+      <AgentAvatar size={40} />
       <div className="min-w-0">
         <h2 className="flex items-baseline gap-2 font-display text-[19px] font-bold tracking-tight">
           <span className="font-mono text-[14px] font-medium text-text-3">#{thread.number}</span>
