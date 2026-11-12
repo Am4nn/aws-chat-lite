@@ -1,7 +1,7 @@
 type ClickLike = Pick<MouseEvent, "defaultPrevented" | "button" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey" | "target">;
 
 /** A room page, read from its URL. */
-export type Place = { roomId: string; chatId?: string; threadNumber?: number; map: boolean; newThread: boolean };
+type Place = { roomId: string; chatId?: string; threadNumber?: number; map: boolean; newThread: boolean };
 
 export type SkeletonKind = "chat" | "thread" | "map" | "new-thread";
 

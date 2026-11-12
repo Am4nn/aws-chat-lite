@@ -82,7 +82,7 @@ export function ThreadSkeleton() {
 }
 
 /** A turn's heading, its stats and time-share row, then the agent's lane with a few step cards. */
-export function MapSkeleton() {
+function MapSkeleton() {
   return (
     <Loading label="map">
       <Bar className="mx-4 mt-4 h-4 w-60 max-w-[60%] sm:mx-[22px]" />
