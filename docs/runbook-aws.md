@@ -134,7 +134,7 @@ cd ..
   - the run function's durable config;
   - a log group that already exists (step 1).
 
-  Copy the first `CREATE_FAILED` reason from the output and ask for a fix. A failed first create still keeps the retained resources (the table, the user pool, the files bucket and the secrets), so before the next attempt delete them with step 13's second list, and delete the rolled-back stack with `npx cdk destroy`.
+  Copy the first `CREATE_FAILED` reason from the output and ask for a fix. A failed first create still keeps the retained resources (the table, the user pool, the files bucket and the secrets), so before the next attempt delete them with step 13's second list, and delete the rolled-back stack with `npx cdk destroy cl-aws-pipeline/Prod/cl-aws-core -c stage=aws` from `infra\`.
 - **CDK asks for a newer bootstrap version:** run the bootstrap line, which upgrades `CDKToolkit` in place, then deploy again.
 
 ## 5. Keys
@@ -340,7 +340,7 @@ aws ssm put-parameter --name /chat-lite/certificate-arn --type String --value $c
 $conn = aws codeconnections list-connections --provider-type-filter GitHub --query "Connections[?ConnectionName=='chat-lite-github'].ConnectionArn" --output text --profile ig --region ap-southeast-2
 aws ssm put-parameter --name /chat-lite/github-connection-arn --type String --value $conn --query Version --profile ig --region ap-southeast-2
 ```
-To change one later, run its line again with `--overwrite`; the next pipeline run picks it up.
+To change one later, run its line again with `--overwrite`. The next pipeline run picks up the alert email and the certificate, which the synth reads; a new connection ARN only takes effect with a laptop `npx cdk deploy cl-aws-pipeline -c stage=aws`, because CloudFormation reads it when it deploys the pipeline.
 
 **Check:** this prints `3` and nothing else, so all three exist:
 ```powershell
@@ -454,6 +454,9 @@ The pipeline goes first, so it can't deploy the app again halfway through; destr
 | user pool `cl-aws-users` | `$pool = aws cognito-idp list-user-pools --max-results 60 --query "UserPools[?Name=='cl-aws-users'].Id" --output text --profile ig --region ap-southeast-2`, then `aws cognito-idp delete-user-pool --user-pool-id $pool --profile ig --region ap-southeast-2` |
 | files bucket `cl-aws-files-<account>` | `aws s3 rb "s3://cl-aws-files-$account" --force --profile ig --region ap-southeast-2` (empties it first) |
 | secrets `cl-aws-model-keys`, `cl-aws-tool-keys`, `cl-aws-token-key`, `cl-aws-push-keys` and `cl-aws-push-public-key` | `aws secretsmanager delete-secret --secret-id <name> --force-delete-without-recovery --profile ig --region ap-southeast-2`. Without the flag, the name stays taken for 7 to 30 days |
+| the pipeline's parameters `/chat-lite/alert-email`, `/chat-lite/certificate-arn` and `/chat-lite/github-connection-arn` | `aws ssm delete-parameters --names /chat-lite/alert-email /chat-lite/certificate-arn /chat-lite/github-connection-arn --profile ig --region ap-southeast-2` |
+| the GitHub connection `chat-lite-github` | Console: **Developer Tools → Settings → Connections → Delete**, then uninstall "AWS Connector for GitHub" under your GitHub **Settings → Applications** |
+| the pipeline's log groups (`/aws/codebuild/Pipeline*`, `/aws/lambda/cl-aws-pipeline*`), which never expire | Delete each with `aws logs delete-log-group --log-group-name <name> --profile ig --region ap-southeast-2` |
 
 Delete them only when you really want friends' data, accounts and keys gone. A fresh deploy fails while the table, the bucket or a secret exists, because their names are taken. There's no deploy that adopts the old ones, so to keep the data, update the stack in place rather than destroying it.
 

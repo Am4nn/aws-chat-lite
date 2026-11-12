@@ -85,7 +85,8 @@ describe("the pipeline", () => {
 
     const watch = commandsOf(action("Prod", "WatchAlarms")).join("\n");
     expect(watch).toContain("aws cloudwatch describe-alarms --alarm-name-prefix cl-aws- --state-value ALARM");
-    expect(watch).toContain("exit 1");
+    expect(watch).toMatch(/--output text\) \|\| exit 1$/m);
+    expect(watch).toContain("exit 1; fi");
     expect(watch).toMatch(/\b900\b/);
     expect(action("Prod", "WatchAlarms").RunOrder).toBeGreaterThan(action("Prod", "HealthCheck").RunOrder);
   });

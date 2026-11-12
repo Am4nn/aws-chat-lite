@@ -7,10 +7,11 @@ on:
   push:
     branches: [master]
 
-# A newer push to the same branch or pull request makes the older run pointless.
+# A newer push to a pull request makes the older run pointless. Runs on master all finish: each scans only the lines
+# its own push added, so a cancelled one would leave a merge unscanned.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -56,4 +57,7 @@ jobs:
         shell: bash
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: git diff --no-color --no-ext-diff -U0 "$BASE...HEAD" | sh .githooks/scan-diff
+        # A push that created the branch, or a force-push, has no previous commit here; it scans its last commit.
+        run: |
+          git cat-file -e "$BASE^{commit}" 2>/dev/null || BASE=HEAD~1
+          git diff --no-color --no-ext-diff -U0 "$BASE...HEAD" | sh .githooks/scan-diff

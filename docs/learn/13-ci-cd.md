@@ -53,7 +53,7 @@ flowchart LR
 |---|---|---|---|
 | `npm run check`, all unit tests | yes | yes | CI is the gate; the pipeline re-runs them on the exact commit it ships |
 | web build + `cdk synth --strict` + cdk-nag | yes, with stand-in values | yes, with the real values from SSM | policy as code on every change |
-| secret scan | yes, on the diff | no | a hook can be skipped with `--no-verify`; CI can't. On master there is no diff to scan |
+| secret scan | yes, on the diff | no | a hook can be skipped with `--no-verify`; CI can't, and it scans each master push too |
 | Floci integration + smoke | by hand | no | needs a full emulator; see below |
 | `cdk diff --security-only` | no (needs the deployed stack) | yes, in the broadening gate | |
 
@@ -86,7 +86,7 @@ That is the laptop's `y/n` on IAM changes, automated without `--require-approval
 
 ## After the deploy: health, alarms, and what actually rolls back
 - **HealthCheck** gets `SiteUrl` and `ApiUrl` from the stack's outputs (`envFromCfnOutputs`) and `curl -f`s `/login` and `/health`, with retries for CloudFront and DNS settling.
-- **WatchAlarms** polls `describe-alarms --alarm-name-prefix cl-aws- --state-value ALARM` every minute for 15 minutes (three of the alarms' five-minute periods) and fails the run on any alarm. Its role can only `cloudwatch:DescribeAlarms`.
+- **WatchAlarms** polls `describe-alarms --alarm-name-prefix cl-aws- --state-value ALARM` every minute for 15 minutes (three of the alarms' five-minute periods) and fails the run on any alarm. Beyond CDK's defaults (its logs and the artifact bucket), the only permission its role gets is `cloudwatch:DescribeAlarms`. If that call fails, the step fails: a watch that reads nothing must not pass.
 - **A failed run** mails the pipeline topic through a CodeStar notification rule.
 
 | What went wrong | What happens by itself | What a person does |

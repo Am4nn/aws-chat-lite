@@ -1,11 +1,10 @@
 # The whole local stack on a fresh Floci in a GitHub runner: the integration suite in one job, the browser smoke in
 # another, each on its own runner, because the smoke slows down on a Floci the suite has already filled.
 #
-# Started by hand for now. The local stage was built on Docker Desktop, where a container reaches the host's
-# loopback as host.docker.internal; Floci's Lambdas reach the sandbox and MCP test servers that way, and those bind
-# 127.0.0.1 only. A runner has Docker Engine, where that name is the bridge gateway instead. The routing step below
-# sends the gateway to loopback, as Docker Desktop does, but until a run proves it on GitHub's runners this stays a
-# manual check rather than a required one.
+# Manual, because the loopback routing below is unproven on Docker Engine. Floci's Lambdas reach the sandbox and MCP
+# test servers as host.docker.internal, and those bind 127.0.0.1 only. Docker Desktop routes that name to the host's
+# loopback; on Docker Engine it is the bridge gateway (Floci maps it with host-gateway), where nothing listens. The
+# routing step sends the gateway to loopback, as Docker Desktop does.
 name: Floci
 
 on:

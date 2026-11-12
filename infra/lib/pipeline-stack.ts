@@ -120,12 +120,13 @@ export class PipelineStack extends Stack {
 }
 
 /**
- * Fails if any of the app's alarms is in ALARM at any point during the bake. It can't undo the deploy: a failed run
+ * Fails if any of the app's alarms is in ALARM at any point during the bake, or if it can't read them: a watch that
+ * silently reads nothing would pass every deploy. It can't undo the deploy: a failed run
  * stops here, mails the pipeline topic, and the fix is a revert pushed to master.
  */
 const watchAlarms = (alarmPrefix: string) => `deadline=$(( $(date +%s) + ${BAKE_SECONDS} ))
 while true; do
-  firing=$(aws cloudwatch describe-alarms --alarm-name-prefix ${alarmPrefix} --state-value ALARM --query "MetricAlarms[].AlarmName" --output text)
+  firing=$(aws cloudwatch describe-alarms --alarm-name-prefix ${alarmPrefix} --state-value ALARM --query "MetricAlarms[].AlarmName" --output text) || exit 1
   if [ -n "$firing" ]; then echo "In ALARM after the deploy: $firing"; exit 1; fi
   if [ "$(date +%s)" -ge "$deadline" ]; then break; fi
   sleep 60
