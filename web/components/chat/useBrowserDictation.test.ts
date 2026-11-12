@@ -73,6 +73,13 @@ describe("useBrowserDictation", () => {
     expect(result.current.state).toBe("idle");
   });
 
+  it("says it heard nothing when the browser ends a session with no words and no error", () => {
+    const { result, onText, rec } = listening();
+    act(() => rec.end());
+    expect(onText).not.toHaveBeenCalled();
+    expect(result.current).toMatchObject({ state: "error", error: "Didn't catch anything. Try again." });
+  });
+
   it("cancels without keeping the words", () => {
     const { result, onText, rec } = listening();
     rec.hear(heard("never mind", false));

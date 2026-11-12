@@ -46,6 +46,8 @@ export function useBrowserDictation({ onText }: { onText: (text: string) => void
     if (current.current === a) current.current = null;
     const text = transcriptText(a.live);
     if (keepWords && text) latestOnText.current(text);
+    // A session that ends having heard nothing says so, rather than closing as if nothing had been asked.
+    if (keepWords && !text && !a.error) a.error = DICTATION_ERROR.silent;
     setView(a.error ? { ...IDLE, state: "error", error: a.error } : IDLE);
   }
 

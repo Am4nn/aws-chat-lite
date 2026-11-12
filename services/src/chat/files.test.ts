@@ -74,8 +74,10 @@ describe("storedAttachment", () => {
   });
 
   it("refuses a file that was never uploaded, whether S3 says 404 or (without ListBucket, as on AWS) 403", async () => {
-    for (const name of ["NotFound", "Forbidden"]) {
-      vi.spyOn(S3Client.prototype, "send").mockImplementation((async () => { throw Object.assign(new Error("no"), { name }); }) as never);
+    for (const [name, status] of [["NotFound", 404], ["Unknown", 403]] as const) {
+      vi.spyOn(S3Client.prototype, "send").mockImplementation((async () => {
+        throw Object.assign(new Error("no"), { name, $metadata: { httpStatusCode: status } });
+      }) as never);
       await expect(storedAttachment(declared), name).rejects.toThrow(new ValidationError("That upload isn't there; try again."));
     }
   });

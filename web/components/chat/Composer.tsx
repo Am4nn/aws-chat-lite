@@ -12,6 +12,7 @@ import { UploadChip } from "./Attachments";
 import { MentionList } from "./MentionList";
 import { DictationRow, isDictating, MicButton } from "./MicButton";
 import { ModeBanner } from "./ModeBanner";
+import { transcriptText } from "@/lib/client/voice/transcript";
 import { useDictation } from "./useDictation";
 import type { useUploads } from "./useUploads";
 
@@ -22,6 +23,15 @@ const MAX_TEXT = 4000;
 const COUNTER_FROM = 3600;
 const TYPING_EVERY_MS = 3000;
 const MAX_HEIGHT_PX = 200;
+
+/** Spoken words go in at the caret, with a space on either side unless one is already there. */
+function withWords(text: string, caret: number, words: string) {
+  if (!words) return { value: text, caret };
+  const before = text.slice(0, caret);
+  const after = text.slice(caret);
+  const head = before && !/\s$/.test(before) ? `${before} ${words}` : before + words;
+  return { value: head + (after && !/^\s/.test(after) ? ` ${after}` : after), caret: head.length };
+}
 
 /**
  * `agents`: the room's agents, offered first in the @ list where naming one starts a thread with it (a people chat).
@@ -112,13 +122,10 @@ export function Composer({
     change(before + text.slice(caret), before.length);
   }
 
-  // Spoken words go in at the caret, with a space on either side unless one is already there.
   function insertDictation(words: string) {
-    const before = text.slice(0, caret);
-    const after = text.slice(caret);
-    const head = before && !/\s$/.test(before) ? `${before} ${words}` : before + words;
-    nextCaret.current = head.length;
-    change(head + (after && !/^\s/.test(after) ? ` ${after}` : after), head.length);
+    const spoken = withWords(text, caret, words);
+    nextCaret.current = spoken.caret;
+    change(spoken.value, spoken.caret);
     area.current?.focus();
   }
 
@@ -184,7 +191,7 @@ export function Composer({
         )}
 
         <AnimatePresence initial={false}>
-          {dictation.state !== "idle" && (
+          {dictation.state === "error" && (
             <motion.div
               initial={reduced ? false : { height: 0, opacity: 0 }}
               animate={{ height: "auto", opacity: 1 }}
@@ -228,7 +235,8 @@ export function Composer({
             aria-expanded={options.length > 0}
             aria-controls={options.length ? listId : undefined}
             aria-activedescendant={options.length ? `${listId}-${highlight}` : undefined}
-            value={text}
+            value={dictating ? withWords(text, caret, transcriptText(dictation.live)).value : text}
+            readOnly={dictating}
             placeholder={editing ? "Edit your message" : steering ? "Steer the agent…" : placeholder}
             onChange={(e) => change(e.target.value, e.target.selectionStart)}
             onSelect={(e) => setCaret(e.currentTarget.selectionStart)}

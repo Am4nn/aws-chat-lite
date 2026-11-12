@@ -31,10 +31,10 @@ function composer(mode: { kind: "reply"; message: Message } | null = null) {
 }
 
 describe("Composer dictation", () => {
-  it("offers the mic, with its limit as the hint", () => {
+  it("offers the mic, which says what it does", () => {
     composer();
     fireEvent.click(screen.getByRole("button", { name: "Dictate" }));
-    expect(screen.getByRole("button", { name: "Dictate" }).title).toBe("Dictation · up to 1 minute");
+    expect(screen.getByRole("button", { name: "Dictate" }).title).toBe("Dictate · speak and it types");
     expect(dictation.start).toHaveBeenCalled();
   });
 
@@ -44,13 +44,10 @@ describe("Composer dictation", () => {
     expect(screen.queryByRole("button", { name: "Dictate" })).toBeNull();
   });
 
-  it("says who recognises the speech when the browser does", () => {
-    composer();
-    expect(screen.queryByRole("button", { name: /recognised by your browser/ })).toBeNull();
-    cleanup();
+  it("has no hint beside the mic", () => {
     Object.assign(dictation, { engine: "browser" });
     composer();
-    expect(screen.getByRole("button", { name: "Speech is recognised by your browser (in Chrome, by Google)." })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /recognised by your browser/ })).toBeNull();
   });
 
   it("puts the words in at the caret, spaced from the text around them", () => {
@@ -60,13 +57,14 @@ describe("Composer dictation", () => {
     expect(box.value).toBe("hello there world");
   });
 
-  it("shows the time and the words while recording, and won't send until it ends", () => {
+  it("types the words into the box as they're heard, with no strip or timer, and won't send until it ends", () => {
     Object.assign(dictation, { state: "recording", elapsedMs: 7400, live: { final: "this is", partial: "a te" } });
     const { box, onSend } = composer();
     fireEvent.change(box, { target: { value: "draft", selectionStart: 5 } });
-    expect(screen.getByText("0:07 / 1:00")).toBeTruthy();
-    expect(screen.getByText("this is").className).toContain("text-text");
-    expect(screen.getByText("a te").className).toContain("text-text-2");
+    expect(box.value).toBe("draft this is a te");
+    expect(box.readOnly).toBe(true);
+    expect(screen.queryByText("0:07 / 1:00")).toBeNull();
+    expect(screen.getAllByRole("button", { name: "Stop dictating" })).toHaveLength(1);
     fireEvent.keyDown(box, { key: "Enter" });
     expect(onSend).not.toHaveBeenCalled();
     expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
