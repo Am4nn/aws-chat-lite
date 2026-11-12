@@ -3,7 +3,6 @@ export function clsFrom(entries: { value: number; hadRecentInput: boolean }[]): 
   return entries.filter((e) => !e.hadRecentInput).reduce((sum, e) => sum + e.value, 0);
 }
 
-
 /** Distinct numbers with no hole between the smallest and the largest. */
 export function gapless(numbers: number[]): boolean {
   const sorted = [...numbers].sort((a, b) => a - b);

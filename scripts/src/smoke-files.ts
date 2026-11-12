@@ -6,36 +6,23 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElementHandle, Page } from "puppeteer-core";
-import { WEB, bff, check, eventually, socketOpen, until } from "./smoke-page.js";
+import { PANEL, WEB, bff, check, confirmDialog, eventually, sampleFrames, socketOpen, until } from "./smoke-page.js";
 
 type Person = { page: Page; name: string };
 type Thread = { threadId: string; number: number; status: string };
 
-const PANEL = 'aside[aria-label="Room panel"]';
-/** A computed transform that leaves the element where it is. */
-const IDENTITY = "^(none|matrix\\(1, 0, 0, 1, 0, 0\\))$";
-
-/**
- * Counts the frames in which a freshly changed file row was still sliding or fading in, from the first frame it shows
- * until a second later. Sent as text because the TypeScript runner wraps named functions in a helper that doesn't
- * exist inside the browser.
- */
-const FRESH_ROW_FRAMES = (path: string) => `new Promise((resolve) => {
-  let seen = 0, moving = 0, firstSeen = 0;
-  const start = performance.now();
-  const sample = (now) => {
-    const row = [...document.querySelectorAll('${PANEL} li')].find((li) => li.querySelector("span[title]")?.title === ${JSON.stringify(path)});
+/** Counts the frames in which a freshly changed file row was still sliding or fading in, until a second after it shows. */
+const FRESH_ROW_FRAMES = (path: string) => sampleFrames({
+  vars: "let seen = 0, moving = 0, firstSeen = 0;",
+  perFrame: `const row = [...document.querySelectorAll('${PANEL} li')].find((li) => li.querySelector("span[title]")?.title === ${JSON.stringify(path)});
     if (row) {
       seen++;
       firstSeen ||= now;
-      const s = getComputedStyle(row);
-      if (Number(s.opacity) < 1 || !new RegExp(${JSON.stringify(IDENTITY)}).test(s.transform)) moving++;
-    }
-    if ((firstSeen && now - firstSeen > 1000) || now - start > 15000) resolve({ seen, moving });
-    else requestAnimationFrame(sample);
-  };
-  requestAnimationFrame(sample);
-})`;
+      if (!placed(row)) moving++;
+    }`,
+  done: "(firstSeen && now - firstSeen > 1000) || now - start > 15000",
+  result: "{ seen, moving }",
+});
 
 /** Whether the panel lists `path`, and its row's text includes `meta` when given. */
 const fileShows = (page: Page, path: string, meta = "", timeout?: number) =>
@@ -59,10 +46,6 @@ async function pickFile(page: Page, file: string) {
   const input = (await page.$(`${PANEL} input[type=file]`)) as ElementHandle<HTMLInputElement>;
   await input.uploadFile(file);
 }
-
-/** Clicks the button labelled `action` in the open confirm dialog. */
-const confirmDialog = (page: Page, action: string) =>
-  page.evaluate((a) => ([...document.querySelectorAll("[role=dialog] button")] as HTMLElement[]).find((b) => b.textContent === a)!.click(), action);
 
 /**
  * An upload through the files API from inside the page (presign, POST to S3, commit), for setup that isn't under test.

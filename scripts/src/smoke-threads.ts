@@ -6,10 +6,10 @@
 import type { Page } from "puppeteer-core";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, UpdateCommand } from "@aws-sdk/lib-dynamodb";
-import { readOutputs } from "./deploy-local.js";
+import { readOutputs } from "./cdk.js";
 import { flociHost } from "./env.js";
 import { clsFrom, gapless, streamedExactly } from "./smoke-helpers.js";
-import { WEB, bff, check, eventually, send, shows, socketOpen, toastSays, until } from "./smoke-page.js";
+import { IDENTITY, WEB, bff, check, eventually, sampleFrames, send, shows, socketOpen, toastSays, until } from "./smoke-page.js";
 
 type Person = { page: Page; name: string };
 type Thread = { threadId: string; number: number; name: string; status: string; steps: number; runFirstSeq?: number };
@@ -23,11 +23,9 @@ declare global {
 }
 
 const RUN_MS = 60_000;
-/** A computed transform that leaves the element where it is. */
-const IDENTITY = "^(none|matrix\\(1, 0, 0, 1, 0, 0\\))$";
 
 /**
- * Lookups the checks share inside the page, installed as text on every page load for the same reason as the samplers.
+ * Lookups the checks share inside the page, installed as text on every page load for the same reason as `sampleFrames`.
  * A card is the box around an "Open" link to its thread.
  */
 const PAGE_HELPERS = `
@@ -41,55 +39,39 @@ window.__archived = () => [...document.querySelectorAll("[cmdk-group]")]
 /**
  * Samples the streaming answer on every frame. It counts the frames where a word was still fading in, and the frames
  * where a `shimmer` text was animating. With `untilStopped` it also records each new version of the answer's text and
- * runs until the test sets `__stopSampling`; otherwise it ends 1.5 s after the first words show. Sent as text, like
- * the other samplers, because the TypeScript runner wraps named functions in a helper that doesn't exist in the page.
+ * runs until the test sets `__stopSampling`; otherwise it ends 1.5 s after the first words show.
  */
-const answerFrames = (untilStopped: boolean) => `new Promise((resolve) => {
-  const texts = [];
-  let seen = 0, moving = 0, shimmers = 0, shimmering = 0, firstSeen = 0;
-  const start = performance.now();
-  const sample = (now) => {
-    const words = [...document.querySelectorAll('main span[class*="animate-[word-in"]')];
+const answerFrames = (untilStopped: boolean) => sampleFrames({
+  vars: "const texts = []; let seen = 0, moving = 0, shimmers = 0, shimmering = 0, firstSeen = 0;",
+  perFrame: `const words = [...document.querySelectorAll('main span[class*="animate-[word-in"]')];
     if (words.length) {
       seen++;
       firstSeen ||= now;
-      if (words.some((w) => {
-        const s = getComputedStyle(w);
-        return Number(s.opacity) < 1 || s.filter !== "none" || !new RegExp(${JSON.stringify(IDENTITY)}).test(s.transform);
-      })) moving++;
+      if (words.some((w) => !placed(w) || getComputedStyle(w).filter !== "none")) moving++;
     }
     const shimmer = [...document.querySelectorAll(".shimmer")];
     shimmers += shimmer.length;
     shimmering += shimmer.filter((el) => getComputedStyle(el).animationName !== "none").length;
     const answer = [...document.querySelectorAll("main h2")].find((h) => h.textContent.startsWith("Fake answer for"));
     const text = answer ? answer.parentElement.innerText : "";
-    if (text && text !== texts.at(-1)) texts.push(text);
-    const over = ${untilStopped} ? window.__stopSampling : firstSeen && now - firstSeen > 1500;
-    if (over || now - start > 90000) resolve({ texts, seen, moving, shimmers, shimmering });
-    else requestAnimationFrame(sample);
-  };
-  requestAnimationFrame(sample);
-})`;
+    if (text && text !== texts.at(-1)) texts.push(text);`,
+  done: `(${untilStopped} ? window.__stopSampling : firstSeen && now - firstSeen > 1500) || now - start > 90000`,
+  result: "{ texts, seen, moving, shimmers, shimmering }",
+});
 type Frames = { texts: string[]; seen: number; moving: number; shimmers: number; shimmering: number };
 
 /**
  * Opens the first card's thread and reports the most composers on screen in any frame, sampled from before the click
  * until the thread's page has been up for a second. More than one means a second copy of a view was mounted.
  */
-const OPEN_CARD_AND_COUNT_VIEWS = `new Promise((resolve) => {
-  let most = 0, arrived = 0;
-  const start = performance.now();
-  const sample = (now) => {
-    most = Math.max(most, document.querySelectorAll("main textarea#composer").length);
-    if (location.pathname.includes("/t/")) arrived ||= now;
-    if ((arrived && now - arrived > 1000) || now - start > 15000) resolve(most);
-    else requestAnimationFrame(sample);
-  };
-  requestAnimationFrame(sample);
-  window.__cards()[0].querySelector("a").click();
-})`;
-
-
+const OPEN_CARD_AND_COUNT_VIEWS = sampleFrames({
+  vars: "let most = 0, arrived = 0;",
+  perFrame: `most = Math.max(most, document.querySelectorAll("main textarea#composer").length);
+    if (location.pathname.includes("/t/")) arrived ||= now;`,
+  done: "(arrived && now - arrived > 1000) || now - start > 15000",
+  result: "most",
+  begin: `window.__cards()[0].querySelector("a").click();`,
+});
 
 export async function threadChecks(stamp: number, owner: Person, guest: Person) {
   const A = owner.page;

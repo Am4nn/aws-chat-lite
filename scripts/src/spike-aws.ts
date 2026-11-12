@@ -8,7 +8,8 @@ import { fileURLToPath } from "node:url";
 import { STSClient, GetCallerIdentityCommand } from "@aws-sdk/client-sts";
 import { CloudFormationClient, DescribeStacksCommand } from "@aws-sdk/client-cloudformation";
 import { awsEnv, useAwsEnv, AWS_STAGE_REGION } from "./env.js";
-import { cdk, readOutputs } from "./deploy-local.js";
+import { cdk, readOutputs } from "./cdk.js";
+import { run } from "./cli.js";
 import { replaceAwsSection, finishAwsSpike } from "./aws-section.js";
 import { resultsTable, type CheckResult } from "./report.js";
 import * as websocket from "./checks/websocket.js";
@@ -75,4 +76,4 @@ process.once("SIGINT", () => {
   process.exit(130);
 });
 
-main().catch((e) => { console.error(String(e.message ?? e)); process.exit(1); });
+run(main);

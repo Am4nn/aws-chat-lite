@@ -6,9 +6,10 @@
  * helpers, memory and schedules, then images, voice and push notifications on their fakes.
  */
 import puppeteer, { type Page } from "puppeteer-core";
+import { run } from "./cli.js";
 import { useLocalEnv } from "./env.js";
 import { clsFrom } from "./smoke-helpers.js";
-import { WEB, bff, check, grantCreator, person, results, signUp, toastSays } from "./smoke-page.js";
+import { WEB, bff, check, grantCreator, person, results, sampleFrames, signUp, toastSays } from "./smoke-page.js";
 import { emptyHomeCheck, liveChecks } from "./smoke-live.js";
 import { modelChecks } from "./smoke-models.js";
 import { threadChecks } from "./smoke-threads.js";
@@ -20,24 +21,14 @@ import { mediaChecks } from "./smoke-media.js";
 
 const CHROME = process.env.CHROME_PATH ?? "C:/Program Files/Google/Chrome/Application/chrome.exe";
 
-/**
- * Clicks the second chat and records the main content's on-screen transform on every frame for 800 ms. Sampling starts
- * before the click, inside the page, so no frame of the transition is missed. Motion animates transforms from
- * JavaScript, so the browser's own animation list can't show them; the rendered style can. The script is sent as text
- * because the TypeScript runner wraps named functions in a helper that doesn't exist inside the browser.
- */
-const SWITCH_AND_SAMPLE = `new Promise((resolve) => {
-  const frames = [];
-  const start = performance.now();
-  const sample = () => {
-    const offset = [...document.querySelectorAll("main > div > div")]
-      .some((panel) => !/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/.test(getComputedStyle(panel).transform));
-    frames.push(offset);
-    if (performance.now() - start < 800) requestAnimationFrame(sample); else resolve(frames.filter(Boolean).length);
-  };
-  requestAnimationFrame(sample);
-  document.querySelectorAll("nav[aria-label=Room] ul a")[1].click();
-})`;
+/** Clicks the second chat and counts the frames, over 800 ms, in which the main content was off its resting place. */
+const SWITCH_AND_SAMPLE = sampleFrames({
+  vars: "let offset = 0;",
+  perFrame: `if ([...document.querySelectorAll("main > div > div")].some((panel) => !identity.test(getComputedStyle(panel).transform))) offset++;`,
+  done: "now - start >= 800",
+  result: "offset",
+  begin: `document.querySelectorAll("nav[aria-label=Room] ul a")[1].click();`,
+});
 
 /** Loads the room fresh on its first chat, switches to the second, and counts the frames where content was offset. */
 async function offsetFrames(page: Page, roomUrl: string): Promise<number> {
@@ -154,4 +145,4 @@ async function main() {
   if (failed) process.exit(1);
 }
 
-main().catch((e) => { console.error(String(e.message ?? e)); process.exit(1); });
+run(main);

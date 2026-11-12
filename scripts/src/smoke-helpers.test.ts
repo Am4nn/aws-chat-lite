@@ -8,7 +8,6 @@ describe("clsFrom (cumulative layout shift)", () => {
   });
 });
 
-
 describe("gapless", () => {
   it("accepts distinct numbers that leave no hole, in any order", () => {
     expect(gapless([7, 5, 6])).toBe(true);

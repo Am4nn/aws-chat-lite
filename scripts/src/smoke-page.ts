@@ -1,7 +1,7 @@
 /** What every smoke section shares: the result list, a person's isolated browser page, and in-page helpers. */
 import type { Browser, Page } from "puppeteer-core";
 import { CognitoIdentityProviderClient, AdminAddUserToGroupCommand } from "@aws-sdk/client-cognito-identity-provider";
-import { readOutputs } from "./deploy-local.js";
+import { readOutputs } from "./cdk.js";
 
 export const WEB = process.env.WEB_URL ?? "http://localhost:3000";
 export const PASSWORD = "password1";
@@ -94,6 +94,46 @@ export const say = (page: Page, roomId: string, chatId: string, text: string) =>
     .then(() => "ok", (e: Error) => e.message), roomId, chatId, text);
 
 export const PANEL = 'aside[aria-label="Room panel"]';
+
+/** A computed transform that leaves the element where it is. */
+export const IDENTITY = "^(none|matrix\\(1, 0, 0, 1, 0, 0\\))$";
+
+/**
+ * An in-page script that runs `perFrame` on every animation frame until `done` holds, then resolves with `result`.
+ * `begin` runs once sampling has started, so no frame of what it sets off is missed. They see `now` and `start`
+ * (frame timestamps), `identity` (the IDENTITY regex), `placed(el)` (fully opaque at its resting transform) and
+ * whatever `vars` declares. Motion animates from JavaScript, so the browser's animation list can't show its
+ * transitions; the rendered style on each frame can. The script is text because the TypeScript runner wraps named
+ * functions in a helper that doesn't exist inside the browser.
+ */
+export const sampleFrames = ({ vars = "", perFrame, done, result, begin = "" }: {
+  vars?: string; perFrame: string; done: string; result: string; begin?: string;
+}) => `new Promise((resolve) => {
+  const identity = new RegExp(${JSON.stringify(IDENTITY)});
+  const placed = (el) => { const s = getComputedStyle(el); return Number(s.opacity) >= 1 && identity.test(s.transform); };
+  ${vars}
+  const start = performance.now();
+  const sample = (now) => {
+    ${perFrame}
+    if (${done}) resolve(${result}); else requestAnimationFrame(sample);
+  };
+  requestAnimationFrame(sample);
+  ${begin}
+})`;
+
+/** Clicks a confirm dialog's button once the dialog has finished animating in, so the click lands where it shows. */
+export async function confirmDialog(page: Page, action: string) {
+  await until(page, (identity) => {
+    const dialog = document.querySelector("[role=dialog]");
+    if (!dialog) return false;
+    const style = getComputedStyle(dialog);
+    return style.opacity === "1" && new RegExp(identity).test(style.transform);
+  }, IDENTITY);
+  await page.evaluate((a) => ([...document.querySelectorAll("[role=dialog] button")] as HTMLElement[]).find((b) => b.textContent === a)?.click(), action);
+}
+
+/** Whether the page fits its viewport's width, with nothing to scroll sideways. */
+export const noSideScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
 
 /** Clicks the enabled button reading `text`, once it shows. */
 export async function clickButton(page: Page, text: string) {

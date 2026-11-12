@@ -6,7 +6,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElementHandle, Page } from "puppeteer-core";
-import { WEB, bff, check, send, sleep, socketOpen, toastSays, until } from "./smoke-page.js";
+import { WEB, bff, check, sampleFrames, send, sleep, socketOpen, toastSays, until } from "./smoke-page.js";
 
 type Person = { page: Page; name: string };
 type Thread = { threadId: string; number: number; status: string };
@@ -14,27 +14,16 @@ type Thread = { threadId: string; number: number; status: string };
 const RUN_MS = 60_000;
 const PILL = 'main button[aria-label^="Model:"]';
 const LOCK = '[aria-label="Private: has attachments, so DeepSeek is off."]';
-/** A computed transform that leaves the element where it is. */
-const IDENTITY = "^(none|matrix\\(1, 0, 0, 1, 0, 0\\))$";
 
-/**
- * Opens the model menu and counts the frames, over 600 ms, where it was still fading or moving in. Sent as text, like
- * the other samplers, because the TypeScript runner wraps named functions in a helper that doesn't exist in the page.
- */
-const OPEN_MENU_AND_COUNT_FRAMES = `new Promise((resolve) => {
-  let moving = 0;
-  const start = performance.now();
-  const sample = (now) => {
-    const menu = document.querySelector("main [role=menu]");
-    if (menu) {
-      const s = getComputedStyle(menu);
-      if (Number(s.opacity) < 1 || !new RegExp(${JSON.stringify(IDENTITY)}).test(s.transform)) moving++;
-    }
-    if (now - start > 600) resolve(moving); else requestAnimationFrame(sample);
-  };
-  requestAnimationFrame(sample);
-  document.querySelector(${JSON.stringify(PILL)}).click();
-})`;
+/** Opens the model menu and counts the frames, over 600 ms, where it was still fading or moving in. */
+const OPEN_MENU_AND_COUNT_FRAMES = sampleFrames({
+  vars: "let moving = 0;",
+  perFrame: `const menu = document.querySelector("main [role=menu]");
+    if (menu && !placed(menu)) moving++;`,
+  done: "now - start > 600",
+  result: "moving",
+  begin: `document.querySelector(${JSON.stringify(PILL)}).click();`,
+});
 
 /** The pill unlocks once the page hears the run ended, a moment after the API says so. */
 const pillReady = (page: Page) => until(page, (sel) => !document.querySelector(sel)?.hasAttribute("aria-disabled"), PILL);

@@ -4,6 +4,7 @@
  * It always talks to Floci, never to AWS.
  */
 import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
+import { run } from "./cli.js";
 import { useLocalEnv } from "./env.js";
 import { assertOurFlociUp } from "./floci-owner.js";
 
@@ -20,4 +21,4 @@ async function main() {
   console.log(`Fired: ${JSON.parse(reply)}`);
 }
 
-main().catch((e) => { console.error(String(e.message ?? e)); process.exit(1); });
+run(main);

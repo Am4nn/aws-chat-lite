@@ -6,7 +6,9 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Browser, ElementHandle, Page } from "puppeteer-core";
-import { WEB, bff, check, grantCreator, person, say, send, shows, signUp, sleep, socketOpen, toastSays, until } from "./smoke-page.js";
+import {
+  WEB, bff, check, confirmDialog, grantCreator, person, sampleFrames, say, send, shows, signUp, sleep, socketOpen, toastSays, until,
+} from "./smoke-page.js";
 
 type Person = { page: Page; name: string };
 
@@ -35,42 +37,25 @@ async function roomMenu(page: Page, item: string) {
   await page.evaluate((i) => ([...document.querySelectorAll("[role=menuitem]")] as HTMLElement[]).find((x) => x.textContent === i)?.click(), item);
 }
 
-/** Clicks a confirm dialog's button once the dialog has finished animating in. */
-async function confirmDialog(page: Page, action: string) {
-  await until(page, () => {
-    const dialog = document.querySelector("[role=dialog]");
-    if (!dialog) return false;
-    const style = getComputedStyle(dialog);
-    return style.opacity === "1" && /^(none|matrix\(1, 0, 0, 1, 0, 0\))$/.test(style.transform);
-  });
-  await page.evaluate((a) => ([...document.querySelectorAll("[role=dialog] button")] as HTMLElement[]).find((x) => x.textContent === a)?.click(), action);
-}
-
 /**
  * Samples the newest row containing the marker on every frame until 1.5 s after it first shows (6 s at most). It
  * reports the frames the row was on screen (`seen`, so a row that never arrives can't pass as "still") and the frames
  * where it was mid-entrance (`moving`: moved, or partly transparent). `__sampling` tells the test the sampler is
- * running before anything is sent. Sent as text, like the chat-switch sampler, because the TypeScript runner wraps
- * named functions in a helper that doesn't exist inside the browser.
+ * running before anything is sent.
  */
-const entranceFrames = (marker: string) => `new Promise((resolve) => {
-  let seen = 0, moving = 0, firstSeen = 0;
-  const start = performance.now();
-  const sample = (now) => {
-    const row = [...document.querySelectorAll("main [data-key]")].reverse().find((el) => el.innerText.includes(${JSON.stringify(marker)}));
+const entranceFrames = (marker: string) => sampleFrames({
+  vars: "let seen = 0, moving = 0, firstSeen = 0; window.__sampling = true;",
+  perFrame: `const row = [...document.querySelectorAll("main [data-key]")].reverse().find((el) => el.innerText.includes(${JSON.stringify(marker)}));
     if (row) {
       seen++;
       firstSeen ||= now;
       const style = getComputedStyle(row);
       const opacity = Number(style.opacity);
-      if (!/^(none|matrix\\(1, 0, 0, 1, 0, 0\\))$/.test(style.transform) || (opacity > 0 && opacity < 1)) moving++;
-    }
-    if ((firstSeen && now - firstSeen > 1500) || now - start > 6000) { window.__sampling = false; resolve({ seen, moving }); }
-    else requestAnimationFrame(sample);
-  };
-  window.__sampling = true;
-  requestAnimationFrame(sample);
-})`;
+      if (!identity.test(style.transform) || (opacity > 0 && opacity < 1)) moving++;
+    }`,
+  done: "(firstSeen && now - firstSeen > 1500) || now - start > 6000",
+  result: "(window.__sampling = false, { seen, moving })",
+});
 
 async function entrance(viewer: Page, sender: Page, roomId: string, chatId: string, text: string) {
   await viewer.bringToFront();

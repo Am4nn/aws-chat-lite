@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import type { ElementHandle, HTTPResponse, Page } from "puppeteer-core";
-import { WEB, bff, check, eventually, say, send, sleep, socketOpen, until } from "./smoke-page.js";
+import { WEB, bff, check, eventually, noSideScroll, sampleFrames, say, send, sleep, socketOpen, until } from "./smoke-page.js";
 
 type Person = { page: Page; name: string };
 type Thread = { threadId: string; number: number; status: string };
@@ -28,23 +28,15 @@ const syntheticSubscription = (stamp: number) => ({
   keys: { p256dh: b64url(Uint8Array.from({ length: 65 }, (_, i) => (i === 0 ? 4 : i))), auth: b64url(new Uint8Array(16).fill(7)) },
 });
 
-/**
- * Counts the frames in which the dictation strip is still fading or growing, for 600 ms from the Dictate click.
- * Sent as text because the TypeScript runner wraps named functions in a helper that doesn't exist inside the browser.
- */
-const DICTATION_ROW_FRAMES = `new Promise((resolve) => {
-  let moving = 0;
-  const start = performance.now();
-  const sample = (now) => {
-    const row = document.querySelector('button.ml-auto[aria-label="Stop dictating"]')?.closest("div.overflow-hidden");
-    if (row && Number(getComputedStyle(row).opacity) < 1) moving++;
-    if (now - start > 600) resolve(moving); else requestAnimationFrame(sample);
-  };
-  requestAnimationFrame(sample);
-  document.querySelector('button[aria-label="Dictate"]').click();
-})`;
-
-const noSideScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+/** Counts the frames in which the dictation strip is still fading or growing, for 600 ms from the Dictate click. */
+const DICTATION_ROW_FRAMES = sampleFrames({
+  vars: "let moving = 0;",
+  perFrame: `const row = document.querySelector('button.ml-auto[aria-label="Stop dictating"]')?.closest("div.overflow-hidden");
+    if (row && Number(getComputedStyle(row).opacity) < 1) moving++;`,
+  done: "now - start > 600",
+  result: "moving",
+  begin: `document.querySelector('button[aria-label="Dictate"]').click();`,
+});
 
 export async function mediaChecks(stamp: number, owner: Person, guest: Person) {
   const A = owner.page;
