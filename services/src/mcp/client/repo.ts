@@ -2,12 +2,13 @@ import { randomUUID } from "node:crypto";
 import { GetCommand, PutCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { auditItem } from "../../audit/repo.js";
-import { connectionsRepo, mcpConnKey, mcpConnections, withoutKeys } from "../../connections/repo.js";
+import { connectionsRepo, mcpConnKey, mcpConnections } from "../../connections/repo.js";
 import type { User } from "../../lib/auth.js";
-import { conditionFailed, docClient, failedAt, tableName, takeOnce } from "../../lib/db.js";
+import { bestEffort } from "../../lib/best-effort.js";
+import { conditionFailed, docClient, failedAt, tableName, takeOnce, withoutKeys } from "../../lib/db.js";
 import { Conflict, FlowFailed, Forbidden, Gone, NotFound, Upstream, UserError, ValidationError } from "../../lib/errors.js";
 import { siteCallback } from "../../lib/http.js";
-import { roomKey } from "../../lib/keys.js";
+import { roomKey, roomMetaKey } from "../../lib/keys.js";
 import { roomUpdated } from "../../live/broadcast.js";
 import { cut } from "../../tools/cut.js";
 import type { AuditKind, McpConnection } from "../../threads/types.js";
@@ -40,6 +41,7 @@ const authAad = (roomId: string, name: string) => `${roomId}#${name}`;
 const unknownServer = (name: string) => new NotFound(noSuchServer(name));
 const nameTaken = (name: string) => new Conflict(`This room already has an MCP server called ${name}.`);
 const needsReconnect = (name: string) => new Conflict(needsReconnecting(name));
+const roomFull = () => new Conflict(`A room can connect up to ${MAX_MCP_SERVERS} MCP servers.`);
 
 /** Remote servers fail in many shapes; the admin gets one line naming the host, and a URL we refused stays a 400. */
 async function fromRemote<T>(host: string, name: string, work: () => Promise<T>): Promise<T> {
@@ -74,7 +76,7 @@ export function mcpRepo(deps: Deps = liveDeps()) {
 
   async function get(roomId: string, name: string): Promise<McpConnection | null> {
     const { Item } = await db.send(new GetCommand({ TableName, Key: mcpConnKey(roomId, name), ConsistentRead: true }));
-    return Item ? (withoutKeys(Item) as McpConnection) : null;
+    return Item ? withoutKeys<McpConnection>(Item) : null;
   }
 
   async function existing(roomId: string, name: string): Promise<McpConnection> {
@@ -87,8 +89,22 @@ export function mcpRepo(deps: Deps = liveDeps()) {
   async function requireRoomFor(roomId: string, name: string) {
     const all = await mcpConnections(roomId);
     if (all.some((c) => c.name === name)) throw nameTaken(name);
-    if (all.length >= MAX_MCP_SERVERS) throw new Conflict(`A room can connect up to ${MAX_MCP_SERVERS} MCP servers.`);
+    if (all.length >= MAX_MCP_SERVERS) throw roomFull();
   }
+
+  /**
+   * The room's server count on its META, moved in the same transaction as the connection. Counting rows first can't
+   * stop two admins adding different servers at once from passing the limit together; this condition can.
+   */
+  const serverAdded = (roomId: string) => ({
+    Update: {
+      TableName, Key: roomMetaKey(roomId), UpdateExpression: "ADD mcpCount :one",
+      ConditionExpression: "attribute_not_exists(mcpCount) OR mcpCount < :max", ExpressionAttributeValues: { ":one": 1, ":max": MAX_MCP_SERVERS },
+    },
+  });
+  const serverRemoved = (roomId: string) => ({
+    Update: { TableName, Key: roomMetaKey(roomId), UpdateExpression: "ADD mcpCount :minus", ExpressionAttributeValues: { ":minus": -1 } },
+  });
 
   function tokenStore(roomId: string, name: string): TokenStore {
     const aad = authAad(roomId, name);
@@ -127,8 +143,8 @@ export function mcpRepo(deps: Deps = liveDeps()) {
           if (conditionFailed(e)) return;
           throw e;
         }
-        // Best effort: the status is stored, and the panel shows it on its next load.
-        await deps.notifyRoom(roomId).catch((e) => console.error("room.updated broadcast failed", roomId, e));
+        // The status is stored, and the panel shows it on its next load.
+        await bestEffort("room.updated broadcast", () => deps.notifyRoom(roomId));
       },
     };
   }
@@ -141,7 +157,6 @@ export function mcpRepo(deps: Deps = liveDeps()) {
     const { name } = server;
     if (!opts.reconnect) await requireRoomFor(roomId, name);
     const now = new Date().toISOString();
-    // No `userId` attribute: the room's socket subscriptions share the CONN# prefix and are told apart by having one.
     const connection: McpConnection = { ...server, status: "connected", toolsAt: now, addedBy: user.username, addedAt: now };
     const sealed = opts.auth && seal(await deps.key(), JSON.stringify(opts.auth), authAad(roomId, name));
     try {
@@ -160,10 +175,12 @@ export function mcpRepo(deps: Deps = liveDeps()) {
             },
           }] : []),
           audited(user, roomId, "connected", `MCP ${name} (${new URL(server.url).hostname})`),
+          ...(opts.reconnect ? [] : [serverAdded(roomId)]),
         ],
       }));
     } catch (e) {
       if (failedAt(e, 0)) throw opts.reconnect ? unknownServer(name) : nameTaken(name);
+      if (!opts.reconnect && failedAt(e, sealed ? 3 : 2)) throw roomFull();
       throw e;
     }
     return connection;
@@ -254,7 +271,7 @@ export function mcpRepo(deps: Deps = liveDeps()) {
           ExpressionAttributeNames: { "#status": "status" },
           ExpressionAttributeValues: { ":tools": tools, ":count": toolCount, ":at": new Date().toISOString(), ":connected": "connected" },
         }));
-        return withoutKeys(Attributes ?? {}) as McpConnection;
+        return withoutKeys<McpConnection>(Attributes ?? {});
       } catch (e) {
         if (conditionFailed(e)) throw unknownServer(name);
         throw e;
@@ -274,6 +291,7 @@ export function mcpRepo(deps: Deps = liveDeps()) {
             { Delete: { TableName, Key: mcpConnKey(roomId, name), ConditionExpression: "attribute_exists(sk)" } },
             { Delete: { TableName, Key: authKey(roomId, name) } },
             audited(user, roomId, "disconnected", `MCP ${name}`),
+            serverRemoved(roomId),
           ],
         }));
       } catch (e) {

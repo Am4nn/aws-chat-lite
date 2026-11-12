@@ -58,11 +58,11 @@ export function makeHandler(deps: Deps) {
 
 function liveDeps(): Deps {
   const mode = process.env.VOICE_MODE;
-  const voice = speaker(mode);
+  const speech = speaker(mode);
   return {
     voice: voiceRepo(),
     transcribeUrl: (sessionId) => transcribeUrl(mode, { sessionId, region: process.env.AWS_REGION!, now: new Date() }),
-    speak: (user, roomId, ref) => speak(user, roomId, ref, voice),
+    speak: (user, roomId, ref) => speak(user, roomId, ref, speech),
   };
 }
 

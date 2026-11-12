@@ -1,7 +1,7 @@
 import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { budgetText } from "../budget/model.js";
 import { budgetRepo } from "../budget/repo.js";
-import { requireMember } from "../chat/membership.js";
+import { requireMember } from "../rooms/membership.js";
 import type { User } from "../lib/auth.js";
 import { conditionFailed, docClient, tableName } from "../lib/db.js";
 import { Conflict, NotFound } from "../lib/errors.js";

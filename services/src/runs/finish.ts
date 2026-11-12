@@ -1,23 +1,19 @@
-import { SKIP_NOTE } from "../approvals/model.js";
+import { skipNote } from "../approvals/model.js";
 import type { Message } from "../chat/model.js";
+import { bestEffort } from "../lib/best-effort.js";
 import { broadcastToRoom } from "../live/broadcast.js";
 import { enqueuePush } from "../push/enqueue.js";
 import { summaryLine } from "../threads/model.js";
 import { threadsRepo } from "../threads/repo.js";
 import type { RunEndStatus, RunEvent } from "../threads/types.js";
 import { closeSandbox } from "../workspace/session.js";
-import { answerOf } from "./context.js";
+import { answerOf, stepEvent } from "./context.js";
 import { notifyRun } from "./notify.js";
 import { runsRepo, type Run } from "./repo.js";
 
 /** Best effort: the answer is stored, and a client that misses it gets it with the thread's history. */
-async function announce(answer: Message) {
-  try {
-    await broadcastToRoom(answer.roomId, { type: "message.new", message: answer });
-  } catch (e) {
-    console.error("answer broadcast failed", answer.roomId, e);
-  }
-}
+const answerPosted = (answer: Message) =>
+  bestEffort("answer broadcast", () => broadcastToRoom(answer.roomId, { type: "message.new", message: answer }));
 
 /** Model turns count from 1, so no `text.reset` of a retried turn can void a note tagged 0. */
 const NOTE_TURN = 0;
@@ -27,8 +23,8 @@ function skipNotes(events: RunEvent[]): string[] {
   const texts = new Set(events.flatMap((e) => (e.type === "text" ? [e.text] : [])));
   return events.flatMap((e) => {
     if (e.type !== "approval.settled" || e.decision !== "expired") return [];
-    const asked = events.find((r) => r.type === "approval.requested" && r.step === e.step);
-    const note = asked?.type === "approval.requested" ? SKIP_NOTE(asked.title) : "";
+    const asked = stepEvent(events, "approval.requested", e.step);
+    const note = asked ? skipNote(asked.title) : "";
     return note && !texts.has(note) ? [note] : [];
   });
 }
@@ -70,7 +66,7 @@ export async function finishRun(
       ms: Date.parse(closed.endedAt!) - Date.parse(run.startedAt), steps: closed.steps, costMicros: closed.costMicros,
     });
   }
-  if (answer && !finished) await announce(answer);
+  if (answer && !finished) await answerPosted(answer);
   const thread = await threadsRepo().threadById(run.roomId, run.threadId);
   // A run replaced as dead closes without its thread, which now shows the newer run.
   if (thread?.runId === run.runId) await notifyRun(run.roomId, thread, last.seq);
@@ -83,7 +79,6 @@ export async function finishRun(
  * stopped needs no news.
  */
 async function tellStarter(run: Run, end: { status: RunEndStatus; reason?: string }, summary: string) {
-  if (!run.startedById) return;
   const stopper = end.status === "stopped" ? (await runsRepo().getRun(run.runId))?.stopRequestedBy : undefined;
   if (stopper === run.startedBy) return;
   await enqueuePush({

@@ -2,13 +2,15 @@ import { QueryCommand } from "@aws-sdk/lib-dynamodb";
 import type { User } from "../lib/auth.js";
 import { docClient, queryAll, tableName } from "../lib/db.js";
 import { ValidationError } from "../lib/errors.js";
-import { requireMember } from "./membership.js";
+import { requireMember } from "../rooms/membership.js";
 import { LAST_SEQ, seqKey, type Message } from "./model.js";
 import { toMessage } from "./repo.js";
 
 const MIN_QUERY = 2;
 const MAX_RESULTS = 30;
 const SCAN_PER_CHAT = 2000;
+/** Chats searched at once: a room with hundreds of threads would otherwise fire hundreds of Queries per search. */
+const PARALLEL_CHATS = 8;
 
 /** Lowercased, because messages store `textLower` for this match and DynamoDB's `contains` is case-sensitive. */
 export function normalizeQuery(raw: unknown): string {
@@ -53,8 +55,11 @@ export async function searchRoom(user: User, roomId: string, rawQuery: unknown):
   const q = normalizeQuery(rawQuery);
   await requireMember(roomId, user.userId);
   const ids = (await Promise.all([idsUnder(roomId, "CHAT#", "chatId"), idsUnder(roomId, "THREAD#", "threadId")])).flat();
-  const perChat = await Promise.all(ids.map((id) => matchesIn(id, q)));
-  const newest = perChat.flat()
+  const found: Record<string, unknown>[] = [];
+  for (let i = 0; i < ids.length; i += PARALLEL_CHATS) {
+    found.push(...(await Promise.all(ids.slice(i, i + PARALLEL_CHATS).map((id) => matchesIn(id, q)))).flat());
+  }
+  const newest = found
     .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
     .slice(0, MAX_RESULTS);
   return { results: await Promise.all(newest.map(toMessage)) };

@@ -15,7 +15,10 @@ import { runsRepo, type Run } from "./repo.js";
 import { startOrSteer } from "./start.js";
 import { answerOf } from "./context.js";
 import { DEAD_AFTER_MS } from "./model.js";
-import { failRun, modelTurn, nameThread, routeRun, toolStep } from "./steps.js";
+import { modelTurn } from "./model-turn.js";
+import { nameThread, routeRun } from "./routing.js";
+import { failRun } from "./steps.js";
+import { toolStep } from "./tool-step.js";
 import { dockerSandbox } from "../sandbox/docker.js";
 import { startSandboxServer } from "../sandbox/server.js";
 import { workspaceRepo } from "../workspace/repo.js";
@@ -84,7 +87,7 @@ async function runningThread(text: string, startedAt = new Date().toISOString())
   const { owner, roomId, thread: t, message } = await thread(text);
   const run = {
     runId: randomUUID(), roomId, threadId: t.threadId, number: t.number, agentId: "agent", status: "running", model: "fake", pick: "auto",
-    pickBy: "default", startedBy: owner.username, startedAt, deadAt: new Date(Date.parse(startedAt) + DEAD_AFTER_MS).toISOString(),
+    pickBy: "default", startedBy: owner.username, startedById: owner.userId, startedAt, deadAt: new Date(Date.parse(startedAt) + DEAD_AFTER_MS).toISOString(),
     firstSeq: message.seq, seenSeq: message.seq, steps: 0,
     costMicros: 0,
   } satisfies Run;

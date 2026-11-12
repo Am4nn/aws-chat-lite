@@ -154,7 +154,7 @@ describe("chat repo on Floci", () => {
     expect(m.v).toBeUndefined();
     expect((await chat.react(b, { ...at, seq: m.seq, reaction: "eyes", on: true })).v).toBe(1);
     expect((await chat.edit(owner, { ...at, seq: m.seq, text: "v2" })).v).toBe(2);
-    expect((await chat.remove(owner, { ...at, seq: m.seq })).v).toBe(3);
+    expect((await chat.remove(owner, { ...at, seq: m.seq })).message.v).toBe(3);
     expect((await chat.history(owner, at.roomId, at.chatId, {})).messages[0].v).toBe(3);
   });
 

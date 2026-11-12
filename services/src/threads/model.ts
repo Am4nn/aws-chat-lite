@@ -5,7 +5,7 @@ import type { ThreadStatus, ThreadSummary } from "./types.js";
 
 export const ARCHIVE_AFTER_SEC = 604_800;
 
-export const PROVISIONAL = (n: number) => `thread-${n}`;
+export const provisionalName = (n: number) => `thread-${n}`;
 
 /**
  * True for a `thread-<N>` name. Each new thread takes one as its provisional name, so chats and renames may not
@@ -61,7 +61,7 @@ export function summary(
     const { currentStep: _step, approval: _approval, ...dead } = thread;
     thread = { ...dead, status: "failed", summary: DEAD_REASON };
   }
-  return { ...thread, agentId: thread.agentId ?? "agent", taint: [...((taint as Set<TaintSource> | undefined) ?? [])].sort(), archived: isArchived(thread, nowMs) };
+  return { ...thread, taint: [...((taint as Set<TaintSource> | undefined) ?? [])].sort(), archived: isArchived(thread, nowMs) };
 }
 
 /** `#12` or `#name` at the very start of a message; a tag later in the text is just text. */

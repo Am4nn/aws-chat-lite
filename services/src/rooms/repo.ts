@@ -1,12 +1,10 @@
 import { randomUUID } from "node:crypto";
-import {
-  DeleteCommand, GetCommand, QueryCommand, TransactWriteCommand, UpdateCommand, type TransactWriteCommandInput,
-} from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, GetCommand, TransactWriteCommand, UpdateCommand, type TransactWriteCommandInput } from "@aws-sdk/lib-dynamodb";
 import type { User } from "../lib/auth.js";
 import { batchGet, conditionFailed, docClient, failedAt, queryAll, tableName, transactionConflict } from "../lib/db.js";
 import { Conflict, Forbidden, Gone, NotFound, ValidationError } from "../lib/errors.js";
-import { counterKey, memberKey, roomKey } from "../lib/keys.js";
-import { findMember, requireMember } from "../chat/membership.js";
+import { counterKey, memberKey, roomKey, roomMetaKey } from "../lib/keys.js";
+import { findMember, liveMemberships, requireMember, roomMembers } from "./membership.js";
 import { isOnline, type Presence } from "../live/presence.js";
 import { budgetOf, monthKey } from "../budget/model.js";
 import { modelOptions, type ModelOption, type ModelPick } from "../models/catalog.js";
@@ -88,8 +86,20 @@ export function roomsRepo() {
     return role;
   }
 
+  /**
+   * Someone who left or was removed loses their sockets' subscriptions to the room. Live events already skip anyone
+   * who isn't a member; deleting the subscriptions saves the room's fan-out from reading them.
+   */
+  async function dropSubscriptions(roomId: string, userId: string) {
+    const subscriptions = await queryAll({
+      KeyConditionExpression: "pk = :p AND begins_with(sk, :c)", FilterExpression: "userId = :u",
+      ExpressionAttributeValues: { ":p": roomKey(roomId), ":c": "CONN#", ":u": userId },
+    });
+    await Promise.all(subscriptions.map((s) => db.send(new DeleteCommand({ TableName, Key: { pk: s.pk, sk: s.sk } }))));
+  }
+
   async function roomMeta(roomId: string) {
-    const { Item } = await db.send(new GetCommand({ TableName, Key: { pk: roomKey(roomId), sk: "META" } }));
+    const { Item } = await db.send(new GetCommand({ TableName, Key: roomMetaKey(roomId) }));
     if (!Item) throw new NotFound("Room not found.");
     return Item as { name: string; ownerId: string };
   }
@@ -145,7 +155,7 @@ export function roomsRepo() {
       const at = nowIso();
       await db.send(new TransactWriteCommand({
         TransactItems: [
-          { Put: { TableName, Item: { pk: roomKey(roomId), sk: "META", name, ownerId: owner.userId, createdAt: at }, ConditionExpression: "attribute_not_exists(pk)" } },
+          { Put: { TableName, Item: { ...roomMetaKey(roomId), name, ownerId: owner.userId, createdAt: at }, ConditionExpression: "attribute_not_exists(pk)" } },
           { Put: { TableName, Item: memberItem(roomId, name, owner, "owner", at) } },
           { Put: { TableName, Item: chatItem(roomId, chatId, "general", owner.userId, at) } },
           { Put: { TableName, Item: chatNameItem(roomId, "general", chatId) } },
@@ -157,10 +167,7 @@ export function roomsRepo() {
 
     /** Archived rooms drop out of the list. The member item's mention total feeds the list's dot. */
     async listMyRooms(userId: string) {
-      const items = await queryAll({
-        IndexName: "gsi1", KeyConditionExpression: "gsi1pk = :u", ExpressionAttributeValues: { ":u": `USER#${userId}` },
-      });
-      return items.filter((i) => !i.archived).map((i) => ({
+      return (await liveMemberships(userId)).map((i) => ({
         roomId: String(i.roomId), name: String(i.roomName), role: i.role as Role, mentions: Number(i.mentions ?? 0),
       }));
     },
@@ -179,8 +186,8 @@ export function roomsRepo() {
       });
       const month = monthKey(new Date());
       const [{ Item: meta }, chats, threads, members, myReads, [usage], agents] = await Promise.all([
-        db.send(new GetCommand({ TableName, Key: { pk: roomKey(roomId), sk: "META" }, ConsistentRead: true })),
-        inRoom("CHAT#"), inRoom("THREAD#"), inRoom("MEMBER#"), inRoom(`READ#${userId}#`), inRoom(`USAGE#${month}`),
+        db.send(new GetCommand({ TableName, Key: roomMetaKey(roomId), ConsistentRead: true })),
+        inRoom("CHAT#"), inRoom("THREAD#"), roomMembers(roomId, { consistent: true }), inRoom(`READ#${userId}#`), inRoom(`USAGE#${month}`),
         agentsRepo().list(roomId),
       ]);
       const me = members.find((m) => m.userId === userId);
@@ -227,7 +234,7 @@ export function roomsRepo() {
     async setDefaultModel(user: User, roomId: string, pick: ModelPick): Promise<ModelPick> {
       await requireRole(roomId, user.userId, "setModel", { writing: true });
       await db.send(new UpdateCommand({
-        TableName, Key: { pk: roomKey(roomId), sk: "META" }, UpdateExpression: "SET #defaultModel = :m",
+        TableName, Key: roomMetaKey(roomId), UpdateExpression: "SET #defaultModel = :m",
         ConditionExpression: "attribute_exists(pk)", ExpressionAttributeNames: { "#defaultModel": "defaultModel" },
         ExpressionAttributeValues: { ":m": pick },
       }));
@@ -238,7 +245,7 @@ export function roomsRepo() {
     async setSandboxInternet(user: User, roomId: string, on: boolean): Promise<boolean> {
       await requireRole(roomId, user.userId, "setSandbox", { writing: true });
       await db.send(new UpdateCommand({
-        TableName, Key: { pk: roomKey(roomId), sk: "META" }, UpdateExpression: "SET sandboxInternet = :on",
+        TableName, Key: roomMetaKey(roomId), UpdateExpression: "SET sandboxInternet = :on",
         ConditionExpression: "attribute_exists(pk)", ExpressionAttributeValues: { ":on": on },
       }));
       return on;
@@ -302,6 +309,7 @@ export function roomsRepo() {
         if (conditionFailed(e)) throw new Conflict("Their role just changed; try again.");
         throw e;
       }
+      await dropSubscriptions(roomId, targetId);
       return {};
     },
 
@@ -312,8 +320,14 @@ export function roomsRepo() {
       try {
         await db.send(new TransactWriteCommand({
           TransactItems: [
-            // The chat's counter proves the chat is in this room, so no read state is written for another room's chat.
-            { ConditionCheck: { TableName, Key: counterKey(chatId), ConditionExpression: "roomId = :r", ExpressionAttributeValues: { ":r": roomId } } },
+            // The chat's counter proves the chat is in this room and is a people chat: only a thread's counter has a
+            // kind, and threads are followed through their runs' pushes, not muted.
+            {
+              ConditionCheck: {
+                TableName, Key: counterKey(chatId), ConditionExpression: "roomId = :r AND attribute_not_exists(#kind)",
+                ExpressionAttributeNames: { "#kind": "kind" }, ExpressionAttributeValues: { ":r": roomId },
+              },
+            },
             {
               Update: {
                 TableName, Key: { pk: roomKey(roomId), sk: `READ#${userId}#${chatId}` },
@@ -329,18 +343,10 @@ export function roomsRepo() {
       return { muted };
     },
 
-    /**
-     * Your membership goes, and so do your sockets' subscriptions to the room. Live events already skip anyone who
-     * isn't a member; deleting the subscriptions saves the room's fan-out from reading them.
-     */
     async leaveRoom(roomId: string, userId: string) {
       if (!can("leave", await requireMember(roomId, userId))) throw new Forbidden("The owner can't leave their own room.");
       await db.send(new DeleteCommand({ TableName, Key: memberKey(roomId, userId) }));
-      const subscriptions = await queryAll({
-        KeyConditionExpression: "pk = :p AND begins_with(sk, :c)", FilterExpression: "userId = :u",
-        ExpressionAttributeValues: { ":p": roomKey(roomId), ":c": "CONN#", ":u": userId },
-      });
-      await Promise.all(subscriptions.map((s) => db.send(new DeleteCommand({ TableName, Key: { pk: s.pk, sk: s.sk } }))));
+      await dropSubscriptions(roomId, userId);
       return {};
     },
 
@@ -353,11 +359,8 @@ export function roomsRepo() {
      */
     async archiveRoom(roomId: string, userId: string) {
       await requireRole(roomId, userId, "archive");
-      const { Item: meta } = await db.send(new GetCommand({ TableName, Key: { pk: roomKey(roomId), sk: "META" }, ConsistentRead: true }));
-      const members = await queryAll({
-        KeyConditionExpression: "pk = :p AND begins_with(sk, :m)", ProjectionExpression: "sk", ConsistentRead: true,
-        ExpressionAttributeValues: { ":p": roomKey(roomId), ":m": "MEMBER#" },
-      });
+      const { Item: meta } = await db.send(new GetCommand({ TableName, Key: roomMetaKey(roomId), ConsistentRead: true }));
+      const members = await roomMembers(roomId, { fields: ["sk"], consistent: true });
       if (members.length > MAX_ARCHIVE_MEMBERS) {
         throw new ValidationError(`Rooms over ${MAX_ARCHIVE_MEMBERS} members can't be archived yet.`);
       }
@@ -403,7 +406,7 @@ export function roomsRepo() {
       await requireRole(roomId, userId, "manageInvite");
       const invite = await currentInvite(roomId);
       if (!invite || inviteState(invite, nowSec()) !== "ok") throw new NotFound("No active invite link.");
-      return { code: String(invite.code), expiresAt: Number(invite.expiresAt) };
+      return { code: invite.code, expiresAt: invite.expiresAt };
     },
 
     async revokeInvite(roomId: string, userId: string) {
@@ -417,10 +420,7 @@ export function roomsRepo() {
     /** Public: what a link leads to, before you sign in. */
     async previewInvite(code: string) {
       const inv = await liveInvite(code);
-      const members = await queryAll({
-        KeyConditionExpression: "pk = :p AND begins_with(sk, :m)", ProjectionExpression: "sk",
-        ExpressionAttributeValues: { ":p": roomKey(inv.roomId), ":m": "MEMBER#" },
-      });
+      const members = await roomMembers(inv.roomId, { fields: ["sk"] });
       return { roomName: inv.roomName, memberCount: members.length, expiresAt: inv.expiresAt };
     },
 
@@ -436,7 +436,7 @@ export function roomsRepo() {
           TransactItems: [
             {
               Update: {
-                TableName, Key: { pk: roomKey(inv.roomId), sk: "META" }, UpdateExpression: "ADD joinCount :one",
+                TableName, Key: roomMetaKey(inv.roomId), UpdateExpression: "ADD joinCount :one",
                 ConditionExpression: "attribute_exists(pk) AND attribute_not_exists(archived)", ExpressionAttributeValues: { ":one": 1 },
               },
             },

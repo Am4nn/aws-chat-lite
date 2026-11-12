@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { GetDurableExecutionHistoryCommand, LambdaClient, ListDurableExecutionsByFunctionCommand } from "@aws-sdk/client-lambda";
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { agentsRepo } from "../agents/repo.js";
+import { auditRepo } from "../audit/repo.js";
 import { decideApproval } from "../approvals/decide.js";
 import { chatRepo } from "../chat/repo.js";
 import type { Attachment } from "../chat/model.js";
@@ -66,7 +67,7 @@ async function room({ researcherTools = ["web"], researcherModel = "room", githu
     await docClient().send(new PutCommand({
       TableName: tableName(),
       Item: {
-        pk: `ROOM#${roomId}`, sk: "CONN#github", installationId: 1, account: "fake-org", repos: ["fake-org/playground"],
+        pk: `ROOM#${roomId}`, sk: "LINK#github", installationId: 1, account: "fake-org", repos: ["fake-org/playground"],
         addedBy: "owner", addedAt: new Date().toISOString(),
       },
     }));
@@ -129,6 +130,10 @@ describe("helper agents in their own lanes of the run, on Floci", { timeout: 120
     expect(run.steps).toBe(3);
     expect(ofType(events, "step.started").map((e) => e.step)).toEqual([1, 2, 3]);
     expect(run.costMicros).toBe(ofType(events, "usage").reduce((sum, e) => sum + e.costMicros, 0));
+
+    // The hand-off is in the room's audit, under lead; the helper's fake lookups are not tools the audit logs.
+    const tools = (await auditRepo().list(at.roomId)).entries.filter((e) => e.kind === "tool");
+    expect(tools).toMatchObject([{ tool: "delegate", agent: "lead", detail: "@researcher: go" }]);
   });
 
   it("a stop while the helper works ends the helper and the run", async () => {

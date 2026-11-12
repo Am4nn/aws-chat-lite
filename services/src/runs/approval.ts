@@ -8,11 +8,12 @@ import { findTool, toolEnv } from "../tools/index.js";
 import { repoOf } from "../tools/github/repo.js";
 import { threadsRepo } from "../threads/repo.js";
 import type { ApprovalStatus } from "../threads/types.js";
+import { stepEvent } from "./context.js";
 import { DEAD_AFTER_MS } from "./model.js";
 import { notifyRun } from "./notify.js";
 import { runsRepo } from "./repo.js";
 import { laneOf, limitsReached, models, roomConnections, toolRoom, type RoutedRun } from "./steps.js";
-import { asksFirst, mayRun } from "./tools.js";
+import { asksFirst, IMAGE_GATE, mayRun } from "./tools.js";
 
 /*
  * The steps around a tool call's wait for a member. Everything the wait depends on is read inside a step, so a
@@ -29,14 +30,14 @@ type Gate = { asks: false } | { asks: true; timeoutSec: number; title: string; i
  */
 export async function gateOf(run: RoutedRun, call: ToolCall, taint: TaintSource[]): Promise<Gate> {
   const room = await roomConnections(run.roomId);
-  const tool = findTool(call.name, room);
+  const tool = call.name === IMAGE_GATE.spec.name ? IMAGE_GATE : findTool(call.name, room);
   if (!tool || !mayRun(run.model, models().servedBy(run.model), call.name, room, run.agent.tools)) return { asks: false };
   const thread = tool.write ? undefined : await threadsRepo().threadById(run.roomId, run.threadId);
   const seen = mergeTaint(taint, thread?.taint ?? []);
   if (!asksFirst(tool, seen) || await limitsReached(run)) return { asks: false };
   const { github, approvalTimeoutSec } = room;
   const env = { ...await toolEnv(process.env.TOOL_MODE, github ?? undefined), room: toolRoom(run, seen.length > 0) };
-  if (tool.check?.(call.input, env)) return { asks: false };
+  if ("check" in tool && tool.check?.(call.input, env)) return { asks: false };
   const input = tool.kind === "github" ? { ...call.input, repo: repoOf(call.input, github ?? undefined) } : call.input;
   return { asks: true, timeoutSec: approvalTimeoutSec, title: tool.ask!(input, env), input };
 }
@@ -59,7 +60,7 @@ export async function requestApproval(
   });
   if (item.status !== "pending") return wakeRun(callbackId);
   const { title, expiresAt } = item;
-  const logged = (await runs.allEvents(run.runId)).find((e) => e.type === "approval.requested" && e.step === step);
+  const logged = stepEvent(await runs.allEvents(run.runId), "approval.requested", step);
   const requested = logged
     ?? await (await runs.eventWriter(run.runId, laneOf(run))).append({ type: "approval.requested", step, call: item.call, title, expiresAt });
   const deadAt = new Date(Date.parse(expiresAt) + DEAD_AFTER_MS).toISOString();
@@ -79,7 +80,7 @@ export async function settleApproval(run: RoutedRun, step: number): Promise<Appr
   const runs = runsRepo();
   const item = await approvalsRepo().settle(run.runId, step);
   const decision = item.status as Exclude<ApprovalStatus, "pending">;
-  const settled = (await runs.allEvents(run.runId)).find((e) => e.type === "approval.settled" && e.step === step)
+  const settled = stepEvent(await runs.allEvents(run.runId), "approval.settled", step)
     ?? await (await runs.eventWriter(run.runId, laneOf(run))).append({ type: "approval.settled", step, decision, by: item.by });
   await auditRepo().record(run.roomId, {
     id: `${run.runId}#${settled.seq}`, at: settled.at, actor: item.by ?? "agent", kind: decision, threadNumber: run.number,

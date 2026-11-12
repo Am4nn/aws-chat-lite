@@ -3,7 +3,7 @@ import { callerFromEvent, type User } from "../lib/auth.js";
 import { errorResponse, json, parseBody } from "../lib/http.js";
 import { issueTicket } from "../live/tickets.js";
 import { presignUpload } from "./files.js";
-import { requireMember } from "./membership.js";
+import { requireMember } from "../rooms/membership.js";
 import { seqNumber } from "./model.js";
 import { chatRepo, type ChatRepo } from "./repo.js";
 import { searchRoom } from "./search.js";

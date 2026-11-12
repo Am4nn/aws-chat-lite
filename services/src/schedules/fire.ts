@@ -4,7 +4,7 @@ import { budgetRepo } from "../budget/repo.js";
 import type { User } from "../lib/auth.js";
 import { bestEffort } from "../lib/best-effort.js";
 import { docClient, tableName } from "../lib/db.js";
-import { roomKey } from "../lib/keys.js";
+import { roomMetaKey } from "../lib/keys.js";
 import { chatRepo } from "../chat/repo.js";
 import { broadcastToRoom } from "../live/broadcast.js";
 import { startOrSteer } from "../runs/start.js";
@@ -60,7 +60,7 @@ export async function fireSchedule({ roomId, scheduleId, at }: FireInput, deps: 
 
 async function roomState(roomId: string) {
   const { Item } = await docClient().send(new GetCommand({
-    TableName: tableName(), Key: { pk: roomKey(roomId), sk: "META" }, ConsistentRead: true, ProjectionExpression: "archived, #tz", ExpressionAttributeNames: { "#tz": "timeZone" },
+    TableName: tableName(), Key: roomMetaKey(roomId), ConsistentRead: true, ProjectionExpression: "archived, #tz", ExpressionAttributeNames: { "#tz": "timeZone" },
   }));
   return Item ? { archived: !!Item.archived, timeZone: (Item.timeZone as string | undefined) ?? DEFAULT_TIME_ZONE } : null;
 }

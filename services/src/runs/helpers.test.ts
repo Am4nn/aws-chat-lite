@@ -14,6 +14,8 @@ const runs = {
 };
 const threads = { threadById: vi.fn() };
 const agents = { byId: vi.fn() };
+const audit = { record: vi.fn() };
+vi.mock("../audit/repo.js", () => ({ auditRepo: () => audit }));
 vi.mock("../agents/repo.js", () => ({ agentsRepo: () => agents }));
 vi.mock("./repo.js", () => ({ runsRepo: () => runs }));
 vi.mock("./notify.js", () => ({ notifyRun: async () => {} }));
@@ -59,7 +61,7 @@ describe("startHelper", () => {
   };
   const run = {
     runId: "run1", roomId: "r1", threadId: "t1", number: 1, agentId: "agent", status: "running", pick: "sonnet", pickBy: "pick",
-    model: "claude-sonnet-5-5", startedBy: "aman", startedAt: "2026-11-12T00:00:00.000Z", deadAt: "2026-11-12T01:00:00.000Z",
+    model: "claude-sonnet-5-5", startedBy: "aman", startedById: "u-aman", startedAt: "2026-11-12T00:00:00.000Z", deadAt: "2026-11-12T01:00:00.000Z",
     firstSeq: 1, seenSeq: 1, steps: 1, costMicros: 0, agent: BUILT_IN, others: [agentCard(researcher)],
   } satisfies RoutedRun;
   const call = { id: "c1", name: "delegate", input: { agent: "researcher", task: "Look it up." } };
@@ -87,8 +89,16 @@ describe("startHelper", () => {
     expect("helper" in handover && handover.helper.agent).toMatchObject({ name: "researcher", instructions: "Find sources.\nCite them." });
   });
 
+  it("logs the hand-off in the room's audit, keyed by the delegate step's start", async () => {
+    await startHelper(run, call, []);
+    expect(audit.record).toHaveBeenCalledWith("r1", expect.objectContaining({
+      id: "run1#1", actor: "agent", kind: "tool", threadNumber: 1, tool: "delegate", detail: "@researcher: Look it up.", agent: "agent",
+    }));
+  });
+
   it("refuses an agent deleted since the run started, as one the room doesn't have", async () => {
     agents.byId.mockResolvedValue({ ...researcher, deleted: true });
     expect(await startHelper(run, call, [])).toEqual({ result: { steps: 2, costMicros: 0 } });
+    expect(audit.record).not.toHaveBeenCalled();
   });
 });

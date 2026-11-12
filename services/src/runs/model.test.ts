@@ -10,6 +10,10 @@ describe("endReason", () => {
     expect(endReason({ ...base, stopRequestedBy: "aman" }, now)).toEqual({ status: "stopped", reason: "Stopped by aman." });
     expect(stoppedBy("aman")).toEqual({ status: "stopped", reason: "Stopped by aman." });
   });
+  it("stops once the room is archived, after a member's own stop", () => {
+    expect(endReason({ ...base, archived: true }, now)).toEqual({ status: "stopped", reason: "The room was archived." });
+    expect(endReason({ ...base, archived: true, stopRequestedBy: "aman" }, now)?.reason).toBe("Stopped by aman.");
+  });
   it("caps at the budget", () => {
     expect(endReason({ ...base, spentMicros: 3_000_000 }, now)).toEqual({ status: "capped", reason: budgetText(3_000_000, "2026-11") });
   });

@@ -1,10 +1,11 @@
 import { broadcastToRoom, sendToConnection, sendToUser } from "../live/broadcast.js";
 import { subscribe } from "../live/connections.js";
 import type { User } from "../lib/auth.js";
+import { bestEffort } from "../lib/best-effort.js";
 import { UserError, ValidationError } from "../lib/errors.js";
 import { requestStop } from "../runs/stop.js";
 import { routeSend } from "../threads/route.js";
-import { requireMember } from "./membership.js";
+import { requireMember } from "../rooms/membership.js";
 import { REACTIONS, idOf, seqNumber, type Message, type Reaction } from "./model.js";
 import { chatRepo, type ChatRepo } from "./repo.js";
 
@@ -30,16 +31,20 @@ async function perform(connId: string, user: User, f: Frame): Promise<Outcome> {
         replyToSeq: f.replyToSeq === undefined ? undefined : seqNumber(f.replyToSeq),
         threadId: f.threadId === undefined ? undefined : idOf(f.threadId, "threadId"), model: f.model,
       });
+      // The message is stored either way, and a client that misses the event catches up; the agent must still hear it.
       const notify = async () => {
-        await broadcastToRoom(message.roomId, { type: "message.new", message });
+        await bestEffort("message.new broadcast", () => broadcastToRoom(message.roomId, { type: "message.new", message }));
         await route();
       };
       return { data: message, notify };
     }
     case "edit":
       return updated(await chat().edit(user, { ...chatRef(f), seq: seqNumber(f.seq), text: f.text }));
-    case "delete":
-      return updated(await chat().remove(user, { ...chatRef(f), seq: seqNumber(f.seq) }));
+    case "delete": {
+      const { message, copy } = await chat().remove(user, { ...chatRef(f), seq: seqNumber(f.seq) });
+      const removed = [message, ...(copy ? [copy] : [])];
+      return { data: message, notify: () => Promise.all(removed.map((m) => broadcastToRoom(m.roomId, { type: "message.updated", message: m }))) };
+    }
     case "react": {
       if (!REACTIONS.includes(f.reaction as Reaction) || typeof f.on !== "boolean") {
         throw new ValidationError("react needs one of the six reactions and on: true or false.");

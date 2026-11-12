@@ -106,6 +106,15 @@ export function oauthRepo(accountActive: (username: string) => Promise<boolean> 
     return invalidGrant();
   }
 
+  /** Signing in again from the same app replaces its grant, so Connected apps lists each app once. */
+  async function replaceOlderGrants(userId: string, clientId: string, kept: string) {
+    const grants = await queryAll({
+      IndexName: "gsi1", KeyConditionExpression: "gsi1pk = :u", FilterExpression: "clientId = :c",
+      ExpressionAttributeValues: { ":u": `MCPAPPS#${userId}`, ":c": clientId },
+    });
+    await Promise.all(grants.filter((g) => g.grantId !== kept).map((g) => deleteGrant(String(g.grantId))));
+  }
+
   async function exchangeCode(form: URLSearchParams) {
     const hash = hashOf(form.get("code") ?? "");
     const stored = await read(codeKey(hash));
@@ -142,6 +151,7 @@ export function oauthRepo(accountActive: (username: string) => Promise<boolean> 
       if (conditionFailed(e)) throw await codeReused(await read(codeKey(hash)));
       throw e;
     }
+    await bestEffort("older grant cleanup", () => replaceOlderGrants(String(code.userId), String(client.clientId), grantId));
     return tokenResponse(tokens, code.scopes);
   }
 
@@ -225,9 +235,9 @@ export function oauthRepo(accountActive: (username: string) => Promise<boolean> 
      * registered redirect URI is still untrusted, and an instant redirect to it would make this an open redirector
      * (RFC 9700 §4.11.2). The user only goes back to the client after choosing on the consent page, which names it.
      */
-    async startRequest(q: Record<string, string | undefined>, ip: string): Promise<{ consent: string } | { error: string; status: number }> {
+    async startRequest(q: Record<string, string | undefined>, ip: string): Promise<{ consent: string } | { error: string }> {
       await hit("authorize", ip);
-      const refuse = (error: string) => ({ error, status: 400 });
+      const refuse = (error: string) => ({ error });
       const client = await getClient(q.client_id);
       if (!client) return refuse("This app isn't registered with chat-lite, or its registration expired.");
       const redirectUri = q.redirect_uri;

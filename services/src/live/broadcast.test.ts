@@ -4,7 +4,7 @@ import { ApiGatewayManagementApiClient, PostToConnectionCommand } from "@aws-sdk
 import { docClient } from "../lib/db.js";
 import { forgetConnection } from "./connections.js";
 import { markDisconnected } from "./presence.js";
-import { sendToConnection, sendToUser } from "./broadcast.js";
+import { broadcastToRoom, sendToConnection, sendToUser } from "./broadcast.js";
 
 vi.mock("./connections.js", () => ({ forgetConnection: vi.fn() }));
 vi.mock("./presence.js", async (actual) => ({ ...await actual<object>(), markDisconnected: vi.fn() }));
@@ -52,5 +52,22 @@ describe("sendToUser", () => {
     const posts = fakeAws();
     await sendToUser("u2", { type: "pong" }, { exceptConnId: "tab2" });
     expect(posts.map((p) => p.to)).toEqual(["peer"]);
+  });
+});
+
+describe("broadcastToRoom", () => {
+  it("reads every page of the room's subscriptions and members, so a big room misses no one", async () => {
+    vi.spyOn(docClient(), "send").mockImplementation((async (c: QueryCommand) => {
+      const { ":c": conns } = c.input.ExpressionAttributeValues!;
+      const page = c.input.ExclusiveStartKey ? 2 : 1;
+      if (conns) return page === 1 ? { Items: [{ sk: "CONN#a", userId: "u1" }], LastEvaluatedKey: { sk: "CONN#a" } } : { Items: [{ sk: "CONN#b", userId: "u2" }] };
+      return page === 1 ? { Items: [{ userId: "u1" }], LastEvaluatedKey: { sk: "MEMBER#u1" } } : { Items: [{ userId: "u2" }] };
+    }) as never);
+    const posts: string[] = [];
+    vi.spyOn(ApiGatewayManagementApiClient.prototype, "send").mockImplementation((async (c: PostToConnectionCommand) => {
+      posts.push(c.input.ConnectionId!);
+    }) as never);
+    await broadcastToRoom("r1", { type: "pong" });
+    expect(posts.sort()).toEqual(["a", "b"]);
   });
 });

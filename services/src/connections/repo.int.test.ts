@@ -47,7 +47,7 @@ describe("connections repo on Floci", () => {
   it("the timeout defaults to 2 hours and round-trips as seconds", async () => {
     const { owner, roomId } = await room();
     expect((await repo.get(roomId)).approvalTimeoutSec).toBe(7200);
-    expect(await repo.setTimeout(owner, roomId, 30)).toBe(30);
+    expect(await repo.setApprovalTimeout(owner, roomId, 30)).toBe(30);
     expect((await repo.get(roomId)).approvalTimeoutSec).toBe(1800);
     const [entry] = (await auditRepo().list(roomId)).entries;
     expect(entry).toMatchObject({ kind: "timeout", actor: "owner", detail: "30 min" });
@@ -55,7 +55,7 @@ describe("connections repo on Floci", () => {
 
   it("a member changes nothing, and nothing is logged", async () => {
     const { member, roomId } = await room();
-    await expect(repo.setTimeout(member, roomId, 30)).rejects.toBeInstanceOf(Forbidden);
+    await expect(repo.setApprovalTimeout(member, roomId, 30)).rejects.toBeInstanceOf(Forbidden);
     await expect(repo.setGitHub(member, roomId, { installationId: 7, repos: ["acme/web"] })).rejects.toBeInstanceOf(Forbidden);
     expect(await repo.view(roomId, member.userId)).toMatchObject({ github: null, approvalTimeoutSec: 7200, canManage: false });
     expect(await kinds(roomId)).toEqual([]);

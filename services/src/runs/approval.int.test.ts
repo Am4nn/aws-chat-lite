@@ -6,7 +6,7 @@ import { decideApproval } from "../approvals/decide.js";
 import { approvalsRepo } from "../approvals/repo.js";
 import { auditRepo } from "../audit/repo.js";
 import { docClient, tableName } from "../lib/db.js";
-import { Conflict } from "../lib/errors.js";
+import { Conflict, Gone } from "../lib/errors.js";
 import { roomsRepo } from "../rooms/repo.js";
 import { recordGitHub } from "../tools/fake-github.js";
 import { toolEnv } from "../tools/index.js";
@@ -18,7 +18,8 @@ import { DEAD_AFTER_MS } from "./model.js";
 import { BUILT_IN } from "../agents/model.js";
 import { runsRepo, type Run } from "./repo.js";
 import { startOrSteer } from "./start.js";
-import { toolStep, type RoutedRun } from "./steps.js";
+import type { RoutedRun } from "./steps.js";
+import { toolStep } from "./tool-step.js";
 import { requestStop } from "./stop.js";
 
 // Runs against the deployed run function on Floci, in fake model and tool modes: npm run deploy:local, then this file.
@@ -65,7 +66,7 @@ async function room({ connected = true, approvalTimeoutSec }: { connected?: bool
     await db.send(new PutCommand({
       TableName: tableName(),
       Item: {
-        pk: `ROOM#${roomId}`, sk: "CONN#github", installationId: 1, account: "fake-org", repos: ["fake-org/playground"],
+        pk: `ROOM#${roomId}`, sk: "LINK#github", installationId: 1, account: "fake-org", repos: ["fake-org/playground"],
         addedBy: "aman", addedAt: new Date().toISOString(),
       },
     }));
@@ -152,6 +153,27 @@ describe("approvals in the run loop, on Floci", { timeout: 60_000 }, () => {
     expect((run as Run & { pausedMs?: number }).pausedMs).toBeGreaterThanOrEqual(5000);
   });
 
+  it("archiving the room refuses the decision, and the waiting run ends as archived once its approval expires", async () => {
+    const at = await room({ approvalTimeoutSec: 5 });
+    const { thread, runId } = await startRun("go call:github_comment", at);
+    await waiting(at.roomId, thread.threadId);
+    await roomsRepo().archiveRoom(at.roomId, at.aman.userId);
+    await expect(decideApproval(at.bea, runId, 1, "approve")).rejects.toEqual(new Gone("This room is archived."));
+    expect(await finished(runId, 40_000)).toMatchObject({ status: "stopped", reason: "The room was archived." });
+    expect(await eventsOf(runId, "step.finished")).toEqual([]);
+  });
+
+  it("an image in a private thread waits for a member, and is made once approved", async () => {
+    const at = await room();
+    const { thread, message } = await threadsRepo().createThread(at.aman, at.roomId, { text: "go call:image_generate", clientId: `k${++clients}` });
+    await threadsRepo().addTaint(at.roomId, thread.number, ["attachment"]);
+    const { runId } = await startOrSteer(at.aman, at.roomId, thread.threadId, message);
+    expect((await waiting(at.roomId, thread.threadId)).approval?.title).toMatch(/^Send ".*" to Gemini for an image\?$/);
+    await decideApproval(at.bea, runId, 1, "approve");
+    expect((await finished(runId)).status).toBe("done");
+    expect(await eventsOf(runId, "step.finished")).toMatchObject([{ step: 1, ok: true, image: { aspect: "1:1" } }]);
+  });
+
   it("a stop while waiting ends the run within seconds and cancels the approval", async () => {
     const at = await room();
     const { thread, runId } = await startRun("go call:github_comment", at);
@@ -192,7 +214,7 @@ describe("approvals in the run loop, on Floci", { timeout: 60_000 }, () => {
     const { thread, message } = await threadsRepo().createThread(at.aman, at.roomId, { text: "x", clientId: `k${++clients}` });
     const run: Run & { model: string } = {
       runId: randomUUID(), roomId: at.roomId, threadId: thread.threadId, number: thread.number, agentId: "agent", status: "running", model: "fake",
-      pick: "auto", pickBy: "default", startedBy: "aman", startedAt: new Date().toISOString(),
+      pick: "auto", pickBy: "default", startedBy: "aman", startedById: at.aman.userId, startedAt: new Date().toISOString(),
       deadAt: new Date(Date.now() + 7_800_000).toISOString(), firstSeq: message.seq, seenSeq: message.seq, steps: 0, costMicros: 0,
     };
     await docClient().send(new PutCommand({ TableName: tableName(), Item: { pk: `RUN#${run.runId}`, sk: "META", ...run } }));
@@ -232,7 +254,7 @@ describe("approvals in the run loop, on Floci", { timeout: 60_000 }, () => {
     const gate = await gateOf(run, call, []);
     expect(gate).toMatchObject({ asks: true, title: COMMENT_TITLE, input: { number: 1, body: "b", repo: "fake-org/playground" } });
     await docClient().send(new UpdateCommand({
-      TableName: tableName(), Key: { pk: `ROOM#${at.roomId}`, sk: "CONN#github" }, UpdateExpression: "SET repos = :r",
+      TableName: tableName(), Key: { pk: `ROOM#${at.roomId}`, sk: "LINK#github" }, UpdateExpression: "SET repos = :r",
       ExpressionAttributeValues: { ":r": ["fake-org/other"] },
     }));
     const github = recordGitHub();

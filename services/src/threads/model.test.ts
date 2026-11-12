@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ARCHIVE_AFTER_SEC, PROVISIONAL, claimableName, isArchived, isNumberedName, summary, leadingTag, summaryLine, threadName, threadSk, uniqueCandidates } from "./model.js";
+import { ARCHIVE_AFTER_SEC, provisionalName, claimableName, isArchived, isNumberedName, summary, leadingTag, summaryLine, threadName, threadSk, uniqueCandidates } from "./model.js";
 
 describe("threadName", () => {
   it("trims and lowercases", () => expect(threadName(" PR-Check ")).toBe("pr-check"));
@@ -7,7 +7,7 @@ describe("threadName", () => {
 });
 
 it("builds provisional names and sort keys", () => {
-  expect(PROVISIONAL(7)).toBe("thread-7");
+  expect(provisionalName(7)).toBe("thread-7");
   expect(threadSk(7)).toBe("THREAD#0000000007");
 });
 
@@ -74,11 +74,6 @@ describe("summary", () => {
     for (const k of ["pk", "sk", "named", "activeRunId", "from"]) expect(t).not.toHaveProperty(k);
     // Clients read deadAt to retire a dead run at the same moment the server does.
     expect(t).toMatchObject({ threadId: "t", number: 1, status: "done", rev: 4, archived: true, deadAt: "2026-11-11T02:10:00Z" });
-  });
-
-  it("gives a thread stored without an agent to the built-in @agent", () => {
-    expect(summary(stored, now).agentId).toBe("agent");
-    expect(summary({ ...stored, agentId: "a1" }, now).agentId).toBe("a1");
   });
 
   it("gives the taint as a sorted list, read from the stored string set, and [] when there is none", () => {

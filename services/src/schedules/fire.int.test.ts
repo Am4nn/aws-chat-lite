@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { GetFunctionConfigurationCommand, InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { SchedulerClient } from "@aws-sdk/client-scheduler";
-import { GetCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { agentsRepo } from "../agents/repo.js";
 import { auditRepo } from "../audit/repo.js";
 import { budgetRepo } from "../budget/repo.js";
@@ -92,6 +92,39 @@ describe("scheduled fires on Floci", { timeout: 90_000 }, () => {
     }
     const { entries } = await auditRepo().list(at.roomId);
     expect(entries.find((e) => e.kind === "asked")).toMatchObject({ actor: "schedule", agent: "scout", threadNumber: thread.number });
+  });
+
+  it("a scheduled run waits on an approval like any other, and an unanswered one is skipped with a note", async () => {
+    const owner = { userId: randomUUID(), username: "owner" };
+    const { roomId, generalChatId } = await roomsRepo().createRoom(owner, "Scheduled writes");
+    const db = docClient();
+    await db.send(new PutCommand({
+      TableName: tableName(),
+      Item: { pk: `ROOM#${roomId}`, sk: "LINK#github", installationId: 1, account: "fake-org", repos: ["fake-org/playground"], addedBy: "owner", addedAt: new Date().toISOString() },
+    }));
+    await db.send(new UpdateCommand({
+      TableName: tableName(), Key: { pk: `ROOM#${roomId}`, sk: "META" }, UpdateExpression: "SET approvalTimeoutSec = :s", ExpressionAttributeValues: { ":s": 5 },
+    }));
+    const bot = await agentsRepo().create(owner, roomId, { name: "bot", instructions: "Comment daily.", tools: ["github"], model: "room" });
+    const schedule = await schedules.create(owner, roomId, {
+      agentId: bot.agentId, title: "Daily comment", prompt: "go call:github_comment", cadence: { kind: "daily", time: "09:00" }, chatId: generalChatId,
+    });
+    await trigger.put(roomId, schedule, "Asia/Kolkata");
+    armed.push(schedule.scheduleId);
+
+    expect(await fire(roomId, schedule.scheduleId, "2026-11-10T03:30:00Z")).toBe("started");
+    const { lastRun } = (await schedules.get(roomId, schedule.scheduleId))!;
+    const thread = (await threads.threadByTag(roomId, { number: lastRun!.threadNumber! }))!;
+    const deadline = Date.now() + 30_000;
+    while ((await threads.threadById(roomId, thread.threadId))?.status !== "waiting") {
+      if (Date.now() > deadline) throw new Error("timed out waiting for the approval");
+      await sleep(250);
+    }
+    expect((await threads.threadById(roomId, thread.threadId))?.approval).toMatchObject({ step: 1 });
+
+    expect((await finished(thread.runId!)).status).toBe("done");
+    const text = (await runs.allEvents(thread.runId!)).map((e) => (e.type === "text" ? e.text : "")).join("");
+    expect(text).toContain("(Skipped because no one approved in time:");
   });
 
   it("the same occurrence again is a duplicate, and another one that day gets the next name", async () => {

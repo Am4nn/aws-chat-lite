@@ -8,9 +8,11 @@ import type { Agent, ToolKind } from "../threads/types.js";
 import { findTool, roomTools, type RoomMcp } from "../tools/index.js";
 import type { Tool } from "../tools/types.js";
 
+const FAKE_LOOKUP = "fake.lookup";
+
 export const FAKE_TOOLS: ToolSpec[] = [
   {
-    name: "fake.lookup",
+    name: FAKE_LOOKUP,
     description: "Looks up notes about a query.",
     inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
   },
@@ -45,6 +47,15 @@ export const IMAGE_TOOL: ToolSpec = {
     required: ["prompt"],
   },
 };
+
+/**
+ * The image tool as the approval gate sees it. Gemini may not see private content, and a prompt written in a private
+ * thread could carry some there, so there it asks first, as a web call does.
+ */
+export const IMAGE_GATE = {
+  spec: IMAGE_TOOL, kind: "images", write: false,
+  ask: (input: Record<string, unknown>) => `Send "${String(input.prompt ?? "").slice(0, 80)}" to Gemini for an image?`,
+} as const;
 
 export const firstLine = (text: unknown) => String(text ?? "").split("\n").map((l) => l.trim()).find(Boolean) ?? "";
 
@@ -103,32 +114,32 @@ export function mayRun(model: string, served: Provider, name: string, { roomId, 
 }
 
 /**
- * Whether a call waits for a member's approval. A write always does. A web or MCP call sends its input out, so text
- * injected into private content could have the model carry that content out in it: such a call asks once the thread
- * holds any private content but what this same MCP server returned itself. GitHub reads and memory keep their input
- * inside what the room already shares. `taint` is the thread's, with whatever the model's turn saw that the stored taint
- * may lag behind.
+ * Whether a call waits for a member's approval. A write always does. A web, MCP or image call sends its input out, so
+ * text injected into private content could have the model carry that content out in it: such a call asks once the
+ * thread holds any private content but what this same MCP server returned itself. GitHub reads and memory keep their
+ * input inside what the room already shares. `taint` is the thread's, with whatever the model's turn saw that the
+ * stored taint may lag behind.
  */
-export function asksFirst(tool: Pick<Tool, "spec" | "kind" | "write">, taint: TaintSource[]): boolean {
+export function asksFirst(tool: Pick<Tool, "spec" | "write"> & { kind: Tool["kind"] | "images" }, taint: TaintSource[]): boolean {
   if (tool.write) return true;
-  if (tool.kind !== "web" && tool.kind !== "mcp") return false;
+  if (tool.kind !== "web" && tool.kind !== "mcp" && tool.kind !== "images") return false;
   const own = tool.kind === "mcp" ? mcpTaint(mcpServerOf(tool.spec.name)) : undefined;
   return taint.some((t) => t !== own);
 }
 
 /** The line a running step shows under its tool's name. */
 export function toolDetail(call: ToolCall, room: RoomMcp): string {
-  if (call.name === "fake.lookup") return `Looking up "${call.input.query}"`;
+  if (call.name === FAKE_LOOKUP) return `Looking up "${call.input.query}"`;
   if (call.name === SANDBOX_TOOL.name) return `Running ${call.input.language}: ${firstLine(call.input.code).slice(0, 60)}`;
   if (call.name === IMAGE_TOOL.name) return `Drawing "${String(call.input.prompt ?? "").slice(0, 60)}"`;
   return findTool(call.name, room)?.detail(call.input) ?? call.name;
 }
 
-export async function runTool(
+export async function runFakeLookup(
   call: ToolCall,
   { sleep, signal }: { sleep: (ms: number, signal?: AbortSignal) => Promise<void>; signal?: AbortSignal },
 ): Promise<{ output: string; ok: boolean }> {
-  if (call.name !== "fake.lookup") return { ok: false, output: `Unknown tool ${call.name}.` };
+  if (call.name !== FAKE_LOOKUP) return { ok: false, output: `Unknown tool ${call.name}.` };
   await sleep(call.input.slow ? 1500 : 200, signal);
   if (signal?.aborted) return { ok: false, output: "Stopped before the tool finished." };
   const notes = [1, 2, 3].map((n) => `- note ${n}: details about ${call.input.query}`);

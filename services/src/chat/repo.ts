@@ -2,11 +2,11 @@ import { GetCommand, PutCommand, QueryCommand, TransactWriteCommand, UpdateComma
 import type { User } from "../lib/auth.js";
 import { conditionFailed, docClient, failedAt, tableName, transactionConflict } from "../lib/db.js";
 import { Conflict, Forbidden, NotFound, ValidationError } from "../lib/errors.js";
-import { counterKey, memberKey, roomKey } from "../lib/keys.js";
+import { counterKey, memberKey, messageKey, roomKey } from "../lib/keys.js";
 import { countTowardsRate } from "../lib/rate.js";
 import { enqueuePush } from "../push/enqueue.js";
 import { storedAttachment, withUrls } from "./files.js";
-import { requireMember } from "./membership.js";
+import { requireMember, roomMembers } from "../rooms/membership.js";
 import { notified, parseMentions } from "./mentions.js";
 import {
   EDIT_WINDOW_SEC, LAST_SEQ, MAX_ATTACHMENTS, PAGE, RATE_PER_MIN, canEdit, deleteMode, excerpt, forReaders, messageText,
@@ -21,7 +21,6 @@ export interface Admitted { text: string; attachments: Attachment[] }
 
 const chatKey = (chatId: string) => `CHAT#${chatId}`;
 const readKey = (at: ChatRef, userId: string) => ({ pk: roomKey(at.roomId), sk: `READ#${userId}#${at.chatId}` });
-const messageKey = (at: ChatRef, seq: number) => ({ pk: chatKey(at.chatId), sk: seqKey(seq) });
 
 const NEEDS_CONTENT = "A message needs text or an attachment.";
 
@@ -34,6 +33,9 @@ export function toMessage({ pk: _pk, sk: _sk, reactions, ...rest }: Record<strin
   const lists = Object.fromEntries(Object.entries(sets).map(([k, users]) => [k, [...users]]));
   return withUrls(forReaders({ ...rest, reactions: lists } as StoredMessage));
 }
+
+const mentionable = async (roomId: string): Promise<User[]> =>
+  (await roomMembers(roomId, { fields: ["userId", "username"] })).map((m) => ({ userId: String(m.userId), username: String(m.username) }));
 
 function attachmentList(raw: unknown, roomId: string, userId: string): Attachment[] {
   if (raw === undefined) return [];
@@ -66,17 +68,9 @@ export function chatRepo() {
   }
 
   async function storedMessage(at: ChatRef, seq: number): Promise<StoredMessage> {
-    const { Item } = await db.send(new GetCommand({ TableName, Key: messageKey(at, seq), ConsistentRead: true }));
+    const { Item } = await db.send(new GetCommand({ TableName, Key: messageKey(at.chatId, seq), ConsistentRead: true }));
     if (!Item || Item.roomId !== at.roomId) throw new NotFound("Message not found.");
     return Item as StoredMessage;
-  }
-
-  async function roomMembers(roomId: string) {
-    const { Items = [] } = await db.send(new QueryCommand({
-      TableName, KeyConditionExpression: "pk = :p AND begins_with(sk, :m)", ProjectionExpression: "userId, username",
-      ExpressionAttributeValues: { ":p": roomKey(roomId), ":m": "MEMBER#" },
-    }));
-    return Items as User[];
   }
 
   /** Your own message counts as read. The condition stops a slower, older send from moving the marker back. */
@@ -126,8 +120,9 @@ export function chatRepo() {
 
   /**
    * The checks that can refuse any send: valid content, a member of a room that isn't archived, within the rate limit,
-   * and attachments that S3 really holds (their size and type come from S3, not the client). A caller that must write something before the message exists (a new thread) runs this first and hands the
-   * result to `send`, so a refusal never leaves that write behind.
+   * and attachments that S3 really holds (their size and type come from S3, not the client). A caller that must write
+   * something before the message exists (a new thread) runs this first and hands the result to `send`, so a refusal
+   * never leaves that write behind.
    */
   async function admit(user: User, input: { roomId: string; text: unknown; attachments?: unknown }): Promise<Admitted> {
     const text = messageText(input.text);
@@ -153,7 +148,7 @@ export function chatRepo() {
       const at = { roomId: input.roomId, chatId: input.chatId };
       const { text, attachments } = admitted ?? await admit(user, input);
       const quoted = input.replyToSeq === undefined ? undefined : await storedMessage(at, input.replyToSeq);
-      const members = text.includes("@") ? await roomMembers(at.roomId) : [];
+      const members = text.includes("@") ? await mentionable(at.roomId) : [];
       const { mentions, everyone } = parseMentions(text, members);
 
       // Everything that can refuse the send runs before this, so a refusal never leaves a gap in the seqs.
@@ -164,7 +159,7 @@ export function chatRepo() {
         ...(quoted && { replyTo: { seq: quoted.seq, authorName: quoted.authorName, excerpt: excerpt(forReaders(quoted).text) } }),
       };
       await db.send(new PutCommand({
-        TableName, Item: { ...messageKey(at, seq), ...message, textLower: text.toLowerCase() },
+        TableName, Item: { ...messageKey(at.chatId, seq), ...message, textLower: text.toLowerCase() },
         ConditionExpression: "attribute_not_exists(sk)",
       }));
       const writes = opts.system ? [] : [readOwnMessage(at, user.userId, seq)];
@@ -179,7 +174,7 @@ export function chatRepo() {
      */
     async linkThread(at: ChatRef & { seq: number }, threadRef: NonNullable<Message["threadRef"]>): Promise<Message> {
       const { Attributes } = await db.send(new UpdateCommand({
-        TableName, Key: messageKey(at, at.seq), UpdateExpression: "SET threadRef = :ref ADD v :one", ConditionExpression: "attribute_exists(sk)",
+        TableName, Key: messageKey(at.chatId, at.seq), UpdateExpression: "SET threadRef = :ref ADD v :one", ConditionExpression: "attribute_exists(sk)",
         ExpressionAttributeValues: { ":ref": threadRef, ":one": 1 }, ReturnValues: "ALL_NEW",
       }));
       return toMessage(Attributes!);
@@ -198,7 +193,7 @@ export function chatRepo() {
       const now = Date.now();
       if (!canEdit(old, user.userId, now)) throw new Forbidden("You can edit only your own messages, for 15 minutes.");
       if (!text && !old.attachments.length) throw new ValidationError(NEEDS_CONTENT);
-      const members = text.includes("@") ? await roomMembers(at.roomId) : [];
+      const members = text.includes("@") ? await mentionable(at.roomId) : [];
       const { mentions, everyone } = parseMentions(text, members);
       const editedAt = new Date(now).toISOString();
       try {
@@ -207,7 +202,7 @@ export function chatRepo() {
             { Put: { TableName, Item: { pk: chatKey(at.chatId), sk: versionKey(input.seq, editedAt), text: old.text } } },
             {
               Update: {
-                TableName, Key: messageKey(at, input.seq),
+                TableName, Key: messageKey(at.chatId, input.seq),
                 UpdateExpression: "SET #text = :text, textLower = :lower, editedAt = :at, mentions = :mentions, everyone = :everyone ADD v :one",
                 // The rules again, plus an optimistic lock on the version we read (`v` is never removed once set), so
                 // no change landing between the read and this write is overwritten, and what this edit returns and
@@ -233,26 +228,47 @@ export function chatRepo() {
       return toMessage({ ...old, text, editedAt, mentions, everyone, v: (old.v ?? 0) + 1 });
     },
 
-    /** Marks the message deleted; the stored text stays, and readers get it blanked. */
-    async remove(user: User, input: ChatRef & { seq: number }): Promise<Message> {
+    /**
+     * Marks the message deleted; the stored text stays, and readers get it blanked. Its copy in the thread it went to
+     * is marked in the same transaction, so a removal never leaves the text readable there. Both are read back after
+     * the write, not built from the read above: a reaction landing in between also moved `v`.
+     */
+    async remove(user: User, input: ChatRef & { seq: number }): Promise<{ message: Message; copy?: Message }> {
       const at = { roomId: input.roomId, chatId: input.chatId };
       const role = await requireMember(at.roomId, user.userId, { writing: true });
       const msg = await storedMessage(at, input.seq);
       if (msg.deleted) throw new Conflict("That message is already deleted.");
       const deleted = deleteMode(msg, user.userId, role, Date.now());
       if (!deleted) throw new Forbidden("You can delete only your own messages, for 15 minutes.");
+      const ref = msg.threadRef;
+      const copyAt = ref?.seq === undefined ? undefined : { at: { roomId: at.roomId, chatId: ref.threadId }, seq: ref.seq };
+      const values = { ":d": deleted, ":one": 1 };
       try {
-        // The stored result, not the copy read above: a reaction landing in between also moved `v`.
-        const { Attributes } = await db.send(new UpdateCommand({
-          TableName, Key: messageKey(at, input.seq), UpdateExpression: "SET deleted = :d ADD v :one",
-          ConditionExpression: "attribute_not_exists(deleted)", ExpressionAttributeValues: { ":d": deleted, ":one": 1 },
-          ReturnValues: "ALL_NEW",
+        await db.send(new TransactWriteCommand({
+          TransactItems: [
+            {
+              Update: {
+                TableName, Key: messageKey(at.chatId, input.seq), UpdateExpression: "SET deleted = :d ADD v :one",
+                ConditionExpression: "attribute_not_exists(deleted)", ExpressionAttributeValues: values,
+              },
+            },
+            // The copy may already be deleted on its own; that keeps its own mark.
+            ...(copyAt ? [{
+              Update: {
+                TableName, Key: messageKey(copyAt.at.chatId, copyAt.seq), UpdateExpression: "SET deleted = if_not_exists(deleted, :d) ADD v :one",
+                ConditionExpression: "attribute_exists(sk)", ExpressionAttributeValues: values,
+              },
+            }] : []),
+          ],
         }));
-        return toMessage(Attributes!);
       } catch (e) {
-        if (conditionFailed(e)) throw new Conflict("That message is already deleted.");
+        if (failedAt(e, 0)) throw new Conflict("That message is already deleted.");
+        if (transactionConflict(e)) throw new Conflict("That message just changed; try again.");
         throw e;
       }
+      const reread = async (where: ChatRef, seq: number) => toMessage({ ...await storedMessage(where, seq) });
+      const [message, copy] = await Promise.all([reread(at, input.seq), copyAt && reread(copyAt.at, copyAt.seq)]);
+      return { message, ...(copy && { copy }) };
     },
 
     /** Set ADD/DELETE make a double tap harmless: adding someone twice or removing someone absent changes nothing. */
@@ -261,7 +277,7 @@ export function chatRepo() {
       await requireMember(at.roomId, user.userId, { writing: true });
       try {
         const { Attributes } = await db.send(new UpdateCommand({
-          TableName, Key: messageKey(at, input.seq), UpdateExpression: input.on ? "ADD reactions.#k :me, v :one" : "DELETE reactions.#k :me ADD v :one",
+          TableName, Key: messageKey(at.chatId, input.seq), UpdateExpression: input.on ? "ADD reactions.#k :me, v :one" : "DELETE reactions.#k :me ADD v :one",
           ConditionExpression: "roomId = :r AND attribute_not_exists(deleted)", ExpressionAttributeNames: { "#k": input.reaction },
           ExpressionAttributeValues: { ":me": new Set([user.userId]), ":r": at.roomId, ":one": 1 }, ReturnValues: "ALL_NEW",
         }));
@@ -282,8 +298,8 @@ export function chatRepo() {
      * Moves the read marker forward, clears the chat's mentions and takes the same number off the member's room total,
      * in one transaction. Optimistic: the write only applies if the mentions are still the count we read, so a mention
      * arriving meanwhile is never wiped without being subtracted; on a clash (that, or another transaction writing the
-   * same items at the same moment, which DynamoDB cancels as a TransactionConflict) it reads again and retries. The chat's
-     * counter, checked in the same transaction, proves the chat is in this room and the seq has been sent.
+     * same items at the same moment, which DynamoDB cancels as a TransactionConflict) it reads again and retries. The
+     * chat's counter, checked in the same transaction, proves the chat is in this room and the seq has been sent.
      */
     async markRead(user: User, input: ChatRef & { seq: number }): Promise<{ lastReadSeq: number }> {
       const at = { roomId: input.roomId, chatId: input.chatId };
@@ -328,8 +344,9 @@ export function chatRepo() {
     },
 
     /**
-     * Oldest to newest, at most a page (`limit`, 50 by default): the newest messages, or those before or after a seq, or half a page either
-     * side of one (for jumping to a quoted message). The chat's counter item proves the chat is in this room.
+     * Oldest to newest, at most a page (`limit`, 50 by default): the newest messages, or those before or after a seq,
+     * or half a page either side of one (for jumping to a quoted message). The chat's counter item proves the chat is
+     * in this room.
      */
     async history(user: User, roomId: string, chatId: string, cursor: Cursor): Promise<{ messages: Message[] }> {
       await requireMember(roomId, user.userId);

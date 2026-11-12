@@ -32,6 +32,6 @@ export function modelIdOf(pick: Exclude<ModelPick, "auto">): string {
 export const routerInput = (text: string) => Array.from(text).slice(0, 4000).join("");
 
 /** Auto only ever chooses between these two; any other reply means Sonnet. */
-export function parseRoute(reply: string): "claude-haiku-5-5" | "claude-sonnet-5-5" {
-  return reply.trim().toLowerCase().replace(/^\W+|\W+$/g, "") === "haiku" ? "claude-haiku-5-5" : "claude-sonnet-5-5";
+export function parseRoute(reply: string): string {
+  return modelIdOf(reply.trim().toLowerCase().replace(/^\W+|\W+$/g, "") === "haiku" ? "haiku" : "sonnet");
 }

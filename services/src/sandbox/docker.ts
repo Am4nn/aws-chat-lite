@@ -6,7 +6,7 @@ export const SANDBOX_IMAGE = "cl-sandbox:1";
 export const SANDBOX_NETWORK = "cl-sandbox-net";
 const LABEL = "cl-sandbox=1";
 
-/** Handles are full container ids, so a name like `floci` can never reach another container. */
+/** Handles are full container ids, so a handle can never be another container's name. */
 export const isHandle = (handle: unknown): handle is string => typeof handle === "string" && /^[0-9a-f]{64}$/.test(handle);
 
 const OUTPUT_LIMIT = 1024 * 1024;

@@ -2,31 +2,25 @@ import { randomUUID } from "node:crypto";
 import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { BUILT_IN } from "../agents/model.js";
 import type { User } from "../lib/auth.js";
+import { bestEffort } from "../lib/best-effort.js";
 import { conditionFailed, docClient, failedAt, tableName } from "../lib/db.js";
 import { Conflict, NotFound } from "../lib/errors.js";
-import { requireMember } from "../chat/membership.js";
+import { requireMember } from "../rooms/membership.js";
 import type { Message } from "../chat/model.js";
 import { chatRepo, type Admitted } from "../chat/repo.js";
 import { broadcastToRoom } from "../live/broadcast.js";
-import { PROVISIONAL, isNumberedName, summary, threadName, threadSk, uniqueCandidates } from "./model.js";
+import { provisionalName, isNumberedName, summary, threadName, uniqueCandidates } from "./model.js";
 import type { TaintSource } from "../models/privacy.js";
 import type { ThreadSummary } from "./types.js";
+import { counterKey, roomKey, roomMetaKey, threadKey } from "../lib/keys.js";
 
 type Item = Record<string, unknown>;
 
-const roomKey = (roomId: string) => `ROOM#${roomId}`;
-const threadKey = (roomId: string, n: number) => ({ pk: roomKey(roomId), sk: threadSk(n) });
 const nameKey = (roomId: string, name: string) => ({ pk: roomKey(roomId), sk: `CHATNAME#${name}` });
-const chatMetaKey = (threadId: string) => ({ pk: `CHAT#${threadId}`, sk: "META" });
 
 /** Best effort: the write has happened, and a client that misses the event gets the thread on its next room load. */
-async function announce(thread: ThreadSummary) {
-  try {
-    await broadcastToRoom(thread.roomId, { type: "thread.updated", roomId: thread.roomId, thread });
-  } catch (e) {
-    console.error("thread.updated broadcast failed", thread.roomId, e);
-  }
-}
+const threadUpdated = (thread: ThreadSummary) =>
+  bestEffort("thread.updated broadcast", () => broadcastToRoom(thread.roomId, { type: "thread.updated", roomId: thread.roomId, thread }));
 
 /**
  * Agent threads (single table). A thread is a chat with `kind: "thread"`, so its messages, history and search are the
@@ -36,16 +30,16 @@ export function threadsRepo() {
   const db = docClient();
   const TableName = tableName();
 
-  async function at(roomId: string, n: number) {
+  async function byNumber(roomId: string, n: number) {
     const { Item } = await db.send(new GetCommand({ TableName, Key: threadKey(roomId, n), ConsistentRead: true }));
     return Item;
   }
 
   /** The thread's chat counter records its room and number, which proves the thread is in this room and finds it. */
   async function byId(roomId: string, threadId: string) {
-    const { Item: chat } = await db.send(new GetCommand({ TableName, Key: chatMetaKey(threadId), ConsistentRead: true }));
+    const { Item: chat } = await db.send(new GetCommand({ TableName, Key: counterKey(threadId), ConsistentRead: true }));
     if (chat?.kind !== "thread" || chat.roomId !== roomId) return undefined;
-    return at(roomId, Number(chat.number));
+    return byNumber(roomId, Number(chat.number));
   }
 
   /**
@@ -79,7 +73,7 @@ export function threadsRepo() {
       ],
     }));
     // Re-read rather than add 1 to the rev we read: a run may have written the thread in between.
-    return summary((await at(roomId, Number(thread.number)))!, Date.now());
+    return summary((await byNumber(roomId, Number(thread.number)))!, Date.now());
   }
 
   return {
@@ -103,12 +97,12 @@ export function threadsRepo() {
       const chat = chatRepo();
       const admitted = input.admitted ?? await chat.admit(user, { roomId, text: input.text });
       const { Attributes } = await db.send(new UpdateCommand({
-        TableName, Key: { pk: roomKey(roomId), sk: "META" }, UpdateExpression: "ADD threadSeq :one",
+        TableName, Key: roomMetaKey(roomId), UpdateExpression: "ADD threadSeq :one",
         ConditionExpression: "attribute_exists(pk)", ExpressionAttributeValues: { ":one": 1 }, ReturnValues: "UPDATED_NEW",
       }));
       const number = Number(Attributes!.threadSeq);
       const threadId = randomUUID();
-      const numbered = PROVISIONAL(number);
+      const numbered = provisionalName(number);
       const base = {
         ...threadKey(roomId, number), roomId, threadId, number, agentId: input.agentId ?? BUILT_IN.agentId, status: "idle", rev: 1,
         steps: 0, costMicros: 0, createdBy: user.userId, lastActivityAt: new Date().toISOString(), ...(input.from && { from: input.from }),
@@ -121,7 +115,7 @@ export function threadsRepo() {
           await db.send(new TransactWriteCommand({
             TransactItems: [
               { Put: { TableName, Item: candidate } },
-              { Put: { TableName, Item: { ...chatMetaKey(threadId), roomId, lastSeq: 0, kind: "thread", number } } },
+              { Put: { TableName, Item: { ...counterKey(threadId), roomId, lastSeq: 0, kind: "thread", number } } },
               { Put: { TableName, Item: { ...nameKey(roomId, name), chatId: threadId, kind: "thread" }, ConditionExpression: "attribute_not_exists(pk)" } },
             ],
           }));
@@ -131,13 +125,12 @@ export function threadsRepo() {
           if (!failedAt(e, 2)) throw e;
         }
       }
-      // Only older data can hold a numbered name's guard (new chats can't take thread-<N> names); a retry gets the next number.
       if (!item) throw new Conflict(`#${numbered} is already a chat's name; try again.`);
       const message = await chat.send(
         user, { roomId, chatId: threadId, clientId: input.clientId, text: input.text }, admitted, { copy: !!input.from, system: input.system },
       );
       const thread = summary(item, Date.now());
-      await announce(thread);
+      await threadUpdated(thread);
       return { thread, message };
     },
 
@@ -154,7 +147,7 @@ export function threadsRepo() {
         if (conditionFailed(e)) throw new Conflict(`#${name} is taken.`);
         throw e;
       }
-      await announce(renamed);
+      await threadUpdated(renamed);
       return renamed;
     },
 
@@ -176,7 +169,7 @@ export function threadsRepo() {
       for (const name of uniqueCandidates(base).filter((n) => !isNumberedName(n))) {
         try {
           const named = await moveName(thread, name, { unnamedOnly: true });
-          await announce(named);
+          await threadUpdated(named);
           return named;
         } catch (e) {
           if (!conditionFailed(e)) throw e;
@@ -203,7 +196,7 @@ export function threadsRepo() {
     async threadByTag(roomId: string, tag: { number: number } | { name: string }): Promise<ThreadSummary | null> {
       let thread: Item | undefined;
       if ("number" in tag) {
-        thread = await at(roomId, tag.number);
+        thread = await byNumber(roomId, tag.number);
       } else {
         const { Item: guard } = await db.send(new GetCommand({ TableName, Key: nameKey(roomId, tag.name), ConsistentRead: true }));
         thread = guard?.kind === "thread" ? await byId(roomId, String(guard.chatId)) : undefined;

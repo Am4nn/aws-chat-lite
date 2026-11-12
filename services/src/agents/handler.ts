@@ -1,5 +1,5 @@
 import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
-import { requireMember } from "../chat/membership.js";
+import { requireMember } from "../rooms/membership.js";
 import { callerFromEvent } from "../lib/auth.js";
 import { bestEffort } from "../lib/best-effort.js";
 import { errorResponse, json, parseBody } from "../lib/http.js";

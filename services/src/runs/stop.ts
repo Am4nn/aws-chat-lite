@@ -2,7 +2,7 @@ import { wakeRun } from "../approvals/decide.js";
 import { approvalsRepo } from "../approvals/repo.js";
 import type { User } from "../lib/auth.js";
 import { Conflict, NotFound } from "../lib/errors.js";
-import { requireMember } from "../chat/membership.js";
+import { requireMember } from "../rooms/membership.js";
 import { threadsRepo } from "../threads/repo.js";
 import { finishRun } from "./finish.js";
 import { DEAD_REASON } from "./model.js";
@@ -11,9 +11,9 @@ import { runsRepo } from "./repo.js";
 /**
  * Any member may stop the thread's run. A live run gets a flag it reads within a second; one waiting on an approval
  * sleeps until it is woken, so the stop also cancels the approval and wakes it. It wakes it even when a decision came
- * first, since that decision's own wake may have failed. A run past its `deadAt` can't be alive
- * to read the flag, so it is closed here, which frees the thread. The run item, not the thread, says whether it is
- * running: the thread already shows a dead run as failed.
+ * first, since that decision's own wake may have failed. A run past its `deadAt` can't be alive to read the flag, so
+ * it is closed here, which frees the thread. The run item, not the thread, says whether it is running: the thread
+ * already shows a dead run as failed.
  */
 export async function requestStop(user: User, roomId: string, threadId: string): Promise<{ runId: string }> {
   await requireMember(roomId, user.userId);

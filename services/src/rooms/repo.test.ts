@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { GetCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, GetCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { docClient } from "../lib/db.js";
 import { Conflict } from "../lib/errors.js";
 import { roomsRepo } from "./repo.js";
@@ -54,6 +54,32 @@ describe("archiveRoom", () => {
   });
 });
 
+describe("setChatPrefs", () => {
+  it("mutes only a people chat: a thread's chat counter has a kind, so the condition refuses it", async () => {
+    const send = fakeTable((c) => (c instanceof GetCommand ? { Item: { role: "member" } } : {}));
+    await roomsRepo().setChatPrefs("r1", "u1", "c1", true);
+    const [check] = transactions(send)[0].input.TransactItems!;
+    expect(check.ConditionCheck).toMatchObject({ Key: { pk: "CHAT#c1", sk: "META" }, ConditionExpression: "roomId = :r AND attribute_not_exists(#kind)",
+      ExpressionAttributeNames: { "#kind": "kind" },
+    });
+  });
+});
+
+describe("removeMember", () => {
+  it("also deletes the removed member's socket subscriptions to the room, as leaving does", async () => {
+    const send = fakeTable((c) => {
+      if (c instanceof GetCommand) return { Item: { role: c.input.Key?.sk === "MEMBER#u1" ? "owner" : "member" } };
+      if (c instanceof QueryCommand) return { Items: [{ pk: "ROOM#r1", sk: "CONN#s1", userId: "u2" }] };
+      return {};
+    });
+    await roomsRepo().removeMember("r1", "u1", "u2");
+    const query = send.mock.calls.map(([c]) => c).find((c) => c instanceof QueryCommand) as QueryCommand;
+    expect(query.input).toMatchObject({ FilterExpression: "userId = :u", ExpressionAttributeValues: { ":p": "ROOM#r1", ":c": "CONN#", ":u": "u2" } });
+    const deleted = send.mock.calls.map(([c]) => c).filter((c) => c instanceof DeleteCommand).map((c) => (c as DeleteCommand).input.Key);
+    expect(deleted).toEqual([{ pk: "ROOM#r1", sk: "MEMBER#u2" }, { pk: "ROOM#r1", sk: "CONN#s1" }]);
+  });
+});
+
 describe("reads that can span pages", () => {
   it("listMyRooms follows every page of the user's rooms", async () => {
     const pages = [
@@ -76,7 +102,7 @@ describe("getRoomView", () => {
     fakeTable((c) => {
       if (c instanceof GetCommand) return { Item: { name: "Room", ownerId: "u1", ...meta } };
       if (c instanceof QueryCommand) {
-        const prefix = c.input.ExpressionAttributeValues?.[":s"] ?? c.input.ExpressionAttributeValues?.[":a"];
+        const prefix = c.input.ExpressionAttributeValues?.[":s"] ?? c.input.ExpressionAttributeValues?.[":m"] ?? c.input.ExpressionAttributeValues?.[":a"];
         if (prefix === "MEMBER#") return { Items: [{ userId: "u1", username: "aman", role: "owner" }] };
         if (prefix === "AGENT#") return { Items: [{ pk: "ROOM#r1", sk: "AGENT#a1", agentId: "a1", name: "scout", builtIn: false }] };
       }

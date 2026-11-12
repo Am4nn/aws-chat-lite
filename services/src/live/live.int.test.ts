@@ -279,7 +279,7 @@ describe("agent threads over the socket", () => {
 
     send(sa, { action: "send", requestId: "d1", roomId, chatId: generalChatId, clientId: "k1", text: "#1 and this" });
     const updated = await sb.next(messageUpdated(generalChatId, 1));
-    expect((updated.message as Frame).threadRef).toEqual({ threadId: thread.threadId, kind: "delivered" });
+    expect((updated.message as Frame).threadRef).toEqual({ threadId: thread.threadId, kind: "delivered", seq: 2 });
     const running = await sb.next((f) => runUpdated(thread.threadId)(f) && (f.thread as Frame).runFirstSeq === 2);
     expect((await history(a, roomId, thread.threadId))[1]).toMatchObject({ seq: 2, authorId: a.userId, clientId: "k1:t", text: "#1 and this" });
     await sb.next((f) => runUpdated(thread.threadId, "done")(f) && (f.thread as Frame).runId === (running.thread as Frame).runId, AGENT_MS);
@@ -288,6 +288,20 @@ describe("agent threads over the socket", () => {
     expect((await sb.next(messageUpdated(generalChatId, 2))).message).toMatchObject({ threadRef: { kind: "delivered" } });
     const copies = await history(a, roomId, thread.threadId);
     expect(copies.filter((m) => m.authorId === a.userId).map((m) => m.text)).toEqual(["notes", "#1 and this", "and more"]);
+  }, AGENT_MS);
+
+  it("deleting a delivered message removes its copy in the thread too, and the room hears both", async () => {
+    const { a, roomId, generalChatId, sa, sb } = await pair("Removal");
+    const { thread } = await threadsRepo().createThread(a, roomId, { text: "notes", clientId: "k0" });
+    send(sa, { action: "send", requestId: "r1", roomId, chatId: generalChatId, clientId: "k1", text: "#1 secret" });
+    await sb.next(messageUpdated(generalChatId, 1));
+    await sb.next(runUpdated(thread.threadId, "done"), AGENT_MS);
+
+    send(sa, { action: "delete", requestId: "r2", roomId, chatId: generalChatId, seq: 1 });
+    const deleted = (chatId: string, seq: number) => (f: Frame) => messageUpdated(chatId, seq)(f) && (f.message as Frame).deleted === "self";
+    expect((await sb.next(deleted(generalChatId, 1))).message).toMatchObject({ text: "" });
+    expect((await sb.next(deleted(thread.threadId, 2))).message).toMatchObject({ text: "" });
+    expect((await history(a, roomId, thread.threadId))[1]).toMatchObject({ seq: 2, deleted: "self", text: "" });
   }, AGENT_MS);
 
   it("a mention counts once: the copy in the thread doesn't badge the member again", async () => {

@@ -1,5 +1,5 @@
 import { QueryCommand } from "@aws-sdk/lib-dynamodb";
-import { requireMember } from "../chat/membership.js";
+import { requireMember } from "../rooms/membership.js";
 import type { User } from "../lib/auth.js";
 import { docClient, tableName } from "../lib/db.js";
 import { Forbidden, NotFound, ValidationError } from "../lib/errors.js";

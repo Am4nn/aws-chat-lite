@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ValidationError } from "../lib/errors.js";
-import { conflictCopy, deniedResult, expiredResult, formatWait, SKIP_NOTE, timeoutMinutes, unsure } from "./model.js";
+import { conflictCopy, deniedResult, expiredResult, formatWait, skipNote, timeoutMinutes, unsure } from "./model.js";
 
 describe("formatWait", () => {
   it("says hours, minutes or under a minute", () => {
@@ -32,7 +32,7 @@ describe("copy", () => {
       "This write may or may not have happened (the step was interrupted). Check GitHub before trying again.",
     );
     expect(unsure("test")).toBe("This write may or may not have happened (the step was interrupted). Check test before trying again.");
-    expect(SKIP_NOTE("Comment on #1 in a/b?")).toBe("\n\n(Skipped because no one approved in time: Comment on #1 in a/b?)");
+    expect(skipNote("Comment on #1 in a/b?")).toBe("\n\n(Skipped because no one approved in time: Comment on #1 in a/b?)");
   });
 
   it("names who decided first, or why no one can", () => {
