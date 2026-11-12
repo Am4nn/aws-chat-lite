@@ -6,6 +6,7 @@ import { Template } from "aws-cdk-lib/assertions";
 import { expect } from "vitest";
 import { loadConfig, type Stage } from "./config.js";
 import { CoreStack, type CoreStackProps } from "./core-stack.js";
+import { PipelineStack, type PipelineStackProps } from "./pipeline-stack.js";
 import type { WebBuild } from "./web.js";
 
 /**
@@ -36,10 +37,21 @@ function fakeWebBuild(): WebBuild {
 
 let webBuild: WebBuild | undefined;
 
-/** A fresh core stack, for a test that changes it (or its props) instead of only reading the shared template. */
-export function buildStack(stage: Stage, props: Partial<CoreStackProps> = {}): CoreStack {
+/**
+ * A fresh core stack, for a test that changes it (or its props) instead of only reading the shared template. A test
+ * that compares asset hashes passes an App that bundles.
+ */
+export function buildStack(stage: Stage, props: Partial<CoreStackProps> = {}, scope: App = app()): CoreStack {
   const config = props.config ?? configFor(stage);
-  return new CoreStack(app(), `cl-${stage}-core`, {
+  return new CoreStack(scope, `cl-${stage}-core`, {
+    config, env: { account: "000000000000", region: config.region }, webBuild: (webBuild ??= fakeWebBuild()), ...props,
+  });
+}
+
+/** The pipeline stack as the aws app builds it, around a prod stage that holds its own core stack. */
+export function buildPipelineStack(props: Partial<PipelineStackProps> = {}, scope: App = app()): PipelineStack {
+  const config = configFor("aws");
+  return new PipelineStack(scope, "cl-aws-pipeline", {
     config, env: { account: "000000000000", region: config.region }, webBuild: (webBuild ??= fakeWebBuild()), ...props,
   });
 }
