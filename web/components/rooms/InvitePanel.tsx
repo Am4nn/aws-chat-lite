@@ -6,27 +6,42 @@ import { Copy, Link2, RefreshCw } from "lucide-react";
 import { bff, bffOrNull, errorText } from "@/lib/client/bff";
 import { swap } from "@/lib/motion";
 import { Button } from "@/components/ui/Button";
+import { PanelLoading } from "@/components/ui/PanelLoading";
 import { Spinner } from "@/components/ui/Spinner";
 import { useToast } from "@/components/overlays/Toast";
 import { expiresIn, inviteUrl } from "./invite";
 
 type Invite = { code: string; expiresAt: number };
-type State = { kind: "loading" } | { kind: "none" } | { kind: "active"; invite: Invite } | { kind: "confirmRevoke"; invite: Invite };
+type State =
+  | { kind: "loading" } | { kind: "failed" } | { kind: "none" } | { kind: "active"; invite: Invite } | { kind: "confirmRevoke"; invite: Invite };
 
-/** One reusable link per room. Rotating replaces it (the old link stops working); revoking removes it. */
+/**
+ * One reusable link per room. Rotating replaces it (the old link stops working); revoking removes it. A room with no
+ * link answers 404, which is "none"; any other failed load offers a retry, since saying "no link" then would be wrong.
+ */
 export function InvitePanel({ roomId }: { roomId: string }) {
   const toast = useToast();
   const [state, setState] = useState<State>({ kind: "loading" });
   const [busy, setBusy] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    bffOrNull<Invite>(`/bff/api/rooms/${roomId}/invite`)
-      .then((invite) => setState(invite ? { kind: "active", invite } : { kind: "none" }))
-      .catch((e) => {
+    let current = true;
+    bffOrNull<Invite>(`/bff/api/rooms/${roomId}/invite`).then(
+      (invite) => current && setState(invite ? { kind: "active", invite } : { kind: "none" }),
+      (e) => {
+        if (!current) return;
         toast(errorText(e), "error");
-        setState({ kind: "none" });
-      });
-  }, [roomId, toast]);
+        setState({ kind: "failed" });
+      },
+    );
+    return () => { current = false; };
+  }, [roomId, attempt, toast]);
+
+  const retry = () => {
+    setState({ kind: "loading" });
+    setAttempt((n) => n + 1);
+  };
 
   async function run(action: () => Promise<State>) {
     setBusy(true);
@@ -54,8 +69,8 @@ export function InvitePanel({ roomId }: { roomId: string }) {
     <div className="flex flex-col gap-3">
       <p className="text-[12.5px] leading-relaxed text-text-3">Anyone with the link can join as a member for 7 days.</p>
       <AnimatePresence mode="wait" initial={false}>
-        {state.kind === "loading" && (
-          <motion.div key="loading" {...swap} className="flex h-20 items-center justify-center text-text-3"><Spinner /></motion.div>
+        {(state.kind === "loading" || state.kind === "failed") && (
+          <motion.div key="loading" {...swap}><PanelLoading failed={state.kind === "failed"} onRetry={retry} /></motion.div>
         )}
         {state.kind === "none" && (
           <motion.div key="none" {...swap}>
