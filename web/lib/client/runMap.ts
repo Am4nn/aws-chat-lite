@@ -31,7 +31,7 @@ export type MapLane = { lane: number; agent: string; helper: boolean; at?: Point
 export type RunMap = { lanes: MapLane[]; nodes: MapNode[]; edges: MapEdge[]; width: number; height: number };
 
 const CARD = { w: 128, h: 72 };
-const PITCH = 124;
+const PITCH = CARD.w + 16;
 const FIRST_X = 24;
 const ROW = 80;
 const LANE_GAP = 44;
