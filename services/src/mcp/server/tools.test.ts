@@ -11,7 +11,7 @@ function setup() {
   const calls: string[] = [];
   const view = {
     room: { roomId: "r1", name: "Dev" },
-    chats: [{ chatId: "c1", name: "general", unread: 2 }, { chatId: "c2", name: "random", unread: 0 }],
+    chats: [{ chatId: "c1", name: "general", unread: 2 }, { chatId: "c2", name: "random", unread: 0, archived: true }],
     threads: [
       thread(12, "pr-check", { status: "running" }), thread(3, "thread-3", { archived: true }),
       ...Array.from({ length: 21 }, (_, i) => thread(20 + i, `t-${20 + i}`)),
@@ -67,12 +67,12 @@ describe("the tools", () => {
     expect(await run("list_rooms", {}, typed)).toBe("You aren't in any rooms yet.");
   });
 
-  it("list_room lists chats with unread counts and the newest 20 unarchived threads", async () => {
+  it("list_room lists chats with unread counts, archived ones marked, and the newest 20 unarchived threads", async () => {
     const { deps, typed } = setup();
     const out = await run("list_room", { room: "dev" }, typed);
     expect(deps.rooms.getRoomView).toHaveBeenCalledWith("r1", "u1");
     const lines = out.split("\n");
-    expect(lines.slice(0, 5)).toEqual(["Chats:", "#general (2 unread)", "#random (0 unread)", "Threads:", "#40 t-40 · idle"]);
+    expect(lines.slice(0, 5)).toEqual(["Chats:", "#general (2 unread)", "#random (0 unread) · archived, read-only", "Threads:", "#40 t-40 · idle"]);
     expect(lines).toHaveLength(24);
     expect(lines.at(-1)).toBe("#21 t-21 · idle");
     expect(out).not.toContain("#3 ");

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { GetCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { docClient } from "../lib/db.js";
+import { Gone } from "../lib/errors.js";
 import { chatRepo } from "./repo.js";
 
 const pushed = vi.hoisted(() => [] as unknown[]);
@@ -192,5 +193,41 @@ describe("edit and reaction rate", () => {
     const send = counting(61);
     await chatRepo().react(me, { ...at, seq: 1, reaction: "thumbs", on: true }).catch(() => {});
     expect(writes(send)).toEqual([]);
+  });
+});
+
+describe("an archived chat", () => {
+  const conditionFailed = () => Object.assign(new Error("no"), { name: "ConditionalCheckFailedException" });
+  /** Chat c1 is archived: its counter says so, and its counter's conditional increment fails. */
+  const archivedChat = () => vi.spyOn(docClient(), "send").mockImplementation((async (c: unknown) => {
+    if (c instanceof GetCommand) {
+      const sk = String(c.input.Key?.sk);
+      return { Item: sk.startsWith("MEMBER#") ? { role: "owner" } : sk === "META" ? { roomId: "r1", lastSeq: 1, archived: true } : stored() };
+    }
+    if (c instanceof UpdateCommand && String(c.input.Key?.sk) === "META") throw conditionFailed();
+    return {};
+  }) as never);
+  const closed = new Gone("This chat is archived.");
+
+  it("takes no sends, edits, reactions or typing, and a refused send counts towards no limit", async () => {
+    const send = archivedChat();
+    await expect(chatRepo().admit(me, { ...at, text: "hi" })).rejects.toEqual(closed);
+    await expect(chatRepo().edit(me, { ...at, seq: 1, text: "hello" })).rejects.toEqual(closed);
+    await expect(chatRepo().react(me, { ...at, seq: 1, reaction: "thumbs", on: true })).rejects.toEqual(closed);
+    await expect(chatRepo().assertCanType(me.userId, at)).rejects.toEqual(closed);
+    expect(send.mock.calls.map(([c]) => c).filter(isRate)).toEqual([]);
+  });
+
+  it("refuses a message the server posts itself too: the increment that numbers it checks the flag", async () => {
+    const send = archivedChat();
+    await expect(chatRepo().send(me, { ...at, clientId: "k", text: "Morning digest" }, { text: "Morning digest", attachments: [] }, { system: true }))
+      .rejects.toEqual(closed);
+    const increment = send.mock.calls.map(([c]) => c).find((c) => c instanceof UpdateCommand) as UpdateCommand;
+    expect(increment.input.ConditionExpression).toBe("roomId = :r AND attribute_not_exists(archived)");
+  });
+
+  it("still lets a message be deleted: removal is how a room takes something back", async () => {
+    archivedChat();
+    expect((await chatRepo().remove(me, { ...at, seq: 1 })).message.seq).toBe(1);
   });
 });

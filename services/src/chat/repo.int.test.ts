@@ -236,6 +236,24 @@ describe("chat repo on Floci", () => {
     await expect(chat.assertCanType(b.userId, at)).rejects.toBeInstanceOf(NotFound);
   });
 
+  it("an archived chat takes no sends, edits, reactions or typing, stays readable and searchable, and reopens", async () => {
+    const { owner, members: [b], at } = await room("bee");
+    const { chatId } = await rooms.createChat(at.roomId, owner.userId, "old");
+    const old = { roomId: at.roomId, chatId };
+    const m = await say(b, old, "keep this findable");
+    await rooms.setChatArchived(at.roomId, owner.userId, chatId, true);
+    const closed = new Gone("This chat is archived.");
+    await expect(say(b, old)).rejects.toEqual(closed);
+    await expect(chat.edit(b, { ...old, seq: m.seq, text: "changed" })).rejects.toEqual(closed);
+    await expect(chat.react(b, { ...old, seq: m.seq, reaction: "eyes", on: true })).rejects.toEqual(closed);
+    await expect(chat.assertCanType(b.userId, old)).rejects.toEqual(closed);
+    expect((await chat.history(b, at.roomId, chatId, {})).messages.map((x) => x.text)).toEqual(["keep this findable"]);
+    expect((await searchRoom(b, at.roomId, "findable")).results.map((x) => x.chatId)).toEqual([chatId]);
+    expect((await chat.remove(owner, { ...old, seq: m.seq })).message.deleted).toBe("admin");
+    await rooms.setChatArchived(at.roomId, owner.userId, chatId, false);
+    expect((await say(b, old, "back")).seq).toBe(2);
+  });
+
   it("a send to an archived room is Gone", async () => {
     const { owner, roomId, at } = await room();
     await docClient().send(new UpdateCommand({

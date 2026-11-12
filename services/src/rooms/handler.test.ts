@@ -7,7 +7,8 @@ import type { RoomsRepo } from "./repo.js";
 function fakeRepo(over: Partial<Record<keyof RoomsRepo, unknown>> = {}): RoomsRepo {
   const base: Record<string, unknown> = {};
   const names: (keyof RoomsRepo)[] = ["createRoom", "listMyRooms", "getRoomView", "createChat", "setRole", "removeMember",
-    "rotateInvite", "getInvite", "revokeInvite", "previewInvite", "acceptInvite", "setChatPrefs", "leaveRoom", "archiveRoom", "setDefaultModel", "setSandboxInternet"];
+    "rotateInvite", "getInvite", "revokeInvite", "previewInvite", "acceptInvite", "setChatPrefs", "leaveRoom", "archiveRoom", "setDefaultModel", "setSandboxInternet", "renameChat",
+    "setChatArchived"];
   for (const n of names) {
     const v = over[n];
     base[n] = async () => { if (v instanceof Error) throw v; return v ?? {}; };
@@ -105,6 +106,21 @@ describe("rooms handler", () => {
     const notify = vi.fn(async () => {});
     await makeHandler(fakeRepo({ leaveRoom: new Forbidden("owner") }), notify)(ev("POST /rooms/{roomId}/leave", { params: { roomId: "r1" } }));
     expect(notify).not.toHaveBeenCalled();
+  });
+
+  it("PATCH a chat: a name renames it, archived archives or unarchives it, the room hears either, and neither is a 400", async () => {
+    const renameChat = vi.fn(async () => ({ chatId: "c1", name: "lobby" }));
+    const setChatArchived = vi.fn(async () => ({ chatId: "c1", archived: true }));
+    const repo = { ...fakeRepo(), renameChat, setChatArchived } as unknown as RoomsRepo;
+    const notify = vi.fn(async () => {});
+    const patch = (body: unknown) => makeHandler(repo, notify)(ev("PATCH /rooms/{roomId}/chats/{chatId}", { params: { roomId: "r1", chatId: "c1" }, body }));
+
+    expect(JSON.parse((await patch({ name: "lobby" })).body as string)).toEqual({ chatId: "c1", name: "lobby" });
+    expect(renameChat).toHaveBeenCalledWith("r1", "u1", "c1", "lobby");
+    expect(JSON.parse((await patch({ archived: true })).body as string)).toEqual({ chatId: "c1", archived: true });
+    expect(setChatArchived).toHaveBeenCalledWith("r1", "u1", "c1", true);
+    expect(notify.mock.calls).toEqual([["r1", undefined], ["r1", undefined]]);
+    expect((await patch({})).statusCode).toBe(400);
   });
 
   it("PATCH prefs passes the chat and the muted flag", async () => {

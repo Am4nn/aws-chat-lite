@@ -4,7 +4,7 @@ import { can, type Action, type Role } from "./access.js";
 // [action, actor, target, allowed]
 const MATRIX: [Action, Role, Role | undefined, boolean][] = [
   ["read", "owner", undefined, true], ["read", "admin", undefined, true], ["read", "member", undefined, true],
-  ["createChat", "owner", undefined, true], ["createChat", "admin", undefined, true], ["createChat", "member", undefined, false],
+  ["manageChats", "owner", undefined, true], ["manageChats", "admin", undefined, true], ["manageChats", "member", undefined, false],
   ["manageInvite", "owner", undefined, true], ["manageInvite", "admin", undefined, true], ["manageInvite", "member", undefined, false],
   ["removeMember", "owner", "admin", true], ["removeMember", "owner", "member", true], ["removeMember", "owner", "owner", false],
   ["removeMember", "admin", "member", true], ["removeMember", "admin", "admin", false], ["removeMember", "admin", "owner", false],

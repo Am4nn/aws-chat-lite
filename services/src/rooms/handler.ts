@@ -11,10 +11,10 @@ import { roomsRepo, type RoomsRepo } from "./repo.js";
 type Event = APIGatewayProxyEventV2WithJWTAuthorizer;
 
 /**
- * Rooms API: one Lambda, routed by API Gateway's routeKey. A write that changes what members see (chats, members, the
- * default model, the sandbox's internet, archive) tells the room's open sockets, which refetch the room view. That is
- * best effort: the write has already happened, and the event carries no data, so a client that misses it loses nothing
- * it won't get on its next load.
+ * Rooms API: one Lambda, routed by API Gateway's routeKey. A write that changes what members see (chats, their names and
+ * archiving, members, the default model, the sandbox's internet, archive) tells the room's open sockets, which refetch
+ * the room view. That is best effort: the write has already happened, and the event carries no data, so a client that
+ * misses it loses nothing it won't get on its next load.
  */
 export function makeHandler(repo: RoomsRepo, notifyRoom: (roomId: string, alsoUserId?: string) => Promise<unknown>) {
   const changed = async (statusCode: number, result: unknown, roomId: string, alsoUserId?: string) => {
@@ -41,6 +41,12 @@ export function makeHandler(repo: RoomsRepo, notifyRoom: (roomId: string, alsoUs
           return json(200, await repo.getRoomView(params.roomId!, subFromEvent(event)));
         case "POST /rooms/{roomId}/chats":
           return changed(201, await repo.createChat(params.roomId!, subFromEvent(event), body.name), params.roomId!);
+        case "PATCH /rooms/{roomId}/chats/{chatId}": {
+          const { roomId, chatId } = params as { roomId: string; chatId: string };
+          if (body.name !== undefined) return changed(200, await repo.renameChat(roomId, subFromEvent(event), chatId, body.name), roomId);
+          if (body.archived !== undefined) return changed(200, await repo.setChatArchived(roomId, subFromEvent(event), chatId, body.archived), roomId);
+          throw new ValidationError("Send a name or archived.");
+        }
         case "PATCH /rooms/{roomId}/chats/{chatId}/prefs":
           return json(200, await repo.setChatPrefs(params.roomId!, subFromEvent(event), params.chatId!, body.muted));
         case "PATCH /rooms/{roomId}/members/{userId}":

@@ -11,6 +11,7 @@ export function addRooms(stack: CoreStack) {
   stack.route("POST", "/rooms/{roomId}/chats", fn);
   stack.route("PATCH", "/rooms/{roomId}/members/{userId}", fn);
   stack.route("DELETE", "/rooms/{roomId}/members/{userId}", fn);
+  stack.route("PATCH", "/rooms/{roomId}/chats/{chatId}", fn);
   stack.route("PATCH", "/rooms/{roomId}/chats/{chatId}/prefs", fn);
   stack.route("POST", "/rooms/{roomId}/leave", fn);
   stack.route("POST", "/rooms/{roomId}/archive", fn);

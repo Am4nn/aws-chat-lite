@@ -4,6 +4,7 @@ import { budgetRepo } from "../budget/repo.js";
 import type { User } from "../lib/auth.js";
 import { bestEffort } from "../lib/best-effort.js";
 import { docClient, tableName } from "../lib/db.js";
+import { Gone } from "../lib/errors.js";
 import { roomMetaKey } from "../lib/keys.js";
 import { chatRepo } from "../chat/repo.js";
 import { broadcastToRoom } from "../live/broadcast.js";
@@ -31,6 +32,7 @@ export interface FireDeps {
 /** Who a schedule's card and first thread message are by. `schedule` is reserved, so no person can sign up as it. */
 const SCHEDULE_AUTHOR: User = { userId: "schedule", username: "schedule" };
 const BUDGET_SPENT = "Skipped: the room's budget is spent.";
+const CHAT_ARCHIVED = "Skipped: its chat is archived.";
 
 /**
  * One fire of a room schedule. The item is the truth, so a fire that finds the schedule gone, off, or pointing at a
@@ -53,7 +55,16 @@ export async function fireSchedule({ roomId, scheduleId, at }: FireInput, deps: 
     await deps.schedules.recordRun(roomId, scheduleId, { at: occurrence, skipped: BUDGET_SPENT });
     return "skipped";
   }
-  const threadNumber = await deps.open(roomId, schedule, occurrence, room.timeZone);
+  // The card goes first, so a chat archived since the schedule was made refuses it before any thread exists. The
+  // schedule stays on: an admin may reopen the chat.
+  let threadNumber: number;
+  try {
+    threadNumber = await deps.open(roomId, schedule, occurrence, room.timeZone);
+  } catch (e) {
+    if (!(e instanceof Gone)) throw e;
+    await deps.schedules.recordRun(roomId, scheduleId, { at: occurrence, skipped: CHAT_ARCHIVED });
+    return "skipped";
+  }
   await deps.schedules.recordRun(roomId, scheduleId, { at: occurrence, threadNumber });
   return "started";
 }

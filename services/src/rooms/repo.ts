@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { DeleteCommand, GetCommand, TransactWriteCommand, UpdateCommand, type TransactWriteCommandInput } from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, GetCommand, QueryCommand, TransactWriteCommand, UpdateCommand, type TransactWriteCommandInput } from "@aws-sdk/lib-dynamodb";
 import type { User } from "../lib/auth.js";
 import { batchGet, conditionFailed, docClient, failedAt, queryAll, tableName, transactionConflict } from "../lib/db.js";
 import { Conflict, Forbidden, Gone, NotFound, ValidationError } from "../lib/errors.js";
@@ -19,7 +19,8 @@ import { INVITE_TTL_SEC, inviteState, newInviteCode } from "./invites.js";
 interface RoomView {
   room: { roomId: string; name: string; ownerId: string; archived: boolean };
   me: { role: Role };
-  chats: { chatId: string; name: string; lastSeq: number; unread: number; mentions: number; muted: boolean }[];
+  /** Oldest first, archived ones included (flagged): the first is the room's default chat. */
+  chats: { chatId: string; name: string; lastSeq: number; unread: number; mentions: number; muted: boolean; archived: boolean }[];
   members: { userId: string; username: string; role: Role; online: boolean; lastSeen?: string }[];
   threads: ThreadSummary[];
   budget: Budget;
@@ -70,8 +71,28 @@ function chatCounterItem(roomId: string, chatId: string) {
 }
 
 /** One item per chat name in a room, so a conditional put on it can refuse a duplicate name. */
+const chatNameKey = (roomId: string, name: string) => ({ pk: roomKey(roomId), sk: `CHATNAME#${name}` });
+
 function chatNameItem(roomId: string, name: string, chatId: string) {
-  return { pk: roomKey(roomId), sk: `CHATNAME#${name}`, chatId };
+  return { ...chatNameKey(roomId, name), chatId };
+}
+
+/** The room's people chats, oldest first (their sort key starts with the creation time). */
+const roomChats = (roomId: string) => queryAll({
+  KeyConditionExpression: "pk = :p AND begins_with(sk, :s)", ConsistentRead: true,
+  ExpressionAttributeValues: { ":p": roomKey(roomId), ":s": "CHAT#" },
+});
+
+/**
+ * The room's default chat: its oldest, the `#general` it was created with, under whatever name it has now. Chats are
+ * never deleted, so it never changes.
+ */
+export async function defaultChatId(roomId: string): Promise<string | undefined> {
+  const { Items = [] } = await docClient().send(new QueryCommand({
+    TableName: tableName(), KeyConditionExpression: "pk = :p AND begins_with(sk, :c)", Limit: 1, ProjectionExpression: "chatId",
+    ExpressionAttributeValues: { ":p": roomKey(roomId), ":c": "CHAT#" },
+  }));
+  return Items[0]?.chatId as string | undefined;
 }
 
 /** DynamoDB access for rooms, chats, members and invites (single table). Every method checks the caller's role. */
@@ -187,7 +208,7 @@ export function roomsRepo() {
       const month = monthKey(new Date());
       const [{ Item: meta }, chats, threads, members, myReads, [usage], agents] = await Promise.all([
         db.send(new GetCommand({ TableName, Key: roomMetaKey(roomId), ConsistentRead: true })),
-        inRoom("CHAT#"), inRoom("THREAD#"), roomMembers(roomId, { consistent: true }), inRoom(`READ#${userId}#`), inRoom(`USAGE#${month}`),
+        roomChats(roomId), inRoom("THREAD#"), roomMembers(roomId, { consistent: true }), inRoom(`READ#${userId}#`), inRoom(`USAGE#${month}`),
         agentsRepo().list(roomId),
       ]);
       const me = members.find((m) => m.userId === userId);
@@ -197,7 +218,7 @@ export function roomsRepo() {
         batchGet(chats.map((c) => counterKey(String(c.chatId))), { consistent: true }),
         batchGet(members.map((m) => presenceKey(String(m.userId)))),
       ]);
-      const lastSeqOf = new Map(counters.map((c) => [lastPart(c.pk), Number(c.lastSeq)]));
+      const counterOf = new Map(counters.map((c) => [lastPart(c.pk), c]));
       const presenceOf = new Map(presences.map((p) => [lastPart(p.pk), p as unknown as Presence]));
       const nowMs = Date.now();
       const now = Math.floor(nowMs / 1000);
@@ -207,10 +228,11 @@ export function roomsRepo() {
         chats: chats.map((c) => {
           const chatId = String(c.chatId);
           const read = reads.get(chatId);
-          const lastSeq = lastSeqOf.get(chatId) ?? 0;
+          const counter = counterOf.get(chatId);
+          const lastSeq = Number(counter?.lastSeq ?? 0);
           return {
             chatId, name: String(c.name), lastSeq, unread: Math.max(0, lastSeq - Number(read?.lastReadSeq ?? 0)),
-            mentions: Number(read?.mentions ?? 0), muted: !!read?.muted,
+            mentions: Number(read?.mentions ?? 0), muted: !!read?.muted, archived: !!counter?.archived,
           };
         }),
         members: members.map((m) => {
@@ -257,7 +279,7 @@ export function roomsRepo() {
      */
     async createChat(roomId: string, userId: string, rawName: unknown) {
       const name = claimableName(chatName(rawName));
-      await requireRole(roomId, userId, "createChat", { writing: true });
+      await requireRole(roomId, userId, "manageChats", { writing: true });
       const chatId = randomUUID();
       const at = nowIso();
       try {
@@ -273,6 +295,67 @@ export function roomsRepo() {
         throw e;
       }
       return { chatId, name };
+    },
+
+    /**
+     * Under the rules and guards a new chat's name has. One transaction: the old guard goes (only while it is still
+     * this chat's), the new one is claimed (only if free), and the chat changes only if it still has the name we read,
+     * so of two renames at once only one wins. The room's first chat may be renamed too: nothing finds it by name.
+     */
+    async renameChat(roomId: string, userId: string, chatId: string, rawName: unknown) {
+      const name = claimableName(chatName(rawName));
+      await requireRole(roomId, userId, "manageChats", { writing: true });
+      const chat = (await roomChats(roomId)).find((c) => c.chatId === chatId);
+      if (!chat) throw new NotFound("Chat not found.");
+      if (chat.name === name) return { chatId, name };
+      try {
+        await db.send(new TransactWriteCommand({
+          TransactItems: [
+            {
+              Delete: {
+                TableName, Key: chatNameKey(roomId, String(chat.name)), ConditionExpression: "chatId = :c",
+                ExpressionAttributeValues: { ":c": chatId },
+              },
+            },
+            { Put: { TableName, Item: chatNameItem(roomId, name, chatId), ConditionExpression: "attribute_not_exists(pk)" } },
+            {
+              Update: {
+                TableName, Key: { pk: roomKey(roomId), sk: String(chat.sk) }, UpdateExpression: "SET #name = :new",
+                ConditionExpression: "#name = :old", ExpressionAttributeNames: { "#name": "name" },
+                ExpressionAttributeValues: { ":new": name, ":old": chat.name },
+              },
+            },
+          ],
+        }));
+      } catch (e) {
+        if (failedAt(e, 1)) throw new Conflict(`#${name} already exists.`);
+        if (conditionFailed(e) || transactionConflict(e)) throw new Conflict("That chat just changed; try again.");
+        throw e;
+      }
+      return { chatId, name };
+    },
+
+    /**
+     * An archived chat is read-only and leaves the sidebar, but stays readable by link and in search. The flag sits on
+     * the chat's counter, which every send increments under a condition and every other write reads, so one attribute
+     * closes the chat to all of them. The room opens on its first chat, so that one stays open.
+     */
+    async setChatArchived(roomId: string, userId: string, chatId: string, archived: unknown) {
+      if (typeof archived !== "boolean") throw new ValidationError("archived must be true or false.");
+      await requireRole(roomId, userId, "manageChats", { writing: true });
+      if (archived && chatId === await defaultChatId(roomId)) throw new ValidationError("The room's first chat can't be archived.");
+      try {
+        // Only a thread's counter has a kind; threads archive themselves when idle.
+        await db.send(new UpdateCommand({
+          TableName, Key: counterKey(chatId), UpdateExpression: archived ? "SET archived = :t" : "REMOVE archived",
+          ConditionExpression: "roomId = :r AND attribute_not_exists(#kind)", ExpressionAttributeNames: { "#kind": "kind" },
+          ExpressionAttributeValues: { ":r": roomId, ...(archived && { ":t": true }) },
+        }));
+      } catch (e) {
+        if (conditionFailed(e)) throw new NotFound("Chat not found.");
+        throw e;
+      }
+      return { chatId, archived };
     },
 
     async setRole(roomId: string, actorId: string, targetId: string, role: unknown) {

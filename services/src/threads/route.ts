@@ -83,7 +83,7 @@ export async function routeSend(user: User, input: SendInput): Promise<{ message
   const threads = threadsRepo();
   const { roomId, chatId, clientId } = input;
   const pick = parsePick(input.model, process.env.STAGE ?? "");
-  const admitted = await chat.admit(user, { roomId, text: input.text, attachments: input.attachments });
+  const admitted = await chat.admit(user, { roomId, chatId, text: input.text, attachments: input.attachments });
   const ready: Admitted = { ...admitted, text: await withThreadNumbers(threads, roomId, admitted.text) };
   const ownThread = await threads.threadById(roomId, chatId);
   const target = ownThread ? null : await deliveryTarget(threads, roomId, input.threadId, ready.text);

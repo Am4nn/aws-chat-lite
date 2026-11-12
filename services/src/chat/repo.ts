@@ -1,7 +1,7 @@
 import { GetCommand, PutCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { User } from "../lib/auth.js";
 import { conditionFailed, docClient, failedAt, tableName, transactionConflict } from "../lib/db.js";
-import { Conflict, Forbidden, NotFound, ValidationError } from "../lib/errors.js";
+import { Conflict, Forbidden, Gone, NotFound, ValidationError } from "../lib/errors.js";
 import { counterKey, memberKey, messageKey, roomKey } from "../lib/keys.js";
 import { countTowardsRate } from "../lib/rate.js";
 import { enqueuePush } from "../push/enqueue.js";
@@ -23,6 +23,7 @@ const chatKey = (chatId: string) => `CHAT#${chatId}`;
 const readKey = (at: ChatRef, userId: string) => ({ pk: roomKey(at.roomId), sk: `READ#${userId}#${at.chatId}` });
 
 const NEEDS_CONTENT = "A message needs text or an attachment.";
+const CHAT_ARCHIVED = "This chat is archived.";
 
 /**
  * Edits and reactions have a limit of their own, per member and room, apart from sends: a burst of reactions never
@@ -56,23 +57,34 @@ export function chatRepo() {
   const db = docClient();
   const TableName = tableName();
 
-  /** The condition makes the same atomic increment that allocates the seq also prove the chat is in this room. */
+  /**
+   * The condition makes the same atomic increment that allocates the seq also prove the chat is in this room and still
+   * open, even for a message that skipped `admit` (a schedule's card) or an archive landing after it.
+   */
   async function nextSeq(at: ChatRef): Promise<number> {
     try {
       const { Attributes } = await db.send(new UpdateCommand({
-        TableName, Key: counterKey(at.chatId), UpdateExpression: "ADD lastSeq :one", ConditionExpression: "roomId = :r",
+        TableName, Key: counterKey(at.chatId), UpdateExpression: "ADD lastSeq :one", ConditionExpression: "roomId = :r AND attribute_not_exists(archived)",
         ExpressionAttributeValues: { ":one": 1, ":r": at.roomId }, ReturnValues: "UPDATED_NEW",
       }));
       return Number(Attributes!.lastSeq);
     } catch (e) {
-      if (conditionFailed(e)) throw new NotFound("Chat not found.");
-      throw e;
+      if (!conditionFailed(e)) throw e;
+      await writableChat(at);
+      throw new NotFound("Chat not found.");
     }
   }
 
+  /** The chat's counter, which proves the chat is in this room and says whether it is archived. */
   async function chatInRoom(at: ChatRef) {
     const { Item } = await db.send(new GetCommand({ TableName, Key: counterKey(at.chatId), ConsistentRead: true }));
     if (Item?.roomId !== at.roomId) throw new NotFound("Chat not found.");
+    return Item;
+  }
+
+  /** An archived chat stays readable and takes no new content. */
+  async function writableChat(at: ChatRef) {
+    if ((await chatInRoom(at)).archived) throw new Gone(CHAT_ARCHIVED);
   }
 
   async function storedMessage(at: ChatRef, seq: number): Promise<StoredMessage> {
@@ -127,16 +139,17 @@ export function chatRepo() {
   }
 
   /**
-   * The checks that can refuse any send: valid content, a member of a room that isn't archived, within the rate limit,
-   * and attachments that S3 really holds (their size and type come from S3, not the client). A caller that must write
-   * something before the message exists (a new thread) runs this first and hands the result to `send`, so a refusal
-   * never leaves that write behind.
+   * The checks that can refuse any send: valid content, a member of a room that isn't archived, a chat that isn't
+   * either (`chatId`, when the chat already exists), within the rate limit, and attachments that S3 really holds (their
+   * size and type come from S3, not the client). A caller that must write something before the message exists (a new
+   * thread) runs this first and hands the result to `send`, so a refusal never leaves that write behind.
    */
-  async function admit(user: User, input: { roomId: string; text: unknown; attachments?: unknown }): Promise<Admitted> {
+  async function admit(user: User, input: { roomId: string; chatId?: string; text: unknown; attachments?: unknown }): Promise<Admitted> {
     const text = messageText(input.text);
     const declared = attachmentList(input.attachments, input.roomId, user.userId);
     if (!text && !declared.length) throw new ValidationError(NEEDS_CONTENT);
     await requireMember(input.roomId, user.userId, { writing: true });
+    if (input.chatId) await writableChat({ roomId: input.roomId, chatId: input.chatId });
     await countTowardsRate(`RATE#${user.userId}`, { windowSec: 60, max: RATE_PER_MIN, message: `Slow down: ${RATE_PER_MIN} messages a minute.` });
     return { text, attachments: await Promise.all(declared.map(storedAttachment)) };
   }
@@ -197,6 +210,7 @@ export function chatRepo() {
       const at = { roomId: input.roomId, chatId: input.chatId };
       const text = messageText(input.text);
       await requireMember(at.roomId, user.userId, { writing: true });
+      await writableChat(at);
       await countChange(user, at.roomId);
       const old = await storedMessage(at, input.seq);
       const now = Date.now();
@@ -284,6 +298,7 @@ export function chatRepo() {
     async react(user: User, input: ChatRef & { seq: number; reaction: Reaction; on: boolean }): Promise<Message> {
       const at = { roomId: input.roomId, chatId: input.chatId };
       await requireMember(at.roomId, user.userId, { writing: true });
+      await writableChat(at);
       await countChange(user, at.roomId);
       try {
         const { Attributes } = await db.send(new UpdateCommand({
@@ -298,10 +313,10 @@ export function chatRepo() {
       }
     },
 
-    /** Typing is relayed only for someone who may post in the room, about a chat that is in it. */
+    /** Typing is relayed only for someone who may post in the room, about an open chat that is in it. */
     async assertCanType(userId: string, at: ChatRef): Promise<void> {
       await requireMember(at.roomId, userId, { writing: true });
-      await chatInRoom(at);
+      await writableChat(at);
     },
 
     /**

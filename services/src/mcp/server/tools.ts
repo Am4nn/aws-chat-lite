@@ -93,7 +93,7 @@ const TOOLS: ServerTool[] = [
       const view = await myRoomView(user, input, deps);
       const threads = view.threads.filter((t) => !t.archived).sort((a, b) => b.number - a.number).slice(0, 20);
       return [
-        "Chats:", ...view.chats.map((c) => `#${c.name} (${c.unread} unread)`),
+        "Chats:", ...view.chats.map((c) => `#${c.name} (${c.unread} unread)${c.archived ? " · archived, read-only" : ""}`),
         "Threads:", ...threads.map((t) => `#${t.number} ${t.name} · ${t.status}`),
       ].join("\n");
     },
