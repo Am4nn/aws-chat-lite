@@ -61,6 +61,42 @@ describe("rooms repo on Floci", () => {
     expect(view.chats.filter((c) => c.name === "dup")).toHaveLength(1);
   });
 
+  it("an admin renames a chat, #general included: the old name frees up, a chat's or thread's name is taken, a member can't", async () => {
+    const { owner, member, roomId, generalChatId } = await roomWithMember();
+    const { chatId } = await repo.createChat(roomId, owner.userId, "random");
+    await threadsRepo().createThread(owner, roomId, { text: "check it", clientId: "k-rename", name: "pr-check" });
+    expect(await repo.renameChat(roomId, owner.userId, chatId, "Off-Topic")).toEqual({ chatId, name: "off-topic" });
+    expect(await repo.renameChat(roomId, owner.userId, generalChatId, "lobby")).toEqual({ chatId: generalChatId, name: "lobby" });
+    await expect(repo.renameChat(roomId, owner.userId, chatId, "lobby")).rejects.toEqual(new Conflict("#lobby already exists."));
+    await expect(repo.renameChat(roomId, owner.userId, chatId, "pr-check")).rejects.toEqual(new Conflict("#pr-check already exists."));
+    await expect(repo.renameChat(roomId, member.userId, chatId, "mine")).rejects.toBeInstanceOf(Forbidden);
+    expect((await repo.createChat(roomId, owner.userId, "random")).name).toBe("random");
+    expect((await repo.getRoomView(roomId, member.userId)).chats.map((c) => c.name)).toEqual(["lobby", "off-topic", "random"]);
+  });
+
+  it("two renames to one name at once: one wins, one Conflict", async () => {
+    const { owner, roomId } = await roomWithMember();
+    const a = await repo.createChat(roomId, owner.userId, "a");
+    const b = await repo.createChat(roomId, owner.userId, "b");
+    const results = await Promise.allSettled([a, b].map((c) => repo.renameChat(roomId, owner.userId, c.chatId, "same")));
+    expect(results.map((r) => r.status).sort()).toEqual(["fulfilled", "rejected"]);
+    const names = (await repo.getRoomView(roomId, owner.userId)).chats.map((c) => c.name).sort();
+    expect(names.filter((n) => n === "same")).toHaveLength(1);
+  });
+
+  it("archiving a chat: admins only, flagged in the view, unarchived again; the first chat and a thread are refused", async () => {
+    const { owner, member, roomId, generalChatId } = await roomWithMember();
+    const { chatId } = await repo.createChat(roomId, owner.userId, "old");
+    await expect(repo.setChatArchived(roomId, member.userId, chatId, true)).rejects.toBeInstanceOf(Forbidden);
+    expect(await repo.setChatArchived(roomId, owner.userId, chatId, true)).toEqual({ chatId, archived: true });
+    expect((await repo.getRoomView(roomId, member.userId)).chats.map((c) => [c.name, c.archived])).toEqual([["general", false], ["old", true]]);
+    await expect(repo.setChatArchived(roomId, owner.userId, generalChatId, true)).rejects.toBeInstanceOf(ValidationError);
+    const { thread } = await threadsRepo().createThread(owner, roomId, { text: "hi", clientId: "k-archive" });
+    await expect(repo.setChatArchived(roomId, owner.userId, thread.threadId, true)).rejects.toBeInstanceOf(NotFound);
+    await repo.setChatArchived(roomId, owner.userId, chatId, false);
+    expect((await repo.getRoomView(roomId, owner.userId)).chats.every((c) => !c.archived)).toBe(true);
+  });
+
   it("invites: accept joins as member once; accepting again keeps the role; members can't create chats", async () => {
     const owner = user("o");
     const b = user("b");

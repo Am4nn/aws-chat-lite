@@ -18,6 +18,7 @@ describe("matchForward (/bff/api/* → HTTP API allowlist)", () => {
     ["GET", ["rooms", "r1", "chats", "c1", "messages"], "/rooms/r1/chats/c1/messages"],
     ["POST", ["rooms", "r1", "attachments"], "/rooms/r1/attachments"],
     ["GET", ["rooms", "r1", "search"], "/rooms/r1/search"],
+    ["PATCH", ["rooms", "r1", "chats", "c1"], "/rooms/r1/chats/c1"],
     ["PATCH", ["rooms", "r1", "chats", "c1", "prefs"], "/rooms/r1/chats/c1/prefs"],
     ["POST", ["rooms", "r1", "leave"], "/rooms/r1/leave"],
     ["POST", ["rooms", "r1", "archive"], "/rooms/r1/archive"],

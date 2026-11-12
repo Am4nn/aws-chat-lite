@@ -104,10 +104,11 @@ export function approvalsRepo() {
     },
 
     /**
-     * A stop while waiting cancels the approval unless it was decided first. Either way it returns the callback, since
-     * the run must wake to read the stop, and waking a callback that already completed does no harm.
+     * A stop or an archive while waiting cancels the approval unless it was decided first. Either way it returns the
+     * callback, since the run must wake to read why it ends, and waking a callback that already completed does no harm.
+     * `by` is who stopped or archived; a run that cancels its own wait has no one to name.
      */
-    async cancel(runId: string, step: number, by: string): Promise<string | undefined> {
+    async cancel(runId: string, step: number, by?: string): Promise<string | undefined> {
       return ((await close(runId, step, "cancelled", by)) ?? (await get(runId, step)))?.callbackId;
     },
   };

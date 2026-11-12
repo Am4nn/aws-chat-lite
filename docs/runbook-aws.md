@@ -54,7 +54,7 @@ Make these before step 2. Each line gives the recommendation first.
 - `aws sts get-caller-identity --query Account --output text --profile ig --region ap-southeast-2` prints the account instagram-lite deploys to;
 - the Console's limits page shows the $10 monthly limit;
 - `aws cloudformation describe-stacks --stack-name CDKToolkit --query "Stacks[0].StackStatus" --output text --profile ig --region ap-southeast-2` prints `CREATE_COMPLETE` or `UPDATE_COMPLETE`;
-- both log-group lists are `[]`. Leftovers from the throwaway spike stack (names with `spike` in them) don't collide, but you can delete them with `aws logs delete-log-group --log-group-name <name> --profile ig --region ap-southeast-2`.
+- both log-group lists are `[]`. Leftovers from the step-1 spike stack, since removed (names with `spike` in them) don't collide, but you can delete them with `aws logs delete-log-group --log-group-name <name> --profile ig --region ap-southeast-2`.
 
 **Stop if:**
 - the login opens the wrong account or project: log in again and pick the right one;

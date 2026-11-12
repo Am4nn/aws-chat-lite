@@ -47,6 +47,7 @@ const MAX_TEXT = 4000;
 export const MAX_ATTACHMENTS = 5;
 export const MAX_FILE_BYTES = 10_485_760;
 export const RATE_PER_MIN = 30;
+export const CHANGES_PER_MIN = 60;
 export const PAGE = 50;
 
 const MAX_NAME = 200;

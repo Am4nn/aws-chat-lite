@@ -17,5 +17,5 @@ One doc per step. Each ends with "How big companies do it" and an interview angl
 | 11 | [Ready for real AWS](11-aws-prep.md) (nothing deployed; the deploy is [the runbook](../runbook-aws.md)) | One CloudFront in front of four origins by path, a secret origin header vs OAC, SSE through a CDN, trusting the viewer IP only from your proxy, why CloudFront's certificate lives in us-east-1, alarms from a construct-tree sweep and chosen by symptom, cdk-nag fix-or-suppress, retained data and PITR, stage throttles as connection-rate protection |
 | – | [Whole-app audit](12-audit.md) | Auditing a finished app (spec conformance vs code quality, graded evidence), sort-key prefixes as type tags in a single table, a claim item with a ttl against paying twice, cancellation reaching in-flight work, nested timeouts (each shorter than the one outside it), batched verification of parallel fix lanes |
 
-Reference: [Floci compatibility report](floci-compat.md) (`npm run spike` / `npm run spike:aws`).
+Reference: [Floci compatibility report](floci-compat.md), from the step-1 probes. The probe stack and its `npm run spike` / `npm run spike:aws` commands were removed once the app itself covered all four features; git history has them.
 Design: [chat-lite design](../superpowers/specs/2026-11-10-chat-lite-design.md).

@@ -3,12 +3,14 @@ import type { RunEvent } from "../threads/types.js";
 import { gateOf, requestApproval } from "./approval.js";
 import type { RoutedRun } from "./steps.js";
 
-const fake = vi.hoisted(() => ({ events: [] as RunEvent[], pushed: [] as unknown[], taint: [] as string[] }));
+const fake = vi.hoisted(() => ({
+  events: [] as RunEvent[], pushed: [] as unknown[], taint: [] as string[], archived: false, cancelled: [] as unknown[][], woken: [] as string[],
+}));
 
 vi.mock("../approvals/repo.js", () => ({
   approvalsRepo: () => ({
     open: async (a: Record<string, unknown>) => ({ ...a, status: "pending" }),
-    cancel: async () => undefined,
+    cancel: async (...args: unknown[]) => (fake.cancelled.push(args), "cb"),
   }),
 }));
 vi.mock("./repo.js", () => ({
@@ -31,6 +33,8 @@ vi.mock("./steps.js", async (actual) => ({
   roomConnections: async (roomId: string) => ({ roomId, github: null, mcp: [], approvalTimeoutSec: 600 }),
 }));
 vi.mock("../push/enqueue.js", () => ({ enqueuePush: async (job: unknown) => void fake.pushed.push(job) }));
+vi.mock("../approvals/decide.js", () => ({ wakeRun: async (callbackId: string) => void fake.woken.push(callbackId) }));
+vi.mock("../budget/repo.js", () => ({ budgetRepo: () => ({ withArchived: async () => ({ archived: fake.archived }) }) }));
 
 const run = { runId: "RUN", roomId: "R", threadId: "T", number: 7 } as RoutedRun;
 const call = { id: "c1", name: "github_comment", input: { number: 1 } };
@@ -40,6 +44,9 @@ beforeEach(() => {
   fake.events = [];
   fake.pushed = [];
   fake.taint = [];
+  fake.archived = false;
+  fake.cancelled = [];
+  fake.woken = [];
 });
 
 describe("gateOf", () => {
@@ -66,5 +73,13 @@ describe("requestApproval", () => {
     await requestApproval(run, call, 3, gate, "cb");
     expect(fake.events.filter((e) => e.type === "approval.requested")).toHaveLength(1);
     expect(fake.pushed).toEqual([{ kind: "approval", roomId: "R", threadId: "T", number: 7, runId: "RUN", step: 3, title: gate.title }]);
+    expect(fake.woken).toEqual([]);
+  });
+
+  it("wakes itself when the room was archived before it showed as waiting, which an archive's sweep would miss", async () => {
+    fake.archived = true;
+    await requestApproval(run, call, 3, gate, "cb");
+    expect(fake.cancelled).toEqual([["RUN", 3, undefined]]);
+    expect(fake.woken).toEqual(["cb"]);
   });
 });

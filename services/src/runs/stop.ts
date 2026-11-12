@@ -1,7 +1,9 @@
 import { wakeRun } from "../approvals/decide.js";
 import { approvalsRepo } from "../approvals/repo.js";
 import type { User } from "../lib/auth.js";
+import { queryAll } from "../lib/db.js";
 import { Conflict, NotFound } from "../lib/errors.js";
+import { roomKey } from "../lib/keys.js";
 import { requireMember } from "../rooms/membership.js";
 import { threadsRepo } from "../threads/repo.js";
 import { finishRun } from "./finish.js";
@@ -34,4 +36,22 @@ export async function requestStop(user: User, roomId: string, threadId: string):
     }
   }
   throw new Conflict("Nothing is running.");
+}
+
+/**
+ * Archiving ends a room's runs from the run side: each run's limit check reads `archived`. A run waiting on an
+ * approval sleeps until woken, so it would reach that check only when the approval expired. Its approval is cancelled
+ * and its wait woken, so it ends at once with "The room was archived." A run that hasn't shown as waiting yet checks
+ * for itself once it does (see `requestApproval`), and either may get there first, so neither names the archiver.
+ */
+export async function endWaitingRuns(roomId: string): Promise<void> {
+  const waiting = await queryAll({
+    KeyConditionExpression: "pk = :p AND begins_with(sk, :t)", FilterExpression: "#status = :waiting",
+    ExpressionAttributeNames: { "#status": "status" }, ExpressionAttributeValues: { ":p": roomKey(roomId), ":t": "THREAD#", ":waiting": "waiting" },
+  });
+  const approvals = approvalsRepo();
+  await Promise.all(waiting.map(async (thread) => {
+    const callbackId = await approvals.cancel(String(thread.activeRunId), Number((thread.approval as { step: number }).step));
+    if (callbackId) await wakeRun(callbackId);
+  }));
 }

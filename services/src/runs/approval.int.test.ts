@@ -20,7 +20,7 @@ import { runsRepo, type Run } from "./repo.js";
 import { startOrSteer } from "./start.js";
 import type { RoutedRun } from "./steps.js";
 import { toolStep } from "./tool-step.js";
-import { requestStop } from "./stop.js";
+import { endWaitingRuns, requestStop } from "./stop.js";
 
 // Runs against the deployed run function on Floci, in fake model and tool modes: npm run deploy:local, then this file.
 const outputs = JSON.parse(readFileSync(new URL("../../../infra/cdk.out/outputs-local.json", import.meta.url), "utf8"));
@@ -153,13 +153,17 @@ describe("approvals in the run loop, on Floci", { timeout: 60_000 }, () => {
     expect((run as Run & { pausedMs?: number }).pausedMs).toBeGreaterThanOrEqual(5000);
   });
 
-  it("archiving the room refuses the decision, and the waiting run ends as archived once its approval expires", async () => {
-    const at = await room({ approvalTimeoutSec: 5 });
+  it("archiving the room refuses the decision and ends the waiting run at once, its approval cancelled", async () => {
+    const at = await room();
     const { thread, runId } = await startRun("go call:github_comment", at);
     await waiting(at.roomId, thread.threadId);
     await roomsRepo().archiveRoom(at.roomId, at.aman.userId);
+    const archivedAt = Date.now();
+    await endWaitingRuns(at.roomId);
     await expect(decideApproval(at.bea, runId, 1, "approve")).rejects.toEqual(new Gone("This room is archived."));
-    expect(await finished(runId, 40_000)).toMatchObject({ status: "stopped", reason: "The room was archived." });
+    expect(await finished(runId, 10_000)).toMatchObject({ status: "stopped", reason: "The room was archived." });
+    expect(Date.now() - archivedAt).toBeLessThan(5_000);
+    expect(await approvalsRepo().settle(runId, 1)).toMatchObject({ status: "cancelled" });
     expect(await eventsOf(runId, "step.finished")).toEqual([]);
   });
 

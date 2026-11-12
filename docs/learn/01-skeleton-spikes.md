@@ -89,7 +89,7 @@ flowchart LR
 ```powershell
 npm run floci:up                # chat-lite's Floci (stop instagram-lite's first: npm --prefix ..\instagram-lite run floci:down)
 npm run deploy:local            # core stack; prints a curl for /health
-npm run spike                   # deploys the probes on Floci, checks them, writes floci-compat.md, destroys them (~3 min)
-npm run spike:aws               # the same on real AWS in Sydney + AgentCore; needs `aws login --profile ig --region ap-southeast-2`
 npm test                        # unit + template tests
 ```
+
+The probe stack and its `npm run spike` / `npm run spike:aws` commands were removed once the app itself covered all four features; git history has them.

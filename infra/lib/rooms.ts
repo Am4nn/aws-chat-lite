@@ -1,9 +1,13 @@
 import type { CoreStack } from "./core-stack.js";
 
-/** Rooms, chats, members and invite links: one Lambda behind the HTTP API (JWT on all but the invite preview). */
+/**
+ * Rooms, chats, members and invite links: one Lambda behind the HTTP API (JWT on all but the invite preview). Archiving
+ * a room wakes its runs waiting on an approval, so they end at once.
+ */
 export function addRooms(stack: CoreStack) {
   const fn = stack.addFunction("rooms", "rooms/handler.ts", { tableAccess: true });
   stack.allowBroadcast(fn);
+  stack.allowRunCallback(fn);
   stack.route("GET", "/me", fn);
   stack.route("GET", "/rooms", fn);
   stack.route("POST", "/rooms", fn);
@@ -11,6 +15,7 @@ export function addRooms(stack: CoreStack) {
   stack.route("POST", "/rooms/{roomId}/chats", fn);
   stack.route("PATCH", "/rooms/{roomId}/members/{userId}", fn);
   stack.route("DELETE", "/rooms/{roomId}/members/{userId}", fn);
+  stack.route("PATCH", "/rooms/{roomId}/chats/{chatId}", fn);
   stack.route("PATCH", "/rooms/{roomId}/chats/{chatId}/prefs", fn);
   stack.route("POST", "/rooms/{roomId}/leave", fn);
   stack.route("POST", "/rooms/{roomId}/archive", fn);

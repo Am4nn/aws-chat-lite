@@ -30,7 +30,7 @@ import { addOps } from "./ops.js";
 import { addWeb, WEB_BUILD, type WebBuild } from "./web.js";
 
 /** Path to a handler file in services/src */
-export const servicePath = (file: string) =>
+const servicePath = (file: string) =>
   fileURLToPath(new URL(`../../services/src/${file}`, import.meta.url));
 
 /** Floci serves each API on its own host; the amazonaws.com URLs CloudFormation reports don't resolve locally. */
@@ -119,8 +119,8 @@ export class CoreStack extends Stack {
     this.allowPush(this.runs.runFn);
     // A message sent in a thread over the socket starts or steers its run.
     this.allowRunStart(this.live.liveFn);
-    // A stop wakes a run waiting on an approval, as does a decision through the API; a run that finds its approval
-    // already decided, or a stop already flagged, wakes itself.
+    // A stop wakes a run waiting on an approval, as do a decision and a room archive through the API; a run that finds
+    // its approval already decided, or a stop or archive already in place, wakes itself.
     this.allowRunCallback(this.live.liveFn);
     this.allowRunCallback(this.runs.runFn);
     const { streamUrl, functionUrl } = addStream(this);

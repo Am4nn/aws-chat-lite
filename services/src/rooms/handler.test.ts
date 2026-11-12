@@ -7,7 +7,8 @@ import type { RoomsRepo } from "./repo.js";
 function fakeRepo(over: Partial<Record<keyof RoomsRepo, unknown>> = {}): RoomsRepo {
   const base: Record<string, unknown> = {};
   const names: (keyof RoomsRepo)[] = ["createRoom", "listMyRooms", "getRoomView", "createChat", "setRole", "removeMember",
-    "rotateInvite", "getInvite", "revokeInvite", "previewInvite", "acceptInvite", "setChatPrefs", "leaveRoom", "archiveRoom", "setDefaultModel", "setSandboxInternet"];
+    "rotateInvite", "getInvite", "revokeInvite", "previewInvite", "acceptInvite", "setChatPrefs", "leaveRoom", "archiveRoom", "setDefaultModel", "setSandboxInternet", "renameChat",
+    "setChatArchived"];
   for (const n of names) {
     const v = over[n];
     base[n] = async () => { if (v instanceof Error) throw v; return v ?? {}; };
@@ -22,11 +23,11 @@ const ev = (routeKey: string, o: { body?: unknown; params?: Record<string, strin
   requestContext: { authorizer: { jwt: { claims: { sub: "u1", "cognito:username": "aman", ...(o.groups ? { "cognito:groups": o.groups } : {}) } } } },
 }) as any;
 
-const status = async (repo: RoomsRepo, e: any) => (await makeHandler(repo, vi.fn())(e)).statusCode;
+const status = async (repo: RoomsRepo, e: any) => (await makeHandler(repo, vi.fn(), vi.fn())(e)).statusCode;
 
 describe("rooms handler", () => {
   it("GET /me reports creator from the token", async () => {
-    const res = await makeHandler(fakeRepo(), vi.fn())(ev("GET /me", { groups: "[creators]" }));
+    const res = await makeHandler(fakeRepo(), vi.fn(), vi.fn())(ev("GET /me", { groups: "[creators]" }));
     expect(JSON.parse(res.body as string)).toEqual({ userId: "u1", username: "aman", isCreator: true });
   });
 
@@ -67,7 +68,7 @@ describe("rooms handler", () => {
     const p = { params: { roomId: "r1", userId: "u2", code: "c", chatId: "c1" }, body: { name: "x", role: "admin", muted: true, model: "auto" } };
     const notified = async (route: string) => {
       const notify = vi.fn(async (_roomId: string) => {});
-      await makeHandler(repo, notify)(ev(route, p));
+      await makeHandler(repo, notify, vi.fn())(ev(route, p));
       return notify.mock.calls.map(([roomId]) => roomId);
     };
     for (const r of ["POST /rooms/{roomId}/chats", "PATCH /rooms/{roomId}/members/{userId}", "DELETE /rooms/{roomId}/members/{userId}",
@@ -82,42 +83,72 @@ describe("rooms handler", () => {
 
   it("leaving also tells the leaver's own sockets, which the room fan-out no longer reaches", async () => {
     const notify = vi.fn(async (_roomId: string, _alsoUserId?: string) => {});
-    await makeHandler(fakeRepo(), notify)(ev("POST /rooms/{roomId}/leave", { params: { roomId: "r1" } }));
+    await makeHandler(fakeRepo(), notify, vi.fn())(ev("POST /rooms/{roomId}/leave", { params: { roomId: "r1" } }));
     expect(notify).toHaveBeenCalledWith("r1", "u1");
   });
 
   it("removing someone also tells the removed member's sockets, so their open room can send them home", async () => {
     const notify = vi.fn(async (_roomId: string, _alsoUserId?: string) => {});
-    await makeHandler(fakeRepo(), notify)(ev("DELETE /rooms/{roomId}/members/{userId}", { params: { roomId: "r1", userId: "u2" } }));
+    await makeHandler(fakeRepo(), notify, vi.fn())(ev("DELETE /rooms/{roomId}/members/{userId}", { params: { roomId: "r1", userId: "u2" } }));
     expect(notify).toHaveBeenCalledWith("r1", "u2");
   });
 
   it("a failed broadcast is logged, and the write it follows still succeeds", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const notify = vi.fn(async () => { throw new Error("socket API down"); });
-    const res = await makeHandler(fakeRepo(), notify)(ev("POST /rooms/{roomId}/archive", { params: { roomId: "r1" } }));
+    const res = await makeHandler(fakeRepo(), notify, vi.fn())(ev("POST /rooms/{roomId}/archive", { params: { roomId: "r1" } }));
     expect(res.statusCode).toBe(200);
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it("archiving ends the room's runs waiting on an approval at once, and a failure there is only logged", async () => {
+    const endWaiting = vi.fn(async (_roomId: string) => {});
+    const archive = (repo: RoomsRepo) => makeHandler(repo, vi.fn(), endWaiting)(ev("POST /rooms/{roomId}/archive", { params: { roomId: "r1" } }));
+    await archive(fakeRepo());
+    expect(endWaiting).toHaveBeenCalledWith("r1");
+    endWaiting.mockClear();
+    await archive(fakeRepo({ archiveRoom: new Forbidden("owner only") }));
+    expect(endWaiting).not.toHaveBeenCalled();
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    endWaiting.mockRejectedValueOnce(new Error("Lambda down"));
+    expect((await archive(fakeRepo())).statusCode).toBe(200);
     expect(error).toHaveBeenCalled();
     error.mockRestore();
   });
 
   it("a failed write tells nobody", async () => {
     const notify = vi.fn(async () => {});
-    await makeHandler(fakeRepo({ leaveRoom: new Forbidden("owner") }), notify)(ev("POST /rooms/{roomId}/leave", { params: { roomId: "r1" } }));
+    await makeHandler(fakeRepo({ leaveRoom: new Forbidden("owner") }), notify, vi.fn())(ev("POST /rooms/{roomId}/leave", { params: { roomId: "r1" } }));
     expect(notify).not.toHaveBeenCalled();
+  });
+
+  it("PATCH a chat: a name renames it, archived archives or unarchives it, the room hears either, and neither is a 400", async () => {
+    const renameChat = vi.fn(async () => ({ chatId: "c1", name: "lobby" }));
+    const setChatArchived = vi.fn(async () => ({ chatId: "c1", archived: true }));
+    const repo = { ...fakeRepo(), renameChat, setChatArchived } as unknown as RoomsRepo;
+    const notify = vi.fn(async () => {});
+    const patch = (body: unknown) => makeHandler(repo, notify, vi.fn())(ev("PATCH /rooms/{roomId}/chats/{chatId}", { params: { roomId: "r1", chatId: "c1" }, body }));
+
+    expect(JSON.parse((await patch({ name: "lobby" })).body as string)).toEqual({ chatId: "c1", name: "lobby" });
+    expect(renameChat).toHaveBeenCalledWith("r1", "u1", "c1", "lobby");
+    expect(JSON.parse((await patch({ archived: true })).body as string)).toEqual({ chatId: "c1", archived: true });
+    expect(setChatArchived).toHaveBeenCalledWith("r1", "u1", "c1", true);
+    expect(notify.mock.calls).toEqual([["r1", undefined], ["r1", undefined]]);
+    expect((await patch({})).statusCode).toBe(400);
   });
 
   it("PATCH prefs passes the chat and the muted flag", async () => {
     const setChatPrefs = vi.fn(async () => ({ muted: true }));
     const repo = { ...fakeRepo(), setChatPrefs } as unknown as RoomsRepo;
-    const res = await makeHandler(repo, vi.fn())(ev("PATCH /rooms/{roomId}/chats/{chatId}/prefs", { params: { roomId: "r1", chatId: "c1" }, body: { muted: true } }));
+    const res = await makeHandler(repo, vi.fn(), vi.fn())(ev("PATCH /rooms/{roomId}/chats/{chatId}/prefs", { params: { roomId: "r1", chatId: "c1" }, body: { muted: true } }));
     expect(JSON.parse(res.body as string)).toEqual({ muted: true });
     expect(setChatPrefs).toHaveBeenCalledWith("r1", "u1", "c1", true);
   });
 
   it("PUT /model: an unknown model is a 400, a member is a 403, an admin sets it and the room hears once", async () => {
     const put = (repo: RoomsRepo, notify: () => Promise<void>, model: unknown) =>
-      makeHandler(repo, notify)(ev("PUT /rooms/{roomId}/model", { params: { roomId: "r" }, body: { model } }));
+      makeHandler(repo, notify, vi.fn())(ev("PUT /rooms/{roomId}/model", { params: { roomId: "r" }, body: { model } }));
     const setDefaultModel = vi.fn(async (_u: unknown, _r: string, pick: string) => pick);
     const repo = { ...fakeRepo(), setDefaultModel } as unknown as RoomsRepo;
     const notify = vi.fn(async () => {});
@@ -138,7 +169,7 @@ describe("rooms handler", () => {
 
   it("PUT /sandbox: a member is a 403, an admin turns internet on and the room hears, a non-boolean is a 400", async () => {
     const put = (repo: RoomsRepo, notify: () => Promise<void>, internet: unknown) =>
-      makeHandler(repo, notify)(ev("PUT /rooms/{roomId}/sandbox", { params: { roomId: "r" }, body: { internet } }));
+      makeHandler(repo, notify, vi.fn())(ev("PUT /rooms/{roomId}/sandbox", { params: { roomId: "r" }, body: { internet } }));
     const setSandboxInternet = vi.fn(async (_u: unknown, _r: string, on: boolean) => on);
     const repo = { ...fakeRepo(), setSandboxInternet } as unknown as RoomsRepo;
     const notify = vi.fn(async () => {});

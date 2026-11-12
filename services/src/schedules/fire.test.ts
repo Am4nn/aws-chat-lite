@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { Gone } from "../lib/errors.js";
 import type { Schedule } from "../threads/types.js";
 import { fireSchedule, type FireDeps } from "./fire.js";
 
@@ -60,6 +61,14 @@ describe("fireSchedule", () => {
     expect(deps.schedules.recordRun).not.toHaveBeenCalled();
     expect(deps.schedules.setEnabled).not.toHaveBeenCalled();
     expect(deps.open).not.toHaveBeenCalled();
+  });
+
+  it("notes the skip when its chat is archived, and stays on for when the chat reopens: skipped", async () => {
+    const deps = fakeDeps();
+    deps.open.mockRejectedValueOnce(new Gone("This chat is archived."));
+    expect(await fireSchedule(input, deps)).toBe("skipped");
+    expect(deps.schedules.recordRun).toHaveBeenCalledWith("r1", "s1", { at: occurrence, skipped: "Skipped: its chat is archived." });
+    expect(deps.schedules.setEnabled).not.toHaveBeenCalled();
   });
 
   it("notes the skip on the schedule when the room's budget is spent: skipped", async () => {

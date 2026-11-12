@@ -31,6 +31,7 @@ export default async function ChatPage({ params }: { params: Promise<{ roomId: s
       role={view.me.role}
       members={view.members}
       archived={view.room.archived}
+      chatArchived={chat.archived}
       initial={history.messages}
       serverTimeZone={timeZone}
     />

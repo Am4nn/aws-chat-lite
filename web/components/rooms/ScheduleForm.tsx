@@ -23,7 +23,9 @@ export function ScheduleForm({ initial, agents, chats, busy, onCancel, onSubmit 
   const [agentId, setAgentId] = useState(initial?.agentId ?? "agent");
   const [prompt, setPrompt] = useState(initial?.prompt ?? "");
   const [cadence, setCadence] = useState<Cadence>(initial?.cadence ?? { kind: "daily", time: "09:00" });
-  const [chatId, setChatId] = useState(initial?.chatId ?? chats[0]?.chatId ?? "");
+  // An archived chat takes no cards; one the schedule already posts into stays listed, so editing doesn't move it.
+  const offered = chats.filter((c) => !c.archived || c.chatId === initial?.chatId);
+  const [chatId, setChatId] = useState(initial?.chatId ?? offered[0]?.chatId ?? "");
   const id = initial?.scheduleId ?? "new";
   const field = (name: string) => `schedule-${name}-${id}`;
 
@@ -69,7 +71,7 @@ export function ScheduleForm({ initial, agents, chats, busy, onCancel, onSubmit 
       <CadenceFields cadence={cadence} field={field} onChange={setCadence} />
       <Labelled id={field("chat")} label="Post in">
         <select id={field("chat")} value={chatId} onChange={(e) => setChatId(e.target.value)} className={`${panelInput} h-10`}>
-          {chats.map((c) => <option key={c.chatId} value={c.chatId}>#{c.name}</option>)}
+          {offered.map((c) => <option key={c.chatId} value={c.chatId}>#{c.name}{c.archived ? " (archived)" : ""}</option>)}
         </select>
       </Labelled>
       <div className="flex justify-end gap-2">

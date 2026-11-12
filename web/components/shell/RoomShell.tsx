@@ -160,6 +160,17 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
     router.replace("/login");
   }
 
+  /** The room hears it and refetches; this tab doesn't wait for that. An archived chat open here turns read-only. */
+  async function setChatArchived(chat: Chat, archived: boolean) {
+    try {
+      await bff(`/bff/api/rooms/${roomId}/chats/${chat.chatId}`, { method: "PATCH", body: { archived } });
+      toast(archived ? `#${chat.name} archived` : `#${chat.name} unarchived`);
+      router.refresh();
+    } catch (e) {
+      toast(errorText(e), "error");
+    }
+  }
+
   /** Shown at once; a refusal puts it back. */
   async function mute(chat: Chat, muted: boolean) {
     badges.setMuted(chat.chatId, muted);
@@ -185,7 +196,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
       <div className="flex h-dvh overflow-hidden bg-ink">
         <MobileNav open={overlay === "nav"}>
           <Sidebar
-            chats={badges.chats} me={me} roomId={roomId} canAddChat={canManage}
+            chats={badges.chats} me={me} roomId={roomId} canManage={canManage}
             activeChatId={chatId} newChatIds={newChatIds}
             threads={<ThreadList roomId={roomId} activeThreadId={activeThread?.threadId} canCreate={!archived} timeZone={timeZone} />}
             budget={<BudgetCard roomId={roomId} isOwner={isOwner && !archived} />}
@@ -196,7 +207,8 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
                 onCreate={() => setDialog("room")} onLeave={() => setDialog("leave")} onArchive={() => setDialog("archive")}
               />
             )}
-            onPalette={() => setPaletteOpen(true)} onNewChat={() => setDialog("chat")} onMute={mute} onSignOut={signOutToLogin}
+            onPalette={() => setPaletteOpen(true)} onNewChat={() => setDialog("chat")} onRename={(chat) => setDialog({ rename: chat })}
+            onArchive={setChatArchived} onMute={mute} onSignOut={signOutToLogin}
           />
         </MobileNav>
         <main inert={phone && overlay !== null} className="flex min-w-0 flex-1 flex-col">

@@ -34,12 +34,14 @@ const subscribeVisibility = (fn: () => void) => {
   return () => document.removeEventListener("visibilitychange", fn);
 };
 
+/** `archived`: the room is; `chatArchived`: only this chat is. Either makes the chat read-only. */
 type Props = {
   roomId: string; chatId: string; chatName: string; roomName: string; me: Me; role: Role; members: Member[];
-  archived: boolean; initial: Message[]; serverTimeZone: string;
+  archived: boolean; chatArchived: boolean; initial: Message[]; serverTimeZone: string;
 };
 
-export function ChatView({ roomId, chatId, chatName, roomName, me, role, members, archived, initial, serverTimeZone }: Props) {
+export function ChatView({ roomId, chatId, chatName, roomName, me, role, members, archived, chatArchived, initial, serverTimeZone }: Props) {
+  const readOnly = archived || chatArchived;
   const live = useLive();
   const status = useLiveStatus();
   const toast = useToast();
@@ -129,8 +131,8 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
   }), [me.userId, live, roomId, chatId, apply, setTimeline, toast, jumpTo, refetchAround, retry, discard]);
 
   const ctx = useMemo<RowContext>(
-    () => ({ meId: me.userId, role, members, timeZone, readOnly: archived }),
-    [me.userId, role, members, timeZone, archived],
+    () => ({ meId: me.userId, role, members, timeZone, readOnly }),
+    [me.userId, role, members, timeZone, readOnly],
   );
 
   // Two memos, so a new message doesn't rebuild the pending rows' messages (and re-render them) or the reverse.
@@ -145,7 +147,7 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
   })), [timeline.pending, roomId, chatId, me]);
   const rows = useMemo(() => [...storedRows, ...pendingRows], [storedRows, pendingRows]);
 
-  const hasFiles = (e: DragEvent) => !archived && e.dataTransfer.types.includes("Files");
+  const hasFiles = (e: DragEvent) => !readOnly && e.dataTransfer.types.includes("Files");
 
   return (
     <div
@@ -168,8 +170,8 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
         intro={<ChatIntro chatName={chatName} roomName={roomName} />}
       />
       <TypingLine roomId={roomId} chatId={chatId} meId={me.userId} />
-      {archived
-        ? <ArchivedNotice />
+      {readOnly
+        ? <ArchivedNotice chat={!archived} />
         : (
           <Composer
             members={members} agents={agents} meId={me.userId} mode={mode} uploads={uploads} onModeChange={setMode}

@@ -1,6 +1,6 @@
 export type Role = "owner" | "admin" | "member";
 export type Action =
-  | "read" | "createChat" | "manageInvite" | "removeMember" | "setRole" | "archive" | "setBudget" | "setModel" | "manageConnections" | "setSandbox"
+  | "read" | "manageChats" | "manageInvite" | "removeMember" | "setRole" | "archive" | "setBudget" | "setModel" | "manageConnections" | "setSandbox"
   | "manageAgents" | "setTimeZone" | "leave";
 
 const RANK: Record<Role, number> = { member: 0, admin: 1, owner: 2 };
@@ -8,7 +8,7 @@ const RANK: Record<Role, number> = { member: 0, admin: 1, owner: 2 };
 /**
  * The room role matrix (the one place permissions are decided).
  * - everyone in the room can read it
- * - admins and the owner create chats and manage the invite link
+ * - admins and the owner create, rename and archive chats and manage the invite link
  * - you can remove only someone of a lower role; the owner can't be removed
  * - only the owner changes roles (admin ↔ member); the owner's own role never changes
  * - only the owner archives the room or sets its monthly agent budget
@@ -22,7 +22,7 @@ export function can(action: Action, actor: Role, target?: Role): boolean {
   switch (action) {
     case "read":
       return true;
-    case "createChat":
+    case "manageChats":
     case "manageInvite":
     case "setModel":
     case "manageConnections":
