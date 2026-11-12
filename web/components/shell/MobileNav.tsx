@@ -28,7 +28,7 @@ export function MobileNav({ open, children }: { open: boolean; children: ReactNo
     <div
       ref={drawer}
       inert={phone && !open}
-      className={`flex shrink-0 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:transition-transform max-md:duration-300 max-md:ease-[cubic-bezier(.2,.9,.2,1)] ${open ? "max-md:shadow-[0_0_60px_rgba(0,0,0,.5)]" : "max-md:-translate-x-full"}`}
+      className={`flex shrink-0 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:transition-transform max-md:duration-300 max-md:ease-[cubic-bezier(.2,.9,.2,1)] ${open ? "max-md:shadow-drawer" : "max-md:-translate-x-full"}`}
     >
       {children}
     </div>

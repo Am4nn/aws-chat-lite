@@ -13,15 +13,16 @@ export function Hint({ text, below = false, mark }: { text: string; below?: bool
         {mark ?? (
           <span
             aria-hidden="true"
-            className="grid size-4 place-items-center rounded-full border border-line-strong font-mono text-[10px] leading-none text-text-3 transition-colors group-hover:border-[#36403f] group-hover:text-text-2"
+            className="grid size-4 place-items-center rounded-full border border-line-strong font-mono text-[10px] leading-none text-text-3 transition-colors group-hover:border-line-hover group-hover:text-text-2"
           >
             ?
           </span>
         )}
       </button>
+      {/* The button already carries the text as its name; the tip is for sighted users only, so it isn't read twice. */}
       <span
-        role="tooltip"
-        className={`pointer-events-none absolute z-20 rounded-lg border border-line-strong bg-surface-3 px-2.5 py-1.5 text-[11.5px] leading-snug text-text-2 opacity-0 shadow-[0_8px_24px_rgba(0,0,0,.4)] transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 ${
+        aria-hidden="true"
+        className={`pointer-events-none absolute z-20 rounded-lg border border-line-strong bg-surface-3 px-2.5 py-1.5 text-[11.5px] leading-snug text-text-2 opacity-0 shadow-pop transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 ${
           below ? "inset-x-0 top-full mt-1" : "bottom-full left-1/2 mb-2 w-max max-w-[240px] -translate-x-1/2"
         }`}
       >

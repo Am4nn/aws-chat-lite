@@ -10,7 +10,7 @@ import { MessageText } from "@/components/chat/MessageText";
 // A word's fade lasts this long; the stored text takes over only once the last words have settled.
 const WORD_MS = 400;
 
-const BODY = "break-words text-[16px] leading-[1.72] text-[#d3dcdb] [&_p+p]:mt-3 [&_pre]:my-2";
+const BODY = "break-words text-[16px] leading-[1.72] text-text-body [&_p+p]:mt-3 [&_pre]:my-2";
 
 /**
  * The agent's answer: a headline (its first short line) above the body. While it streams, each word is its own span

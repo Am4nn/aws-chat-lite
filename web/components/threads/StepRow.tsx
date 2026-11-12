@@ -1,27 +1,15 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ChevronRight } from "lucide-react";
 import { formatElapsed, formatStepTime } from "@/lib/client/format";
 import { splitSyncLines, type RunItem } from "@/lib/client/run";
+import { useNow } from "@/lib/client/useNow";
 import { dur, easeOut, instant, spring } from "@/lib/motion";
 import { GeneratedImage } from "./GeneratedImage";
 
 type Step = Extract<RunItem, { kind: "step" }>;
-
-const TICK_MS = 1000;
-
-/** Seconds since the step started, ticking while it runs. */
-function useElapsed(startedAt: string, running: boolean) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!running) return;
-    const timer = setInterval(() => setNow(Date.now()), TICK_MS);
-    return () => clearInterval(timer);
-  }, [running]);
-  return formatElapsed(now - Date.parse(startedAt));
-}
 
 /** Agent work in progress: an arc turning once every 0.8 s (static under reduced motion). */
 export function RunningArc({ size = 15 }: { size?: number }) {
@@ -48,7 +36,7 @@ export function StepRow({ roomId, step, enter }: { roomId: string; step: Step; e
   // Only a step seen running finishes in front of you; one that arrives finished gets no pop or flash.
   const [seenRunning] = useState(running);
   const [open, setOpen] = useState(false);
-  const elapsed = useElapsed(step.startedAt, running);
+  const now = useNow(running);
   const ended = !running && seenRunning;
   const { output, lines } = step.files ? splitSyncLines(step.output ?? "", step.files) : { output: step.output, lines: [] };
 
@@ -63,7 +51,7 @@ export function StepRow({ roomId, step, enter }: { roomId: string; step: Step; e
         disabled={!opens}
         aria-expanded={opens ? open : undefined}
         aria-controls={opens ? outputId : undefined}
-        className="relative isolate flex h-10 w-full items-center gap-3 overflow-hidden rounded-[10px] px-3 text-left transition-colors hover:bg-[#121618] focus-visible:outline-offset-[-2px] disabled:cursor-default disabled:hover:bg-transparent"
+        className="relative isolate flex h-10 w-full items-center gap-3 overflow-hidden rounded-[10px] px-3 text-left transition-colors hover:bg-surface-2 focus-visible:outline-offset-[-2px] disabled:cursor-default disabled:hover:bg-transparent"
       >
         {ended && (
           <motion.span
@@ -71,7 +59,7 @@ export function StepRow({ roomId, step, enter }: { roomId: string; step: Step; e
             initial={{ opacity: 1 }}
             animate={{ opacity: 0 }}
             transition={reduced ? instant : { duration: 0.5, ease: easeOut }}
-            className="absolute inset-0 -z-10 bg-[#1d2a12]"
+            className="absolute inset-0 -z-10 bg-lime-flash"
           />
         )}
         <span className="grid size-4 shrink-0 place-items-center">
@@ -92,11 +80,11 @@ export function StepRow({ roomId, step, enter }: { roomId: string; step: Step; e
         <span className={`shrink-0 font-mono text-[12.5px] ${running ? "shimmer" : ""}`}>{helper?.agentName ?? step.name}</span>
         <span className="min-w-0 truncate text-[12.5px] text-text-2">{helper ? helper.summary ?? helper.task : step.detail}</span>
         <span className={`ml-auto shrink-0 font-mono text-[11.5px] tabular-nums ${running ? "text-lime" : step.status === "failed" ? "text-amber" : "text-text-3"}`}>
-          {running ? elapsed : step.status === "failed" ? "failed" : formatStepTime(step.ms ?? 0)}
+          {running ? formatElapsed(now - Date.parse(step.startedAt)) : step.status === "failed" ? "failed" : formatStepTime(step.ms ?? 0)}
         </span>
         <ChevronRight
           aria-hidden="true" size={13}
-          className={`shrink-0 text-[#5b6668] transition-[transform,opacity] duration-300 ${open ? "rotate-90" : ""} ${opens ? "" : "opacity-0"}`}
+          className={`shrink-0 text-text-4 transition-[transform,opacity] duration-300 ${open ? "rotate-90" : ""} ${opens ? "" : "opacity-0"}`}
         />
         <span className="sr-only">{running ? ", running" : step.status === "failed" ? ", failed" : ", done"}</span>
       </button>
@@ -115,7 +103,7 @@ export function StepRow({ roomId, step, enter }: { roomId: string; step: Step; e
               </div>
             )}
             {!running && (
-              <pre className="mb-2 ml-10 mr-3 mt-0.5 whitespace-pre-wrap break-words rounded-[10px] border border-[#1a1f22] bg-[#0f1213] px-3 py-2.5 font-mono text-[11.5px] leading-[1.6] text-[#b7c2c1]">
+              <pre className="mb-2 ml-10 mr-3 mt-0.5 whitespace-pre-wrap break-words rounded-[10px] border border-line bg-surface-2 px-3 py-2.5 font-mono text-[11.5px] leading-[1.6] text-text-body">
                 {output || "No output."}
               </pre>
             )}

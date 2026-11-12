@@ -55,9 +55,9 @@ export function CommandPalette({ open, onClose, items, agentNames, onAsk }: {
                 e.preventDefault();
                 onClose();
               }}
-              className="overflow-hidden rounded-[18px] border border-[#262d30] bg-surface-2 shadow-[0_30px_80px_rgba(0,0,0,.55)]"
+              className="overflow-hidden rounded-[18px] border border-line-strong bg-surface-2 shadow-modal"
             >
-              <div className="flex h-14 items-center gap-2.5 border-b border-[#1c2225] px-4">
+              <div className="flex h-14 items-center gap-2.5 border-b border-surface-4 px-4">
                 <Search aria-hidden="true" size={17} className="text-text-3" />
                 <Command.Input autoFocus value={query} onValueChange={setQuery} placeholder="Jump anywhere, or @agent to start a thread…" className="h-full flex-1 bg-transparent text-[15px] text-text outline-none placeholder:text-text-3" />
                 <kbd className="font-mono text-[11px] text-text-3">Esc</kbd>
@@ -71,7 +71,7 @@ export function CommandPalette({ open, onClose, items, agentNames, onAsk }: {
                     onSelect={() => { onClose(); onAsk!(ask); }}
                     className="flex h-11 cursor-pointer items-center gap-2.5 rounded-[10px] px-2.5 text-[13.5px] text-text-2 data-[selected=true]:bg-surface-3 data-[selected=true]:text-text"
                   >
-                    <span className="grid size-[26px] shrink-0 place-items-center rounded-lg bg-[#172014] text-lime"><Bot aria-hidden="true" size={14} /></span>
+                    <span className="grid size-[26px] shrink-0 place-items-center rounded-lg bg-lime-wash text-lime"><Bot aria-hidden="true" size={14} /></span>
                     <span className="min-w-0 truncate">{ask}</span>
                     <span className="ml-auto shrink-0 font-mono text-[11.5px] text-text-3">new thread</span>
                   </Command.Item>
@@ -86,7 +86,7 @@ export function CommandPalette({ open, onClose, items, agentNames, onAsk }: {
                         style={{ animationDelay: `${n * 35}ms` }}
                         className="flex h-11 cursor-pointer items-center gap-2.5 rounded-[10px] px-2.5 text-[13.5px] text-text-2 animate-[row-in_.35s_cubic-bezier(.2,.9,.2,1)_both] data-[selected=true]:bg-surface-3 data-[selected=true]:text-text motion-reduce:animate-none"
                       >
-                        <span className="grid size-[26px] place-items-center rounded-lg bg-[#1a2023] text-[11px] font-bold text-text">{item.icon}</span>
+                        <span className="grid size-[26px] place-items-center rounded-lg bg-surface-4 text-[11px] font-bold text-text">{item.icon}</span>
                         {item.label}
                         {item.hint && <span className="ml-auto font-mono text-[11.5px] text-text-3">{item.hint}</span>}
                       </Command.Item>

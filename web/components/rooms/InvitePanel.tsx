@@ -77,8 +77,8 @@ export function InvitePanel({ roomId }: { roomId: string }) {
                 <Button onClick={() => setState({ kind: "confirmRevoke", invite: state.invite })}>Revoke</Button>
               </div>
             ) : (
-              <div className="flex flex-col gap-2 rounded-xl border border-[#4a2a26] bg-[#150f0e] p-3">
-                <p className="text-[12.5px] text-[#ffb4aa]">Revoke this link? Anyone who hasn&apos;t joined yet can no longer use it.</p>
+              <div className="flex flex-col gap-2 rounded-xl border border-danger-line bg-danger-wash p-3">
+                <p className="text-[12.5px] text-danger">Revoke this link? Anyone who hasn&apos;t joined yet can no longer use it.</p>
                 <div className="flex justify-end gap-2">
                   <Button onClick={() => setState({ kind: "active", invite: state.invite })}>Cancel</Button>
                   <Button variant="danger" onClick={revoke} disabled={busy}>{busy && <Spinner />}Revoke</Button>

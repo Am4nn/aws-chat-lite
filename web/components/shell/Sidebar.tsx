@@ -22,7 +22,7 @@ export function Sidebar({ chats, me, roomId, canAddChat, switcher, threads, budg
 
       <button
         onClick={onPalette}
-        className="flex h-[38px] shrink-0 items-center gap-2 rounded-[10px] border border-line-strong bg-surface-2 px-3 text-[13px] text-text-3 transition-[border-color,color,transform] hover:border-[#36403f] hover:text-text-2 active:scale-[0.98]"
+        className="flex h-[38px] shrink-0 items-center gap-2 rounded-[10px] border border-line-strong bg-surface-2 px-3 text-[13px] text-text-3 transition-[border-color,color,transform] hover:border-line-hover hover:text-text-2 active:scale-[0.98]"
       >
         <Search aria-hidden="true" size={15} />
         <span className="whitespace-nowrap">Ask, jump, run</span>
@@ -85,7 +85,7 @@ function ChatRow({ chat, roomId, active, fresh, onMute }: { chat: Chat; roomId: 
         }`}
       >
         {active && (
-          <motion.span layoutId="nav-highlight" transition={spring.glide} className="absolute inset-0 -z-10 rounded-[10px] bg-surface-3 shadow-[inset_0_0_0_1px_#20272a]" />
+          <motion.span layoutId="nav-highlight" transition={spring.glide} className="absolute inset-0 -z-10 rounded-[10px] bg-surface-3 shadow-ring" />
         )}
         <Hash aria-hidden="true" size={14} className="shrink-0 text-text-3" />
         <span className="truncate">{chat.name}</span>
@@ -155,7 +155,7 @@ function RowMenu({ name, muted, onMute }: { name: string; muted: boolean; onMute
             exit={{ opacity: 0, scale: 0.95, transition: reduced ? instant : { duration: dur.fast } }}
             transition={reduced ? instant : { duration: dur.fast, ease: easeOut }}
             style={{ transformOrigin: "top right" }}
-            className="absolute right-0 top-8 z-30 w-40 rounded-xl border border-line-strong bg-surface-2 p-1 shadow-[0_16px_40px_rgba(0,0,0,.5)]"
+            className="absolute right-0 top-8 z-30 w-40 rounded-xl border border-line-strong bg-surface-2 p-1 shadow-menu"
           >
             <button
               role="menuitem"

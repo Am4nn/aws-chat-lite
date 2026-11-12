@@ -245,10 +245,10 @@ export function runMap(events: RunEvent[], nowMs: number): RunMap {
 const share = (total: number, n: number, i: number) => Math.floor(total / n) + (i === 0 ? total % n : 0);
 
 const SHARES = [
-  { key: "thinking", label: "thinking", color: "#3A4446" },
-  { key: "helpers", label: "helpers", color: "#7CC7FF" },
-  { key: "tools", label: "tools", color: "#C8F169" },
-  { key: "waiting", label: "waiting", color: "#FFC46B" },
+  { key: "thinking", label: "thinking", color: "var(--color-line-hover)" },
+  { key: "helpers", label: "helpers", color: "var(--color-sky)" },
+  { key: "tools", label: "tools", color: "var(--color-lime)" },
+  { key: "waiting", label: "waiting", color: "var(--color-amber)" },
 ] as const;
 
 type Share = (typeof SHARES)[number] & { pct: number };

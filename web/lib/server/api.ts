@@ -1,9 +1,17 @@
+import "server-only";
 import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { ID_COOKIE } from "./cookies";
 import { serverEnv } from "./env";
 import { PATH_HEADER, safeNext } from "./next-path";
+
+/**
+ * One deadline for every API call. The slowest routes run long on purpose (reading a long answer aloud takes up to
+ * 25 s, connecting an MCP server up to 30 s), and the HTTP API itself cuts an integration at 30 s. Stopping a second
+ * short of that leaves this Lambda, which also stops at 30 s, time to answer its own 504 instead of being killed.
+ */
+const API_TIMEOUT_MS = 29_000;
 
 class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -22,7 +30,7 @@ export function callApi(path: string, token: string | undefined, init: { method?
     body: init.body,
     cache: "no-store",
     headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), "content-type": "application/json" },
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.timeout(API_TIMEOUT_MS),
   });
 }
 

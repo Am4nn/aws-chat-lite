@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Lock, Pencil, Trash2 } from "lucide-react";
 import { bff, errorText } from "@/lib/client/bff";
@@ -15,8 +15,10 @@ import { useToast } from "@/components/overlays/Toast";
 import { Button } from "@/components/ui/Button";
 import { panelInput } from "@/components/ui/Field";
 import { Hint } from "@/components/ui/Hint";
+import { PanelLoading } from "@/components/ui/PanelLoading";
 import { RowButton } from "@/components/ui/RowButton";
 import { Spinner } from "@/components/ui/Spinner";
+import { useRoomData } from "./useRoomData";
 
 const PRIVATE_HINT = "Saved from a thread with private content, so DeepSeek never sees it.";
 const AGE_TICK_MS = 60_000;
@@ -29,51 +31,47 @@ const FRESH_MS = 1500;
 export function MemoryPanel({ roomId, archived }: { roomId: string; archived: boolean }) {
   const toast = useToast();
   const now = useNow(true, AGE_TICK_MS);
-  const [entries, setEntries] = useState<MemoryEntry[] | null>(null);
-  const [version, setVersion] = useState(0);
   const [editing, setEditing] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<MemoryEntry | null>(null);
   const [fresh, setFresh] = useState<Set<string>>(new Set());
   // Every id shown so far; null until the first answer, whose entries were already there and don't count as new.
   const seen = useRef<Set<string> | null>(null);
   const base = `/bff/api/rooms/${roomId}/memory`;
+  const { data, setData, failed, reload } = useRoomData<{ entries: MemoryEntry[] }>(base);
+  const entries = data?.entries;
+  const setEntries = (change: (list: MemoryEntry[]) => MemoryEntry[]) => setData((d) => d && { entries: change(d.entries) });
   useLiveEvent("memory.changed", (e) => {
-    if (e.roomId === roomId) setVersion((v) => v + 1);
+    if (e.roomId === roomId) reload();
   });
 
-  useEffect(() => {
-    let current = true;
-    bff<{ entries: MemoryEntry[] }>(base)
-      .then(({ entries: listed }) => {
-        if (!current) return;
-        const added = seen.current ? listed.map((m) => m.memoryId).filter((id) => !seen.current!.has(id)) : [];
-        seen.current = new Set([...(seen.current ?? []), ...listed.map((m) => m.memoryId)]);
-        setEntries(listed);
-        if (!added.length) return;
-        setFresh(new Set(added));
-        setTimeout(() => setFresh(new Set()), FRESH_MS);
-      })
-      .catch((e) => toast(errorText(e), "error"));
-    return () => { current = false; };
-  }, [base, version, toast]);
+  // Before paint, so an entry that arrives never shows for a frame without its highlight.
+  useLayoutEffect(() => {
+    if (!entries) return;
+    const ids = entries.map((m) => m.memoryId);
+    const added = seen.current ? ids.filter((id) => !seen.current!.has(id)) : [];
+    seen.current = new Set([...(seen.current ?? []), ...ids]);
+    if (!added.length) return;
+    setFresh(new Set(added));
+    setTimeout(() => setFresh(new Set()), FRESH_MS);
+  }, [entries]);
 
   async function save(entry: MemoryEntry, text: string) {
     const { entry: saved } = await bff<{ entry: MemoryEntry }>(`${base}/${entry.memoryId}`, { method: "PATCH", body: { text } });
-    setEntries((list) => list && list.map((m) => (m.memoryId === saved.memoryId ? saved : m)));
+    setEntries((list) => list.map((m) => (m.memoryId === saved.memoryId ? saved : m)));
     setEditing(null);
   }
 
   async function remove(entry: MemoryEntry) {
     try {
       await bff(`${base}/${entry.memoryId}`, { method: "DELETE", body: {} });
-      setEntries((list) => list && list.filter((m) => m.memoryId !== entry.memoryId));
+      setEntries((list) => list.filter((m) => m.memoryId !== entry.memoryId));
       setDeleting(null);
     } catch (e) {
       toast(errorText(e), "error");
     }
   }
 
-  if (!entries) return <div className="flex h-9 items-center justify-center text-text-3"><Spinner /></div>;
+  if (!entries) return <PanelLoading failed={failed} onRetry={reload} />;
 
   return (
     <section className="flex flex-col gap-2">

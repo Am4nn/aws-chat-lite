@@ -74,7 +74,7 @@ export function ApprovalCard({ runId, approval: a, meName, enter }: Props) {
               exit={{ height: 0, opacity: 0, transition: reduced ? instant : { duration: dur.base, ease: easeOut } }}
               className="overflow-hidden"
             >
-              <div className="my-1.5 flex flex-wrap items-center gap-x-3.5 gap-y-3 rounded-[14px] border border-[#4a3e1c] bg-[#17150e] px-4 py-3.5">
+              <div className="my-1.5 flex flex-wrap items-center gap-x-3.5 gap-y-3 rounded-[14px] border border-amber-line bg-amber-wash px-4 py-3.5">
                 <span className="grid size-[34px] shrink-0 place-items-center rounded-[10px] bg-amber text-amber-ink">
                   <svg aria-hidden="true" width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
                     <path d="M12 8v5M12 16.5v.5" /><circle cx="12" cy="12" r="9" />
@@ -82,7 +82,7 @@ export function ApprovalCard({ runId, approval: a, meName, enter }: Props) {
                 </span>
                 <div className="min-w-[180px] flex-1">
                   <p className="break-words text-[14px] font-semibold">{a.title}</p>
-                  <p role={conflict ? "status" : undefined} className="text-[12.5px] text-[#b9ae93]" suppressHydrationWarning>
+                  <p role={conflict ? "status" : undefined} className="text-[12.5px] text-amber-muted" suppressHydrationWarning>
                     {conflict ?? `${kind} · anyone in the room can approve · expires in ${remaining(a.expiresAt, now)}`}
                   </p>
                 </div>
@@ -91,11 +91,11 @@ export function ApprovalCard({ runId, approval: a, meName, enter }: Props) {
                   <Button variant="amber" disabled={!!conflict} onClick={() => void decide("approve")} className="h-8 text-[12.5px]">Approve</Button>
                 </div>
                 <details className="group w-full">
-                  <summary className="flex h-6 w-fit cursor-pointer list-none items-center gap-1 rounded-md text-[12px] text-[#b9ae93] transition-colors hover:text-text [&::-webkit-details-marker]:hidden">
+                  <summary className="flex h-6 w-fit cursor-pointer list-none items-center gap-1 rounded-md text-[12px] text-amber-muted transition-colors hover:text-text [&::-webkit-details-marker]:hidden">
                     <ChevronRight aria-hidden="true" size={13} className="transition-transform duration-300 group-open:rotate-90" />
                     Details
                   </summary>
-                  <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-[10px] border border-[#2a2414] bg-[#0f0e09] px-3 py-2.5 font-mono text-[11.5px] leading-[1.6] text-[#d8ceb4]">
+                  <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-[10px] border border-amber-line bg-ink px-3 py-2.5 font-mono text-[11.5px] leading-[1.6] text-text-body">
                     {JSON.stringify(a.call.input, null, 2)}
                   </pre>
                 </details>
@@ -112,7 +112,7 @@ const ICONS = { denied: X, expired: Clock, cancelled: Square };
 function SettledRow({ status, line, pop }: { status: Exclude<ApprovalStatus, "pending">; line: string; pop: boolean }) {
   if (status === "approved") {
     return (
-      <div className="my-1.5 flex items-center gap-2.5 rounded-[14px] border border-[#34501c] bg-[#111a0c] px-4 py-3 text-[13.5px] text-[#ddf5b5]">
+      <div className="my-1.5 flex items-center gap-2.5 rounded-[14px] border border-lime-line bg-lime-wash px-4 py-3 text-[13.5px] text-lime-soft">
         <motion.svg
           aria-hidden="true" width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8"
           initial={pop ? { scale: 0.2, rotate: -20, opacity: 0 } : false}

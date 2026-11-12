@@ -30,7 +30,7 @@ export function Modal({ open, onClose, title, children }: { open: boolean; onClo
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, scale: 0.97, transition: { duration: dur.fast } }}
             transition={{ duration: dur.base, ease: easeOut }}
-            className="relative w-[440px] max-w-[calc(100vw-32px)] rounded-2xl border border-[#262d30] bg-surface-2 p-5 shadow-[0_30px_80px_rgba(0,0,0,.55)]"
+            className="relative w-[440px] max-w-[calc(100vw-32px)] rounded-2xl border border-line-strong bg-surface-2 p-5 shadow-modal"
           >
             <h2 className="mb-4 font-display text-lg font-bold">{title}</h2>
             {children}

@@ -21,7 +21,7 @@
     "sandbox:local": "npm -w scripts run sandbox-local",
     "smoke": "npm -w scripts run smoke",
     "schedule:fire": "npm -w scripts run schedule-fire --",
-    "check": "knip && npm run typecheck --workspaces --if-present"
+    "check": "knip && npm run lint --workspaces --if-present && npm run typecheck --workspaces --if-present"
   },
   "devDependencies": {
     "@types/node": "^22",

@@ -36,7 +36,7 @@ export function ConsentActions({ requestId }: { requestId: string }) {
         <Button onClick={() => decide("deny")} disabled={!!busy} className="h-11">{busy === "deny" && <Spinner />}Cancel</Button>
         <Button variant="primary" onClick={() => decide("allow")} disabled={!!busy} className="h-11">{busy === "allow" && <Spinner />}Allow</Button>
       </div>
-      {error && <p role="alert" className="mt-3 text-[13px] text-[#ff9b8f]">{error}</p>}
+      {error && <p role="alert" className="mt-3 text-[13px] text-danger">{error}</p>}
     </>
   );
 }

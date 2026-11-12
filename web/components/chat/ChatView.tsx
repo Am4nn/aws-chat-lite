@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type DragEvent } from "react";
+import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type DragEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Hash, Paperclip } from "lucide-react";
@@ -11,10 +11,10 @@ import { useLive, useLiveStatus } from "@/lib/client/LiveProvider";
 import { canEditLast, withReaction } from "@/lib/client/messageRules";
 import { useModelPick } from "@/lib/client/ModelsProvider";
 import { useThreads } from "@/lib/client/ThreadsProvider";
-import { addPending, dropPending, failPending, keyOf, newestSeq, updateMessage, type PendingMessage } from "@/lib/client/timeline";
+import { keyOf, newestSeq, updateMessage } from "@/lib/client/timeline";
 import { useTimeZone } from "@/lib/client/useTimeZone";
 import { dur, instant } from "@/lib/motion";
-import type { Attachment, Me, Member, Message, Reaction, Role } from "@/lib/types";
+import type { Me, Member, Message, Reaction, Role } from "@/lib/types";
 import { useToast } from "@/components/overlays/Toast";
 import { ArchivedNotice } from "./ArchivedNotice";
 import { Composer, type ComposerMode } from "./Composer";
@@ -23,27 +23,16 @@ import { ModelPill } from "./ModelPill";
 import type { Row, RowActions, RowContext } from "./MessageRow";
 import { TypingLine } from "./TypingLine";
 import { useChatTimeline } from "./useChatTimeline";
+import { useOutbox } from "./useOutbox";
 import { useUploads } from "./useUploads";
 
 const READ_DEBOUNCE_MS = 1000;
 const READ_RETRY_MS = 5000;
-const CLOCK_TICK_MS = 30_000;
 
 const subscribeVisibility = (fn: () => void) => {
   document.addEventListener("visibilitychange", fn);
   return () => document.removeEventListener("visibilitychange", fn);
 };
-
-const revokePreviews = (attachments: Attachment[]) =>
-  attachments.forEach((a) => a.url?.startsWith("blob:") && URL.revokeObjectURL(a.url));
-
-/** Acks fail for three reasons; only "not connected" is certain the message never reached the server. */
-function sendError(e: unknown): string {
-  const reason = errorText(e);
-  if (reason === "not connected") return "Not connected, so it wasn't sent.";
-  if (reason === "timeout" || reason === "connection closed") return "The server didn't confirm it. Check before retrying.";
-  return reason;
-}
 
 type Props = {
   roomId: string; chatId: string; chatName: string; roomName: string; me: Me; role: Role; members: Member[];
@@ -58,20 +47,15 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
   const timeZone = useTimeZone(serverTimeZone);
   const uploads = useUploads(roomId);
   const chat = useChatTimeline({ roomId, chatId, meId: me.userId, initial });
-  const { timeline, setTimeline, latest, apply, markFresh, refetchAround, hasNewer, showLatest, jumpTo, scrollToBottom } = chat;
+  const { timeline, setTimeline, apply, refetchAround, hasNewer, showLatest, jumpTo, scrollToBottom } = chat;
+  const { queue, retry, discard } = useOutbox({ roomId, chatId, chat, toBottom: scrollToBottom });
   const [mode, setMode] = useState<ComposerMode>(null);
   const [pick, setPick] = useModelPick(chatId);
   const { byId } = useThreads();
   const agents = useContext(RoomAgentsContext);
   const [dragging, setDragging] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
   const visible = useSyncExternalStore(subscribeVisibility, () => document.visibilityState === "visible", () => true);
 
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), CLOCK_TICK_MS);
-    return () => clearInterval(timer);
-  }, []);
-  useEffect(() => () => latest.current.pending.forEach((p) => revokePreviews(p.attachments)), [latest]);
 
   // `?m=<seq>` (a search result) jumps to that message. It is dropped from the address afterwards, so clicking the
   // same result again is a real change that jumps again, and a reload opens at the newest messages.
@@ -95,29 +79,6 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
     }, readFailures ? READ_RETRY_MS : READ_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [status, chat.pinned, hasNewer, visible, newest, live, roomId, chatId, readFailures]);
-
-  const deliver = useCallback(async (p: PendingMessage) => {
-    try {
-      const message = await live.request("send", {
-        roomId, chatId, clientId: p.clientId, text: p.text, replyToSeq: p.replyTo?.seq, threadId: p.threadId, model: p.model,
-        attachments: p.attachments.map(({ key, name, size, type }) => ({ key, name, size, type })),
-      }) as Message;
-      apply([message]);
-      revokePreviews(p.attachments);
-    } catch (e) {
-      // Sends aren't idempotent, so a failure is shown and left to the user: an automatic resend could post twice.
-      setTimeline((t) => failPending(t, p.clientId));
-      toast(sendError(e), "error");
-    }
-  }, [live, roomId, chatId, apply, setTimeline, toast]);
-
-  const queue = useCallback((p: Omit<PendingMessage, "clientId" | "createdAt">) => {
-    const pending = { ...p, clientId: crypto.randomUUID(), createdAt: new Date().toISOString() };
-    markFresh([keyOf(pending)]);
-    setTimeline((t) => addPending(t, pending));
-    scrollToBottom();
-    void deliver(pending);
-  }, [deliver, markFresh, setTimeline, scrollToBottom]);
 
   function send(text: string) {
     if (hasNewer) void showLatest();
@@ -163,22 +124,13 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
     },
     jump: (seq: number) => void jumpTo(seq),
     refetch: (seq: number) => void refetchAround(seq),
-    retry(clientId: string) {
-      const failed = latest.current.pending.find((p) => p.clientId === clientId);
-      if (!failed) return;
-      setTimeline((t) => dropPending(t, clientId));
-      queue({ text: failed.text, attachments: failed.attachments, replyTo: failed.replyTo, threadId: failed.threadId, model: failed.model });
-    },
-    discard(clientId: string) {
-      const failed = latest.current.pending.find((p) => p.clientId === clientId);
-      if (failed) revokePreviews(failed.attachments);
-      setTimeline((t) => dropPending(t, clientId));
-    },
-  }), [me.userId, live, roomId, chatId, apply, setTimeline, latest, toast, jumpTo, refetchAround, queue]);
+    retry,
+    discard,
+  }), [me.userId, live, roomId, chatId, apply, setTimeline, toast, jumpTo, refetchAround, retry, discard]);
 
   const ctx = useMemo<RowContext>(
-    () => ({ meId: me.userId, role, members, now, timeZone, readOnly: archived }),
-    [me.userId, role, members, now, timeZone, archived],
+    () => ({ meId: me.userId, role, members, timeZone, readOnly: archived }),
+    [me.userId, role, members, timeZone, archived],
   );
 
   // Two memos, so a new message doesn't rebuild the pending rows' messages (and re-render them) or the reverse.
@@ -244,7 +196,7 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={reduced ? instant : { duration: dur.fast }}
-            className="pointer-events-none absolute inset-3 z-30 grid place-items-center rounded-2xl border border-dashed border-[#3b5420] bg-ink/85"
+            className="pointer-events-none absolute inset-3 z-30 grid place-items-center rounded-2xl border border-dashed border-lime-line bg-ink/85"
           >
             <span className="flex items-center gap-2 text-[14px] text-text-2">
               <Paperclip aria-hidden="true" size={16} className="text-lime" />

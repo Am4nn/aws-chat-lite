@@ -37,7 +37,7 @@ function Valid({ preview, code, signedIn }: { preview: Preview; code: string; si
         ) : (
           <Link
             href={`/login?next=${encodeURIComponent(`/invite/${code}`)}`}
-            className="flex h-11 items-center justify-center rounded-[10px] bg-lime text-[13px] font-semibold text-lime-ink transition-colors hover:bg-[#d7fa8a]"
+            className="flex h-11 items-center justify-center rounded-[10px] bg-lime text-[13px] font-semibold text-lime-ink transition-colors hover:bg-lime-soft"
           >
             Sign in to join
           </Link>

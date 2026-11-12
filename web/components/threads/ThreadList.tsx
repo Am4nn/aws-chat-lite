@@ -83,7 +83,7 @@ function ThreadRow({ thread: t, href, active, fresh, meta, agent }: {
         }`}
       >
         {active && (
-          <motion.span layoutId="nav-highlight" transition={spring.glide} className="absolute inset-0 -z-10 rounded-[10px] bg-surface-3 shadow-[inset_0_0_0_1px_#20272a]" />
+          <motion.span layoutId="nav-highlight" transition={spring.glide} className="absolute inset-0 -z-10 rounded-[10px] bg-surface-3 shadow-ring" />
         )}
         <span className="grid size-4 shrink-0 place-items-center"><ThreadStatusIcon status={t.status} /></span>
         <span className="truncate">{t.name}</span>

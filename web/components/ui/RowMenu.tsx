@@ -38,7 +38,7 @@ export function RowMenu({ open, onToggle, name, children }: { open: boolean; onT
             exit={{ opacity: 0, scale: 0.95, transition: { duration: dur.fast } }}
             transition={{ duration: dur.fast, ease: easeOut }}
             style={{ transformOrigin: "top right" }}
-            className="absolute right-0 top-8 z-20 w-44 rounded-xl border border-line-strong bg-surface-2 p-1 shadow-[0_16px_40px_rgba(0,0,0,.5)]"
+            className="absolute right-0 top-8 z-20 w-44 rounded-xl border border-line-strong bg-surface-2 p-1 shadow-menu"
           >
             {children}
           </motion.div>
@@ -53,7 +53,7 @@ export function MenuItem({ danger = false, onClick, children }: { danger?: boole
     <button
       role="menuitem"
       onClick={onClick}
-      className={`flex h-8 w-full items-center rounded-lg px-2.5 text-left text-[13px] transition-colors hover:bg-surface-3 ${danger ? "text-[#ff9b8f]" : "text-text-2 hover:text-text"}`}
+      className={`flex h-8 w-full items-center rounded-lg px-2.5 text-left text-[13px] transition-colors hover:bg-surface-3 ${danger ? "text-danger" : "text-text-2 hover:text-text"}`}
     >
       {children}
     </button>

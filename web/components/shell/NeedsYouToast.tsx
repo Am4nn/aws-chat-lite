@@ -46,12 +46,12 @@ export function NeedsYouToast({ roomId, openThreadId, panelOpen }: { roomId: str
               setToast(null);
               router.push(`/r/${roomId}/t/${toast.number}`);
             }}
-            className="flex max-w-[min(360px,calc(100vw-32px))] items-center gap-3 rounded-[14px] border border-[#4a3e1c] bg-[#15140f] px-3.5 py-3 text-left shadow-[0_16px_40px_rgba(0,0,0,.45)] transition-[border-color,transform] hover:border-[#6a5a2a] active:scale-[0.98]"
+            className="flex max-w-[min(360px,calc(100vw-32px))] items-center gap-3 rounded-[14px] border border-amber-line bg-amber-wash px-3.5 py-3 text-left shadow-menu transition-[border-color,transform] hover:border-amber/40 active:scale-[0.98]"
           >
             <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-amber" />
             <span className="min-w-0">
               <span className="block truncate text-[13px] font-semibold text-text">{toast.title}</span>
-              <span className="block truncate text-[12px] text-[#b9ae93]">{toast.detail}</span>
+              <span className="block truncate text-[12px] text-amber-muted">{toast.detail}</span>
             </span>
             <span className="ml-1.5 shrink-0 text-[12px] text-amber">Open</span>
           </motion.button>
