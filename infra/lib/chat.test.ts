@@ -58,6 +58,16 @@ describe("chat API", () => {
     template("aws").hasResourceProperties("AWS::S3::Bucket", { BucketName: "cl-aws-files-000000000000" });
   });
 
+  // A room keeps only the latest version of each file; with versioning on, every overwrite and delete would keep
+  // (and bill) the old bytes.
+  it("the files bucket has versioning off on both stages", () => {
+    for (const [stage, name] of [["local", "cl-local-files"], ["aws", "cl-aws-files-000000000000"]] as const) {
+      const [bucket] = Object.values(template(stage).findResources("AWS::S3::Bucket", { Properties: { BucketName: name } })) as any[];
+      expect(bucket, stage).toBeDefined();
+      expect(bucket.Properties.VersioningConfiguration, stage).toBeUndefined();
+    }
+  });
+
   it("both sign URLs for the browser's view of S3 (Floci's host locally)", () => {
     for (const name of ["cl-local-chat", "cl-local-live"]) {
       const env = fnNamed(name).props.Environment.Variables;
