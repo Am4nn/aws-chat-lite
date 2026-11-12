@@ -3,7 +3,7 @@ import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dy
 import type { User } from "../lib/auth.js";
 import { conditionFailed, docClient, failedAt, queryAll, setFields, tableName, transactionConflict } from "../lib/db.js";
 import { Conflict, Forbidden, NotFound, ValidationError } from "../lib/errors.js";
-import { roomKey } from "../lib/keys.js";
+import { roomKey, roomMetaKey } from "../lib/keys.js";
 import { requireMember, roomMembers } from "../chat/membership.js";
 import { roomChanged } from "../live/broadcast.js";
 import { uniqueCandidates } from "../threads/model.js";
@@ -15,7 +15,6 @@ type AgentInput = Pick<Agent, "name" | "instructions" | "tools" | "model">;
 
 const agentKey = (roomId: string, agentId: string) => ({ pk: roomKey(roomId), sk: `AGENT#${agentId}` });
 const nameKey = (roomId: string, name: string) => ({ pk: roomKey(roomId), sk: `AGENTNAME#${name}` });
-const metaKey = (roomId: string) => ({ pk: roomKey(roomId), sk: "META" });
 export const BUILT_IN_REFUSAL = "The built-in @agent can't be renamed, deleted or copied.";
 const taken = (name: string) => new Conflict(`@${name} is taken in this room.`);
 const agentChanged = (name: string) => new Conflict(`@${name} just changed; try again.`);
@@ -70,7 +69,7 @@ export function agentsRepo() {
           TransactItems: [
             {
               Update: {
-                TableName, Key: metaKey(roomId), UpdateExpression: "ADD agentCount :one",
+                TableName, Key: roomMetaKey(roomId), UpdateExpression: "ADD agentCount :one",
                 ConditionExpression: "attribute_exists(pk) AND (attribute_not_exists(agentCount) OR agentCount < :max)",
                 ExpressionAttributeValues: { ":one": 1, ":max": MAX_AGENTS },
               },
@@ -197,7 +196,7 @@ export function agentsRepo() {
                 ExpressionAttributeValues: { ":id": agentId },
               },
             },
-            { Update: { TableName, Key: metaKey(roomId), UpdateExpression: "ADD agentCount :minus", ExpressionAttributeValues: { ":minus": -1 } } },
+            { Update: { TableName, Key: roomMetaKey(roomId), UpdateExpression: "ADD agentCount :minus", ExpressionAttributeValues: { ":minus": -1 } } },
           ],
         }));
       } catch (e) {

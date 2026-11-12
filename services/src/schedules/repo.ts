@@ -3,7 +3,7 @@ import { GetCommand, PutCommand, TransactWriteCommand, UpdateCommand, type Trans
 import type { User } from "../lib/auth.js";
 import { conditionFailed, docClient, failedAt, queryAll, setFields, tableName, transactionConflict } from "../lib/db.js";
 import { Forbidden, NotFound, ValidationError } from "../lib/errors.js";
-import { counterKey, roomKey } from "../lib/keys.js";
+import { counterKey, roomKey, roomMetaKey } from "../lib/keys.js";
 import { requireMember } from "../chat/membership.js";
 import { roomChanged } from "../live/broadcast.js";
 import { BUILT_IN } from "../agents/model.js";
@@ -22,7 +22,6 @@ const FIRE_CLAIM_TTL_SEC = 7 * 86_400;
 const CONFLICT_ATTEMPTS = 3;
 
 const nowIso = () => new Date().toISOString();
-const metaKey = (roomId: string) => ({ pk: roomKey(roomId), sk: "META" });
 const scheduleKey = (roomId: string, id: string) => ({ pk: roomKey(roomId), sk: `SCHED#${id}` });
 const toSchedule = ({ pk: _pk, sk: _sk, ...rest }: Record<string, unknown>) => rest as Schedule;
 const idOf = (raw: unknown) => (typeof raw === "string" ? raw : "");
@@ -68,7 +67,7 @@ export function schedulesRepo() {
   /** The counter counts disabled schedules too, so switching one on never needs a free slot. */
   const claimSlot = (roomId: string): TransactItem => ({
     Update: {
-      TableName, Key: metaKey(roomId), UpdateExpression: "ADD scheduleCount :one",
+      TableName, Key: roomMetaKey(roomId), UpdateExpression: "ADD scheduleCount :one",
       ConditionExpression: "attribute_exists(pk) AND (attribute_not_exists(scheduleCount) OR scheduleCount < :max)",
       ExpressionAttributeValues: { ":one": 1, ":max": MAX_SCHEDULES },
     },
@@ -101,7 +100,7 @@ export function schedulesRepo() {
     try {
       await transact([
         { Delete: { TableName, Key: scheduleKey(roomId, id), ConditionExpression: "attribute_exists(pk)" } },
-        { Update: { TableName, Key: metaKey(roomId), UpdateExpression: "ADD scheduleCount :minus", ExpressionAttributeValues: { ":minus": -1 } } },
+        { Update: { TableName, Key: roomMetaKey(roomId), UpdateExpression: "ADD scheduleCount :minus", ExpressionAttributeValues: { ":minus": -1 } } },
       ]);
       return true;
     } catch (e) {
@@ -125,7 +124,7 @@ export function schedulesRepo() {
 
   async function timeZoneOf(roomId: string): Promise<string> {
     const { Item } = await db.send(new GetCommand({
-      TableName, Key: metaKey(roomId), ConsistentRead: true, ProjectionExpression: "#tz", ExpressionAttributeNames: { "#tz": "timeZone" },
+      TableName, Key: roomMetaKey(roomId), ConsistentRead: true, ProjectionExpression: "#tz", ExpressionAttributeNames: { "#tz": "timeZone" },
     }));
     return (Item?.timeZone as string | undefined) ?? DEFAULT_TIME_ZONE;
   }
@@ -287,7 +286,7 @@ export function schedulesRepo() {
       const role = await requireMember(roomId, user.userId, { writing: true });
       if (!can("setTimeZone", role)) throw new Forbidden("Only admins can set the room's time zone.");
       await db.send(new UpdateCommand({
-        TableName, Key: metaKey(roomId), UpdateExpression: "SET #tz = :tz", ExpressionAttributeNames: { "#tz": "timeZone" }, ConditionExpression: "attribute_exists(pk)",
+        TableName, Key: roomMetaKey(roomId), UpdateExpression: "SET #tz = :tz", ExpressionAttributeNames: { "#tz": "timeZone" }, ConditionExpression: "attribute_exists(pk)",
         ExpressionAttributeValues: { ":tz": timeZone },
       }));
       await roomChanged("schedules.changed", roomId);

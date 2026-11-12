@@ -8,7 +8,7 @@ import { bestEffort } from "../../lib/best-effort.js";
 import { conditionFailed, docClient, failedAt, tableName, takeOnce } from "../../lib/db.js";
 import { Conflict, FlowFailed, Forbidden, Gone, NotFound, Upstream, UserError, ValidationError } from "../../lib/errors.js";
 import { siteCallback } from "../../lib/http.js";
-import { roomKey } from "../../lib/keys.js";
+import { roomKey, roomMetaKey } from "../../lib/keys.js";
 import { roomUpdated } from "../../live/broadcast.js";
 import { cut } from "../../tools/cut.js";
 import type { AuditKind, McpConnection } from "../../threads/types.js";
@@ -98,12 +98,12 @@ export function mcpRepo(deps: Deps = liveDeps()) {
    */
   const serverAdded = (roomId: string) => ({
     Update: {
-      TableName, Key: { pk: roomKey(roomId), sk: "META" }, UpdateExpression: "ADD mcpCount :one",
+      TableName, Key: roomMetaKey(roomId), UpdateExpression: "ADD mcpCount :one",
       ConditionExpression: "attribute_not_exists(mcpCount) OR mcpCount < :max", ExpressionAttributeValues: { ":one": 1, ":max": MAX_MCP_SERVERS },
     },
   });
   const serverRemoved = (roomId: string) => ({
-    Update: { TableName, Key: { pk: roomKey(roomId), sk: "META" }, UpdateExpression: "ADD mcpCount :minus", ExpressionAttributeValues: { ":minus": -1 } },
+    Update: { TableName, Key: roomMetaKey(roomId), UpdateExpression: "ADD mcpCount :minus", ExpressionAttributeValues: { ":minus": -1 } },
   });
 
   function tokenStore(roomId: string, name: string): TokenStore {

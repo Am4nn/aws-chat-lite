@@ -4,12 +4,11 @@ import { DeleteCommand, GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/l
 import { budgetText } from "../budget/model.js";
 import { budgetRepo } from "../budget/repo.js";
 import { requireMember } from "../chat/membership.js";
-import { seqKey } from "../chat/model.js";
 import type { User } from "../lib/auth.js";
 import { bestEffort } from "../lib/best-effort.js";
 import { conditionFailed, docClient, tableName } from "../lib/db.js";
 import { Conflict, Gone, NotFound, ValidationError } from "../lib/errors.js";
-import { roomKey } from "../lib/keys.js";
+import { messageKey, roomKey } from "../lib/keys.js";
 import { filesBucket, s3 } from "../lib/s3.js";
 import { findObject, putBytes } from "../workspace/storage.js";
 import { speechMicros } from "./prices.js";
@@ -50,7 +49,7 @@ async function claim(Key: Record<string, string>) {
  */
 export async function speak(user: User, roomId: string, ref: { chatId: string; seq: number }, speaker: Speaker): Promise<{ url: string; cached: boolean }> {
   await requireMember(roomId, user.userId);
-  const { Item: message } = await docClient().send(new GetCommand({ TableName: tableName(), Key: { pk: `CHAT#${ref.chatId}`, sk: seqKey(ref.seq) } }));
+  const { Item: message } = await docClient().send(new GetCommand({ TableName: tableName(), Key: messageKey(ref.chatId, ref.seq) }));
   if (message?.roomId !== roomId) throw new NotFound("Message not found.");
   if (message.authorId !== "agent") throw new ValidationError("Only agent answers can be read aloud.");
   if (message.deleted) throw new Gone("That answer was removed.");

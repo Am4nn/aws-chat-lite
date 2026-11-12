@@ -4,9 +4,10 @@ import {
 import { conditionFailed, docClient, failedAt, queryAll, setFields, tableName } from "../lib/db.js";
 import { LAST_SEQ, forReaders, seqKey, type Message, type StoredMessage } from "../chat/model.js";
 import type { ModelPick } from "../models/catalog.js";
-import { summary, threadSk } from "../threads/model.js";
+import { summary } from "../threads/model.js";
 import type { GeneratedImage, RunEndStatus, RunEvent, RunEventBody, ThreadSummary } from "../threads/types.js";
 import { DEAD_AFTER_MS, eventSk } from "./model.js";
+import { counterKey, messageKey, runKey, threadKey } from "../lib/keys.js";
 
 /** A run's META item: one durable execution answering one thread message (plus any steers it reads). */
 export type Run = {
@@ -50,9 +51,6 @@ export type TransactItem = NonNullable<TransactWriteCommandInput["TransactItems"
 const MODEL_CONTEXT = 50;
 const FORCED_CLOSE_ATTEMPTS = 5;
 
-const runKey = (runId: string) => ({ pk: `RUN#${runId}`, sk: "META" });
-const chatMetaKey = (threadId: string) => ({ pk: `CHAT#${threadId}`, sk: "META" });
-const threadKey = (run: Run) => ({ pk: `ROOM#${run.roomId}`, sk: threadSk(run.number) });
 const callKey = (runId: string, call: string) => ({ pk: `RUN#${runId}`, sk: `CALL#${call}` });
 /**
  * Every run write to its thread is conditioned on the run still being the thread's: a run that was replaced (it was
@@ -101,7 +99,7 @@ export function runsRepo() {
   }
 
   async function chatLastSeq(threadId: string): Promise<number> {
-    const { Item } = await db.send(new GetCommand({ TableName, Key: chatMetaKey(threadId), ConsistentRead: true }));
+    const { Item } = await db.send(new GetCommand({ TableName, Key: counterKey(threadId), ConsistentRead: true }));
     return Number(Item?.lastSeq ?? 0);
   }
 
@@ -109,7 +107,7 @@ export function runsRepo() {
   async function storedAnswer(run: Run): Promise<Message | undefined> {
     const seq = (await getRun(run.runId))?.answerSeq;
     if (seq === undefined) return undefined;
-    const { Item } = await db.send(new GetCommand({ TableName, Key: { pk: `CHAT#${run.threadId}`, sk: seqKey(seq) }, ConsistentRead: true }));
+    const { Item } = await db.send(new GetCommand({ TableName, Key: messageKey(run.threadId, seq), ConsistentRead: true }));
     return Item && asMessage(Item);
   }
 
@@ -204,7 +202,7 @@ export function runsRepo() {
       const [, thread] = await Promise.all([
         db.send(new UpdateCommand({ TableName, Key: runKey(run.runId), ...set })),
         threadUpdate(new UpdateCommand({
-          TableName, Key: threadKey(run), ...set, UpdateExpression: `${set.UpdateExpression} ADD #rev :one`,
+          TableName, Key: threadKey(run.roomId, run.number), ...set, UpdateExpression: `${set.UpdateExpression} ADD #rev :one`,
           ConditionExpression: owned.ConditionExpression, ExpressionAttributeNames: { ...set.ExpressionAttributeNames, "#rev": "rev" },
           ExpressionAttributeValues: { ...set.ExpressionAttributeValues, ...owned.values, ":one": 1 }, ReturnValues: "ALL_NEW",
         })),
@@ -216,7 +214,7 @@ export function runsRepo() {
     async stepDone(run: Run): Promise<ThreadSummary | null> {
       const owned = whileOwned(run);
       return threadUpdate(new UpdateCommand({
-        TableName, Key: threadKey(run), UpdateExpression: "REMOVE currentStep ADD #rev :one", ConditionExpression: owned.ConditionExpression,
+        TableName, Key: threadKey(run.roomId, run.number), UpdateExpression: "REMOVE currentStep ADD #rev :one", ConditionExpression: owned.ConditionExpression,
         ExpressionAttributeNames: { "#rev": "rev" }, ExpressionAttributeValues: { ...owned.values, ":one": 1 }, ReturnValues: "ALL_NEW",
       }));
     },
@@ -250,7 +248,7 @@ export function runsRepo() {
           TableName, Key: runKey(run.runId), ...setFields({ waitingStep: approval.step, deadAt }), ReturnValues: "ALL_NEW",
         })),
         threadUpdate(new UpdateCommand({
-          TableName, Key: threadKey(run), ...set, UpdateExpression: `${set.UpdateExpression} ADD #rev :one`,
+          TableName, Key: threadKey(run.roomId, run.number), ...set, UpdateExpression: `${set.UpdateExpression} ADD #rev :one`,
           ConditionExpression: owned.ConditionExpression, ExpressionAttributeNames: { ...set.ExpressionAttributeNames, "#rev": "rev" },
           ExpressionAttributeValues: { ...set.ExpressionAttributeValues, ...owned.values, ":one": 1 }, ReturnValues: "ALL_NEW",
         })),
@@ -278,7 +276,7 @@ export function runsRepo() {
       const [, thread] = await Promise.all([
         db.send(new UpdateCommand({ TableName, Key: runKey(run.runId), ...setFields({ deadAt }) })),
         threadUpdate(new UpdateCommand({
-          TableName, Key: threadKey(run), UpdateExpression: "SET #status = :running, #deadAt = :deadAt REMOVE approval ADD #rev :one",
+          TableName, Key: threadKey(run.roomId, run.number), UpdateExpression: "SET #status = :running, #deadAt = :deadAt REMOVE approval ADD #rev :one",
           ConditionExpression: owned.ConditionExpression, ExpressionAttributeNames: { "#status": "status", "#deadAt": "deadAt", "#rev": "rev" },
           ExpressionAttributeValues: { ":running": "running", ":deadAt": deadAt, ...owned.values, ":one": 1 }, ReturnValues: "ALL_NEW",
         })),
@@ -330,11 +328,11 @@ export function runsRepo() {
             TransactItems: [
               {
                 Update: {
-                  TableName, Key: chatMetaKey(run.threadId), UpdateExpression: "SET lastSeq = :next",
+                  TableName, Key: counterKey(run.threadId), UpdateExpression: "SET lastSeq = :next",
                   ConditionExpression: "lastSeq = :seen", ExpressionAttributeValues: { ":next": seq, ":seen": seen },
                 },
               },
-              { Put: { TableName, Item: { pk: `CHAT#${run.threadId}`, sk: seqKey(seq), ...answer, textLower: text.toLowerCase() } } },
+              { Put: { TableName, Item: { ...messageKey(run.threadId, seq), ...answer, textLower: text.toLowerCase() } } },
               {
                 Update: {
                   TableName, Key: runKey(run.runId), ...closed, ConditionExpression: "#status = :running",
@@ -343,7 +341,7 @@ export function runsRepo() {
               },
               ...(owns ? [{
                 Update: {
-                  TableName, Key: threadKey(run), ...thread,
+                  TableName, Key: threadKey(run.roomId, run.number), ...thread,
                   UpdateExpression: `${thread.UpdateExpression} REMOVE activeRunId, currentStep, approval ADD #rev :one`,
                   ConditionExpression: ownership.ConditionExpression,
                   ExpressionAttributeNames: { ...thread.ExpressionAttributeNames, "#rev": "rev" },

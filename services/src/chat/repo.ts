@@ -2,7 +2,7 @@ import { GetCommand, PutCommand, QueryCommand, TransactWriteCommand, UpdateComma
 import type { User } from "../lib/auth.js";
 import { conditionFailed, docClient, failedAt, tableName, transactionConflict } from "../lib/db.js";
 import { Conflict, Forbidden, NotFound, ValidationError } from "../lib/errors.js";
-import { counterKey, memberKey, roomKey } from "../lib/keys.js";
+import { counterKey, memberKey, messageKey, roomKey } from "../lib/keys.js";
 import { countTowardsRate } from "../lib/rate.js";
 import { enqueuePush } from "../push/enqueue.js";
 import { storedAttachment, withUrls } from "./files.js";
@@ -21,7 +21,6 @@ export interface Admitted { text: string; attachments: Attachment[] }
 
 const chatKey = (chatId: string) => `CHAT#${chatId}`;
 const readKey = (at: ChatRef, userId: string) => ({ pk: roomKey(at.roomId), sk: `READ#${userId}#${at.chatId}` });
-const messageKey = (at: ChatRef, seq: number) => ({ pk: chatKey(at.chatId), sk: seqKey(seq) });
 
 const NEEDS_CONTENT = "A message needs text or an attachment.";
 
@@ -69,7 +68,7 @@ export function chatRepo() {
   }
 
   async function storedMessage(at: ChatRef, seq: number): Promise<StoredMessage> {
-    const { Item } = await db.send(new GetCommand({ TableName, Key: messageKey(at, seq), ConsistentRead: true }));
+    const { Item } = await db.send(new GetCommand({ TableName, Key: messageKey(at.chatId, seq), ConsistentRead: true }));
     if (!Item || Item.roomId !== at.roomId) throw new NotFound("Message not found.");
     return Item as StoredMessage;
   }
@@ -159,7 +158,7 @@ export function chatRepo() {
         ...(quoted && { replyTo: { seq: quoted.seq, authorName: quoted.authorName, excerpt: excerpt(forReaders(quoted).text) } }),
       };
       await db.send(new PutCommand({
-        TableName, Item: { ...messageKey(at, seq), ...message, textLower: text.toLowerCase() },
+        TableName, Item: { ...messageKey(at.chatId, seq), ...message, textLower: text.toLowerCase() },
         ConditionExpression: "attribute_not_exists(sk)",
       }));
       const writes = opts.system ? [] : [readOwnMessage(at, user.userId, seq)];
@@ -174,7 +173,7 @@ export function chatRepo() {
      */
     async linkThread(at: ChatRef & { seq: number }, threadRef: NonNullable<Message["threadRef"]>): Promise<Message> {
       const { Attributes } = await db.send(new UpdateCommand({
-        TableName, Key: messageKey(at, at.seq), UpdateExpression: "SET threadRef = :ref ADD v :one", ConditionExpression: "attribute_exists(sk)",
+        TableName, Key: messageKey(at.chatId, at.seq), UpdateExpression: "SET threadRef = :ref ADD v :one", ConditionExpression: "attribute_exists(sk)",
         ExpressionAttributeValues: { ":ref": threadRef, ":one": 1 }, ReturnValues: "ALL_NEW",
       }));
       return toMessage(Attributes!);
@@ -202,7 +201,7 @@ export function chatRepo() {
             { Put: { TableName, Item: { pk: chatKey(at.chatId), sk: versionKey(input.seq, editedAt), text: old.text } } },
             {
               Update: {
-                TableName, Key: messageKey(at, input.seq),
+                TableName, Key: messageKey(at.chatId, input.seq),
                 UpdateExpression: "SET #text = :text, textLower = :lower, editedAt = :at, mentions = :mentions, everyone = :everyone ADD v :one",
                 // The rules again, plus an optimistic lock on the version we read (`v` is never removed once set), so
                 // no change landing between the read and this write is overwritten, and what this edit returns and
@@ -248,14 +247,14 @@ export function chatRepo() {
           TransactItems: [
             {
               Update: {
-                TableName, Key: messageKey(at, input.seq), UpdateExpression: "SET deleted = :d ADD v :one",
+                TableName, Key: messageKey(at.chatId, input.seq), UpdateExpression: "SET deleted = :d ADD v :one",
                 ConditionExpression: "attribute_not_exists(deleted)", ExpressionAttributeValues: values,
               },
             },
             // The copy may already be deleted on its own; that keeps its own mark.
             ...(copyAt ? [{
               Update: {
-                TableName, Key: messageKey(copyAt.at, copyAt.seq), UpdateExpression: "SET deleted = if_not_exists(deleted, :d) ADD v :one",
+                TableName, Key: messageKey(copyAt.at.chatId, copyAt.seq), UpdateExpression: "SET deleted = if_not_exists(deleted, :d) ADD v :one",
                 ConditionExpression: "attribute_exists(sk)", ExpressionAttributeValues: values,
               },
             }] : []),
@@ -277,7 +276,7 @@ export function chatRepo() {
       await requireMember(at.roomId, user.userId, { writing: true });
       try {
         const { Attributes } = await db.send(new UpdateCommand({
-          TableName, Key: messageKey(at, input.seq), UpdateExpression: input.on ? "ADD reactions.#k :me, v :one" : "DELETE reactions.#k :me ADD v :one",
+          TableName, Key: messageKey(at.chatId, input.seq), UpdateExpression: input.on ? "ADD reactions.#k :me, v :one" : "DELETE reactions.#k :me ADD v :one",
           ConditionExpression: "roomId = :r AND attribute_not_exists(deleted)", ExpressionAttributeNames: { "#k": input.reaction },
           ExpressionAttributeValues: { ":me": new Set([user.userId]), ":r": at.roomId, ":one": 1 }, ReturnValues: "ALL_NEW",
         }));

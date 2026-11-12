@@ -1,7 +1,7 @@
 import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { docClient, failedAt, queryAll, tableName, transactionConflict } from "../lib/db.js";
 import { Conflict, ValidationError } from "../lib/errors.js";
-import { roomKey } from "../lib/keys.js";
+import { roomKey, roomMetaKey } from "../lib/keys.js";
 import { countTowardsRate } from "../lib/rate.js";
 import { MAX_ROOM_FILES, OVER_QUOTA, ROOM_FILES_BYTES, TOO_MANY } from "./limits.js";
 import type { FileAuthor, RoomFile, StoredFile } from "./types.js";
@@ -12,7 +12,6 @@ export class QuotaError extends ValidationError {}
 const ATTEMPTS = 3;
 const UPLOADS_PER_HOUR = 100;
 const fileKey = (roomId: string, path: string) => ({ pk: roomKey(roomId), sk: `FILE#${path}` });
-const metaKey = (roomId: string) => ({ pk: roomKey(roomId), sk: "META" });
 
 const storedFile = (item: Record<string, unknown>): StoredFile => ({
   path: String(item.path), size: Number(item.size), contentType: String(item.contentType), v: Number(item.v),
@@ -40,7 +39,7 @@ export function workspaceRepo() {
 
   async function usage(roomId: string) {
     const { Item } = await db.send(new GetCommand({
-      TableName, Key: metaKey(roomId), ConsistentRead: true, ProjectionExpression: "filesBytes, filesCount",
+      TableName, Key: roomMetaKey(roomId), ConsistentRead: true, ProjectionExpression: "filesBytes, filesCount",
     }));
     return { bytes: Number(Item?.filesBytes ?? 0), count: Number(Item?.filesCount ?? 0) };
   }
@@ -48,7 +47,7 @@ export function workspaceRepo() {
   /** Adds `bytes` and `count` (negative to give space back) to the room's totals. */
   const addToTotals = (roomId: string, bytes: number, count: number, ConditionExpression?: string, values = {}) => ({
     Update: {
-      TableName, Key: metaKey(roomId), UpdateExpression: "ADD filesBytes :bytes, filesCount :count", ConditionExpression,
+      TableName, Key: roomMetaKey(roomId), UpdateExpression: "ADD filesBytes :bytes, filesCount :count", ConditionExpression,
       ExpressionAttributeValues: { ":bytes": bytes, ":count": count, ...values },
     },
   });

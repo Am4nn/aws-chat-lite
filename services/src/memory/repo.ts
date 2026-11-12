@@ -4,7 +4,7 @@ import { requireMember } from "../chat/membership.js";
 import type { User } from "../lib/auth.js";
 import { conditionFailed, docClient, failedAt, queryAll, tableName, transactionConflict } from "../lib/db.js";
 import { NotFound, ValidationError } from "../lib/errors.js";
-import { roomKey } from "../lib/keys.js";
+import { roomKey, roomMetaKey } from "../lib/keys.js";
 import { roomChanged } from "../live/broadcast.js";
 import type { MemoryEntry } from "../threads/types.js";
 import { MEMORY_MAX, memoryText } from "./model.js";
@@ -13,7 +13,6 @@ type AgentSource = Extract<MemoryEntry["source"], { kind: "agent" }>;
 
 const PREFIX = "MEMORY#";
 const memoryKey = (roomId: string, memoryId: string) => ({ pk: roomKey(roomId), sk: `${PREFIX}${memoryId}` });
-const metaKey = (roomId: string) => ({ pk: roomKey(roomId), sk: "META" });
 const withoutKeys = ({ pk: _pk, sk: _sk, ...rest }: Record<string, unknown>) => rest as MemoryEntry;
 const missing = (memoryId: string) => new NotFound(`No memory [${memoryId}].`);
 const ATTEMPTS = 3;
@@ -65,7 +64,7 @@ export function memoryRepo() {
       await db.send(new TransactWriteCommand({
         TransactItems: [
           { Delete: { TableName, Key: memoryKey(roomId, memoryId), ConditionExpression: "attribute_exists(pk)" } },
-          { Update: { TableName, Key: metaKey(roomId), UpdateExpression: "ADD memoryCount :minus", ExpressionAttributeValues: { ":minus": -1 } } },
+          { Update: { TableName, Key: roomMetaKey(roomId), UpdateExpression: "ADD memoryCount :minus", ExpressionAttributeValues: { ":minus": -1 } } },
         ],
       }));
     } catch (e) {
@@ -98,7 +97,7 @@ export function memoryRepo() {
               { Put: { TableName, Item: { ...memoryKey(roomId, entry.memoryId), ...entry }, ConditionExpression: "attribute_not_exists(pk)" } },
               {
                 Update: {
-                  TableName, Key: metaKey(roomId), UpdateExpression: "ADD memoryCount :one",
+                  TableName, Key: roomMetaKey(roomId), UpdateExpression: "ADD memoryCount :one",
                   ConditionExpression: "attribute_exists(pk) AND (attribute_not_exists(memoryCount) OR memoryCount < :max)",
                   ExpressionAttributeValues: { ":one": 1, ":max": MEMORY_MAX },
                 },

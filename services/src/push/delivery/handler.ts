@@ -1,8 +1,7 @@
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
 import { roomMembers } from "../../chat/membership.js";
 import { docClient, queryAll, tableName } from "../../lib/db.js";
-import { counterKey, roomKey } from "../../lib/keys.js";
-import { threadSk } from "../../threads/model.js";
+import { counterKey, roomKey, roomMetaKey, threadKey } from "../../lib/keys.js";
 import { pushKeys } from "../keys.js";
 import { noteFor } from "../notes.js";
 import { pushRepo, type PushRepo } from "../repo.js";
@@ -26,13 +25,13 @@ const get = async (Key: Record<string, string>) =>
 /** Members are read at delivery, so someone removed after a mention was queued hears nothing. */
 async function readRoom(roomId: string): Promise<Room | undefined> {
   const [meta, members] = await Promise.all([
-    get({ pk: roomKey(roomId), sk: "META" }),
+    get(roomMetaKey(roomId)),
     roomMembers(roomId, { fields: ["userId"], consistent: true }),
   ]);
   return meta && { name: String(meta.name), archived: !!meta.archived, memberIds: members.map((m) => String(m.userId)) };
 }
 
-const threadName = async (roomId: string, number: number) => (await get({ pk: roomKey(roomId), sk: threadSk(number) }))?.name as string | undefined;
+const threadName = async (roomId: string, number: number) => (await get(threadKey(roomId, number)))?.name as string | undefined;
 
 /** A mention's chat id may be a thread's: the chat's counter says which, and holds the thread's number. */
 async function readPlace(job: PushJob): Promise<Place | undefined> {

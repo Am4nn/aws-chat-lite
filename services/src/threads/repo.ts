@@ -9,16 +9,14 @@ import { requireMember } from "../chat/membership.js";
 import type { Message } from "../chat/model.js";
 import { chatRepo, type Admitted } from "../chat/repo.js";
 import { broadcastToRoom } from "../live/broadcast.js";
-import { PROVISIONAL, isNumberedName, summary, threadName, threadSk, uniqueCandidates } from "./model.js";
+import { PROVISIONAL, isNumberedName, summary, threadName, uniqueCandidates } from "./model.js";
 import type { TaintSource } from "../models/privacy.js";
 import type { ThreadSummary } from "./types.js";
+import { counterKey, roomKey, roomMetaKey, threadKey } from "../lib/keys.js";
 
 type Item = Record<string, unknown>;
 
-const roomKey = (roomId: string) => `ROOM#${roomId}`;
-const threadKey = (roomId: string, n: number) => ({ pk: roomKey(roomId), sk: threadSk(n) });
 const nameKey = (roomId: string, name: string) => ({ pk: roomKey(roomId), sk: `CHATNAME#${name}` });
-const chatMetaKey = (threadId: string) => ({ pk: `CHAT#${threadId}`, sk: "META" });
 
 /** Best effort: the write has happened, and a client that misses the event gets the thread on its next room load. */
 const threadUpdated = (thread: ThreadSummary) =>
@@ -39,7 +37,7 @@ export function threadsRepo() {
 
   /** The thread's chat counter records its room and number, which proves the thread is in this room and finds it. */
   async function byId(roomId: string, threadId: string) {
-    const { Item: chat } = await db.send(new GetCommand({ TableName, Key: chatMetaKey(threadId), ConsistentRead: true }));
+    const { Item: chat } = await db.send(new GetCommand({ TableName, Key: counterKey(threadId), ConsistentRead: true }));
     if (chat?.kind !== "thread" || chat.roomId !== roomId) return undefined;
     return at(roomId, Number(chat.number));
   }
@@ -99,7 +97,7 @@ export function threadsRepo() {
       const chat = chatRepo();
       const admitted = input.admitted ?? await chat.admit(user, { roomId, text: input.text });
       const { Attributes } = await db.send(new UpdateCommand({
-        TableName, Key: { pk: roomKey(roomId), sk: "META" }, UpdateExpression: "ADD threadSeq :one",
+        TableName, Key: roomMetaKey(roomId), UpdateExpression: "ADD threadSeq :one",
         ConditionExpression: "attribute_exists(pk)", ExpressionAttributeValues: { ":one": 1 }, ReturnValues: "UPDATED_NEW",
       }));
       const number = Number(Attributes!.threadSeq);
@@ -117,7 +115,7 @@ export function threadsRepo() {
           await db.send(new TransactWriteCommand({
             TransactItems: [
               { Put: { TableName, Item: candidate } },
-              { Put: { TableName, Item: { ...chatMetaKey(threadId), roomId, lastSeq: 0, kind: "thread", number } } },
+              { Put: { TableName, Item: { ...counterKey(threadId), roomId, lastSeq: 0, kind: "thread", number } } },
               { Put: { TableName, Item: { ...nameKey(roomId, name), chatId: threadId, kind: "thread" }, ConditionExpression: "attribute_not_exists(pk)" } },
             ],
           }));

@@ -1,11 +1,9 @@
 import { randomUUID } from "node:crypto";
-import {
-  DeleteCommand, GetCommand, QueryCommand, TransactWriteCommand, UpdateCommand, type TransactWriteCommandInput,
-} from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, GetCommand, TransactWriteCommand, UpdateCommand, type TransactWriteCommandInput } from "@aws-sdk/lib-dynamodb";
 import type { User } from "../lib/auth.js";
 import { batchGet, conditionFailed, docClient, failedAt, queryAll, tableName, transactionConflict } from "../lib/db.js";
 import { Conflict, Forbidden, Gone, NotFound, ValidationError } from "../lib/errors.js";
-import { counterKey, memberKey, roomKey } from "../lib/keys.js";
+import { counterKey, memberKey, roomKey, roomMetaKey } from "../lib/keys.js";
 import { findMember, liveMemberships, requireMember, roomMembers } from "../chat/membership.js";
 import { isOnline, type Presence } from "../live/presence.js";
 import { budgetOf, monthKey } from "../budget/model.js";
@@ -101,7 +99,7 @@ export function roomsRepo() {
   }
 
   async function roomMeta(roomId: string) {
-    const { Item } = await db.send(new GetCommand({ TableName, Key: { pk: roomKey(roomId), sk: "META" } }));
+    const { Item } = await db.send(new GetCommand({ TableName, Key: roomMetaKey(roomId) }));
     if (!Item) throw new NotFound("Room not found.");
     return Item as { name: string; ownerId: string };
   }
@@ -157,7 +155,7 @@ export function roomsRepo() {
       const at = nowIso();
       await db.send(new TransactWriteCommand({
         TransactItems: [
-          { Put: { TableName, Item: { pk: roomKey(roomId), sk: "META", name, ownerId: owner.userId, createdAt: at }, ConditionExpression: "attribute_not_exists(pk)" } },
+          { Put: { TableName, Item: { ...roomMetaKey(roomId), name, ownerId: owner.userId, createdAt: at }, ConditionExpression: "attribute_not_exists(pk)" } },
           { Put: { TableName, Item: memberItem(roomId, name, owner, "owner", at) } },
           { Put: { TableName, Item: chatItem(roomId, chatId, "general", owner.userId, at) } },
           { Put: { TableName, Item: chatNameItem(roomId, "general", chatId) } },
@@ -188,7 +186,7 @@ export function roomsRepo() {
       });
       const month = monthKey(new Date());
       const [{ Item: meta }, chats, threads, members, myReads, [usage], agents] = await Promise.all([
-        db.send(new GetCommand({ TableName, Key: { pk: roomKey(roomId), sk: "META" }, ConsistentRead: true })),
+        db.send(new GetCommand({ TableName, Key: roomMetaKey(roomId), ConsistentRead: true })),
         inRoom("CHAT#"), inRoom("THREAD#"), roomMembers(roomId, { consistent: true }), inRoom(`READ#${userId}#`), inRoom(`USAGE#${month}`),
         agentsRepo().list(roomId),
       ]);
@@ -236,7 +234,7 @@ export function roomsRepo() {
     async setDefaultModel(user: User, roomId: string, pick: ModelPick): Promise<ModelPick> {
       await requireRole(roomId, user.userId, "setModel", { writing: true });
       await db.send(new UpdateCommand({
-        TableName, Key: { pk: roomKey(roomId), sk: "META" }, UpdateExpression: "SET #defaultModel = :m",
+        TableName, Key: roomMetaKey(roomId), UpdateExpression: "SET #defaultModel = :m",
         ConditionExpression: "attribute_exists(pk)", ExpressionAttributeNames: { "#defaultModel": "defaultModel" },
         ExpressionAttributeValues: { ":m": pick },
       }));
@@ -247,7 +245,7 @@ export function roomsRepo() {
     async setSandboxInternet(user: User, roomId: string, on: boolean): Promise<boolean> {
       await requireRole(roomId, user.userId, "setSandbox", { writing: true });
       await db.send(new UpdateCommand({
-        TableName, Key: { pk: roomKey(roomId), sk: "META" }, UpdateExpression: "SET sandboxInternet = :on",
+        TableName, Key: roomMetaKey(roomId), UpdateExpression: "SET sandboxInternet = :on",
         ConditionExpression: "attribute_exists(pk)", ExpressionAttributeValues: { ":on": on },
       }));
       return on;
@@ -361,7 +359,7 @@ export function roomsRepo() {
      */
     async archiveRoom(roomId: string, userId: string) {
       await requireRole(roomId, userId, "archive");
-      const { Item: meta } = await db.send(new GetCommand({ TableName, Key: { pk: roomKey(roomId), sk: "META" }, ConsistentRead: true }));
+      const { Item: meta } = await db.send(new GetCommand({ TableName, Key: roomMetaKey(roomId), ConsistentRead: true }));
       const members = await roomMembers(roomId, { fields: ["sk"], consistent: true });
       if (members.length > MAX_ARCHIVE_MEMBERS) {
         throw new ValidationError(`Rooms over ${MAX_ARCHIVE_MEMBERS} members can't be archived yet.`);
@@ -438,7 +436,7 @@ export function roomsRepo() {
           TransactItems: [
             {
               Update: {
-                TableName, Key: { pk: roomKey(inv.roomId), sk: "META" }, UpdateExpression: "ADD joinCount :one",
+                TableName, Key: roomMetaKey(inv.roomId), UpdateExpression: "ADD joinCount :one",
                 ConditionExpression: "attribute_exists(pk) AND attribute_not_exists(archived)", ExpressionAttributeValues: { ":one": 1 },
               },
             },

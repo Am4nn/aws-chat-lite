@@ -9,9 +9,9 @@ import { can } from "../rooms/access.js";
 import type { TransactItem } from "../runs/repo.js";
 import type { Budget } from "../threads/types.js";
 import { budgetOf, monthKey } from "./model.js";
+import { roomKey, roomMetaKey } from "../lib/keys.js";
 
-const metaKey = (roomId: string) => ({ pk: `ROOM#${roomId}`, sk: "META" });
-const usageKey = (roomId: string, month: string) => ({ pk: `ROOM#${roomId}`, sk: `USAGE#${month}` });
+const usageKey = (roomId: string, month: string) => ({ pk: roomKey(roomId), sk: `USAGE#${month}` });
 
 /**
  * Each room's monthly agent spend. Usage is one item per room per UTC month, so a new month starts from zero with
@@ -23,7 +23,7 @@ export function budgetRepo() {
 
   /** Consistent, because the run loop checks it before every model call and must see the calls just recorded. */
   const meta = async (roomId: string) =>
-    (await db.send(new GetCommand({ TableName, Key: metaKey(roomId), ConsistentRead: true }))).Item;
+    (await db.send(new GetCommand({ TableName, Key: roomMetaKey(roomId), ConsistentRead: true }))).Item;
 
   /** The budget, and from the same read of the room, whether it was archived, which also ends its runs. */
   async function withArchived(roomId: string, now: Date): Promise<{ budget: Budget; archived: boolean }> {
@@ -59,7 +59,7 @@ export function budgetRepo() {
       const role = await requireMember(roomId, user.userId, { writing: true });
       if (!can("setBudget", role)) throw new Forbidden("Only the room's owner sets its budget.");
       await db.send(new UpdateCommand({
-        TableName, Key: metaKey(roomId), UpdateExpression: "SET budgetCapMicros = :cap", ExpressionAttributeValues: { ":cap": capMicros },
+        TableName, Key: roomMetaKey(roomId), UpdateExpression: "SET budgetCapMicros = :cap", ExpressionAttributeValues: { ":cap": capMicros },
       }));
       const budget = await get(roomId, new Date());
       await bestEffort("budget.updated broadcast", () => broadcastToRoom(roomId, { type: "budget.updated", roomId, budget }));

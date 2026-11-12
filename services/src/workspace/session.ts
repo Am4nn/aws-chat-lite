@@ -4,7 +4,7 @@ import { bySize } from "../lib/batches.js";
 import { bestEffort } from "../lib/best-effort.js";
 import { conditionFailed, docClient, tableName } from "../lib/db.js";
 import { Conflict } from "../lib/errors.js";
-import { roomKey } from "../lib/keys.js";
+import { roomMetaKey } from "../lib/keys.js";
 import { broadcastToRoom } from "../live/broadcast.js";
 import type { Run } from "../runs/repo.js";
 import { sandbox } from "../sandbox/index.js";
@@ -110,7 +110,7 @@ export function sessionStore() {
     /** The room's internet switch, read when a session starts; a room that never set it stays offline. */
     async internet(roomId: string): Promise<boolean> {
       const { Item } = await db.send(new GetCommand({
-        TableName, Key: { pk: roomKey(roomId), sk: "META" }, ConsistentRead: true,
+        TableName, Key: roomMetaKey(roomId), ConsistentRead: true,
         ProjectionExpression: "#i", ExpressionAttributeNames: { "#i": "sandboxInternet" },
       }));
       return Item?.sandboxInternet === true;
