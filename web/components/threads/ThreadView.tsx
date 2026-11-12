@@ -121,9 +121,8 @@ export function ThreadView({ roomId, initialThread, me, members, archived, initi
         ? <ArchivedNotice />
         : (
           <Composer
-            members={members} meId={me.userId} mode={null} uploads={uploads} placeholder="Ask a follow-up…"
+            members={members} meId={me.userId} uploads={uploads} placeholder="Ask a follow-up…"
             steering={running} stopping={stopping} onStop={stop}
-            onModeChange={() => {}} onSaveEdit={() => {}} onEditLast={() => false}
             onSend={(text) => queue({ text, attachments: uploads.take(), model: pick })}
             pill={(
               <ModelPill
