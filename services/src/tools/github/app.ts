@@ -27,8 +27,8 @@ const REFUSALS: Record<number, string> = {
 };
 const refusal = (status: number) =>
   REFUSALS[status] ?? (status >= 500 ? "GitHub is having trouble; try again later." : `GitHub refused the request (${status}).`);
-// Installation tokens, personal tokens, JWTs and PEM blocks, in case GitHub echoes a credential back, which the log
-// mustn't keep either.
+// Installation tokens, personal tokens, JWTs and PEM blocks: GitHub may echo a credential back in an error, and the
+// log mustn't keep one.
 const SECRET = /gh[opsu]_\w+|github_pat_\w+|eyJ[\w-]+\.[\w-]+\.[\w-]+|-----BEGIN [A-Z ]+-----[\s\S]*?(?:-----END [A-Z ]+-----|$)/g;
 
 const base64url = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
