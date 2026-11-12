@@ -3,7 +3,7 @@
  * Stop by another member, a stream resumed after a drop, rename, tag delivery, the budget, archiving, numbering, phone
  * width and motion.
  */
-import type { Page } from "puppeteer-core";
+import type { HTTPRequest, Page } from "puppeteer-core";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { readOutputs } from "./cdk.js";
@@ -88,11 +88,23 @@ export async function threadChecks(stamp: number, owner: Person, guest: Person) 
   const history = async (chatId: string) => (await bff(A, `/bff/api/rooms/${roomId}/chats/${chatId}/messages`)).body.messages as Message[];
   const start = async (text: string) =>
     (await bff(A, `/bff/api/rooms/${roomId}/threads`, "POST", { text, clientId: crypto.randomUUID() })).body.thread as Thread;
-  // A live run keeps its stream open, so the network never goes idle on its page; wait for the socket instead.
+  // A live run keeps its stream open, so the network never goes idle on its page; wait for the socket instead, and
+  // for the server view the page refetches once the socket opens: read before a change made meanwhile, it would land
+  // after it and show the old state.
   const open = async (page: Page, n: number) => {
+    const refreshed = new Promise<void>((resolve) => {
+      const onFinished = (r: HTTPRequest) => {
+        if (r.headers().rsc !== "1" || !r.url().includes(`/t/${n}`)) return;
+        page.off("requestfinished", onFinished);
+        resolve();
+      };
+      page.on("requestfinished", onFinished);
+      setTimeout(() => { page.off("requestfinished", onFinished); resolve(); }, 15_000);
+    });
     await page.goto(threadUrl(n), { waitUntil: "domcontentloaded" });
     await page.waitForSelector("textarea#composer");
     await socketOpen(page);
+    await refreshed;
   };
 
   await A.evaluateOnNewDocument(PAGE_HELPERS);
