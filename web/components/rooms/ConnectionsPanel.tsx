@@ -11,11 +11,13 @@ import { swap } from "@/lib/motion";
 import type { GitHubConnection, McpConnection } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { Hint } from "@/components/ui/Hint";
+import { PanelLoading } from "@/components/ui/PanelLoading";
 import { Spinner } from "@/components/ui/Spinner";
 import { useToast } from "@/components/overlays/Toast";
 import { ActivityLog } from "./ActivityLog";
 import { McpServers } from "./McpServers";
 import { RepoPicker, type Installation, type RepoPick } from "./RepoPicker";
+import { useRoomData } from "./useRoomData";
 
 type Connections = {
   github: GitHubConnection | null; mcp: McpConnection[]; approvalTimeoutMin: number; canManage: boolean; installUrl: string | null;
@@ -30,21 +32,13 @@ type Mode = { kind: "view" } | { kind: "confirmDisconnect" } | { kind: "pick"; i
 export function ConnectionsPanel({ roomId, archived, pickGitHub, onPickStarted }: {
   roomId: string; archived: boolean; pickGitHub?: boolean; onPickStarted?: () => void;
 }) {
-  const toast = useToast();
-  const [data, setData] = useState<Connections | null>(null);
+  // One counter reloads both the connections and the activity log below them.
   const [version, setVersion] = useState(0);
+  const { data, setData, failed, reload } = useRoomData<Connections>(`/bff/api/rooms/${roomId}/connections`, version);
 
   useLiveEvent("room.updated", (e) => {
     if (e.roomId === roomId) setVersion((v) => v + 1);
   });
-
-  useEffect(() => {
-    let current = true;
-    bff<Connections>(`/bff/api/rooms/${roomId}/connections`)
-      .then((d) => current && setData(d))
-      .catch((e) => toast(errorText(e), "error"));
-    return () => { current = false; };
-  }, [roomId, version, toast]);
 
   const manage = !!data?.canManage && !archived;
   /** Shown at once, then fetched again with the log, so this tab stays current even when its socket is down. */
@@ -63,13 +57,13 @@ export function ConnectionsPanel({ roomId, archived, pickGitHub, onPickStarted }
               roomId={roomId} data={data} manage={manage} pick={!!pickGitHub} onPickStarted={onPickStarted} onChange={(github) => changed({ github })}
             />
           )
-          : <div className="flex h-9 items-center justify-center text-text-3"><Spinner /></div>}
+          : <PanelLoading failed={failed} onRetry={reload} />}
       </section>
       <section className="flex flex-col gap-2">
         <h2 className="text-[11.5px] font-semibold text-text-3">MCP servers</h2>
         {data
           ? <McpServers roomId={roomId} servers={data.mcp} manage={manage} onChange={(mcp) => changed({ mcp })} />
-          : <div className="flex h-9 items-center justify-center text-text-3"><Spinner /></div>}
+          : !failed && <PanelLoading />}
       </section>
       <section className="flex flex-col gap-2">
         {/* The hint sits beside the heading, not in it, so the heading's accessible name is just "Approvals". */}

@@ -36,6 +36,13 @@ const show = (rooms: RoomSummary[] = [room("r1", "member")]) =>
   render(<AgentsPanel roomId="r1" me={{ userId: "u1", role: "member" }} rooms={rooms} models={MODELS} archived={false} />);
 
 describe("AgentsPanel", () => {
+  it("offers a retry when the first load fails, instead of spinning for good", async () => {
+    mockedBff.mockRejectedValueOnce(new Error("Something went wrong."));
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: /Couldn.t load/ }));
+    expect(await screen.findByText("@scout")).toBeTruthy();
+  });
+
   it("lists each agent with its model, tool kinds and creator", async () => {
     show();
     expect(await screen.findByText("@scout")).toBeTruthy();
