@@ -30,7 +30,7 @@ import { addOps } from "./ops.js";
 import { addWeb, WEB_BUILD, type WebBuild } from "./web.js";
 
 /** Path to a handler file in services/src */
-export const servicePath = (file: string) =>
+const servicePath = (file: string) =>
   fileURLToPath(new URL(`../../services/src/${file}`, import.meta.url));
 
 /** Floci serves each API on its own host; the amazonaws.com URLs CloudFormation reports don't resolve locally. */

@@ -1,0 +1,22 @@
+#!/bin/sh
+# Blocks a push whose commits add a secret or a real email address. Git passes one line per ref on stdin:
+# <local ref> <local sha> <remote ref> <remote sha>, with an all-zero sha for a ref that doesn't exist on that side.
+scan="$(dirname "$0")/scan-diff"
+status=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case $local_sha in *[!0]*) ;; *) continue ;; esac
+  # A new branch, or a remote tip this clone has never fetched, is compared from where it left origin/master.
+  case $remote_sha in
+    *[!0]*) git cat-file -e "$remote_sha^{commit}" 2>/dev/null && range="$remote_sha..$local_sha" || range="origin/master...$local_sha" ;;
+    *) range="origin/master...$local_sha" ;;
+  esac
+  if ! diff=$(git diff --no-color --no-ext-diff -U0 "$range"); then
+    echo "pre-push: could not diff $range, so nothing was pushed." >&2
+    exit 1
+  fi
+  if ! printf '%s\n' "$diff" | sh "$scan" >&2; then
+    echo "pre-push: $local_ref adds the lines above. Remove them (or extend the allow-list in .githooks/scan-diff if they are fake)." >&2
+    status=1
+  fi
+done
+exit $status

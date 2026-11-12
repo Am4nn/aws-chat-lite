@@ -13,6 +13,9 @@ describe("mcpTarget", () => {
     expect(mcpTarget({ status: 410, body: { error: "This connection attempt expired. Try again." } }))
       .toBe("/?mcpError=This+connection+attempt+expired.+Try+again.");
   });
+  it("says the server was too slow when the API timed out", () => {
+    expect(mcpTarget({ status: 504, body: {} })).toBe("/?mcpError=The+server+took+too+long+to+answer.+Try+again.");
+  });
 });
 
 describe("githubTarget", () => {
@@ -27,5 +30,13 @@ describe("githubTarget", () => {
     expect(githubTarget({ status: 410, body: { error: "This GitHub sign-in expired. Try again." } }))
       .toBe("/?githubError=This+GitHub+sign-in+expired.+Try+again.");
     expect(githubTarget({ status: 500, body: {} })).toBe("/?githubError=Something+went+wrong.");
+  });
+  it("says GitHub was too slow when the API timed out", () => {
+    const slow = "/?githubError=GitHub+took+too+long+to+answer.+Try+Connect+GitHub+again.";
+    expect(githubTarget({ status: 504, body: {} })).toBe(slow);
+    expect(githubTarget({ status: 503, body: {} })).toBe(slow);
+  });
+  it("keeps the API's own message on a 503 that names one", () => {
+    expect(githubTarget({ status: 503, body: { roomId: "r1", error: "busy" } })).toBe("/r/r1?githubError=busy");
   });
 });

@@ -49,7 +49,7 @@ export function flociHost(awsUrl: string): string {
   return `${m[1]}.${m[2] === "lambda-url" ? "lambda-url.us-east-1" : "execute-api"}.localhost.floci.io:${FLOCI_PORT}`;
 }
 
-export const AWS_STAGE_REGION = "ap-southeast-2";
+const AWS_STAGE_REGION = "ap-southeast-2";
 
 /**
  * Env for real AWS (stage aws): never an emulator endpoint or Floci's fake keys, a named profile
