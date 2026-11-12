@@ -62,7 +62,7 @@ export function addWeb(stack: CoreStack, prod: ProdSettings, build: WebBuild, st
       COGNITO_REGION: stack.region,
       SIGNUP_EMAIL: "required",
       SECURE_COOKIES: "true",
-      SITE_ORIGINS: site,
+      ...stack.siteOriginsEnvironment(),
       ORIGIN_VERIFY_SECRET: originSecret(stack),
     },
   });

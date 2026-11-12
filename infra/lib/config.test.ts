@@ -10,6 +10,7 @@ describe("loadConfig", () => {
       stage: "local", prefix: "cl-local", isLocal: true, region: "us-east-1",
       siteOrigins: ["http://localhost:3000", "http://localhost:3100"], s3PublicEndpoint: "http://localhost:4566",
       modelGateway: "fake", toolMode: "fake", pushMode: "fake", voiceMode: "fake", transcribeLocalUrl: "ws://localhost:4601",
+      streamLocalUrl: "http://localhost:4600", sandboxLocalUrl: "http://host.docker.internal:4700",
     });
   });
 

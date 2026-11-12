@@ -2,6 +2,9 @@ export type Stage = "local" | "aws";
 
 const DOMAIN_NAME = "chat.amanarya.com";
 
+/** Floci serves every AWS service it emulates on this one port. */
+export const FLOCI_PORT = 4566;
+
 /**
  * Requests per second for every route of the AWS API and socket stages. On the socket stage it also limits `$connect`,
  * the connection-rate protection: a flood of new sockets is refused at the edge before any Lambda runs.
@@ -54,6 +57,10 @@ export interface StageConfig {
   voiceMode: "fake" | "live";
   /** Local only: the fake Transcribe streaming server on the developer's machine, which the browser dictates to. */
   transcribeLocalUrl?: string;
+  /** Local only: the run stream as a Node server on the developer's machine, because Floci's Function URLs stream no body. */
+  streamLocalUrl?: string;
+  /** Local only: the Docker sandbox server on the developer's machine, as the run function reaches it from Floci's Docker. */
+  sandboxLocalUrl?: string;
   /** Local only: the secret the run function sends to the Docker sandbox server on the developer's machine. */
   sandboxToken?: string;
   /** Set on AWS only. */
@@ -75,14 +82,15 @@ export function loadConfig(stage: string | undefined, env: NodeJS.ProcessEnv, co
   if (stage === "local") {
     if (!isFlociEndpoint(env.AWS_ENDPOINT_URL)) {
       throw new Error(
-        "stage=local but AWS_ENDPOINT_URL must point at Floci (e.g. http://localhost:4566). Refusing to touch real AWS.",
+        `stage=local but AWS_ENDPOINT_URL must point at Floci (e.g. http://localhost:${FLOCI_PORT}). Refusing to touch real AWS.`,
       );
     }
     return {
       stage, prefix: "cl-local", isLocal: true, region: "us-east-1",
-      siteOrigins: ["http://localhost:3000", "http://localhost:3100"], s3PublicEndpoint: "http://localhost:4566",
+      siteOrigins: ["http://localhost:3000", "http://localhost:3100"], s3PublicEndpoint: `http://localhost:${FLOCI_PORT}`,
       modelGateway: env.MODEL_GATEWAY === "live" ? "live" : "fake", toolMode: env.TOOL_MODE === "live" ? "live" : "fake",
       pushMode: env.PUSH_MODE === "live" ? "live" : "fake", voiceMode: "fake", transcribeLocalUrl: "ws://localhost:4601",
+      streamLocalUrl: "http://localhost:4600", sandboxLocalUrl: "http://host.docker.internal:4700",
       ...(env.SANDBOX_TOKEN && { sandboxToken: env.SANDBOX_TOKEN }),
     };
   }

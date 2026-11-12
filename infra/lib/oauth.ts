@@ -22,7 +22,7 @@ export const issuerEnvironment = (stack: CoreStack) => ({ MCP_BASE_URL: stack.pu
  */
 export function addOAuth(stack: CoreStack) {
   const { table, auth } = stack;
-  const fn = stack.addFunction("oauth", "oauth/handler.ts", {}, {
+  const fn = stack.addFunction("oauth", "oauth/handler.ts", {
     timeout: Duration.seconds(15),
     // Its rate limits count each viewer's address, which only requests carrying CloudFront's secret can vouch for.
     environment: {

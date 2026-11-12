@@ -11,12 +11,10 @@ import { issuerEnvironment } from "./oauth.js";
  * Posting can hand a message to the agent and wait for the run to start, so it gets longer than the default timeout.
  */
 export function addMcpServer(stack: CoreStack, files: s3.Bucket) {
-  const { s3PublicEndpoint } = stack.stageConfig;
-  const fn = stack.addFunction("mcp", "mcp/server/handler.ts", { tableAccess: true }, {
+  const fn = stack.addFunction("mcp", "mcp/server/handler.ts", {
+    tableAccess: true,
     timeout: Duration.seconds(30),
-    environment: {
-      ...issuerEnvironment(stack), FILES_BUCKET: files.bucketName, ...(s3PublicEndpoint && { S3_PUBLIC_ENDPOINT: s3PublicEndpoint }),
-    },
+    environment: { ...issuerEnvironment(stack), ...stack.filesEnvironment(files) },
   });
   fn.addToRolePolicy(new iam.PolicyStatement({ actions: ["s3:GetObject"], resources: [files.arnForObjects("rooms/*")] }));
   stack.allowBroadcast(fn);
