@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { bff } from "@/lib/client/bff";
+import { bff, errorText } from "@/lib/client/bff";
 import type { Chat } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
@@ -40,7 +40,7 @@ export function ChatNameForm({ roomId, chat, onDone }: { roomId: string; chat?: 
       }
       router.refresh();
     } catch (err) {
-      setError((err as Error).message);
+      setError(errorText(err));
     } finally {
       setBusy(false);
     }

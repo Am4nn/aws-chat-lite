@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { bff, errorText } from "@/lib/client/bff";
+import { bff, errorText, UserError } from "@/lib/client/bff";
 import { applyFilesUpdate } from "@/lib/client/files";
 import { useLiveEvent } from "@/lib/client/LiveProvider";
 import type { RoomFile } from "@/lib/types";
@@ -78,7 +78,7 @@ export function useRoomFiles(roomId: string): RoomFiles {
     const body = new FormData();
     for (const [k, v] of Object.entries(form.fields)) body.append(k, v);
     body.append("file", file);
-    if (!(await fetch(form.url, { method: "POST", body })).ok) throw new Error(`${file.name} didn't upload.`);
+    if (!(await fetch(form.url, { method: "POST", body })).ok) throw new UserError(`${file.name} didn't upload.`);
     apply({ files: [await bff<RoomFile>(base, { method: "PUT", body: { path: file.name, uploadKey: form.uploadKey } })], deleted: [] });
   }
 

@@ -1,4 +1,9 @@
 import type { LiveEvent } from "../types";
+import { DEFAULT_ERROR, UserError } from "./bff";
+
+// Only a request refused before it went out is certainly not sent: one that got no ack may have been stored.
+const NOT_SENT = "Not connected, so it wasn't sent.";
+const UNCONFIRMED = "The server didn't confirm it. Check before retrying.";
 
 export type ClientEvent = LiveEvent | { type: "reconnected" };
 type Status = "connecting" | "open" | "reconnecting" | "closed";
@@ -44,12 +49,12 @@ export class LiveSocket {
 
   request(action: string, args: Record<string, unknown>): Promise<unknown> {
     const ws = this.ws;
-    if (this.status !== "open" || !ws) return Promise.reject(new Error("not connected"));
+    if (this.status !== "open" || !ws) return Promise.reject(new UserError(NOT_SENT));
     const requestId = String(++this.nextId);
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(requestId);
-        reject(new Error("timeout"));
+        reject(new UserError(UNCONFIRMED));
       }, ACK_TIMEOUT_MS);
       this.pending.set(requestId, { resolve, reject, timer });
       ws.send(JSON.stringify({ action, requestId, ...args }));
@@ -129,7 +134,7 @@ export class LiveSocket {
     clearInterval(this.pingTimer);
     this.pending.forEach((p, id) => {
       clearTimeout(p.timer);
-      p.reject(new Error("connection closed"));
+      p.reject(new UserError(UNCONFIRMED));
       this.pending.delete(id);
     });
   }
@@ -146,6 +151,6 @@ export class LiveSocket {
     this.pending.delete(frame.requestId);
     clearTimeout(p.timer);
     if (frame.ok) p.resolve(frame.data);
-    else p.reject(new Error(frame.error));
+    else p.reject(new UserError(frame.error ?? DEFAULT_ERROR));
   }
 }

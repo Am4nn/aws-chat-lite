@@ -1,8 +1,14 @@
+export const DEFAULT_ERROR = "Something went wrong.";
+
+/** An error whose message we wrote, so the user may see it. Any other error's text is the browser's or a library's. */
+export class UserError extends Error {}
+
 /**
  * Calls from the browser to the Next.js server's /bff/* routes. The httpOnly cookies ride along automatically.
  * When the ID token has expired, one silent refresh is attempted before giving up and sending the user to sign in.
+ * The answer's error is the API's or the BFF's own, both of which send only messages they wrote.
  */
-export class BffError extends Error {
+export class BffError extends UserError {
   constructor(public status: number, message: string) {
     super(message);
   }
@@ -24,11 +30,16 @@ export async function bff<T = unknown>(path: string, init: { method?: string; bo
     res = await send();
   }
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new BffError(res.status, body.error ?? "Something went wrong.");
+  if (!res.ok) throw new BffError(res.status, body.error ?? DEFAULT_ERROR);
   return body as T;
 }
 
-export const errorText = (e: unknown) => (e instanceof Error ? e.message : "Something went wrong.");
+/** What to tell the user about a failure: our own message, or else `fallback`, with the real error kept in the console. */
+export function errorText(e: unknown, fallback = DEFAULT_ERROR): string {
+  if (e instanceof UserError) return e.message;
+  console.error(e);
+  return fallback;
+}
 
 /** A GET where "not found" is a normal answer (null). Any other failure still throws, so a blip isn't mistaken for "none". */
 export async function bffOrNull<T>(path: string): Promise<T | null> {

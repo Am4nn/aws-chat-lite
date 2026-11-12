@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { bff } from "@/lib/client/bff";
+import { bff, errorText } from "@/lib/client/bff";
 import { rememberTimeZone } from "@/lib/client/useTimeZone";
 import { dur, easeOut, spring } from "@/lib/motion";
 import { Button } from "@/components/ui/Button";
@@ -41,7 +41,7 @@ export function LoginForm({ next, emailSignup }: { next: string; emailSignup: bo
       // A full page load after sign-in: the session cookies just changed, so every server component and cache starts fresh.
       window.location.assign(next);
     } catch (err) {
-      setError((err as Error).message);
+      setError(errorText(err));
     } finally {
       setBusy(false);
     }

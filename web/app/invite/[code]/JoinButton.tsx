@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { bff } from "@/lib/client/bff";
+import { bff, errorText } from "@/lib/client/bff";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 
@@ -16,7 +16,7 @@ export function JoinButton({ code }: { code: string }) {
       const { roomId } = await bff<{ roomId: string }>(`/bff/api/invites/${code}/accept`, { body: {} });
       window.location.assign(`/r/${roomId}`);
     } catch (e) {
-      setError((e as Error).message);
+      setError(errorText(e));
       setBusy(false);
     }
   }
