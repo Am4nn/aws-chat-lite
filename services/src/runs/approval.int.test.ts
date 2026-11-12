@@ -162,6 +162,17 @@ describe("approvals in the run loop, on Floci", { timeout: 60_000 }, () => {
     expect(await eventsOf(runId, "step.finished")).toEqual([]);
   });
 
+  it("an image in a private thread waits for a member, and is made once approved", async () => {
+    const at = await room();
+    const { thread, message } = await threadsRepo().createThread(at.aman, at.roomId, { text: "go call:image_generate", clientId: `k${++clients}` });
+    await threadsRepo().addTaint(at.roomId, thread.number, ["attachment"]);
+    const { runId } = await startOrSteer(at.aman, at.roomId, thread.threadId, message);
+    expect((await waiting(at.roomId, thread.threadId)).approval?.title).toMatch(/^Send ".*" to Gemini for an image\?$/);
+    await decideApproval(at.bea, runId, 1, "approve");
+    expect((await finished(runId)).status).toBe("done");
+    expect(await eventsOf(runId, "step.finished")).toMatchObject([{ step: 1, ok: true, image: { aspect: "1:1" } }]);
+  });
+
   it("a stop while waiting ends the run within seconds and cancels the approval", async () => {
     const at = await room();
     const { thread, runId } = await startRun("go call:github_comment", at);

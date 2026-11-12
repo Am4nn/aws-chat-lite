@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { BUILT_IN } from "../agents/model.js";
 import type { McpConnection, ToolKind } from "../threads/types.js";
 import { findTool } from "../tools/index.js";
-import { agentCard, asksFirst, delegateSpec, FAKE_TOOLS, mayRun, runTool, SANDBOX_TOOL, toolDetail, toolsFor } from "./tools.js";
+import { agentCard, asksFirst, delegateSpec, FAKE_TOOLS, IMAGE_GATE, mayRun, runTool, SANDBOX_TOOL, toolDetail, toolsFor } from "./tools.js";
 
 const conn = (status: McpConnection["status"]): McpConnection => ({
   name: "test", url: "http://127.0.0.1:4710/mcp", auth: "oauth", status, toolCount: 1, toolsAt: "2026-11-11T00:00:00Z", addedBy: "aman",
@@ -198,6 +198,12 @@ describe("asksFirst", () => {
     expect(asksFirst(tool("web_fetch"), [])).toBe(false);
     expect(asksFirst(tool("web_fetch"), ["mcp:test"])).toBe(true);
     expect(asksFirst(tool("github_read_file"), ["attachment"])).toBe(false);
+  });
+
+  it("asks before an image in a private thread, since its prompt goes to Gemini, which may not see private content", () => {
+    expect(asksFirst(IMAGE_GATE, [])).toBe(false);
+    expect(asksFirst(IMAGE_GATE, ["attachment"])).toBe(true);
+    expect(IMAGE_GATE.ask({ prompt: "a cat on a mat" })).toBe('Send "a cat on a mat" to Gemini for an image?');
   });
 
   it("never asks before a memory call: memory stays in the room", () => {

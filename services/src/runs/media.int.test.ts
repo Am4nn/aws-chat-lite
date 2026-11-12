@@ -2,6 +2,7 @@ import { createECDH, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it } from "vitest";
+import { auditRepo } from "../audit/repo.js";
 import { chatRepo } from "../chat/repo.js";
 import { docClient, queryAll, tableName } from "../lib/db.js";
 import { pushRepo } from "../push/repo.js";
@@ -103,6 +104,8 @@ describe("images and pushes, on Floci", { timeout: 60_000 }, () => {
 
     const named = (await threadsRepo().threadById(at.roomId, thread.threadId))!.name;
     expect((await pushedTo(at.aman.userId)).map((n) => n.title)).toEqual([`#${named} finished`]);
+    const tools = (await auditRepo().list(at.roomId)).entries.filter((e) => e.kind === "tool");
+    expect(tools).toMatchObject([{ actor: "agent", tool: "image_generate", threadNumber: thread.number }]);
   });
 
   it("a second run in the thread saves its own image and leaves the first one", async () => {

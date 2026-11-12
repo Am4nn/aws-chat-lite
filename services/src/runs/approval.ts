@@ -12,7 +12,7 @@ import { DEAD_AFTER_MS } from "./model.js";
 import { notifyRun } from "./notify.js";
 import { runsRepo } from "./repo.js";
 import { laneOf, limitsReached, models, roomConnections, toolRoom, type RoutedRun } from "./steps.js";
-import { asksFirst, mayRun } from "./tools.js";
+import { asksFirst, IMAGE_GATE, mayRun } from "./tools.js";
 
 /*
  * The steps around a tool call's wait for a member. Everything the wait depends on is read inside a step, so a
@@ -29,14 +29,14 @@ type Gate = { asks: false } | { asks: true; timeoutSec: number; title: string; i
  */
 export async function gateOf(run: RoutedRun, call: ToolCall, taint: TaintSource[]): Promise<Gate> {
   const room = await roomConnections(run.roomId);
-  const tool = findTool(call.name, room);
+  const tool = call.name === IMAGE_GATE.spec.name ? IMAGE_GATE : findTool(call.name, room);
   if (!tool || !mayRun(run.model, models().servedBy(run.model), call.name, room, run.agent.tools)) return { asks: false };
   const thread = tool.write ? undefined : await threadsRepo().threadById(run.roomId, run.threadId);
   const seen = mergeTaint(taint, thread?.taint ?? []);
   if (!asksFirst(tool, seen) || await limitsReached(run)) return { asks: false };
   const { github, approvalTimeoutSec } = room;
   const env = { ...await toolEnv(process.env.TOOL_MODE, github ?? undefined), room: toolRoom(run, seen.length > 0) };
-  if (tool.check?.(call.input, env)) return { asks: false };
+  if ("check" in tool && tool.check?.(call.input, env)) return { asks: false };
   const input = tool.kind === "github" ? { ...call.input, repo: repoOf(call.input, github ?? undefined) } : call.input;
   return { asks: true, timeoutSec: approvalTimeoutSec, title: tool.ask!(input, env), input };
 }

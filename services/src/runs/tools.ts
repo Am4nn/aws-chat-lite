@@ -46,6 +46,15 @@ export const IMAGE_TOOL: ToolSpec = {
   },
 };
 
+/**
+ * The image tool as the approval gate sees it. Gemini may not see private content, and a prompt written in a private
+ * thread could carry some there, so there it asks first, as a web call does.
+ */
+export const IMAGE_GATE = {
+  spec: IMAGE_TOOL, kind: "images", write: false,
+  ask: (input: Record<string, unknown>) => `Send "${String(input.prompt ?? "").slice(0, 80)}" to Gemini for an image?`,
+} as const;
+
 export const firstLine = (text: unknown) => String(text ?? "").split("\n").map((l) => l.trim()).find(Boolean) ?? "";
 
 export const DELEGATE = "delegate";
@@ -103,15 +112,15 @@ export function mayRun(model: string, served: Provider, name: string, { roomId, 
 }
 
 /**
- * Whether a call waits for a member's approval. A write always does. A web or MCP call sends its input out, so text
- * injected into private content could have the model carry that content out in it: such a call asks once the thread
- * holds any private content but what this same MCP server returned itself. GitHub reads and memory keep their input
- * inside what the room already shares. `taint` is the thread's, with whatever the model's turn saw that the stored taint
- * may lag behind.
+ * Whether a call waits for a member's approval. A write always does. A web, MCP or image call sends its input out, so
+ * text injected into private content could have the model carry that content out in it: such a call asks once the
+ * thread holds any private content but what this same MCP server returned itself. GitHub reads and memory keep their
+ * input inside what the room already shares. `taint` is the thread's, with whatever the model's turn saw that the
+ * stored taint may lag behind.
  */
-export function asksFirst(tool: Pick<Tool, "spec" | "kind" | "write">, taint: TaintSource[]): boolean {
+export function asksFirst(tool: Pick<Tool, "spec" | "write"> & { kind: Tool["kind"] | "images" }, taint: TaintSource[]): boolean {
   if (tool.write) return true;
-  if (tool.kind !== "web" && tool.kind !== "mcp") return false;
+  if (tool.kind !== "web" && tool.kind !== "mcp" && tool.kind !== "images") return false;
   const own = tool.kind === "mcp" ? mcpTaint(mcpServerOf(tool.spec.name)) : undefined;
   return taint.some((t) => t !== own);
 }

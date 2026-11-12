@@ -434,7 +434,7 @@ type Room = Awaited<ReturnType<typeof roomConnections>>;
 /** `taint`: the private content the turn saw, which can be ahead of the thread's stored taint. */
 type RoomCall = { room: Room; settled?: Approval; started: RunEvent; rerun: boolean; envOf: typeof toolEnv; taint: TaintSource[] };
 
-/** What the model is told in place of a write's result when it wasn't approved. */
+/** What the model is told in place of a call's result when it asked first and wasn't approved. */
 function unapproved(settled: Approval | undefined): string {
   switch (settled?.status) {
     case "denied":
@@ -492,7 +492,7 @@ async function runCall(run: RoutedRun, call: ToolCall, offered: boolean, step: n
  * One tool call: one step. The limits are checked first, so a stop never waits for another tool. A sandbox step taints
  * the thread before any code runs, since its output carries room files, and is billed after it finishes, once: a retry
  * that finds the step finished but unbilled only bills it. An image step is billed as Gemini answers, once, and its
- * cost is the run's from then on. A write comes with its settled approval.
+ * cost is the run's from then on. A call that asked first comes with its settled approval.
  */
 export async function toolStep(
   run: RoutedRun, call: ToolCall, settled?: Approval, envOf = toolEnv, taint: TaintSource[] = [],
@@ -523,7 +523,9 @@ export async function toolStep(
   const before = logged("step.started");
   const detail = toolDetail(call, room);
   const started = before ?? await writer.append({ type: "step.started", step, call, detail });
-  if (sandboxed || imaging) await auditTool(run, started, call.name, detail);
+  // An image that asked first runs only once approved.
+  const declined = imaging && !!settled && settled.status !== "approved";
+  if ((sandboxed || imaging) && !declined) await auditTool(run, started, call.name, detail);
   const currentStep = run.helper ? `${run.agent.name} › ${call.name}` : call.name;
   await notifyRun(run.roomId, await runs.progress(run, { steps: step, currentStep }), started.seq);
   const t0 = Date.now();
@@ -532,9 +534,11 @@ export async function toolStep(
     const meter = { model: IMAGE_MODEL, job: "image" as const, toolStep: step };
     return recordCall(run, writer, meter, { type: "usage", ...usage, costMicros }, { costMicros: costAfter() });
   };
-  const result: Outcome = imaging
-    ? await generateImageStep(run, step, call.input, events, imageDeps(bill))
-    : await runCall(run, call, offered, step, { room, settled, started, rerun: !!before, envOf, taint });
+  const result: Outcome = declined
+    ? { ok: false, output: unapproved(settled) }
+    : imaging
+      ? await generateImageStep(run, step, call.input, events, imageDeps(bill))
+      : await runCall(run, call, offered, step, { room, settled, started, rerun: !!before, envOf, taint });
   const { output, ok, synced, sources, image } = result;
   const ms = result.ms ?? Date.now() - t0;
   if (synced && hasChanges(synced) && !logged("files.synced")) await writer.append({ type: "files.synced", step, ...synced });

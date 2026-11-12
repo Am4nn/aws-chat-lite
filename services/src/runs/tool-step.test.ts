@@ -49,6 +49,18 @@ describe("toolStep", () => {
     });
   });
 
+  it("an image a member didn't approve is neither made nor logged as run", async () => {
+    const settled = {
+      runId: "run1", roomId: "r1", threadId: "t1", step: 1, call: { id: "c1", name: "image_generate", input: { prompt: "the plan" } },
+      title: "t", callbackId: "cb", expiresAt: "2026-11-12T00:10:00.000Z", requestedAt: "2026-11-12T00:00:00.000Z", status: "denied" as const, by: "bea",
+    };
+    const appended: RunEvent[] = [];
+    runs.eventWriter.mockResolvedValue({ append: async (e: object) => (appended.push(e as RunEvent), { ...e, seq: 7, at: "2026-11-12T00:00:00.000Z" }) });
+    await toolStep(run, settled.call, settled);
+    expect(audit.record).not.toHaveBeenCalled();
+    expect(appended.find((e) => e.type === "step.finished")).toMatchObject({ ok: false, output: expect.stringMatching(/^Denied by bea\./) });
+  });
+
   it("logs nothing for a tool the model was never offered", async () => {
     await toolStep(run, { id: "c1", name: "github_comment", input: {} });
     expect(audit.record).not.toHaveBeenCalled();
