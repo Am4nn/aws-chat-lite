@@ -121,7 +121,7 @@ describe("chat repo on Floci", () => {
     const { owner, members: [admin, b], at } = await room("admin", "bee");
     await rooms.setRole(at.roomId, owner.userId, admin.userId, "admin");
     const m = await say(b, at, "regrettable");
-    const removed = await chat.remove(admin, { ...at, seq: m.seq });
+    const { message: removed } = await chat.remove(admin, { ...at, seq: m.seq });
     expect(removed).toMatchObject({ seq: m.seq, deleted: "admin", text: "" });
     const { messages } = await chat.history(b, at.roomId, at.chatId, {});
     expect(messages[0]).toMatchObject({ deleted: "admin", text: "" });
@@ -135,7 +135,7 @@ describe("chat repo on Floci", () => {
     const theirs = await say(owner, at);
     await expect(chat.remove(b, { ...at, seq: theirs.seq })).rejects.toBeInstanceOf(Forbidden);
     const mine = await say(b, at);
-    expect(await chat.remove(b, { ...at, seq: mine.seq })).toMatchObject({ deleted: "self" });
+    expect((await chat.remove(b, { ...at, seq: mine.seq })).message).toMatchObject({ deleted: "self" });
   });
 
   it("react on then off leaves no thumbs entry", async () => {

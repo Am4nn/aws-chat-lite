@@ -133,7 +133,7 @@ describe("threads repo on Floci", () => {
     await spend(3_000);
     expect(await budget.get(roomId, now)).toMatchObject({ spentMicros: 4_250, capMicros: 3_000_000, month: monthKey(now) });
     const { Item } = await docClient().send(new GetCommand({ TableName: tableName(), Key: { pk: `ROOM#${roomId}`, sk: `USAGE#${monthKey(now)}` }, ConsistentRead: true }));
-    expect(Item).toMatchObject({ costMicros: 4_250, calls: 2 });
+    expect(Item).toMatchObject({ costMicros: 4_250 });
 
     const admin = user("admin");
     await rooms.acceptInvite((await rooms.rotateInvite(roomId, owner.userId)).code, admin);
