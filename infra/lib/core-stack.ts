@@ -137,7 +137,7 @@ export class CoreStack extends Stack {
     new CfnOutput(this, "TableName", { value: this.table.tableName });
     new CfnOutput(this, "StreamUrl", { value: streamUrl });
     new CfnOutput(this, "McpBaseUrl", { value: this.publicApiUrl });
-    if (props.config.prod) addOps(this, props.config.prod.alertEmail);
+    if (props.config.prod) addOps(this, prefix, props.config.prod.alertEmail);
   }
 
   /** Adds a route; JWT-protected unless `public`. */
