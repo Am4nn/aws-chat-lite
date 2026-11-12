@@ -87,7 +87,7 @@ Floci held 25 durable executions at once. Most of a run's time there is DynamoDB
 | Attachments taint a thread for good | One stray file loses DeepSeek for that thread |
 | `max_tokens` 16,000 per run call, 1,024 for router and naming; effort medium for runs, low for small jobs | Long answers end with the length note |
 | DeepSeek is always billed at peak; a stopped stream bills its input plus ⌈chars/4⌉ output | Up to 2× high off-peak; a little under for hidden thinking |
-| Real models get no tools yet; the fake tools reach only the fake | Real runs are plain chat for now |
+| Real and fake models get the same tools ([07](07-tools-approvals.md)); locally the tools are canned fakes unless `deploy:local -- --live-tools` | A local run with real models still sees canned GitHub and search results |
 | Picks are stable keys (`sonnet`); runs store the resolved id | Moving `sonnet` to a newer model is one catalog line |
 | A pick lives in memory per chat, and the pill is locked while a run is live. Until a chat picks, a send names no model and the server applies the room default | It resets on reload; to switch mid-task, stop and resend |
 
@@ -97,7 +97,6 @@ Floci held 25 durable executions at once. Most of a run's time there is DynamoDB
 - **The secret keeps the last value put.** A plain `deploy:local` switches the gateway back to the fake but leaves the keys in Floci's secret, so put `{}` into `cl-local-model-keys` after a live session.
 
 ## Known limits
-- Real models get no tools yet, so a real run is plain chat; the tool path is proven by the real-key suite, not by runs.
 - A stream that stops early bills its output as ⌈characters/4⌉ of the text it showed; hidden thinking and half-sent tool input aren't counted.
 - DeepSeek is billed at its peak rate around the clock, so off-peak costs read up to twice what DeepSeek charges.
 - A declined answer isn't retried on another model; the member picks one and sends again.
