@@ -16,7 +16,7 @@ const cache = new Map<string, unknown>();
  */
 export function useRoomData<T>(path: string, key?: unknown) {
   const toast = useToast();
-  const [data, setData] = useState(() => (cache.get(path) as T | undefined) ?? null);
+  const [data, setData] = useState<T | null>(() => (cache.get(path) as T | undefined) ?? null);
   const [failed, setFailed] = useState(false);
   const [version, setVersion] = useState(0);
   const [shownPath, setShownPath] = useState(path);

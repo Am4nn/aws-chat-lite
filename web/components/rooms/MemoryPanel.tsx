@@ -35,7 +35,8 @@ export function MemoryPanel({ roomId, archived }: { roomId: string; archived: bo
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
   const [deleting, setDeleting] = useState<MemoryEntry | null>(null);
   const [fresh, setFresh] = useState<Set<string>>(new Set());
-  // The list last looked at, and every id shown so far: null until the first answer, whose entries were already there.
+  // The list last looked at, and every id shown so far: null until the first list (cached or fetched), whose entries
+  // were already there.
   const [seen, setSeen] = useState<{ list?: MemoryEntry[]; ids: Set<string> | null }>({ ids: null });
   const base = `/bff/api/rooms/${roomId}/memory`;
   const { data, setData, failed, reload } = useRoomData<{ entries: MemoryEntry[] }>(base);
@@ -58,8 +59,7 @@ export function MemoryPanel({ roomId, archived }: { roomId: string; archived: bo
     return () => clearTimeout(timer);
   }, [fresh]);
 
-  const put = (entry: MemoryEntry, only: (m: MemoryEntry) => boolean = () => true) =>
-    setEntries((list) => list.map((m) => (m.memoryId === entry.memoryId && only(m) ? entry : m)));
+  const put = (entry: MemoryEntry) => setEntries((list) => list.map((m) => (m.memoryId === entry.memoryId ? entry : m)));
 
   async function save(entry: MemoryEntry, text: string) {
     put({ ...entry, text });
@@ -68,7 +68,7 @@ export function MemoryPanel({ roomId, archived }: { roomId: string; archived: bo
       put((await bff<{ entry: MemoryEntry }>(`${base}/${entry.memoryId}`, { method: "PATCH", body: { text } })).entry);
     } catch (e) {
       // Only undone while the row still shows this edit: a refetch may have brought something newer.
-      put(entry, (m) => m.text === text);
+      setEntries((list) => list.map((m) => (m.memoryId === entry.memoryId && m.text === text ? entry : m)));
       setEditing({ id: entry.memoryId, text });
       toast(errorText(e), "error");
     }
