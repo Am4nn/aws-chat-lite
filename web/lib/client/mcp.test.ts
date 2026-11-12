@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import type { McpConnection, McpToolInfo } from "../types";
-import { callbackTarget, keptLine, toolLabel } from "./mcp";
+import { keptLine, toolLabel } from "./mcp";
 
 const tool = (name: string, readOnly = false): McpToolInfo => ({ name, description: "", inputSchema: {}, readOnly });
 const conn = (over: Partial<McpConnection> = {}): McpConnection => ({
@@ -22,18 +22,4 @@ describe("keptLine", () => {
     expect(keptLine(conn({ tools, toolCount: 45 }))).toBe("40 of 45 tools kept");
   });
   it("says nothing when every tool was kept", () => expect(keptLine(conn())).toBeNull());
-});
-
-describe("callbackTarget", () => {
-  it("returns to the room with the connected server's name", () => {
-    expect(callbackTarget({ status: 200, body: { roomId: "r1", connection: conn() } })).toBe("/r/r1?mcp=test");
-  });
-  it("returns to the room with the error when the flow named one", () => {
-    expect(callbackTarget({ status: 403, body: { roomId: "r1", error: "Finish connecting as the admin who started it." } }))
-      .toBe("/r/r1?mcpError=Finish+connecting+as+the+admin+who+started+it.");
-  });
-  it("returns home with the error when the flow was unknown", () => {
-    expect(callbackTarget({ status: 410, body: { error: "This connection attempt expired. Try again." } }))
-      .toBe("/?mcpError=This+connection+attempt+expired.+Try+again.");
-  });
 });
