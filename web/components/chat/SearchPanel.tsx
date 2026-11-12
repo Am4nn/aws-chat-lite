@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Bot, Hash, Search, X } from "lucide-react";
 import { bff, errorText } from "@/lib/client/bff";
@@ -11,6 +10,7 @@ import { useThreads } from "@/lib/client/ThreadsProvider";
 import { useTimeZone } from "@/lib/client/useTimeZone";
 import { dur, easeOut, instant } from "@/lib/motion";
 import type { Chat, Message } from "@/lib/types";
+import { useNavigate } from "@/components/shell/NavPending";
 import { Spinner } from "@/components/ui/Spinner";
 
 const DEBOUNCE_MS = 300;
@@ -33,7 +33,7 @@ function byChat(results: Message[]) {
 export function SearchPanel({ roomId, chats, serverTimeZone, focusSignal, onPick }: {
   roomId: string; chats: Chat[]; serverTimeZone: string; focusSignal: number; onPick: () => void;
 }) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const { threads } = useThreads();
   const reduced = useReducedMotion();
   const timeZone = useTimeZone(serverTimeZone);
@@ -139,7 +139,7 @@ export function SearchPanel({ roomId, chats, serverTimeZone, focusSignal, onPick
                       return (
                         <li key={m.seq}>
                           <button
-                            onClick={() => { onPick(); router.push(place(m).href); }}
+                            onClick={() => { onPick(); navigate(place(m).href); }}
                             className="w-full rounded-[10px] px-2.5 py-2 text-left transition-[background-color,transform] hover:bg-surface-2 active:scale-[0.99]"
                           >
                             <span className="flex items-baseline gap-2">

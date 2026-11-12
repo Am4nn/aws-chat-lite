@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { needsYouToast } from "@/lib/client/approvals";
 import { useThreads } from "@/lib/client/ThreadsProvider";
 import { instant, spring } from "@/lib/motion";
+import { useNavigate } from "./NavPending";
 
 const SHOW_MS = 8000;
 
@@ -14,7 +14,7 @@ const SHOW_MS = 8000;
  * click opens that thread. The one I have open shows its own approval card instead.
  */
 export function NeedsYouToast({ roomId, openThreadId, panelOpen }: { roomId: string; openThreadId?: string; panelOpen: boolean }) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const reduced = useReducedMotion();
   const { threads } = useThreads();
   const [seen, setSeen] = useState(threads);
@@ -44,7 +44,7 @@ export function NeedsYouToast({ roomId, openThreadId, panelOpen }: { roomId: str
             transition={reduced ? instant : spring.pop}
             onClick={() => {
               setToast(null);
-              router.push(`/r/${roomId}/t/${toast.number}`);
+              navigate(`/r/${roomId}/t/${toast.number}`);
             }}
             className="flex max-w-[min(360px,calc(100vw-32px))] items-center gap-3 rounded-[14px] border border-amber-line bg-amber-wash px-3.5 py-3 text-left shadow-menu transition-[border-color,transform] hover:border-amber/40 active:scale-[0.98]"
           >
