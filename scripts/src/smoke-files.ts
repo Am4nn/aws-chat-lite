@@ -6,7 +6,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElementHandle, Page } from "puppeteer-core";
-import { PANEL, WEB, bff, check, confirmDialog, eventually, sampleFrames, socketOpen, until } from "./smoke-page.js";
+import { PANEL, WEB, bff, check, confirmDialog, eventually, openTab, sampleFrames, socketOpen, until } from "./smoke-page.js";
 
 type Person = { page: Page; name: string };
 type Thread = { threadId: string; number: number; status: string };
@@ -35,9 +35,7 @@ const fileGone = (page: Page, path: string) =>
   until(page, (p) => ![...document.querySelectorAll('aside[aria-label="Room panel"] span[title]')].some((s) => s.getAttribute("title") === p), path);
 
 async function openFilesTab(page: Page) {
-  await page.waitForSelector(`${PANEL} [role=tab]`);
-  await page.evaluate(() => ([...document.querySelectorAll('aside[aria-label="Room panel"] [role=tab]')] as HTMLElement[])
-    .find((t) => t.getAttribute("aria-label")?.startsWith("Files"))!.click());
+  await openTab(page, "Room");
   await page.waitForSelector(`${PANEL} input[type=file]`);
 }
 
