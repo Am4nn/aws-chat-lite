@@ -36,14 +36,19 @@ const badgeIs = (page: Page, chat: string, want: string) => until(page, ([n, w])
 const sidebarChats = (page: Page) => page.evaluate(() =>
   [...document.querySelectorAll('nav[aria-label="Room"] ul[aria-labelledby] li a span.truncate')].map((s) => s.textContent));
 
-/** Opens a sidebar chat row's menu, and picks `item` from it when given. */
-async function chatMenu(page: Page, chat: string, item?: string) {
+/**
+ * Opens a sidebar chat row's menu and returns its item labels, after picking `item` when given. The menu is looked
+ * for inside the row, since another row's menu may still be fading out.
+ */
+async function chatMenu(page: Page, chat: string, item?: string): Promise<string[]> {
   const row = (await page.evaluateHandle((n) => [...document.querySelectorAll('nav[aria-label="Room"] li')]
     .find((li) => li.querySelector("a span.truncate")?.textContent === n), chat)).asElement() as ElementHandle<Element>;
   await row.hover();
   await (await row.$("button[aria-haspopup]"))!.click();
-  await page.waitForSelector("[role=menuitem]");
-  if (item) await page.evaluate((i) => ([...document.querySelectorAll("[role=menuitem]")] as HTMLElement[]).find((x) => x.textContent === i)?.click(), item);
+  await row.waitForSelector("[role=menuitem]");
+  const items = await row.$$eval("[role=menuitem]", (all) => all.map((x) => x.textContent ?? ""));
+  if (item) await row.$$eval("[role=menuitem]", (all, i) => (all as HTMLElement[]).find((x) => x.textContent === i)?.click(), item);
+  return items;
 }
 
 async function roomMenu(page: Page, item: string) {
@@ -203,13 +208,12 @@ export async function liveChecks(stamp: number, owner: Person, guest: Person, th
   await A.keyboard.down("Control"); await A.keyboard.press("a"); await A.keyboard.up("Control");
   await A.keyboard.type("off-topic");
   await confirmDialog(A, "Rename");
-  const renamed = await toastSays(A, "Renamed to #off-topic");
+  const renamed = await toastSays(A, "Renamed to #off-topic") && await until(A, () => [...document.querySelectorAll('nav[aria-label="Room"] a span.truncate')].some((s) => s.textContent === "off-topic"));
   const refusal = await A.evaluate(() => document.querySelector("[role=dialog] [role=alert]")?.textContent ?? "");
   check(renamed && await until(B, () => [...document.querySelectorAll('nav[aria-label="Room"] a span.truncate')].some((s) => s.textContent === "off-topic")),
     `A renames #random to #off-topic, and B's sidebar follows${refusal ? ` (refused: ${refusal})` : ""}`);
   if (!renamed) await A.keyboard.press("Escape");
-  await chatMenu(A, "general");
-  const generalItems = await A.evaluate(() => [...document.querySelectorAll("[role=menuitem]")].map((x) => x.textContent));
+  const generalItems = await chatMenu(A, "general");
   await A.keyboard.press("Escape");
   await chatMenu(A, "off-topic", "Archive");
   const archivedToast = await toastSays(A, "#off-topic archived");
