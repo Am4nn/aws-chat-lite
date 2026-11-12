@@ -22,7 +22,9 @@ export const nextRunDeadline = (list: ThreadSummary[], nowMs: number) =>
 /** Budget frames can arrive out of order, so spend never goes back within a month; a new month starts over. */
 export function mergeBudget(prev: Budget, next: Budget): Budget {
   if (next.month !== prev.month) return next.month > prev.month ? next : prev;
-  return { ...next, spentMicros: Math.max(prev.spentMicros, next.spentMicros) };
+  // A view of the room read before the owner changed the cap can land after the change; its cap is older, so it loses.
+  const cap = next.capRev >= prev.capRev ? next : prev;
+  return { ...next, capMicros: cap.capMicros, capRev: cap.capRev, spentMicros: Math.max(prev.spentMicros, next.spentMicros) };
 }
 
 export function applyThreadUpdate(list: ThreadSummary[], t: ThreadSummary): ThreadSummary[] {
