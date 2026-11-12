@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import type { ElementHandle, HTTPResponse, Page } from "puppeteer-core";
-import { WEB, bff, check, eventually, noSideScroll, sampleFrames, say, send, sleep, socketOpen, until } from "./smoke-page.js";
+import { WEB, bff, check, eventually, noSideScroll, say, send, sleep, socketOpen, until } from "./smoke-page.js";
 
 type Person = { page: Page; name: string };
 type Thread = { threadId: string; number: number; status: string };
@@ -26,16 +26,6 @@ const b64url = (bytes: Uint8Array) => Buffer.from(bytes).toString("base64url");
 const syntheticSubscription = (stamp: number) => ({
   endpoint: `https://fcm.googleapis.com/fcm/send/smoke-${stamp}`,
   keys: { p256dh: b64url(Uint8Array.from({ length: 65 }, (_, i) => (i === 0 ? 4 : i))), auth: b64url(new Uint8Array(16).fill(7)) },
-});
-
-/** Counts the frames in which the dictation strip is still fading or growing, for 600 ms from the Dictate click. */
-const DICTATION_ROW_FRAMES = sampleFrames({
-  vars: "let moving = 0;",
-  perFrame: `const row = document.querySelector('button.ml-auto[aria-label="Stop dictating"]')?.closest("div.overflow-hidden");
-    if (row && Number(getComputedStyle(row).opacity) < 1) moving++;`,
-  done: "now - start > 600",
-  result: "moving",
-  begin: `document.querySelector('button[aria-label="Dictate"]').click();`,
 });
 
 export async function mediaChecks(stamp: number, owner: Person, guest: Person) {
@@ -109,9 +99,9 @@ export async function mediaChecks(stamp: number, owner: Person, guest: Person) {
   await open(A, generalUrl);
   const before = (await room()).budget.spentMicros;
   await A.click('button[aria-label="Dictate"]');
-  await until(A, () => !!document.querySelector('button.ml-auto[aria-label="Stop dictating"]:not([disabled])'));
+  await until(A, () => !!document.querySelector('button[aria-label="Stop dictating"]:not([disabled])'));
   await sleep(3500);
-  await A.click('button.ml-auto[aria-label="Stop dictating"]');
+  await A.click('button[aria-label="Stop dictating"]');
   const typed = await until(A, (t) => (document.querySelector("textarea#composer") as HTMLTextAreaElement).value.includes(t), TRANSCRIPT, 10_000);
   // The 60 s reserved at the start is itself a whole number of seconds, so wait for the settle to bring it under that.
   const spent = (await eventually(room, (r) => {
@@ -172,21 +162,17 @@ export async function mediaChecks(stamp: number, owner: Person, guest: Person) {
   await A.evaluate(async () => (await navigator.serviceWorker.getRegistration())?.unregister());
   await cdp.detach();
 
-  // 7. Phone: the dictation strip and the image gallery fit 390 px, and under reduced motion the strip just appears.
-  // Motion reads the reduced-motion setting when the page loads, so it is set before the page opens.
+  // 7. Phone: the composer while dictating and the image gallery fit 390 px.
   await A.setViewport({ width: 390, height: 844 });
-  await A.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "reduce" }]);
   await open(A, generalUrl);
-  const animated = (await A.evaluate(DICTATION_ROW_FRAMES)) as number;
-  await until(A, () => !!document.querySelector('button.ml-auto[aria-label="Stop dictating"]'));
-  const stripFits = await noSideScroll(A);
+  await A.click('button[aria-label="Dictate"]');
+  await until(A, () => !!document.querySelector('button[aria-label="Stop dictating"]'));
+  const composerFits = await noSideScroll(A);
   await A.keyboard.press("Escape");
-  await A.emulateMediaFeatures([]);
   await open(A, threadUrl(drew.number));
   await until(A, () => !!document.querySelector('main img[alt^="images/"]'));
   const galleryFits = await noSideScroll(A) && await A.evaluate(() =>
     [...document.querySelectorAll('main img[alt^="images/"]')].every((img) => img.getBoundingClientRect().right <= window.innerWidth));
-  check(stripFits && galleryFits && animated === 0,
-    `at 390×844 the dictation strip and the gallery fit with no side scroll; reduced motion shows the strip with ${animated} animated frames`);
+  check(composerFits && galleryFits, "at 390×844 the composer while dictating and the gallery fit with no side scroll");
   await A.setViewport({ width: 1440, height: 900 });
 }

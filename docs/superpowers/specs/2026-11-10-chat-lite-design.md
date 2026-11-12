@@ -145,7 +145,7 @@ Aman picked G2 after four rounds of mockups.
 **Honest progress (a rule, not a style)**
 - **An agent never shows a percentage or progress bar.** It can't know its total steps.
 - **Allowed indicators:** state (a working spinner, amber needs-you, ✓ done), step count, elapsed time, the current step's name (shimmer while running) and cost.
-- **The only bars are money** (spend against the room cap) and the Map view's *share of time/cost* breakdown.
+- **The only bars are money** (spend against the room cap) and the Map view's *share of time/cost* breakdown. One exception: a neutral 2 px navigation bar along the top, shown only once a navigation takes longer than 120 ms. It is page loading, not agent progress.
 
 **Motion (the minimum the real app must match)**
 

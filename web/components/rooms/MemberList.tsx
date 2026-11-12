@@ -43,26 +43,48 @@ function actionsFor(me: Role, target: Role) {
   };
 }
 
+/**
+ * The room's members. A role change or removal shows on the tap and holds until the refreshed list arrives; a refusal
+ * puts the member back as they were and says why.
+ */
 export function MemberList({ roomId, members, myRole, myUserId }: { roomId: string; members: Member[]; myRole: Role; myUserId: string }) {
   const router = useRouter();
   const toast = useToast();
   const [openFor, setOpenFor] = useState<string | null>(null);
+  const [overrides, setOverrides] = useState(new Map<string, Role | "removed">());
+  // Presence makes a new list too, so only a change of members or roles (the refresh landing) clears the overrides.
+  const roster = members.map((m) => `${m.userId}:${m.role}`).join();
+  const [shownRoster, setShownRoster] = useState(roster);
+  if (shownRoster !== roster) {
+    setShownRoster(roster);
+    setOverrides(new Map());
+  }
   // The server rendered "last seen" with its own clock, so the browser's takes over at once, then every minute.
   const now = useNow(true, CLOCK_TICK_MS);
-  const sorted = [...members].sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || a.username.localeCompare(b.username));
+  const shown = members.flatMap((m) => {
+    const o = overrides.get(m.userId);
+    return o === "removed" ? [] : [o ? { ...m, role: o } : m];
+  });
+  const sorted = shown.sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || a.username.localeCompare(b.username));
 
   async function change(m: Member, action: "promote" | "demote" | "remove") {
     setOpenFor(null);
+    const role = action === "promote" ? "admin" : "member";
+    setOverrides((o) => new Map(o).set(m.userId, action === "remove" ? "removed" : role));
     try {
       if (action === "remove") {
         await bff(`/bff/api/rooms/${roomId}/members/${m.userId}`, { method: "DELETE", body: {} });
         toast(`${m.username} removed`);
       } else {
-        const role = action === "promote" ? "admin" : "member";
         await bff(`/bff/api/rooms/${roomId}/members/${m.userId}`, { method: "PATCH", body: { role } });
         toast(`${m.username} is now ${role === "admin" ? "an admin" : "a member"}`);
       }
     } catch (e) {
+      setOverrides((o) => {
+        const back = new Map(o);
+        back.delete(m.userId);
+        return back;
+      });
       toast(errorText(e), "error");
     }
     // Refresh either way: a failure usually means the member list changed underneath us.

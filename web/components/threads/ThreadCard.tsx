@@ -37,7 +37,7 @@ export function ThreadRef({ threadRef, roomId, readOnly, onReply }: Props) {
             {threadRef.kind === "started"
               ? <ThreadCard thread={thread} href={href} readOnly={readOnly} onReply={() => onReply(thread.threadId)} />
               : (
-                <Link href={href} className="inline-flex h-6 items-center rounded-md px-1.5 font-mono text-[12px] text-text-3 transition-colors hover:bg-surface-2 hover:text-text">
+                <Link href={href} className="inline-flex h-6 items-center rounded-md px-1.5 font-mono text-[12px] text-text-3 transition-[background-color,color,scale] hover:bg-surface-2 hover:text-text active:scale-[0.96]">
                   → #{thread.name}
                 </Link>
               )}
@@ -68,7 +68,7 @@ function ThreadCard({ thread: t, href, readOnly, onReply }: { thread: ThreadSumm
           {!readOnly && (
             <button
               onClick={onReply}
-              className="flex h-7 items-center gap-1.5 rounded-lg px-2 text-[12.5px] text-text-2 transition-[background-color,color,transform] hover:bg-surface-3 hover:text-text active:scale-95"
+              className="flex h-7 items-center gap-1.5 rounded-lg px-2 text-[12.5px] text-text-2 transition-[background-color,color,scale] hover:bg-surface-3 hover:text-text active:scale-[0.96]"
             >
               <Reply aria-hidden="true" size={13} />
               Reply
@@ -76,7 +76,7 @@ function ThreadCard({ thread: t, href, readOnly, onReply }: { thread: ThreadSumm
           )}
           <Link
             href={href}
-            className="flex h-7 items-center gap-0.5 rounded-lg pl-2 pr-1.5 text-[12.5px] font-medium text-text transition-[background-color,transform] hover:bg-surface-3 active:scale-95"
+            className="flex h-7 items-center gap-0.5 rounded-lg pl-2 pr-1.5 text-[12.5px] font-medium text-text transition-[background-color,scale] hover:bg-surface-3 active:scale-[0.96]"
           >
             Open
             <ChevronRight aria-hidden="true" size={13} className="text-text-3" />

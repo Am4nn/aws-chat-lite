@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { bff, BffError, errorText } from "@/lib/client/bff";
 import { Button } from "@/components/ui/Button";
-import { Spinner } from "@/components/ui/Spinner";
 
 type Decision = "allow" | "deny";
 
@@ -33,8 +32,8 @@ export function ConsentActions({ requestId }: { requestId: string }) {
   return (
     <>
       <div className="mt-6 grid grid-cols-2 gap-2">
-        <Button onClick={() => decide("deny")} disabled={!!busy} className="h-11">{busy === "deny" && <Spinner />}Cancel</Button>
-        <Button variant="primary" onClick={() => decide("allow")} disabled={!!busy} className="h-11">{busy === "allow" && <Spinner />}Allow</Button>
+        <Button onClick={() => decide("deny")} disabled={!!busy} busy={busy === "deny"} size="lg">Cancel</Button>
+        <Button variant="primary" onClick={() => decide("allow")} disabled={!!busy} busy={busy === "allow"} size="lg">Allow</Button>
       </div>
       {error && <p role="alert" className="mt-3 text-[13px] text-danger">{error}</p>}
     </>

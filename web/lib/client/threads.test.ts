@@ -91,10 +91,13 @@ describe("waiting on an approval", () => {
 });
 
 describe("mergeBudget", () => {
-  const b = (month: string, spentMicros: number, capMicros = 3_000_000) => ({ month, spentMicros, capMicros, resetsAt: "" });
-  it("never rolls spend back within a month, but takes the newest cap", () => {
-    expect(mergeBudget(b("2026-11", 500), b("2026-11", 300, 5_000_000))).toEqual(b("2026-11", 500, 5_000_000));
+  const b = (month: string, spentMicros: number, capMicros = 3_000_000, capRev = 0) => ({ month, spentMicros, capMicros, capRev, resetsAt: "" });
+  it("never rolls spend back within a month, and takes a cap only as new as the one shown", () => {
+    expect(mergeBudget(b("2026-11", 500), b("2026-11", 300, 5_000_000, 1))).toEqual(b("2026-11", 500, 5_000_000, 1));
     expect(mergeBudget(b("2026-11", 300), b("2026-11", 500))).toEqual(b("2026-11", 500));
+  });
+  it("keeps a cap the owner just set when an older view of the room arrives after it", () => {
+    expect(mergeBudget(b("2026-11", 0, 3_000_000, 2), b("2026-11", 40, 0, 1))).toEqual(b("2026-11", 40, 3_000_000, 2));
   });
   it("starts over in a new month and ignores a late frame from the last one", () => {
     expect(mergeBudget(b("2026-11", 500), b("2026-12", 0))).toEqual(b("2026-12", 0));

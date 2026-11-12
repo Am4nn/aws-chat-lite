@@ -92,7 +92,7 @@ export function StepRow({ roomId, step, enter, nested = false }: { roomId: strin
         </span>
         <ChevronRight
           aria-hidden="true" size={13}
-          className={`shrink-0 text-text-4 transition-[transform,opacity] duration-300 ${open ? "rotate-90" : ""} ${opens ? "" : "opacity-0"}`}
+          className={`shrink-0 text-text-4 transition-[rotate,opacity] duration-300 ${open ? "rotate-90" : ""} ${opens ? "" : "opacity-0"}`}
         />
         <span className="sr-only">{running ? ", running" : step.status === "failed" ? ", failed" : ", done"}</span>
       </button>

@@ -102,7 +102,7 @@ export function ThreadView({ roomId, initialThread, me, members, archived, initi
           <div ref={scroll.content} className="mx-auto flex w-full max-w-[836px] flex-col gap-[18px] px-4 pb-4 pt-[26px] sm:px-7">
             {!chat.hasOlder && <ThreadIntro thread={thread} />}
             {chat.olderFailed && (
-              <button onClick={chat.loadOlder} className="self-center rounded-md px-2 py-1 text-[12.5px] text-text-3 transition-colors hover:bg-surface-2 hover:text-text">
+              <button onClick={chat.loadOlder} className="self-center rounded-md px-2 py-1 text-[12.5px] text-text-3 transition-[background-color,color,scale] hover:bg-surface-2 hover:text-text active:scale-[0.96]">
                 Couldn&apos;t load older messages · <span className="text-text-2 underline underline-offset-2">Retry</span>
               </button>
             )}

@@ -29,7 +29,7 @@ export function ModeBanner({ mode, onCancel }: { mode: ComposerMode; onCancel: (
             {mode.kind === "edit" && <span>Editing message</span>}
             {mode.kind === "thread" && <span className="min-w-0 truncate">to <b className="font-mono font-medium text-text">#{byId(mode.threadId)?.name}</b></span>}
             <kbd className="ml-auto shrink-0 font-mono text-[11px] text-text-3">Esc</kbd>
-            <button onClick={onCancel} aria-label="Cancel" className="grid size-6 shrink-0 place-items-center rounded-md text-text-3 transition-colors hover:bg-surface-3 hover:text-text">
+            <button onClick={onCancel} aria-label="Cancel" className="grid size-6 shrink-0 place-items-center rounded-md text-text-3 transition-[background-color,color,scale] hover:bg-surface-3 hover:text-text active:scale-90">
               <X aria-hidden="true" size={13} />
             </button>
           </div>

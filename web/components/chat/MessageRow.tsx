@@ -90,7 +90,7 @@ export const MessageRow = memo(function MessageRow({ rowKey, message: m, status,
           {m.replyTo && !m.deleted && (
             <button
               onClick={() => actions.jump(m.replyTo!.seq)}
-              className="mb-0.5 mt-1 flex max-w-full items-center gap-1.5 text-left text-[12.5px] text-text-3 transition-colors hover:text-text-2"
+              className="mb-0.5 mt-1 flex max-w-full items-center gap-1.5 text-left text-[12.5px] text-text-3 transition-[color,opacity] hover:text-text-2 active:opacity-70"
             >
               <CornerUpLeft aria-hidden="true" size={12} className="shrink-0" />
               <span className="shrink-0 font-medium text-text-2">{m.replyTo.authorName}</span>
@@ -107,8 +107,8 @@ export const MessageRow = memo(function MessageRow({ rowKey, message: m, status,
             <div className="mt-1 flex items-center gap-2 text-[12px]">
               <CircleAlert aria-hidden="true" size={13} className="text-amber" />
               <span className="text-amber">Not sent</span>
-              <button onClick={() => actions.retry(m.clientId!)} className="text-text-2 underline-offset-2 transition-colors hover:text-text hover:underline">Retry</button>
-              <button onClick={() => actions.discard(m.clientId!)} className="text-text-3 underline-offset-2 transition-colors hover:text-text-2 hover:underline">Discard</button>
+              <button onClick={() => actions.retry(m.clientId!)} className="text-text-2 underline-offset-2 transition-[color,opacity] hover:text-text hover:underline active:opacity-70">Retry</button>
+              <button onClick={() => actions.discard(m.clientId!)} className="text-text-3 underline-offset-2 transition-[color,opacity] hover:text-text-2 hover:underline active:opacity-70">Discard</button>
             </div>
           )}
         </div>
@@ -243,7 +243,7 @@ function Toolbar({ message: m, ctx, actions, pinned }: { message: Message; ctx: 
                   aria-label={`React ${REACTION_NAMES[r]}`}
                   aria-pressed={mine}
                   onClick={() => { close(); smile.current?.focus(); actions.react(m, r, !mine); }}
-                  className={`grid size-8 place-items-center rounded-lg text-[17px] transition-[background,transform] hover:bg-surface-3 focus-visible:bg-surface-3 active:scale-90 ${mine ? "bg-lime-wash" : ""}`}
+                  className={`grid size-8 place-items-center rounded-lg text-[17px] transition-[background,scale] hover:bg-surface-3 focus-visible:bg-surface-3 active:scale-90 ${mine ? "bg-lime-wash" : ""}`}
                 >
                   {EMOJI[r]}
                 </button>
@@ -261,7 +261,7 @@ function Toolbar({ message: m, ctx, actions, pinned }: { message: Message; ctx: 
             autoFocus
             tabIndex={-1}
             onClick={() => { close(); actions.remove(m); }}
-            className="h-7 rounded-lg px-2 text-[12.5px] font-medium text-danger transition-colors hover:bg-danger-wash focus-visible:bg-danger-wash"
+            className="h-7 rounded-lg px-2 text-[12.5px] font-medium text-danger transition-[background-color,scale] hover:bg-danger-wash focus-visible:bg-danger-wash active:scale-[0.96]"
           >
             Delete?
           </button>
@@ -282,7 +282,7 @@ function ToolButton({ ref, first = false, label, onClick, pressed, children }: {
       title={label}
       aria-pressed={pressed}
       onClick={onClick}
-      className={`grid size-7 place-items-center rounded-lg transition-[background,color,transform] hover:bg-surface-3 hover:text-text active:scale-90 ${pressed ? "bg-surface-3 text-text" : "text-text-2"}`}
+      className={`grid size-7 place-items-center rounded-lg transition-[background,color,scale] hover:bg-surface-3 hover:text-text active:scale-90 ${pressed ? "bg-surface-3 text-text" : "text-text-2"}`}
     >
       {children}
     </button>

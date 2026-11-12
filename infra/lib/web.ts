@@ -67,7 +67,9 @@ export function addWeb(stack: CoreStack, prod: ProdSettings, build: WebBuild, st
       ORIGIN_VERIFY_SECRET: originSecret(stack),
     },
   });
-  const serverUrl = server.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.NONE });
+  // Streamed, so a page's loading skeleton and layout reach the browser while its data is still being fetched. OpenNext's
+  // streaming wrapper (web/open-next.config.ts) writes the response in the format this invoke mode expects.
+  const serverUrl = server.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.NONE, invokeMode: lambda.InvokeMode.RESPONSE_STREAM });
 
   // Removed with the stack: everything in it comes from the build and ships again with the next deploy.
   const bucket = new s3.Bucket(stack, "Web", {

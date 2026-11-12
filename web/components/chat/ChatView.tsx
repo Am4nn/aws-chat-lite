@@ -11,7 +11,7 @@ import { useLive, useLiveStatus } from "@/lib/client/LiveProvider";
 import { canEditLast, withReaction } from "@/lib/client/messageRules";
 import { useModelPick } from "@/lib/client/ModelsProvider";
 import { useThreads } from "@/lib/client/ThreadsProvider";
-import { keyOf, newestSeq, updateMessage } from "@/lib/client/timeline";
+import { keyOf, markDeleted, newestSeq, restoreDeleted, updateMessage } from "@/lib/client/timeline";
 import { useTimeZone } from "@/lib/client/useTimeZone";
 import { dur, instant } from "@/lib/motion";
 import type { Me, Member, Message, Reaction, Role } from "@/lib/types";
@@ -118,9 +118,11 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
     replyInThread: (threadId: string) => setMode({ kind: "thread", threadId }),
     edit: (m: Message) => setMode({ kind: "edit", message: m }),
     async remove(m: Message) {
+      setTimeline((t) => markDeleted(t, m.seq, m.authorId === me.userId ? "self" : "admin"));
       try {
         apply([await live.request("delete", { roomId, chatId, seq: m.seq }) as Message]);
       } catch (e) {
+        setTimeline((t) => restoreDeleted(t, m));
         toast(errorText(e), "error");
       }
     },

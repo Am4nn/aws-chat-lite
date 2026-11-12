@@ -6,6 +6,7 @@ import { Lock, Pencil, Trash2 } from "lucide-react";
 import { bff, errorText } from "@/lib/client/bff";
 import { useLiveEvent } from "@/lib/client/LiveProvider";
 import { MEMORY_CHARS, MEMORY_MAX, sourceLine } from "@/lib/client/memory";
+import { removeOptimistically } from "@/lib/client/optimistic";
 import { useNow } from "@/lib/client/useNow";
 import { easeOut, instant, swap } from "@/lib/motion";
 import type { MemoryEntry } from "@/lib/types";
@@ -17,7 +18,6 @@ import { panelInput } from "@/components/ui/Field";
 import { Hint } from "@/components/ui/Hint";
 import { PanelLoading } from "@/components/ui/PanelLoading";
 import { RowButton } from "@/components/ui/RowButton";
-import { Spinner } from "@/components/ui/Spinner";
 import { useRoomData } from "./useRoomData";
 
 const PRIVATE_HINT = "Saved from a thread with private content, so DeepSeek never sees it.";
@@ -26,15 +26,17 @@ const FRESH_MS = 1500;
 
 /**
  * What the room's agents saved to remember, which goes into every run. Any member corrects or deletes an entry; only
- * agents add them. It is fetched again whenever memory changes, and an entry that arrives that way slides in.
+ * agents add them. It is fetched again whenever memory changes, and an entry that arrives that way slides in. Edits
+ * and deletes show on the tap; a refusal undoes them and says why, and a refused edit opens again with what was typed.
  */
 export function MemoryPanel({ roomId, archived }: { roomId: string; archived: boolean }) {
   const toast = useToast();
   const now = useNow(true, AGE_TICK_MS);
-  const [editing, setEditing] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
   const [deleting, setDeleting] = useState<MemoryEntry | null>(null);
   const [fresh, setFresh] = useState<Set<string>>(new Set());
-  // The list last looked at, and every id shown so far: null until the first answer, whose entries were already there.
+  // The list last looked at, and every id shown so far: null until the first list (cached or fetched), whose entries
+  // were already there.
   const [seen, setSeen] = useState<{ list?: MemoryEntry[]; ids: Set<string> | null }>({ ids: null });
   const base = `/bff/api/rooms/${roomId}/memory`;
   const { data, setData, failed, reload } = useRoomData<{ entries: MemoryEntry[] }>(base);
@@ -57,20 +59,25 @@ export function MemoryPanel({ roomId, archived }: { roomId: string; archived: bo
     return () => clearTimeout(timer);
   }, [fresh]);
 
-  async function save(entry: MemoryEntry, text: string) {
-    const { entry: saved } = await bff<{ entry: MemoryEntry }>(`${base}/${entry.memoryId}`, { method: "PATCH", body: { text } });
-    setEntries((list) => list.map((m) => (m.memoryId === saved.memoryId ? saved : m)));
-    setEditing(null);
-  }
+  const put = (entry: MemoryEntry) => setEntries((list) => list.map((m) => (m.memoryId === entry.memoryId ? entry : m)));
 
-  async function remove(entry: MemoryEntry) {
+  async function save(entry: MemoryEntry, text: string) {
+    put({ ...entry, text });
+    setEditing(null);
     try {
-      await bff(`${base}/${entry.memoryId}`, { method: "DELETE", body: {} });
-      setEntries((list) => list.filter((m) => m.memoryId !== entry.memoryId));
-      setDeleting(null);
+      put((await bff<{ entry: MemoryEntry }>(`${base}/${entry.memoryId}`, { method: "PATCH", body: { text } })).entry);
     } catch (e) {
+      // Only undone while the row still shows this edit: a refetch may have brought something newer.
+      setEntries((list) => list.map((m) => (m.memoryId === entry.memoryId && m.text === text ? entry : m)));
+      setEditing({ id: entry.memoryId, text });
       toast(errorText(e), "error");
     }
+  }
+
+  function remove(entry: MemoryEntry) {
+    setDeleting(null);
+    removeOptimistically({ list: entries!, item: entry, key: (m) => m.memoryId, set: setEntries }, () =>
+      bff(`${base}/${entry.memoryId}`, { method: "DELETE", body: {} })).catch((e) => toast(errorText(e), "error"));
   }
 
   if (!entries) return <PanelLoading failed={failed} onRetry={reload} />;
@@ -83,8 +90,9 @@ export function MemoryPanel({ roomId, archived }: { roomId: string; archived: bo
         <AnimatePresence initial={false}>
           {entries.map((m) => (
             <MemoryRow
-              key={m.memoryId} entry={m} meta={sourceLine(m, now)} fresh={fresh.has(m.memoryId)} editing={editing === m.memoryId}
-              canEdit={!archived} onEdit={() => setEditing(m.memoryId)} onCancel={() => setEditing(null)}
+              key={m.memoryId} entry={m} meta={sourceLine(m, now)} fresh={fresh.has(m.memoryId)}
+              draft={editing?.id === m.memoryId ? editing.text : undefined}
+              canEdit={!archived} onEdit={() => setEditing({ id: m.memoryId, text: m.text })} onCancel={() => setEditing(null)}
               onSave={(text) => save(m, text)} onDelete={() => setDeleting(m)}
             />
           ))}
@@ -92,7 +100,7 @@ export function MemoryPanel({ roomId, archived }: { roomId: string; archived: bo
       </ul>
       <Modal open={!!deleting} onClose={() => setDeleting(null)} title="Delete this memory?">
         {deleting && (
-          <Confirm action="Delete" onCancel={() => setDeleting(null)} onConfirm={() => remove(deleting)}>
+          <Confirm action="Delete" onCancel={() => setDeleting(null)} onConfirm={async () => remove(deleting)}>
             Agents won&apos;t see it in their next runs.
           </Confirm>
         )}
@@ -101,9 +109,10 @@ export function MemoryPanel({ roomId, archived }: { roomId: string; archived: bo
   );
 }
 
-function MemoryRow({ entry, meta, fresh, editing, canEdit, onEdit, onCancel, onSave, onDelete }: {
-  entry: MemoryEntry; meta: string; fresh: boolean; editing: boolean; canEdit: boolean;
-  onEdit: () => void; onCancel: () => void; onSave: (text: string) => Promise<void>; onDelete: () => void;
+/** `draft`: the text in the open editor, if this row is being edited. */
+function MemoryRow({ entry, meta, fresh, draft, canEdit, onEdit, onCancel, onSave, onDelete }: {
+  entry: MemoryEntry; meta: string; fresh: boolean; draft?: string; canEdit: boolean;
+  onEdit: () => void; onCancel: () => void; onSave: (text: string) => void; onDelete: () => void;
 }) {
   const reduced = useReducedMotion();
   return (
@@ -122,8 +131,8 @@ function MemoryRow({ entry, meta, fresh, editing, canEdit, onEdit, onCancel, onS
         />
       )}
       <AnimatePresence mode="wait" initial={false}>
-        {editing
-          ? <motion.div key="edit" {...swap}><EditMemory initial={entry.text} onCancel={onCancel} onSave={onSave} /></motion.div>
+        {draft !== undefined
+          ? <motion.div key="edit" {...swap}><EditMemory draft={draft} saved={entry.text} onCancel={onCancel} onSave={onSave} /></motion.div>
           : (
             <motion.div key="view" {...swap} className="flex gap-1.5">
               <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -146,21 +155,9 @@ function MemoryRow({ entry, meta, fresh, editing, canEdit, onEdit, onCancel, onS
   );
 }
 
-function EditMemory({ initial, onCancel, onSave }: { initial: string; onCancel: () => void; onSave: (text: string) => Promise<void> }) {
-  const toast = useToast();
-  const [text, setText] = useState(initial);
-  const [busy, setBusy] = useState(false);
+function EditMemory({ draft, saved, onCancel, onSave }: { draft: string; saved: string; onCancel: () => void; onSave: (text: string) => void }) {
+  const [text, setText] = useState(draft);
   const trimmed = text.trim();
-
-  async function save() {
-    setBusy(true);
-    try {
-      await onSave(trimmed);
-    } catch (e) {
-      toast(errorText(e), "error");
-      setBusy(false);
-    }
-  }
 
   function onKeyDown(e: KeyboardEvent) {
     if (e.key !== "Escape") return;
@@ -178,8 +175,8 @@ function EditMemory({ initial, onCancel, onSave }: { initial: string; onCancel: 
       />
       <div className="flex items-center gap-2">
         <span className="font-mono text-[11px] tabular-nums text-text-3">{text.length}/{MEMORY_CHARS}</span>
-        <Button onClick={onCancel} className="ml-auto h-8 px-3">Cancel</Button>
-        <Button variant="primary" onClick={save} disabled={busy || !trimmed || trimmed === initial} className="h-8 px-3">{busy && <Spinner />}Save</Button>
+        <Button onClick={onCancel} size="sm" className="ml-auto">Cancel</Button>
+        <Button variant="primary" onClick={() => onSave(trimmed)} disabled={!trimmed || trimmed === saved} size="sm">Save</Button>
       </div>
     </div>
   );

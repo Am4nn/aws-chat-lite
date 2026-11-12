@@ -6,6 +6,7 @@ import { Globe, Pencil, Plus, Trash2 } from "lucide-react";
 import { agentLabel, RoomAgentsContext } from "@/lib/client/agents";
 import { bff, BffError, errorText } from "@/lib/client/bff";
 import { useLiveEvent } from "@/lib/client/LiveProvider";
+import { removeOptimistically } from "@/lib/client/optimistic";
 import { cadenceLabel, canEditSchedule, nextLabel } from "@/lib/client/schedules";
 import { swap } from "@/lib/motion";
 import { isAdmin, type Chat, type Role, type Schedule } from "@/lib/types";
@@ -26,7 +27,8 @@ type Me = { userId: string; role: Role };
 /**
  * Agent runs on a clock: each fire opens a new thread and posts its card in a chat. Any member adds one; its creator
  * or an admin changes, pauses or deletes it. Times are on the room's clock, which admins set. The server's list is the
- * truth (it works out each next fire), fetched again whenever schedules change.
+ * truth (it works out each next fire), fetched again whenever schedules change. A save shows the server's answer at
+ * once; a delete shows on the tap and is undone if the server refuses.
  */
 export function SchedulesPanel({ roomId, me, chats, archived }: { roomId: string; me: Me; chats: Chat[]; archived: boolean }) {
   const toast = useToast();
@@ -40,15 +42,18 @@ export function SchedulesPanel({ roomId, me, chats, archived }: { roomId: string
     if (e.roomId === roomId) refetch();
   });
 
-  const put = (s: Schedule) => setData((d) => d && { ...d, schedules: d.schedules.map((x) => (x.scheduleId === s.scheduleId ? s : x)) });
+  const setSchedules = (change: (list: Schedule[]) => Schedule[]) => setData((d) => d && { ...d, schedules: change(d.schedules) });
+  const put = (s: Schedule) => setSchedules((list) => list.map((x) => (x.scheduleId === s.scheduleId ? s : x)));
 
   async function save(schedule: Schedule | undefined, input: ScheduleInput) {
     setBusy(true);
     try {
-      if (schedule) await bff(`${base}/${schedule.scheduleId}`, { method: "PATCH", body: input });
-      else await bff(base, { body: input });
+      if (schedule) put((await bff<{ schedule: Schedule }>(`${base}/${schedule.scheduleId}`, { method: "PATCH", body: input })).schedule);
+      else {
+        const { schedule: created } = await bff<{ schedule: Schedule }>(base, { body: input });
+        setSchedules((list) => [...list, created]);
+      }
       setEditing(null);
-      refetch();
     } catch (e) {
       toast(errorText(e), "error");
       // A 503 on create means the schedule was saved but left off: its row is there to switch on, and a second
@@ -73,14 +78,10 @@ export function SchedulesPanel({ roomId, me, chats, archived }: { roomId: string
     }
   }
 
-  async function remove(s: Schedule) {
-    try {
-      await bff(`${base}/${s.scheduleId}`, { method: "DELETE", body: {} });
-      setDeleting(null);
-      refetch();
-    } catch (e) {
-      toast(errorText(e), "error");
-    }
+  function remove(s: Schedule) {
+    setDeleting(null);
+    removeOptimistically({ list: data!.schedules, item: s, key: (x) => x.scheduleId, set: setSchedules }, () =>
+      bff(`${base}/${s.scheduleId}`, { method: "DELETE", body: {} })).catch((e) => toast(errorText(e), "error"));
   }
 
   async function setTimeZone(timeZone: string) {
@@ -104,7 +105,7 @@ export function SchedulesPanel({ roomId, me, chats, archived }: { roomId: string
       <div className="flex h-8 items-center gap-2">
         <span className="font-mono text-[11.5px] text-text-3">{schedules.length} of {max}</span>
         {!archived && schedules.length < max && editing !== "new" && (
-          <Button onClick={() => setEditing("new")} className="ml-auto h-8 px-3"><Plus aria-hidden="true" size={14} />New</Button>
+          <Button onClick={() => setEditing("new")} size="sm" className="ml-auto"><Plus aria-hidden="true" size={14} />New</Button>
         )}
       </div>
       <TimeZoneRow timeZone={timeZone} canSet={isAdmin(me.role) && !archived} onSet={setTimeZone} />
@@ -148,7 +149,7 @@ export function SchedulesPanel({ roomId, me, chats, archived }: { roomId: string
       </ul>
       <Modal open={!!deleting} onClose={() => setDeleting(null)} title={`Delete ${deleting?.title}?`}>
         {deleting && (
-          <Confirm action="Delete schedule" onCancel={() => setDeleting(null)} onConfirm={() => remove(deleting)}>
+          <Confirm action="Delete schedule" onCancel={() => setDeleting(null)} onConfirm={async () => remove(deleting)}>
             It stops running. The threads it already opened stay.
           </Confirm>
         )}

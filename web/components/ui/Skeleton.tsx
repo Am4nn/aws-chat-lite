@@ -1,6 +1,8 @@
 /** A muted bar standing in for text or an avatar while the real thing loads. */
 export function Bar({ className = "" }: { className?: string }) {
-  return <div className={`rounded-md bg-surface-3 ${className}`} />;
+  // Tailwind orders two radius classes by value, not by which came last, so a radius passed in replaces the default.
+  const radius = className.includes("rounded-") ? "" : "rounded-md";
+  return <div className={`${radius} bg-surface-3 ${className}`} />;
 }
 
 /** Rows shaped like a panel's list rows (avatar, a line, a shorter line), so the list keeps its place as it loads. */

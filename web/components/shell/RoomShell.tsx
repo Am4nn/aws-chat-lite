@@ -14,7 +14,7 @@ import { useNow } from "@/lib/client/useNow";
 import { useTimeZone } from "@/lib/client/useTimeZone";
 import { saveNavCollapsed } from "@/lib/client/navCookie";
 import { NARROW_QUERY, useIsNarrow, useIsPhone } from "@/lib/client/useIsPhone";
-import { enterFrom } from "@/lib/motion";
+import { skeletonKind } from "@/lib/client/navTarget";
 import { isAdmin, type Chat, type Me, type RoomSummary, type RoomView } from "@/lib/types";
 import { useToast } from "@/components/overlays/Toast";
 import { AgentsPanel } from "@/components/rooms/AgentsPanel";
@@ -36,14 +36,17 @@ import { ViewSwitch } from "@/components/threads/ViewSwitch";
 import { BudgetCard } from "./BudgetCard";
 import { Header } from "./Header";
 import { Backdrop, MobileNav } from "./MobileNav";
+import { useCurrentPlace, useNavPending } from "./NavPending";
 import { NeedsYouToast } from "./NeedsYouToast";
 import { Panel } from "./Panel";
 import { RoomDialogs, type Dialog } from "./RoomDialogs";
 import { RoomPalette } from "./RoomPalette";
 import { RoomSwitcher } from "./RoomSwitcher";
+import { ROUTE_SKELETONS } from "./RouteSkeletons";
 import { Sidebar } from "./Sidebar";
 import { direction, navOrder } from "./nav";
 import { useBadges } from "./useBadges";
+import { useEntrance } from "./useEntrance";
 import { useFlowReturn } from "./useFlowReturn";
 import { usePresence } from "./usePresence";
 import { usePush } from "./usePush";
@@ -63,13 +66,19 @@ export function RoomShell({ view, rooms, me, serverTimeZone, navHidden, children
   const pathname = usePathname();
   const phone = useIsPhone();
   const narrow = useIsNarrow();
-  const { chatId, number } = useParams<{ chatId?: string; number?: string }>();
+  // The place a tap is heading to counts as current at once, so the highlight, header and drawer answer the tap.
+  const pending = useNavPending();
+  const place = useCurrentPlace();
+  const inRoom = place?.roomId === view.room.roomId ? place : null;
+  const chatId = inRoom?.chatId;
+  const number = inRoom?.threadNumber;
+  const committedChatId = useParams<{ chatId?: string }>().chatId;
   const [panelOpen, setPanelOpen] = useState(true);
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [navCollapsed, setNavCollapsed] = useState(navHidden);
   // An overlay left open counts only while the window is still narrow enough to show it as one.
   const covered = (overlay === "nav" && phone) || (overlay === "panel" && narrow);
-  const [panelTab, setPanelTab] = useState(number ? "context" : "members");
+  const [panelTab, setPanelTab] = useState(number === undefined ? "members" : "context");
   const [searchFocus, setSearchFocus] = useState(0);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -82,17 +91,17 @@ export function RoomShell({ view, rooms, me, serverTimeZone, navHidden, children
   const admin = isAdmin(view.me.role);
   const isOwner = view.me.role === "owner";
   const canManage = admin && !archived;
-  const badges = useBadges({ view, rooms, meId: me.userId, activeChatId: chatId });
+  const badges = useBadges({ view, rooms, meId: me.userId, openChatIds: [committedChatId, chatId].filter((id) => id !== undefined) });
   const threads = useThreads();
   const timeZone = useTimeZone(serverTimeZone);
-  const activeThread = number ? threads.byNumber(Number(number)) : undefined;
+  const activeThread = number === undefined ? undefined : threads.byNumber(number);
   const members = usePresence(view.members, me.userId);
   const files = useRoomFiles(roomId);
   const push = usePush();
   const exitRoom = useRoomExit({ roomId, rooms, onExited: () => setDialog(null) });
   const { pickGitHub, clearPick } = useFlowReturn(() => setPanelTab("connections"));
   const query = useSearchParams();
-  const onMap = !!activeThread && query.get("view") === "map";
+  const onMap = !!activeThread && !!inRoom?.map;
   // A step picked on another run's Map (another thread's, or this thread's before its next run) isn't shown.
   const shownStep = onMap && picked?.runId === (query.get("run") ?? activeThread.runId) ? picked : null;
 
@@ -114,14 +123,13 @@ export function RoomShell({ view, rooms, me, serverTimeZone, navHidden, children
   const dir = direction(prevIndex.current, index);
   useEffect(() => { prevIndex.current = index; }, [index]);
 
-  // Following a link out of the drawer or panel closes it, and opening a thread shows its run in the panel.
-  const [shownPath, setShownPath] = useState(pathname);
-  const [navigated, setNavigated] = useState(false);
-  if (shownPath !== pathname) {
-    setShownPath(pathname);
-    setNavigated(true);
+  // Following a link out of the drawer or panel closes it on the tap, and opening a thread shows its run in the panel.
+  const shownPath = (pending ?? pathname).split("?")[0];
+  const [seenPath, setSeenPath] = useState(shownPath);
+  if (seenPath !== shownPath) {
+    setSeenPath(shownPath);
     setOverlay(null);
-    if (number) setPanelTab("context");
+    if (number !== undefined) setPanelTab("context");
   }
 
   // Chats that appear after the page loaded (just created) get a one-time entrance in the sidebar.
@@ -169,13 +177,15 @@ export function RoomShell({ view, rooms, me, serverTimeZone, navHidden, children
     router.replace("/login");
   }
 
-  /** The room hears it and refetches; this tab doesn't wait for that. An archived chat open here turns read-only. */
+  /** Moves lists at once; a refusal puts it back. The refresh turns an archived chat open here read-only. */
   async function setChatArchived(chat: Chat, archived: boolean) {
+    badges.setArchived(chat.chatId, archived);
     try {
       await bff(`/bff/api/rooms/${roomId}/chats/${chat.chatId}`, { method: "PATCH", body: { archived } });
       toast(archived ? `#${chat.name} archived` : `#${chat.name} unarchived`);
       router.refresh();
     } catch (e) {
+      badges.setArchived(chat.chatId, !archived);
       toast(errorText(e), "error");
     }
   }
@@ -192,9 +202,13 @@ export function RoomShell({ view, rooms, me, serverTimeZone, navHidden, children
     }
   }
 
-  // Only the page that arrives animates. An exiting copy would re-render with the new route (the App Router doesn't
-  // freeze a leaving segment), mounting the next page twice; and the page the room opened on is already in place.
-  const enter = enterFrom(dir, reducedMotion);
+  // Only what arrives animates. An exiting copy would re-render with the new route (the App Router doesn't freeze a
+  // leaving segment), mounting the next page twice. While a tap is in flight its skeleton slides in over the page,
+  // which stays mounted but hidden, so a navigation that never lands loses nothing.
+  const entrance = useEntrance(shownPath, dir, reducedMotion);
+  const kind = pending && skeletonKind(pending);
+  const Skeleton = kind ? ROUTE_SKELETONS[kind] : null;
+  const shownRoom = (inRoom ? null : rooms.find((r) => r.roomId === place?.roomId)) ?? room;
   const activeChat = view.chats.find((c) => c.chatId === chatId);
   const meInRoom = { userId: me.userId, role: view.me.role };
 
@@ -211,7 +225,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, navHidden, children
             budget={<BudgetCard roomId={roomId} isOwner={isOwner && !archived} />}
             switcher={(
               <RoomSwitcher
-                current={room} rooms={rooms} hasMentions={badges.hasMentions}
+                current={shownRoom} rooms={rooms} hasMentions={badges.hasMentions}
                 canCreate={me.isCreator} canLeave={!isOwner} canArchive={isOwner && !archived} push={push}
                 onCreate={() => setDialog("room")} onLeave={() => setDialog("leave")} onArchive={() => setDialog("archive")}
               />
@@ -226,16 +240,20 @@ export function RoomShell({ view, rooms, me, serverTimeZone, navHidden, children
             thread={activeThread && (
               <>
                 <ThreadTitle thread={activeThread} />
-                <ViewSwitch map={onMap} />
+                <ViewSwitch />
               </>
             )}
             taint={activeThread?.taint} panelOpen={narrow ? overlay === "panel" : panelOpen}
             navCollapsed={navCollapsed} onMenu={() => (phone ? setOverlay("nav") : setNav(false))} onSearch={openSearch} onTogglePanel={togglePanel}
           />
           <div className="relative min-h-0 flex-1 overflow-hidden">
-            <motion.div key={pathname} {...enter} initial={navigated ? enter.initial : false} className="absolute inset-0">
+            <motion.div
+              key={pathname} style={pathname === shownPath ? entrance : undefined} inert={!!Skeleton}
+              className={`absolute inset-0 ${Skeleton ? "invisible" : ""}`}
+            >
               <StepPick.Provider value={{ picked, pick: pickStep }}>{children}</StepPick.Provider>
             </motion.div>
+            {Skeleton && <motion.div style={entrance} className="absolute inset-0"><Skeleton /></motion.div>}
           </div>
         </main>
         <Panel

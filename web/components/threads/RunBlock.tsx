@@ -78,7 +78,7 @@ export function RunBlock({ roomId, runId, answer, steers, pending, active, meNam
   const mapLink = (
     <>
       {" · "}
-      <Link href={`${pathname}?view=map&run=${runId}`} scroll={false} className="rounded-sm text-text-2 underline-offset-2 transition-colors hover:text-text hover:underline">Map</Link>
+      <Link href={`${pathname}?view=map&run=${runId}`} scroll={false} className="rounded-sm text-text-2 underline-offset-2 transition-[color,opacity] hover:text-text hover:underline active:opacity-70">Map</Link>
     </>
   );
 
@@ -94,7 +94,7 @@ export function RunBlock({ roomId, runId, answer, steers, pending, active, meNam
           {...fade(true)}
           onClick={toggle}
           aria-expanded={open}
-          className="-mx-2 flex h-8 w-fit items-center gap-1.5 rounded-lg px-2 font-mono text-[12px] text-text-3 transition-[background-color,color,transform] hover:bg-surface-2 hover:text-text active:scale-[0.97]"
+          className="-mx-2 flex h-8 w-fit items-center gap-1.5 rounded-lg px-2 font-mono text-[12px] text-text-3 transition-[background-color,color,scale] hover:bg-surface-2 hover:text-text active:scale-[0.97]"
         >
           {open && !loaded && !unavailable
             ? <Spinner />
@@ -206,8 +206,8 @@ function SteerBubble({ row, mine, startedAt, enter, onRetry, onDiscard }: {
         <div className="flex items-center gap-2 px-1 text-[12px]">
           <CircleAlert aria-hidden="true" size={13} className="text-amber" />
           <span className="text-amber">Not sent</span>
-          <button onClick={() => onRetry(row.clientId!)} className="text-text-2 underline-offset-2 transition-colors hover:text-text hover:underline">Retry</button>
-          <button onClick={() => onDiscard(row.clientId!)} className="text-text-3 underline-offset-2 transition-colors hover:text-text-2 hover:underline">Discard</button>
+          <button onClick={() => onRetry(row.clientId!)} className="text-text-2 underline-offset-2 transition-[color,opacity] hover:text-text hover:underline active:opacity-70">Retry</button>
+          <button onClick={() => onDiscard(row.clientId!)} className="text-text-3 underline-offset-2 transition-[color,opacity] hover:text-text-2 hover:underline active:opacity-70">Discard</button>
         </div>
       )}
     </motion.div>

@@ -7,6 +7,7 @@ import { useLiveEvent } from "@/lib/client/LiveProvider";
 import type { RoomSummary } from "@/lib/types";
 import { useToast } from "@/components/overlays/Toast";
 import { nextRoomPath } from "./nav";
+import { useNavigate } from "./NavPending";
 
 /**
  * Leaving the room (leave or archive) from this tab, and keeping the shell current when the room changes under it.
@@ -16,6 +17,7 @@ import { nextRoomPath } from "./nav";
  */
 export function useRoomExit({ roomId, rooms, onExited }: { roomId: string; rooms: RoomSummary[]; onExited: () => void }) {
   const router = useRouter();
+  const navigate = useNavigate();
   const toast = useToast();
   // The room I'm leaving or archiving from this tab, which navigates away by itself; its own events are ignored.
   const leaving = useRef<string>(undefined);
@@ -34,7 +36,7 @@ export function useRoomExit({ roomId, rooms, onExited }: { roomId: string; rooms
       await bff(`/bff/api/rooms/${roomId}/${action}`, { body: {} });
       onExited();
       toast(done);
-      router.replace(nextRoomPath(rooms, roomId));
+      navigate(nextRoomPath(rooms, roomId), { replace: true });
     } catch (e) {
       leaving.current = undefined;
       toast(errorText(e), "error");

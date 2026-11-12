@@ -25,7 +25,7 @@ export function RowMenu({ open, onToggle, name, children }: { open: boolean; onT
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => onToggle(!open)}
-        className="grid size-7 place-items-center rounded-md text-text-3 transition-colors hover:bg-surface-3 hover:text-text"
+        className="grid size-7 place-items-center rounded-md text-text-3 transition-[background-color,color,scale] hover:bg-surface-3 hover:text-text active:scale-90"
       >
         <MoreHorizontal aria-hidden="true" size={15} />
       </button>
@@ -53,7 +53,7 @@ export function MenuItem({ danger = false, onClick, children }: { danger?: boole
     <button
       role="menuitem"
       onClick={onClick}
-      className={`flex h-8 w-full items-center rounded-lg px-2.5 text-left text-[13px] transition-colors hover:bg-surface-3 ${danger ? "text-danger" : "text-text-2 hover:text-text"}`}
+      className={`flex h-8 w-full items-center rounded-lg px-2.5 text-left text-[13px] transition-colors hover:bg-surface-3 focus-visible:bg-surface-3 active:bg-surface-4 ${danger ? "text-danger" : "text-text-2 hover:text-text"}`}
     >
       {children}
     </button>
