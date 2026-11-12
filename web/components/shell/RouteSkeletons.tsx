@@ -92,7 +92,7 @@ function MapSkeleton() {
       <div className="flex overflow-hidden px-4 pt-6 sm:px-[22px]">
         <Bar className="h-24 w-52 shrink-0 rounded-xl" />
         <div className="flex gap-4 pl-6 pt-3">
-          {[0, 1, 2].map((i) => <Bar key={i} className="h-[72px] w-[108px] shrink-0 rounded-xl" />)}
+          {[0, 1, 2].map((i) => <Bar key={i} className="h-[72px] w-[128px] shrink-0 rounded-xl" />)}
         </div>
       </div>
     </Loading>
