@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useEffectEvent, useRef, useState, type KeyboardEvent } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { FolderGit2, Hourglass, Pencil } from "lucide-react";
 import { bff, errorText } from "@/lib/client/bff";
@@ -97,10 +97,12 @@ function GitHubSection({ roomId, data, manage, pick, onPickStarted, onChange }: 
   const { github, installUrl } = data;
 
   // Back from GitHub's sign-in: the picker opens once, and the room forgets the request so a later visit doesn't.
-  useEffect(() => {
-    if (!pick || !manage) return;
+  const openPicker = useEffectEvent(() => {
     onPickStarted?.();
     void startPicking();
+  });
+  useEffect(() => {
+    if (pick && manage) openPicker();
   }, [pick, manage]);
 
   /** The browser leaves for GitHub, so the spinner stays until the page goes. */

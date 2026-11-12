@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { bff, errorText } from "@/lib/client/bff";
 import { applyFilesUpdate } from "@/lib/client/files";
 import { useLiveEvent } from "@/lib/client/LiveProvider";
@@ -61,7 +61,8 @@ export function useRoomFiles(roomId: string): RoomFiles {
     }
   }
 
-  useEffect(() => { void load(); }, [roomId]);
+  const loadRoom = useEffectEvent(() => void load());
+  useEffect(() => loadRoom(), [roomId]);
   useLiveEvent("files.updated", (e) => {
     if (e.roomId !== roomId) return;
     if ("refetch" in e) void load();

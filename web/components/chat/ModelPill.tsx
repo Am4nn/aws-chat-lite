@@ -47,7 +47,7 @@ export function ModelPill({ value, onChange, taint, locked = false }: {
   // Focus moves into the menu once it has mounted.
   useEffect(() => {
     if (open) items.current[active]?.focus();
-  }, [open]);
+  }, [open, active]);
 
   function focusItem(i: number) {
     setActive(i);
