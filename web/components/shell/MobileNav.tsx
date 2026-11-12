@@ -35,7 +35,7 @@ export function MobileNav({ open, children }: { open: boolean; children: ReactNo
   );
 }
 
-/** Dims the chat behind an open drawer or panel on a phone; a tap closes it. */
+/** Dims the chat behind an open drawer or panel; a tap closes it. */
 export function Backdrop({ open, onClose }: { open: boolean; onClose: () => void }) {
   const reduced = useReducedMotion();
   return (
@@ -49,7 +49,7 @@ export function Backdrop({ open, onClose }: { open: boolean; onClose: () => void
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={reduced ? instant : { duration: dur.base }}
-          className="fixed inset-0 z-30 cursor-default bg-[rgba(4,6,7,.66)] md:hidden"
+          className="fixed inset-0 z-30 cursor-default bg-[rgba(4,6,7,.66)] min-[1152px]:hidden"
         />
       )}
     </AnimatePresence>
