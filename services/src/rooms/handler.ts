@@ -1,4 +1,5 @@
 import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
+import { bestEffort } from "../lib/best-effort.js";
 import { errorResponse, json, parseBody } from "../lib/http.js";
 import { ValidationError } from "../lib/errors.js";
 import { parsePick } from "../models/picks.js";
@@ -17,11 +18,7 @@ type Event = APIGatewayProxyEventV2WithJWTAuthorizer;
  */
 export function makeHandler(repo: RoomsRepo, notifyRoom: (roomId: string, alsoUserId?: string) => Promise<unknown>) {
   const changed = async (statusCode: number, result: unknown, roomId: string, alsoUserId?: string) => {
-    try {
-      await notifyRoom(roomId, alsoUserId);
-    } catch (e) {
-      console.error("room.updated broadcast failed", roomId, e);
-    }
+    await bestEffort("room.updated broadcast", () => notifyRoom(roomId, alsoUserId));
     return json(statusCode, result);
   };
   return async (event: Event): Promise<APIGatewayProxyStructuredResultV2> => {

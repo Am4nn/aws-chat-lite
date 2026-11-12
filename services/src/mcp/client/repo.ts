@@ -4,6 +4,7 @@ import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { auditItem } from "../../audit/repo.js";
 import { connectionsRepo, mcpConnKey, mcpConnections, withoutKeys } from "../../connections/repo.js";
 import type { User } from "../../lib/auth.js";
+import { bestEffort } from "../../lib/best-effort.js";
 import { conditionFailed, docClient, failedAt, tableName, takeOnce } from "../../lib/db.js";
 import { Conflict, FlowFailed, Forbidden, Gone, NotFound, Upstream, UserError, ValidationError } from "../../lib/errors.js";
 import { siteCallback } from "../../lib/http.js";
@@ -142,8 +143,8 @@ export function mcpRepo(deps: Deps = liveDeps()) {
           if (conditionFailed(e)) return;
           throw e;
         }
-        // Best effort: the status is stored, and the panel shows it on its next load.
-        await deps.notifyRoom(roomId).catch((e) => console.error("room.updated broadcast failed", roomId, e));
+        // The status is stored, and the panel shows it on its next load.
+        await bestEffort("room.updated broadcast", () => deps.notifyRoom(roomId));
       },
     };
   }

@@ -1,12 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { GetCommand, PutCommand, TransactWriteCommand, UpdateCommand, type TransactWriteCommandInput } from "@aws-sdk/lib-dynamodb";
 import type { User } from "../lib/auth.js";
-import { bestEffort } from "../lib/best-effort.js";
 import { conditionFailed, docClient, failedAt, queryAll, setFields, tableName, transactionConflict } from "../lib/db.js";
 import { Forbidden, NotFound, ValidationError } from "../lib/errors.js";
 import { counterKey, roomKey } from "../lib/keys.js";
 import { requireMember } from "../chat/membership.js";
-import { broadcastToRoom } from "../live/broadcast.js";
+import { roomChanged } from "../live/broadcast.js";
 import { BUILT_IN } from "../agents/model.js";
 import { can, type Role } from "../rooms/access.js";
 import type { Schedule } from "../threads/types.js";
@@ -65,8 +64,6 @@ export function schedulesRepo() {
     }
   }
 
-  const changed = (roomId: string) =>
-    bestEffort("schedules.changed broadcast", () => broadcastToRoom(roomId, { type: "schedules.changed", roomId }));
 
   /** The counter counts disabled schedules too, so switching one on never needs a free slot. */
   const claimSlot = (roomId: string): TransactItem => ({
@@ -157,7 +154,7 @@ export function schedulesRepo() {
       if (conditionFailed(e)) return;
       throw e;
     }
-    await changed(roomId);
+    await roomChanged("schedules.changed", roomId);
   }
 
   return {
@@ -189,7 +186,7 @@ export function schedulesRepo() {
         if (failedAt(e, 2)) throw new NotFound("No such agent.");
         throw e;
       }
-      await changed(roomId);
+      await roomChanged("schedules.changed", roomId);
       return withNext(schedule, await timeZoneOf(roomId));
     },
 
@@ -220,7 +217,7 @@ export function schedulesRepo() {
           if (failedAt(e, 1)) throw new NotFound("Chat not found.");
           throw e;
         }
-        await changed(roomId);
+        await roomChanged("schedules.changed", roomId);
       }
       return withNext({ ...current, ...fields }, await timeZoneOf(roomId));
     },
@@ -229,7 +226,7 @@ export function schedulesRepo() {
       const role = await requireMember(roomId, user.userId, { writing: true });
       await changeable(user, role, roomId, id);
       if (!(await deleteSchedule(roomId, id))) throw new NotFound("No such schedule.");
-      await changed(roomId);
+      await roomChanged("schedules.changed", roomId);
     },
 
     /** The ids removed, so their EventBridge schedules can go too. */
@@ -238,7 +235,7 @@ export function schedulesRepo() {
       for (const { scheduleId } of (await all(roomId)).filter((s) => s.agentId === agentId)) {
         if (await deleteSchedule(roomId, scheduleId)) removed.push(scheduleId);
       }
-      if (removed.length) await changed(roomId);
+      if (removed.length) await roomChanged("schedules.changed", roomId);
       return removed;
     },
 
@@ -260,7 +257,7 @@ export function schedulesRepo() {
         }
         copied++;
       }
-      if (copied) await changed(roomId);
+      if (copied) await roomChanged("schedules.changed", roomId);
       return { copied, skipped: schedules.length - copied };
     },
 
@@ -293,7 +290,7 @@ export function schedulesRepo() {
         TableName, Key: metaKey(roomId), UpdateExpression: "SET #tz = :tz", ExpressionAttributeNames: { "#tz": "timeZone" }, ConditionExpression: "attribute_exists(pk)",
         ExpressionAttributeValues: { ":tz": timeZone },
       }));
-      await changed(roomId);
+      await roomChanged("schedules.changed", roomId);
       return timeZone;
     },
   };

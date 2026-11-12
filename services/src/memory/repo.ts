@@ -2,11 +2,10 @@ import { randomUUID } from "node:crypto";
 import { TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { requireMember } from "../chat/membership.js";
 import type { User } from "../lib/auth.js";
-import { bestEffort } from "../lib/best-effort.js";
 import { conditionFailed, docClient, failedAt, queryAll, tableName, transactionConflict } from "../lib/db.js";
 import { NotFound, ValidationError } from "../lib/errors.js";
 import { roomKey } from "../lib/keys.js";
-import { broadcastToRoom } from "../live/broadcast.js";
+import { roomChanged } from "../live/broadcast.js";
 import type { MemoryEntry } from "../threads/types.js";
 import { MEMORY_MAX, memoryText } from "./model.js";
 
@@ -28,9 +27,6 @@ export function memoryRepo() {
   const db = docClient();
   const TableName = tableName();
 
-  /** Every open page's Memory panel refetches; the write has already happened, so a failed send only gets logged. */
-  const changed = (roomId: string) =>
-    bestEffort("memory.changed broadcast", () => broadcastToRoom(roomId, { type: "memory.changed", roomId }));
 
   /** Newest first. Ids are random, so the sort key carries no order and the sort happens here (at most 50 entries). */
   async function entries(roomId: string): Promise<MemoryEntry[]> {
@@ -56,7 +52,7 @@ export function memoryRepo() {
           ":text": text, ":at": new Date().toISOString(), ":by": change.by, ...(change.private && { ":true": true }),
         },
       }));
-      await changed(roomId);
+      await roomChanged("memory.changed", roomId);
       return withoutKeys(Attributes!);
     } catch (e) {
       if (conditionFailed(e)) throw missing(memoryId);
@@ -76,7 +72,7 @@ export function memoryRepo() {
       if (failedAt(e, 0)) throw missing(memoryId);
       throw e;
     }
-    await changed(roomId);
+    await roomChanged("memory.changed", roomId);
   }
 
   return {
@@ -109,7 +105,7 @@ export function memoryRepo() {
               },
             ],
           }));
-          await changed(roomId);
+          await roomChanged("memory.changed", roomId);
           return entry;
         } catch (e) {
           if (failedAt(e, 1)) throw new ValidationError("Room memory is full (50 entries). Forget or update one first.");

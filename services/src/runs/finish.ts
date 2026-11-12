@@ -1,5 +1,6 @@
 import { SKIP_NOTE } from "../approvals/model.js";
 import type { Message } from "../chat/model.js";
+import { bestEffort } from "../lib/best-effort.js";
 import { broadcastToRoom } from "../live/broadcast.js";
 import { enqueuePush } from "../push/enqueue.js";
 import { summaryLine } from "../threads/model.js";
@@ -11,13 +12,8 @@ import { notifyRun } from "./notify.js";
 import { runsRepo, type Run } from "./repo.js";
 
 /** Best effort: the answer is stored, and a client that misses it gets it with the thread's history. */
-async function announce(answer: Message) {
-  try {
-    await broadcastToRoom(answer.roomId, { type: "message.new", message: answer });
-  } catch (e) {
-    console.error("answer broadcast failed", answer.roomId, e);
-  }
-}
+const answerPosted = (answer: Message) =>
+  bestEffort("answer broadcast", () => broadcastToRoom(answer.roomId, { type: "message.new", message: answer }));
 
 /** Model turns count from 1, so no `text.reset` of a retried turn can void a note tagged 0. */
 const NOTE_TURN = 0;
@@ -70,7 +66,7 @@ export async function finishRun(
       ms: Date.parse(closed.endedAt!) - Date.parse(run.startedAt), steps: closed.steps, costMicros: closed.costMicros,
     });
   }
-  if (answer && !finished) await announce(answer);
+  if (answer && !finished) await answerPosted(answer);
   const thread = await threadsRepo().threadById(run.roomId, run.threadId);
   // A run replaced as dead closes without its thread, which now shows the newer run.
   if (thread?.runId === run.runId) await notifyRun(run.roomId, thread, last.seq);

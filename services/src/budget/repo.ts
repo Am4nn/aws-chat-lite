@@ -1,5 +1,6 @@
 import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { User } from "../lib/auth.js";
+import { bestEffort } from "../lib/best-effort.js";
 import { docClient, tableName } from "../lib/db.js";
 import { Forbidden } from "../lib/errors.js";
 import { requireMember } from "../chat/membership.js";
@@ -61,11 +62,7 @@ export function budgetRepo() {
         TableName, Key: metaKey(roomId), UpdateExpression: "SET budgetCapMicros = :cap", ExpressionAttributeValues: { ":cap": capMicros },
       }));
       const budget = await get(roomId, new Date());
-      try {
-        await broadcastToRoom(roomId, { type: "budget.updated", roomId, budget });
-      } catch (e) {
-        console.error("budget.updated broadcast failed", roomId, e);
-      }
+      await bestEffort("budget.updated broadcast", () => broadcastToRoom(roomId, { type: "budget.updated", roomId, budget }));
       return budget;
     },
   };

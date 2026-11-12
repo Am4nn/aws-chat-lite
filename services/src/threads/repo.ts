@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { BUILT_IN } from "../agents/model.js";
 import type { User } from "../lib/auth.js";
+import { bestEffort } from "../lib/best-effort.js";
 import { conditionFailed, docClient, failedAt, tableName } from "../lib/db.js";
 import { Conflict, NotFound } from "../lib/errors.js";
 import { requireMember } from "../chat/membership.js";
@@ -20,13 +21,8 @@ const nameKey = (roomId: string, name: string) => ({ pk: roomKey(roomId), sk: `C
 const chatMetaKey = (threadId: string) => ({ pk: `CHAT#${threadId}`, sk: "META" });
 
 /** Best effort: the write has happened, and a client that misses the event gets the thread on its next room load. */
-async function announce(thread: ThreadSummary) {
-  try {
-    await broadcastToRoom(thread.roomId, { type: "thread.updated", roomId: thread.roomId, thread });
-  } catch (e) {
-    console.error("thread.updated broadcast failed", thread.roomId, e);
-  }
-}
+const threadUpdated = (thread: ThreadSummary) =>
+  bestEffort("thread.updated broadcast", () => broadcastToRoom(thread.roomId, { type: "thread.updated", roomId: thread.roomId, thread }));
 
 /**
  * Agent threads (single table). A thread is a chat with `kind: "thread"`, so its messages, history and search are the
@@ -137,7 +133,7 @@ export function threadsRepo() {
         user, { roomId, chatId: threadId, clientId: input.clientId, text: input.text }, admitted, { copy: !!input.from, system: input.system },
       );
       const thread = summary(item, Date.now());
-      await announce(thread);
+      await threadUpdated(thread);
       return { thread, message };
     },
 
@@ -154,7 +150,7 @@ export function threadsRepo() {
         if (conditionFailed(e)) throw new Conflict(`#${name} is taken.`);
         throw e;
       }
-      await announce(renamed);
+      await threadUpdated(renamed);
       return renamed;
     },
 
@@ -176,7 +172,7 @@ export function threadsRepo() {
       for (const name of uniqueCandidates(base).filter((n) => !isNumberedName(n))) {
         try {
           const named = await moveName(thread, name, { unnamedOnly: true });
-          await announce(named);
+          await threadUpdated(named);
           return named;
         } catch (e) {
           if (!conditionFailed(e)) throw e;

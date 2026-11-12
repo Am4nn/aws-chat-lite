@@ -3,6 +3,7 @@ import { auditRepo } from "../audit/repo.js";
 import { requireMember } from "../chat/membership.js";
 import { callerFromEvent, subFromEvent } from "../lib/auth.js";
 import { Conflict } from "../lib/errors.js";
+import { bestEffort } from "../lib/best-effort.js";
 import { errorResponse, json, parseBody } from "../lib/http.js";
 import { roomUpdated } from "../live/broadcast.js";
 import { fakeSignInPage } from "../tools/fake-github.js";
@@ -24,11 +25,7 @@ export function makeHandler(
   repo: ConnectionsRepo, githubApp: GitHubApp, notifyRoom: (roomId: string) => Promise<unknown>, signInPage: (signIn: SignIn) => string,
 ) {
   const changed = async (roomId: string, result: APIGatewayProxyStructuredResultV2) => {
-    try {
-      await notifyRoom(roomId);
-    } catch (e) {
-      console.error("room.updated broadcast failed", roomId, e);
-    }
+    await bestEffort("room.updated broadcast", () => notifyRoom(roomId));
     return result;
   };
 

@@ -1,12 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { User } from "../lib/auth.js";
-import { bestEffort } from "../lib/best-effort.js";
 import { conditionFailed, docClient, failedAt, queryAll, setFields, tableName, transactionConflict } from "../lib/db.js";
 import { Conflict, Forbidden, NotFound, ValidationError } from "../lib/errors.js";
 import { roomKey } from "../lib/keys.js";
 import { requireMember, roomMembers } from "../chat/membership.js";
-import { broadcastToRoom } from "../live/broadcast.js";
+import { roomChanged } from "../live/broadcast.js";
 import { uniqueCandidates } from "../threads/model.js";
 import type { Agent } from "../threads/types.js";
 import { BUILT_IN, MAX_AGENTS, canChange } from "./model.js";
@@ -19,16 +18,13 @@ const nameKey = (roomId: string, name: string) => ({ pk: roomKey(roomId), sk: `A
 const metaKey = (roomId: string) => ({ pk: roomKey(roomId), sk: "META" });
 export const BUILT_IN_REFUSAL = "The built-in @agent can't be renamed, deleted or copied.";
 const taken = (name: string) => new Conflict(`@${name} is taken in this room.`);
-const changed = (name: string) => new Conflict(`@${name} just changed; try again.`);
+const agentChanged = (name: string) => new Conflict(`@${name} just changed; try again.`);
 
 /** The built-in is stored only once an admin edits it, and then only the fields they changed. */
 function toAgent({ pk: _pk, sk: _sk, ...item }: Record<string, unknown>): StoredAgent {
   return item.agentId === BUILT_IN.agentId ? { ...BUILT_IN, ...item } : item as StoredAgent;
 }
 
-/** Best effort: the write has happened, and a page that misses the event gets the agents on its next load. */
-const announce = (roomId: string) =>
-  bestEffort("agents.changed broadcast", () => broadcastToRoom(roomId, { type: "agents.changed", roomId }));
 
 /**
  * The room's agents (single table, in the room partition). An `AGENTNAME#` guard per live name makes names unique per
@@ -123,7 +119,7 @@ export function agentsRepo() {
       for (const name of names) {
         const agent: Agent = { ...base, agentId: randomUUID(), name };
         if (await claim(roomId, agent)) {
-          await announce(roomId);
+          await roomChanged("agents.changed", roomId);
           return agent;
         }
       }
@@ -171,10 +167,10 @@ export function agentsRepo() {
         }
       } catch (e) {
         if (failedAt(e, 1)) throw taken(patch.name!);
-        if (conditionFailed(e) || transactionConflict(e)) throw changed(agent.name);
+        if (conditionFailed(e) || transactionConflict(e)) throw agentChanged(agent.name);
         throw e;
       }
-      await announce(roomId);
+      await roomChanged("agents.changed", roomId);
       return { ...agent, ...fields };
     },
 
@@ -206,10 +202,10 @@ export function agentsRepo() {
         }));
       } catch (e) {
         if (failedAt(e, 0)) throw new NotFound("No such agent.");
-        if (conditionFailed(e) || transactionConflict(e)) throw changed(agent.name);
+        if (conditionFailed(e) || transactionConflict(e)) throw agentChanged(agent.name);
         throw e;
       }
-      await announce(roomId);
+      await roomChanged("agents.changed", roomId);
     },
   };
 }

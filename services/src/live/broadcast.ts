@@ -1,5 +1,6 @@
 import { ApiGatewayManagementApiClient, PostToConnectionCommand } from "@aws-sdk/client-apigatewaymanagementapi";
 import { roomMembers } from "../chat/membership.js";
+import { bestEffort } from "../lib/best-effort.js";
 import { queryAll } from "../lib/db.js";
 import { forgetConnection } from "./connections.js";
 import { isOnline, markDisconnected, type Presence } from "./presence.js";
@@ -54,6 +55,13 @@ export async function sendToUser(userId: string, event: object, opts: { exceptCo
 
 /** Tells the room's open pages to refetch it after a change to its settings. */
 export const roomUpdated = (roomId: string) => broadcastToRoom(roomId, { type: "room.updated", roomId });
+
+/**
+ * Tells the room's open pages that one of its lists changed, so they refetch it. Best effort: the change is stored,
+ * and a page that misses the event gets the list on its next load.
+ */
+export const roomChanged = (type: "agents.changed" | "memory.changed" | "schedules.changed", roomId: string) =>
+  bestEffort(`${type} broadcast`, () => broadcastToRoom(roomId, { type, roomId }));
 
 /**
  * Subscriptions are written when a socket connects, so they go stale when someone leaves or is removed. Checking
