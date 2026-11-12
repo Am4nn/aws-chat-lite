@@ -19,7 +19,8 @@ const schedule = (over: Partial<Schedule> = {}): Schedule => ({
   scheduleId: "s1", agentId: "scout", title: "Morning digest", prompt: "Summarise new PRs.", cadence: { kind: "daily", time: "09:00" },
   chatId: "c1", enabled: true, createdBy: "u1", createdByName: "aman", createdAt: "2026-11-10T00:00:00Z", nextAt: "2026-11-11T03:30:00.000Z", ...over,
 });
-const CHATS: Chat[] = [{ chatId: "c1", name: "general", lastSeq: 0, unread: 0, mentions: 0, muted: false }];
+const chat = (chatId: string, name: string, archived = false): Chat => ({ chatId, name, lastSeq: 0, unread: 0, mentions: 0, muted: false, archived });
+const CHATS: Chat[] = [chat("c1", "general"), chat("c2", "old", true)];
 const mockedBff = vi.mocked(bff);
 
 beforeEach(() => {
@@ -73,6 +74,19 @@ describe("SchedulesPanel", () => {
     show("u2", "admin");
     fireEvent.change(await screen.findByRole("combobox", { name: "Times in" }), { target: { value: "Europe/London" } });
     await vi.waitFor(() => expect(mockedBff).toHaveBeenCalledWith("/bff/api/rooms/r1/timezone", { method: "PUT", body: { timeZone: "Europe/London" } }));
+  });
+
+  it("offers no archived chat to post in, except the one a schedule already posts into", async () => {
+    mockedBff.mockImplementation(async () => ({ schedules: [schedule({ chatId: "c2" })], timeZone: "Asia/Kolkata", max: 5 }));
+    // The form swaps in once the row has faded out.
+    const chatsOffered = async () => within(await screen.findByLabelText("Post in")).getAllByRole("option").map((o) => o.textContent);
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "Edit Morning digest" }));
+    expect(await chatsOffered()).toEqual(["#general", "#old (archived)"]);
+    cleanup();
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "New" }));
+    expect(await chatsOffered()).toEqual(["#general"]);
   });
 
   it("creates a weekly schedule from the form", async () => {

@@ -21,7 +21,7 @@ const REACTIONS = Object.keys(EMOJI) as Reaction[];
 const WINDOW_TICK_MS = 30_000;
 
 export type Row = { key: string; message: Message; status?: "pending" | "failed" };
-/** `readOnly`: the room is archived, so nothing in it can change. */
+/** `readOnly`: the room or the chat is archived, so nothing in it can change. */
 export type RowContext = { meId: string; role: Role; members: Mentionable[]; timeZone: string; readOnly: boolean };
 export type RowActions = {
   react: (m: Message, reaction: Reaction, on: boolean) => void;

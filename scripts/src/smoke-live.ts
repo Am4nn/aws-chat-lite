@@ -1,6 +1,7 @@
 /**
  * Live chat between real browsers: delivery, typing, reactions, quotes, edits, deletes, files, the reconnect gap,
- * badges and mute, search, motion, the rate limit, removal, leave, archive and phone width.
+ * badges and mute, renaming and archiving a chat, search, motion, the rate limit, removal, leave, archive and phone
+ * width.
  */
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -30,6 +31,20 @@ const badgeIs = (page: Page, chat: string, want: string) => until(page, ([n, w])
   return !!row && [...row.querySelectorAll("a > span[aria-hidden] > span")]
     .filter((s) => getComputedStyle(s).opacity === "1").map((s) => s.textContent).join(" ") === w;
 }, [chat, want]);
+
+/** The names in the sidebar's list of open chats. */
+const sidebarChats = (page: Page) => page.evaluate(() =>
+  [...document.querySelectorAll('nav[aria-label="Room"] ul[aria-labelledby] li a span.truncate')].map((s) => s.textContent));
+
+/** Opens a sidebar chat row's menu, and picks `item` from it when given. */
+async function chatMenu(page: Page, chat: string, item?: string) {
+  const row = (await page.evaluateHandle((n) => [...document.querySelectorAll('nav[aria-label="Room"] li')]
+    .find((li) => li.querySelector("a span.truncate")?.textContent === n), chat)).asElement() as ElementHandle<Element>;
+  await row.hover();
+  await (await row.$("button[aria-haspopup]"))!.click();
+  await page.waitForSelector("[role=menuitem]");
+  if (item) await page.evaluate((i) => ([...document.querySelectorAll("[role=menuitem]")] as HTMLElement[]).find((x) => x.textContent === i)?.click(), item);
+}
 
 async function roomMenu(page: Page, item: string) {
   await page.click('nav[aria-label="Room"] > div button[aria-haspopup="menu"]');
@@ -172,18 +187,47 @@ export async function liveChecks(stamp: number, owner: Person, guest: Person, th
   [roomId, random], 10_000);
   check(cleared && stored, "opening #random clears its badges, and the server stores the read");
   await B.click(`nav a[href="/r/${roomId}/c/${general}"]`);
-  const randomRow = (await B.evaluateHandle(() => [...document.querySelectorAll('nav[aria-label="Room"] li')]
-    .find((li) => li.querySelector("a span.truncate")?.textContent === "random"))).asElement() as ElementHandle<Element>;
-  await randomRow.hover();
-  await (await randomRow.$("button[aria-haspopup]"))!.click();
-  await B.waitForSelector("[role=menuitem]");
-  await B.evaluate(() => ([...document.querySelectorAll("[role=menuitem]")] as HTMLElement[]).find((x) => x.textContent === "Mute chat")?.click());
+  await chatMenu(B, "random", "Mute chat");
   await toastSays(B, "#random muted");
   await say(A, roomId, random, "nothing urgent");
   await say(A, roomId, random, `@${guest.name} this one is for you`);
   const mutedBadge = await badgeIs(B, "random", "@1");
   await sleep(1000);
   check(mutedBadge && await badgeIs(B, "random", "@1"), "B mutes #random: the unread count hides, but a new mention still shows its badge");
+
+  // Renaming and archiving a chat: A manages, B only sees the result, live.
+  await chatMenu(A, "random", "Rename");
+  await A.waitForSelector("#chat-name");
+  await A.click("#chat-name", { count: 3 });
+  await A.keyboard.type("off-topic");
+  await confirmDialog(A, "Rename");
+  const renamed = await toastSays(A, "Renamed to #off-topic");
+  check(renamed && await until(B, () => [...document.querySelectorAll('nav[aria-label="Room"] a span.truncate')].some((s) => s.textContent === "off-topic")),
+    "A renames #random to #off-topic, and B's sidebar follows");
+  await chatMenu(A, "general");
+  const generalItems = await A.evaluate(() => [...document.querySelectorAll("[role=menuitem]")].map((x) => x.textContent));
+  await A.keyboard.press("Escape");
+  await chatMenu(A, "off-topic", "Archive");
+  const archivedToast = await toastSays(A, "#off-topic archived");
+  const goneForB = await until(B, () => ![...document.querySelectorAll('nav[aria-label="Room"] a span.truncate')].some((s) => s.textContent === "off-topic"));
+  const adminList = await until(A, () => [...document.querySelectorAll('nav[aria-label="Room"] button[aria-expanded]')].some((b) => b.textContent === "Archived chats · 1"));
+  const memberList = await B.evaluate(() => [...document.querySelectorAll('nav[aria-label="Room"] button')].some((b) => b.textContent?.startsWith("Archived chats")));
+  check(generalItems.includes("Rename") && !generalItems.includes("Archive") && archivedToast && goneForB && adminList && !memberList && !(await sidebarChats(A)).includes("off-topic"),
+    "#general can't be archived; A archives #off-topic: it leaves both sidebars, and only A gets \"Archived chats · 1\"");
+  await B.goto(`${WEB}/r/${roomId}/c/${random}`, { waitUntil: "networkidle0" });
+  const readOnly = await shows(B, "This chat is archived.") && !(await B.$("textarea#composer")) && await shows(B, "nothing urgent");
+  const archivedSend = await say(B, roomId, random, "into the archive");
+  const archivedReact = await B.evaluate((r, c) => window.__live.request("react", { roomId: r, chatId: c, seq: 1, reaction: "eyes", on: true })
+    .then(() => "ok", (e: Error) => e.message), roomId, random);
+  check(readOnly && archivedSend === "This chat is archived." && archivedReact === "This chat is archived.",
+    `B opens it by link: readable, the composer is a read-only note, and a send or reaction is refused ("${archivedSend}")`);
+  await A.evaluate(() => ([...document.querySelectorAll('nav[aria-label="Room"] button[aria-expanded]')] as HTMLElement[]).find((b) => b.textContent?.startsWith("Archived chats"))?.click());
+  await A.waitForSelector('ul[aria-label="Archived chats"]');
+  await chatMenu(A, "off-topic", "Unarchive");
+  const reopened = await toastSays(A, "#off-topic unarchived");
+  check(reopened && await until(B, () => !!document.querySelector("textarea#composer")),
+    "A unarchives it from the Archived list, and B's open chat gets its composer back");
+  await B.goto(`${WEB}/r/${roomId}/c/${general}`, { waitUntil: "networkidle0" });
 
   await A.click('header button[aria-label="Search messages"]');
   await A.waitForSelector('input[aria-label="Search messages"]');

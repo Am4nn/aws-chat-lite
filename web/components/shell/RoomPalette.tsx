@@ -62,7 +62,7 @@ export function RoomPalette({ open, onOpenChange, view, rooms, me, admin, onSear
   });
   const items: PaletteItem[] = [
     ...threads.threads.filter((t) => !t.archived).sort((a, b) => b.number - a.number).map(threadItem("Threads")),
-    ...view.chats.map((c) => ({ id: `chat-${c.chatId}`, group: "Chats", label: `#${c.name}`, icon: "#", run: () => router.push(`/r/${roomId}/c/${c.chatId}`) })),
+    ...view.chats.filter((c) => !c.archived).map((c) => ({ id: `chat-${c.chatId}`, group: "Chats", label: `#${c.name}`, icon: "#", run: () => router.push(`/r/${roomId}/c/${c.chatId}`) })),
     ...rooms.filter((r) => r.roomId !== roomId)
       .map((r) => ({ id: `room-${r.roomId}`, group: "Rooms", label: r.name, icon: r.name.slice(0, 1).toUpperCase(), run: () => router.push(`/r/${r.roomId}`) })),
     ...(room.archived ? [] : [{ id: "new-thread", group: "Actions", label: "New thread", icon: "+", run: () => router.push(`/r/${roomId}/t/new`) }]),
