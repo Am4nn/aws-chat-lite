@@ -54,6 +54,17 @@ describe("archiveRoom", () => {
   });
 });
 
+describe("setChatPrefs", () => {
+  it("mutes only a people chat: a thread's chat counter has a kind, so the condition refuses it", async () => {
+    const send = fakeTable((c) => (c instanceof GetCommand ? { Item: { role: "member" } } : {}));
+    await roomsRepo().setChatPrefs("r1", "u1", "c1", true);
+    const [check] = transactions(send)[0].input.TransactItems!;
+    expect(check.ConditionCheck).toMatchObject({ Key: { pk: "CHAT#c1", sk: "META" }, ConditionExpression: "roomId = :r AND attribute_not_exists(#kind)",
+      ExpressionAttributeNames: { "#kind": "kind" },
+    });
+  });
+});
+
 describe("removeMember", () => {
   it("also deletes the removed member's socket subscriptions to the room, as leaving does", async () => {
     const send = fakeTable((c) => {

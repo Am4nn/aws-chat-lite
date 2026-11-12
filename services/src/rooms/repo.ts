@@ -322,8 +322,14 @@ export function roomsRepo() {
       try {
         await db.send(new TransactWriteCommand({
           TransactItems: [
-            // The chat's counter proves the chat is in this room, so no read state is written for another room's chat.
-            { ConditionCheck: { TableName, Key: counterKey(chatId), ConditionExpression: "roomId = :r", ExpressionAttributeValues: { ":r": roomId } } },
+            // The chat's counter proves the chat is in this room and is a people chat: only a thread's counter has a
+            // kind, and threads are followed through their runs' pushes, not muted.
+            {
+              ConditionCheck: {
+                TableName, Key: counterKey(chatId), ConditionExpression: "roomId = :r AND attribute_not_exists(#kind)",
+                ExpressionAttributeNames: { "#kind": "kind" }, ExpressionAttributeValues: { ":r": roomId },
+              },
+            },
             {
               Update: {
                 TableName, Key: { pk: roomKey(roomId), sk: `READ#${userId}#${chatId}` },

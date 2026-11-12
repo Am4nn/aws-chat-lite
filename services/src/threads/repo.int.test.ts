@@ -78,6 +78,10 @@ describe("threads repo on Floci", () => {
     // A name is free again once its thread moves off it.
     await threads.rename(owner, roomId, first.thread.threadId, "pr-review");
     expect(await threads.rename(owner, roomId, second.thread.threadId, "pr-check")).toMatchObject({ name: "pr-check" });
+    // Any member renames, not only admins.
+    const member = user("member");
+    await rooms.acceptInvite((await rooms.rotateInvite(roomId, owner.userId)).code, member);
+    expect(await threads.rename(member, roomId, third.thread.threadId, "by-member")).toMatchObject({ name: "by-member" });
   });
 
   it("tags resolve by number or by a thread's name; a chat's name is no thread", async () => {
