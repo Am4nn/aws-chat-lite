@@ -72,7 +72,7 @@ async function main() {
   } else console.log("push keys not in .env: notifications are off locally");
   const out = readOutputs("cl-local-core");
   const api = `http://${flociHost(out.ApiUrl)}`;
-  writeFileSync(webEnvPath, devEnvFile({ apiUrl: api, userPoolClientId: out.UserPoolClientId, streamUrl: out.StreamUrl }));
+  writeFileSync(webEnvPath, devEnvFile({ apiUrl: api, userPoolClientId: out.UserPoolClientId }));
   console.log(`\nAPI: ${api}  (try: curl ${api}/health)\nWrote web/.env.development.local. Next: npm run dev (the web app and the run stream)\n`);
 }
 
