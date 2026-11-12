@@ -6,7 +6,7 @@ import { ThreadView } from "@/components/threads/ThreadView";
 
 /**
  * The newest page renders on the server, so a thread opens on its latest run with no loading state. `?view=map` shows
- * a run's Map instead: the one `?run=` names, else the latest.
+ * a run's Map instead: the one `?run=` names, else the latest, with the thread's other runs a click away.
  */
 export default async function ThreadPage({ params, searchParams }: {
   params: Promise<{ roomId: string; number: string }>; searchParams: Promise<{ view?: string; run?: string }>;
@@ -15,11 +15,11 @@ export default async function ThreadPage({ params, searchParams }: {
   const [view, me] = await Promise.all([serverApi<RoomView>(`/rooms/${roomId}`), serverApi<Me>("/me")]);
   const thread = view.threads.find((t) => String(t.number) === number);
   if (!thread) notFound();
-  if (query.view === "map") {
-    return <ThreadMap key={thread.threadId} thread={thread} runId={query.run} />;
-  }
   const history = await serverApiOrNull<{ messages: Message[] }>(`/rooms/${roomId}/chats/${thread.threadId}/messages`);
   if (!history) notFound();
+  if (query.view === "map") {
+    return <ThreadMap key={thread.threadId} thread={thread} runId={query.run} messages={history.messages} />;
+  }
 
   return (
     <ThreadView

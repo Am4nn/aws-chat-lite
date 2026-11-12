@@ -1,6 +1,6 @@
 "use client";
 
-import { useContext, useMemo, useState } from "react";
+import { useContext, useMemo, useState, type ReactNode } from "react";
 import { Play } from "lucide-react";
 import { formatElapsed, formatUsd } from "@/lib/client/format";
 import { runMap, type RunMap as Layout } from "@/lib/client/runMap";
@@ -8,22 +8,32 @@ import { isLive } from "@/lib/client/threads";
 import { useThreads } from "@/lib/client/ThreadsProvider";
 import { useNow } from "@/lib/client/useNow";
 import { useRunStream } from "@/lib/client/useRunStream";
-import type { ThreadSummary } from "@/lib/types";
+import { threadRuns } from "@/lib/client/threadRuns";
+import type { Message, ThreadSummary } from "@/lib/types";
 import { Spinner } from "@/components/ui/Spinner";
 import { MapEdges } from "./MapEdges";
 import { MapNode } from "./MapNode";
+import { RunSwitcher } from "./RunSwitcher";
 import { StepPick } from "./stepPick";
 import { TimeShare } from "./TimeShare";
 
 const STAGGER_S = 0.15;
 const MAX_DELAY_S = 1.5;
 
-/** A thread's Map page: the run named in the address, else its latest, which the thread's live status keeps current. */
-export function ThreadMap({ thread: initial, runId }: { thread: ThreadSummary; runId?: string }) {
+/**
+ * A thread's Map page: the run named in the address, else its latest, which the thread's live status keeps current,
+ * with a switcher through the thread's other runs.
+ */
+export function ThreadMap({ thread: initial, runId, messages }: { thread: ThreadSummary; runId?: string; messages: Message[] }) {
   const thread = useThreads().byId(initial.threadId) ?? initial;
   const shown = runId ?? thread.runId;
   if (!shown) return <p className="p-7 text-[13.5px] text-text-3">Nothing has run here yet.</p>;
-  return <RunMap key={shown} runId={shown} live={isLive(thread.status) && shown === thread.runId} />;
+  return (
+    <RunMap
+      key={shown} runId={shown} live={isLive(thread.status) && shown === thread.runId}
+      switcher={<RunSwitcher runs={threadRuns(messages, thread.runId)} shown={shown} />}
+    />
+  );
 }
 
 /**
@@ -31,7 +41,7 @@ export function ThreadMap({ thread: initial, runId }: { thread: ThreadSummary; r
  * with a card per step. It scrolls inside its own box, so a phone never scrolls the page sideways, and the lane
  * labels stay in view. Replay draws it in again from the start.
  */
-export function RunMap({ runId, live }: { runId: string; live: boolean }) {
+export function RunMap({ runId, live, switcher }: { runId: string; live: boolean; switcher?: ReactNode }) {
   const { run, unavailable } = useRunStream(runId, live);
   const running = live && run.status === "running";
   const now = useNow(running);
@@ -48,6 +58,7 @@ export function RunMap({ runId, live }: { runId: string; live: boolean }) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2 border-b border-line px-4 py-3 sm:px-[22px]">
+        {switcher}
         <p suppressHydrationWarning className="font-mono text-[12.5px] tabular-nums text-text-3">
           <b className="font-normal text-text">{steps}</b> {steps === 1 ? "step" : "steps"}
           {" · "}<b className="font-normal text-text">{helpers}</b> {helpers === 1 ? "helper" : "helpers"}
