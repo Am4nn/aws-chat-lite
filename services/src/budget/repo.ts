@@ -58,7 +58,7 @@ export function budgetRepo() {
       const role = await requireMember(roomId, user.userId, { writing: true });
       if (!can("setBudget", role)) throw new Forbidden("Only the room's owner sets its budget.");
       await db.send(new UpdateCommand({
-        TableName, Key: roomMetaKey(roomId), UpdateExpression: "SET budgetCapMicros = :cap", ExpressionAttributeValues: { ":cap": capMicros },
+        TableName, Key: roomMetaKey(roomId), UpdateExpression: "SET budgetCapMicros = :cap ADD budgetCapRev :one", ExpressionAttributeValues: { ":cap": capMicros, ":one": 1 },
       }));
       const budget = await get(roomId, new Date());
       await bestEffort("budget.updated broadcast", () => broadcastToRoom(roomId, { type: "budget.updated", roomId, budget }));
