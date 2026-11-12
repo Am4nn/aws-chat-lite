@@ -45,6 +45,11 @@ describe("the site behind CloudFront", () => {
     template("aws").hasResourceProperties("AWS::CloudFront::Function", { Name: "cl-aws-forwarded-host" });
   });
 
+  it("pages stream from the web Lambda, so a loading skeleton reaches the browser before the page is done", () => {
+    const url = template("aws").toJSON().Resources[urlOf("cl-aws-web")].Properties;
+    expect(url).toMatchObject({ AuthType: "NONE", InvokeMode: "RESPONSE_STREAM" });
+  });
+
   it("has one behaviour per asset path, run stream and API path", () => {
     expect(site().CacheBehaviors.map((b: any) => b.PathPattern).sort())
       .toEqual(["/_next/static/*", "/sw.js", "/pcm-worklet.js", "/icons/*", "/runs/*/stream", ...API_PATHS].sort());
