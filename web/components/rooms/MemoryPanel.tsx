@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useState, type KeyboardEvent } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Lock, Pencil, Trash2 } from "lucide-react";
 import { bff, errorText } from "@/lib/client/bff";
@@ -34,8 +34,8 @@ export function MemoryPanel({ roomId, archived }: { roomId: string; archived: bo
   const [editing, setEditing] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<MemoryEntry | null>(null);
   const [fresh, setFresh] = useState<Set<string>>(new Set());
-  // Every id shown so far; null until the first answer, whose entries were already there and don't count as new.
-  const seen = useRef<Set<string> | null>(null);
+  // The list last looked at, and every id shown so far: null until the first answer, whose entries were already there.
+  const [seen, setSeen] = useState<{ list?: MemoryEntry[]; ids: Set<string> | null }>({ ids: null });
   const base = `/bff/api/rooms/${roomId}/memory`;
   const { data, setData, failed, reload } = useRoomData<{ entries: MemoryEntry[] }>(base);
   const entries = data?.entries;
@@ -44,16 +44,18 @@ export function MemoryPanel({ roomId, archived }: { roomId: string; archived: bo
     if (e.roomId === roomId) reload();
   });
 
-  // Before paint, so an entry that arrives never shows for a frame without its highlight.
-  useLayoutEffect(() => {
-    if (!entries) return;
+  // Marked while rendering, not in an effect: a row's entrance is fixed when it mounts, so it must mount already new.
+  if (entries && entries !== seen.list) {
     const ids = entries.map((m) => m.memoryId);
-    const added = seen.current ? ids.filter((id) => !seen.current!.has(id)) : [];
-    seen.current = new Set([...(seen.current ?? []), ...ids]);
-    if (!added.length) return;
-    setFresh(new Set(added));
-    setTimeout(() => setFresh(new Set()), FRESH_MS);
-  }, [entries]);
+    const added = seen.ids ? ids.filter((id) => !seen.ids!.has(id)) : [];
+    setSeen({ list: entries, ids: new Set([...(seen.ids ?? []), ...ids]) });
+    if (added.length) setFresh(new Set(added));
+  }
+  useEffect(() => {
+    if (!fresh.size) return;
+    const timer = setTimeout(() => setFresh(new Set()), FRESH_MS);
+    return () => clearTimeout(timer);
+  }, [fresh]);
 
   async function save(entry: MemoryEntry, text: string) {
     const { entry: saved } = await bff<{ entry: MemoryEntry }>(`${base}/${entry.memoryId}`, { method: "PATCH", body: { text } });

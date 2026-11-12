@@ -76,6 +76,15 @@ describe("MemoryPanel", () => {
     expect(screen.getByRole("listitem", { name: "Deploys go out on Fridays." }).querySelector(":scope > span[aria-hidden]")).toBeNull();
   });
 
+  it("mounts an arriving entry already new, so it slides in rather than appearing in place", async () => {
+    render(<MemoryPanel roomId="r1" archived={false} />);
+    await screen.findByText("2 of 50");
+    stored = [same(entry("cc", "Standup moved to 10:00.")), ...stored];
+    memoryChanged.fire();
+    const row = await screen.findByRole("listitem", { name: "Standup moved to 10:00." });
+    expect(row.style.opacity).toBe("0");
+  });
+
   it("is read-only in an archived room", async () => {
     render(<MemoryPanel roomId="r1" archived />);
     await screen.findByText("2 of 50");
