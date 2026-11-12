@@ -65,7 +65,7 @@ export function makeHandler(
           await repo.removeGitHub(callerFromEvent(event), roomId);
           return changed(roomId, { statusCode: 204 });
         case "PUT /rooms/{roomId}/approval-timeout":
-          return changed(roomId, json(200, { approvalTimeoutMin: await repo.setTimeout(callerFromEvent(event), roomId, body.minutes) }));
+          return changed(roomId, json(200, { approvalTimeoutMin: await repo.setApprovalTimeout(callerFromEvent(event), roomId, body.minutes) }));
         case "GET /rooms/{roomId}/audit":
           await requireMember(roomId, subFromEvent(event));
           return json(200, await auditRepo().list(roomId, event.queryStringParameters?.before));

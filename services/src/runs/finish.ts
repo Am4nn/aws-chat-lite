@@ -1,4 +1,4 @@
-import { SKIP_NOTE } from "../approvals/model.js";
+import { skipNote } from "../approvals/model.js";
 import type { Message } from "../chat/model.js";
 import { bestEffort } from "../lib/best-effort.js";
 import { broadcastToRoom } from "../live/broadcast.js";
@@ -24,7 +24,7 @@ function skipNotes(events: RunEvent[]): string[] {
   return events.flatMap((e) => {
     if (e.type !== "approval.settled" || e.decision !== "expired") return [];
     const asked = stepEvent(events, "approval.requested", e.step);
-    const note = asked ? SKIP_NOTE(asked.title) : "";
+    const note = asked ? skipNote(asked.title) : "";
     return note && !texts.has(note) ? [note] : [];
   });
 }

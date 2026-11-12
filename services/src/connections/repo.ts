@@ -172,7 +172,7 @@ export function connectionsRepo() {
     },
 
     /** Stored in seconds, which is what the durable wait takes. */
-    async setTimeout(user: User, roomId: string, rawMinutes: unknown): Promise<number> {
+    async setApprovalTimeout(user: User, roomId: string, rawMinutes: unknown): Promise<number> {
       const minutes = timeoutMinutes(rawMinutes);
       await requireManager(roomId, user.userId, { writing: true });
       await withAudit(user, roomId, "timeout", formatWait(minutes * 60), {

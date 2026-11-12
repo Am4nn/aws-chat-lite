@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { BUILT_IN } from "../agents/model.js";
 import type { McpConnection, ToolKind } from "../threads/types.js";
 import { findTool } from "../tools/index.js";
-import { agentCard, asksFirst, delegateSpec, FAKE_TOOLS, IMAGE_GATE, mayRun, runTool, SANDBOX_TOOL, toolDetail, toolsFor } from "./tools.js";
+import { agentCard, asksFirst, delegateSpec, FAKE_TOOLS, IMAGE_GATE, mayRun, runFakeLookup, SANDBOX_TOOL, toolDetail, toolsFor } from "./tools.js";
 
 const conn = (status: McpConnection["status"]): McpConnection => ({
   name: "test", url: "http://127.0.0.1:4710/mcp", auth: "oauth", status, toolCount: 1, toolsAt: "2026-11-11T00:00:00Z", addedBy: "aman",
@@ -16,10 +16,10 @@ const recorder = () => {
   return { waits, sleep: async (ms: number) => void waits.push(ms) };
 };
 
-describe("runTool", () => {
+describe("runFakeLookup", () => {
   it("answers fake.lookup with three notes", async () => {
     const { waits, sleep } = recorder();
-    const result = await runTool({ id: "call-1", name: "fake.lookup", input: { query: "prs" } }, { sleep });
+    const result = await runFakeLookup({ id: "call-1", name: "fake.lookup", input: { query: "prs" } }, { sleep });
     expect(result.ok).toBe(true);
     expect(result.output.startsWith('Found 3 notes about "prs".')).toBe(true);
     expect(result.output.split("\n").filter((l) => l.startsWith("- note "))).toHaveLength(3);
@@ -28,7 +28,7 @@ describe("runTool", () => {
 
   it("takes longer when slow", async () => {
     const { waits, sleep } = recorder();
-    await runTool({ id: "c", name: "fake.lookup", input: { query: "q", slow: true } }, { sleep });
+    await runFakeLookup({ id: "c", name: "fake.lookup", input: { query: "q", slow: true } }, { sleep });
     expect(waits).toEqual([1500]);
   });
 
@@ -36,14 +36,14 @@ describe("runTool", () => {
     const { sleep } = recorder();
     const stop = new AbortController();
     stop.abort();
-    expect(await runTool({ id: "c", name: "fake.lookup", input: { query: "q" } }, { sleep, signal: stop.signal })).toEqual({
+    expect(await runFakeLookup({ id: "c", name: "fake.lookup", input: { query: "q" } }, { sleep, signal: stop.signal })).toEqual({
       ok: false, output: "Stopped before the tool finished.",
     });
   });
 
   it("fails on an unknown tool", async () => {
     const { sleep } = recorder();
-    expect(await runTool({ id: "c", name: "nope", input: {} }, { sleep })).toEqual({
+    expect(await runFakeLookup({ id: "c", name: "nope", input: {} }, { sleep })).toEqual({
       ok: false,
       output: "Unknown tool nope.",
     });

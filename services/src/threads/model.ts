@@ -5,7 +5,7 @@ import type { ThreadStatus, ThreadSummary } from "./types.js";
 
 export const ARCHIVE_AFTER_SEC = 604_800;
 
-export const PROVISIONAL = (n: number) => `thread-${n}`;
+export const provisionalName = (n: number) => `thread-${n}`;
 
 /**
  * True for a `thread-<N>` name. Each new thread takes one as its provisional name, so chats and renames may not

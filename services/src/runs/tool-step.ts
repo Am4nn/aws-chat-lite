@@ -17,7 +17,7 @@ import type { FilesSynced } from "../workspace/types.js";
 import { stepEvent } from "./context.js";
 import { notifyRun } from "./notify.js";
 import { runsRepo, type Run } from "./repo.js";
-import { IMAGE_TOOL, mayRun, runTool, SANDBOX_TOOL, toolDetail } from "./tools.js";
+import { IMAGE_TOOL, mayRun, runFakeLookup, SANDBOX_TOOL, toolDetail } from "./tools.js";
 import {
   auditTool, costOf, laneOf, limitsReached, models, recordCall, roomConnections, toolRoom, watchStop,
   type RoutedRun, type StepResult, type Usage, type Writer,
@@ -90,7 +90,7 @@ async function runCall(run: RoutedRun, call: ToolCall, offered: boolean, step: n
   const stop = watchStop(run.runId);
   const work = sandboxed
     ? runSandbox({ ...run, deadAt }, step, call.input, { signal: stop.signal })
-    : runTool(call, { sleep, signal: stop.signal });
+    : runFakeLookup(call, { sleep, signal: stop.signal });
   return work.finally(stop.close);
 }
 

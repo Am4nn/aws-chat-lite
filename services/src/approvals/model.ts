@@ -5,7 +5,7 @@ import type { ApprovalStatus } from "../threads/types.js";
 export const unsure = (place: string) =>
   `This write may or may not have happened (the step was interrupted). Check ${place} before trying again.`;
 
-export const SKIP_NOTE = (title: string) => `\n\n(Skipped because no one approved in time: ${title})`;
+export const skipNote = (title: string) => `\n\n(Skipped because no one approved in time: ${title})`;
 export const deniedResult = (by: string) => `Denied by ${by}. Don't try this again unless someone asks.`;
 export const expiredResult = (sec: number) => `Skipped: no one approved this within ${formatWait(sec)}.`;
 

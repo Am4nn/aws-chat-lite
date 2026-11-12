@@ -8,9 +8,11 @@ import type { Agent, ToolKind } from "../threads/types.js";
 import { findTool, roomTools, type RoomMcp } from "../tools/index.js";
 import type { Tool } from "../tools/types.js";
 
+const FAKE_LOOKUP = "fake.lookup";
+
 export const FAKE_TOOLS: ToolSpec[] = [
   {
-    name: "fake.lookup",
+    name: FAKE_LOOKUP,
     description: "Looks up notes about a query.",
     inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
   },
@@ -127,17 +129,17 @@ export function asksFirst(tool: Pick<Tool, "spec" | "write"> & { kind: Tool["kin
 
 /** The line a running step shows under its tool's name. */
 export function toolDetail(call: ToolCall, room: RoomMcp): string {
-  if (call.name === "fake.lookup") return `Looking up "${call.input.query}"`;
+  if (call.name === FAKE_LOOKUP) return `Looking up "${call.input.query}"`;
   if (call.name === SANDBOX_TOOL.name) return `Running ${call.input.language}: ${firstLine(call.input.code).slice(0, 60)}`;
   if (call.name === IMAGE_TOOL.name) return `Drawing "${String(call.input.prompt ?? "").slice(0, 60)}"`;
   return findTool(call.name, room)?.detail(call.input) ?? call.name;
 }
 
-export async function runTool(
+export async function runFakeLookup(
   call: ToolCall,
   { sleep, signal }: { sleep: (ms: number, signal?: AbortSignal) => Promise<void>; signal?: AbortSignal },
 ): Promise<{ output: string; ok: boolean }> {
-  if (call.name !== "fake.lookup") return { ok: false, output: `Unknown tool ${call.name}.` };
+  if (call.name !== FAKE_LOOKUP) return { ok: false, output: `Unknown tool ${call.name}.` };
   await sleep(call.input.slow ? 1500 : 200, signal);
   if (signal?.aborted) return { ok: false, output: "Stopped before the tool finished." };
   const notes = [1, 2, 3].map((n) => `- note ${n}: details about ${call.input.query}`);

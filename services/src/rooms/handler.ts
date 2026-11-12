@@ -1,10 +1,10 @@
 import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
 import { bestEffort } from "../lib/best-effort.js";
 import { errorResponse, json, parseBody } from "../lib/http.js";
-import { ValidationError } from "../lib/errors.js";
+import { Forbidden, ValidationError } from "../lib/errors.js";
 import { parsePick } from "../models/picks.js";
 import { callerFromEvent, claimsFromEvent, subFromEvent } from "../lib/auth.js";
-import { broadcastToRoom, sendToUser } from "../live/broadcast.js";
+import { roomUpdated, sendToUser } from "../live/broadcast.js";
 import { isCreator } from "./claims.js";
 import { roomsRepo, type RoomsRepo } from "./repo.js";
 
@@ -35,7 +35,7 @@ export function makeHandler(repo: RoomsRepo, notifyRoom: (roomId: string, alsoUs
         case "GET /rooms":
           return json(200, { rooms: await repo.listMyRooms(subFromEvent(event)) });
         case "POST /rooms":
-          if (!isCreator(claimsFromEvent(event))) return json(403, { error: "Only creators can make rooms." });
+          if (!isCreator(claimsFromEvent(event))) throw new Forbidden("Only creators can make rooms.");
           return json(201, await repo.createRoom(callerFromEvent(event), body.name));
         case "GET /rooms/{roomId}":
           return json(200, await repo.getRoomView(params.roomId!, subFromEvent(event)));
@@ -82,11 +82,10 @@ export function makeHandler(repo: RoomsRepo, notifyRoom: (roomId: string, alsoUs
   };
 }
 
-function roomUpdated(roomId: string, alsoUserId?: string) {
-  const event = { type: "room.updated", roomId };
-  return Promise.all([broadcastToRoom(roomId, event), alsoUserId && sendToUser(alsoUserId, event)]);
-}
+/** The room hears it, and so do `alsoUserId`'s own sockets, which the room fan-out no longer reaches. */
+const roomAndUserUpdated = (roomId: string, alsoUserId?: string) =>
+  Promise.all([roomUpdated(roomId), alsoUserId && sendToUser(alsoUserId, { type: "room.updated", roomId })]);
 
 // Built on first use, so tests can import makeHandler without a table configured.
 let liveHandler: ReturnType<typeof makeHandler> | undefined;
-export const handler = (event: Event) => (liveHandler ??= makeHandler(roomsRepo(), roomUpdated))(event);
+export const handler = (event: Event) => (liveHandler ??= makeHandler(roomsRepo(), roomAndUserUpdated))(event);

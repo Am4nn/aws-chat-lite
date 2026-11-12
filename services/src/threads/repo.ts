@@ -9,7 +9,7 @@ import { requireMember } from "../rooms/membership.js";
 import type { Message } from "../chat/model.js";
 import { chatRepo, type Admitted } from "../chat/repo.js";
 import { broadcastToRoom } from "../live/broadcast.js";
-import { PROVISIONAL, isNumberedName, summary, threadName, uniqueCandidates } from "./model.js";
+import { provisionalName, isNumberedName, summary, threadName, uniqueCandidates } from "./model.js";
 import type { TaintSource } from "../models/privacy.js";
 import type { ThreadSummary } from "./types.js";
 import { counterKey, roomKey, roomMetaKey, threadKey } from "../lib/keys.js";
@@ -30,7 +30,7 @@ export function threadsRepo() {
   const db = docClient();
   const TableName = tableName();
 
-  async function at(roomId: string, n: number) {
+  async function byNumber(roomId: string, n: number) {
     const { Item } = await db.send(new GetCommand({ TableName, Key: threadKey(roomId, n), ConsistentRead: true }));
     return Item;
   }
@@ -39,7 +39,7 @@ export function threadsRepo() {
   async function byId(roomId: string, threadId: string) {
     const { Item: chat } = await db.send(new GetCommand({ TableName, Key: counterKey(threadId), ConsistentRead: true }));
     if (chat?.kind !== "thread" || chat.roomId !== roomId) return undefined;
-    return at(roomId, Number(chat.number));
+    return byNumber(roomId, Number(chat.number));
   }
 
   /**
@@ -73,7 +73,7 @@ export function threadsRepo() {
       ],
     }));
     // Re-read rather than add 1 to the rev we read: a run may have written the thread in between.
-    return summary((await at(roomId, Number(thread.number)))!, Date.now());
+    return summary((await byNumber(roomId, Number(thread.number)))!, Date.now());
   }
 
   return {
@@ -102,7 +102,7 @@ export function threadsRepo() {
       }));
       const number = Number(Attributes!.threadSeq);
       const threadId = randomUUID();
-      const numbered = PROVISIONAL(number);
+      const numbered = provisionalName(number);
       const base = {
         ...threadKey(roomId, number), roomId, threadId, number, agentId: input.agentId ?? BUILT_IN.agentId, status: "idle", rev: 1,
         steps: 0, costMicros: 0, createdBy: user.userId, lastActivityAt: new Date().toISOString(), ...(input.from && { from: input.from }),
@@ -196,7 +196,7 @@ export function threadsRepo() {
     async threadByTag(roomId: string, tag: { number: number } | { name: string }): Promise<ThreadSummary | null> {
       let thread: Item | undefined;
       if ("number" in tag) {
-        thread = await at(roomId, tag.number);
+        thread = await byNumber(roomId, tag.number);
       } else {
         const { Item: guard } = await db.send(new GetCommand({ TableName, Key: nameKey(roomId, tag.name), ConsistentRead: true }));
         thread = guard?.kind === "thread" ? await byId(roomId, String(guard.chatId)) : undefined;
