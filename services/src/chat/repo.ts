@@ -228,26 +228,47 @@ export function chatRepo() {
       return toMessage({ ...old, text, editedAt, mentions, everyone, v: (old.v ?? 0) + 1 });
     },
 
-    /** Marks the message deleted; the stored text stays, and readers get it blanked. */
-    async remove(user: User, input: ChatRef & { seq: number }): Promise<Message> {
+    /**
+     * Marks the message deleted; the stored text stays, and readers get it blanked. Its copy in the thread it went to
+     * is marked in the same transaction, so a removal never leaves the text readable there. Both are read back after
+     * the write, not built from the read above: a reaction landing in between also moved `v`.
+     */
+    async remove(user: User, input: ChatRef & { seq: number }): Promise<{ message: Message; copy?: Message }> {
       const at = { roomId: input.roomId, chatId: input.chatId };
       const role = await requireMember(at.roomId, user.userId, { writing: true });
       const msg = await storedMessage(at, input.seq);
       if (msg.deleted) throw new Conflict("That message is already deleted.");
       const deleted = deleteMode(msg, user.userId, role, Date.now());
       if (!deleted) throw new Forbidden("You can delete only your own messages, for 15 minutes.");
+      const ref = msg.threadRef;
+      const copyAt = ref?.seq === undefined ? undefined : { at: { roomId: at.roomId, chatId: ref.threadId }, seq: ref.seq };
+      const values = { ":d": deleted, ":one": 1 };
       try {
-        // The stored result, not the copy read above: a reaction landing in between also moved `v`.
-        const { Attributes } = await db.send(new UpdateCommand({
-          TableName, Key: messageKey(at, input.seq), UpdateExpression: "SET deleted = :d ADD v :one",
-          ConditionExpression: "attribute_not_exists(deleted)", ExpressionAttributeValues: { ":d": deleted, ":one": 1 },
-          ReturnValues: "ALL_NEW",
+        await db.send(new TransactWriteCommand({
+          TransactItems: [
+            {
+              Update: {
+                TableName, Key: messageKey(at, input.seq), UpdateExpression: "SET deleted = :d ADD v :one",
+                ConditionExpression: "attribute_not_exists(deleted)", ExpressionAttributeValues: values,
+              },
+            },
+            // The copy may already be deleted on its own; that keeps its own mark.
+            ...(copyAt ? [{
+              Update: {
+                TableName, Key: messageKey(copyAt.at, copyAt.seq), UpdateExpression: "SET deleted = if_not_exists(deleted, :d) ADD v :one",
+                ConditionExpression: "attribute_exists(sk)", ExpressionAttributeValues: values,
+              },
+            }] : []),
+          ],
         }));
-        return toMessage(Attributes!);
       } catch (e) {
-        if (conditionFailed(e)) throw new Conflict("That message is already deleted.");
+        if (failedAt(e, 0)) throw new Conflict("That message is already deleted.");
+        if (transactionConflict(e)) throw new Conflict("That message just changed; try again.");
         throw e;
       }
+      const reread = async (where: ChatRef, seq: number) => toMessage({ ...await storedMessage(where, seq) });
+      const [message, copy] = await Promise.all([reread(at, input.seq), copyAt && reread(copyAt.at, copyAt.seq)]);
+      return { message, ...(copy && { copy }) };
     },
 
     /** Set ADD/DELETE make a double tap harmless: adding someone twice or removing someone absent changes nothing. */

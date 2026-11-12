@@ -21,8 +21,12 @@ export type Message = {
   reactions: Partial<Record<Reaction, string[]>>;
   mentions: string[];
   everyone: boolean;
-  /** Set on a people-chat message that started a thread (its card) or was delivered into one (its chip). */
-  threadRef?: { threadId: string; kind: "started" | "delivered" };
+  /**
+   * Set on a people-chat message that started a thread (its card) or was delivered into one (its chip). `seq` is the
+   * message's copy in that thread, which a deletion also removes; a schedule's card has none, since its thread opens
+   * with the schedule's prompt rather than the card.
+   */
+  threadRef?: { threadId: string; kind: "started" | "delivered"; seq?: number };
   /** Set on an agent's answer (`authorId: "agent"`): how the run that wrote it ended. */
   agent?: {
     runId: string; status: RunEndStatus; reason?: string; steps: number; costMicros: number; ms: number;

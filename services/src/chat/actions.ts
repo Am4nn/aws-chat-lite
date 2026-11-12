@@ -40,8 +40,11 @@ async function perform(connId: string, user: User, f: Frame): Promise<Outcome> {
     }
     case "edit":
       return updated(await chat().edit(user, { ...chatRef(f), seq: seqNumber(f.seq), text: f.text }));
-    case "delete":
-      return updated(await chat().remove(user, { ...chatRef(f), seq: seqNumber(f.seq) }));
+    case "delete": {
+      const { message, copy } = await chat().remove(user, { ...chatRef(f), seq: seqNumber(f.seq) });
+      const removed = [message, ...(copy ? [copy] : [])];
+      return { data: message, notify: () => Promise.all(removed.map((m) => broadcastToRoom(m.roomId, { type: "message.updated", message: m }))) };
+    }
     case "react": {
       if (!REACTIONS.includes(f.reaction as Reaction) || typeof f.on !== "boolean") {
         throw new ValidationError("react needs one of the six reactions and on: true or false.");
