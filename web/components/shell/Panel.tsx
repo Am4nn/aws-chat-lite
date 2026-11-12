@@ -11,8 +11,8 @@ type PanelTab = { id: string; label: string; icon: LucideIcon; content: ReactNod
 /**
  * The right-hand room panel. It slides its width rather than popping in and out, and the active tab is marked by a
  * pill that slides between tabs. The inner column keeps a fixed width so content never reflows while the panel moves.
- * The tabs don't fit in 320 px as labels, so every tab is an icon (named on hover and to screen readers) and the active
- * tab's name heads the panel instead. The tab bar is one Tab stop; arrow keys, Home and End move along it.
+ * Labels would crowd the tab bar, so every tab is an icon, named on hover and to screen readers; the shown panel is
+ * named by its tab, and its sections head themselves. The tab bar is one Tab stop; arrow keys, Home and End move along it.
  * On a phone it is an overlay instead, sliding in from the right edge (`overlayOpen`), and CSS decides which form
  * shows, so the first paint is right before any script runs.
  * Closed, it is inert: hidden from screen readers and out of the tab order, so focus never lands on invisible buttons.
@@ -22,8 +22,8 @@ export function Panel({ open, overlayOpen, active, onActiveChange, tabs }: {
 }) {
   const narrow = useIsNarrow();
   const current = tabs.find((t) => t.id === active) ?? tabs[0];
-  const headingId = useId();
   const panelId = useId();
+  const tabId = (id: string) => `${panelId}-tab-${id}`;
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
 
   function onKeyDown(e: KeyboardEvent) {
@@ -55,6 +55,7 @@ export function Panel({ open, overlayOpen, active, onActiveChange, tabs }: {
                 ref={(el) => { buttons.current[i] = el; }}
                 whileTap={{ scale: 0.92 }}
                 role="tab"
+                id={tabId(t.id)}
                 aria-selected={selected}
                 aria-controls={panelId}
                 tabIndex={selected ? 0 : -1}
@@ -69,8 +70,7 @@ export function Panel({ open, overlayOpen, active, onActiveChange, tabs }: {
             );
           })}
         </div>
-        <h2 id={headingId} className="-mb-1 shrink-0 truncate font-display text-[15px] font-bold">{current.label}</h2>
-        <div id={panelId} role="tabpanel" aria-labelledby={headingId} className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1">{current.content}</div>
+        <div id={panelId} role="tabpanel" aria-labelledby={tabId(current.id)} className="-mx-2 min-h-0 flex-1 overflow-y-auto px-2">{current.content}</div>
       </div>
     </motion.aside>
   );

@@ -15,6 +15,7 @@ import { useToast } from "@/components/overlays/Toast";
 import { Button } from "@/components/ui/Button";
 import { Hint } from "@/components/ui/Hint";
 import { PanelLoading } from "@/components/ui/PanelLoading";
+import { PanelSection } from "@/components/ui/PanelSection";
 import { RowButton } from "@/components/ui/RowButton";
 import { Spinner } from "@/components/ui/Spinner";
 import { Switch } from "@/components/ui/Switch";
@@ -70,25 +71,25 @@ export function FilesPanel({ roomId, store, threads, internet, canSwitch, canWri
   const subject = ask && (ask.kind === "replace" ? ask.file.name : ask.path);
 
   return (
-    <section className="flex flex-col gap-3">
-      <div className="flex items-center gap-2">
-        <span className="font-mono text-[11.5px] text-text-3">{fileSize(store.usedBytes)} of {fileSize(ROOM_FILES_BYTES)}</span>
-        {canWrite && (
-          <>
-            <Button onClick={() => input.current?.click()} size="sm" className="ml-auto">
-              {store.uploading ? <Spinner /> : <Upload aria-hidden="true" size={14} />}
-              Upload
-            </Button>
-            <input
-              ref={input} type="file" multiple hidden
-              onChange={(e) => {
-                pick([...(e.target.files ?? [])]);
-                e.target.value = "";
-              }}
-            />
-          </>
-        )}
-      </div>
+    <PanelSection
+      title="Files"
+      count={store.state === "ready" && store.files.length ? `${fileSize(store.usedBytes)} of ${fileSize(ROOM_FILES_BYTES)}` : undefined}
+      action={canWrite && (
+        <>
+          <Button onClick={() => input.current?.click()} size="sm">
+            {store.uploading ? <Spinner /> : <Upload aria-hidden="true" size={14} />}
+            Upload
+          </Button>
+          <input
+            ref={input} type="file" multiple hidden
+            onChange={(e) => {
+              pick([...(e.target.files ?? [])]);
+              e.target.value = "";
+            }}
+          />
+        </>
+      )}
+    >
 
       <InternetRow roomId={roomId} internet={internet} canSwitch={canSwitch} />
 
@@ -121,7 +122,7 @@ export function FilesPanel({ roomId, store, threads, internet, canSwitch, canWri
       <Modal open={!!ask} onClose={next} title={copy && subject ? copy.title(subject) : ""}>
         {ask && copy && <Confirm action={copy.action} onCancel={next} onConfirm={() => answer(ask)}>{copy.body}</Confirm>}
       </Modal>
-    </section>
+    </PanelSection>
   );
 }
 

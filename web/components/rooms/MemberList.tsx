@@ -9,6 +9,7 @@ import { useNow } from "@/lib/client/useNow";
 import { dur, easeOut, spring } from "@/lib/motion";
 import type { Member, Role } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
+import { PanelSection } from "@/components/ui/PanelSection";
 import { MenuItem, RowMenu } from "@/components/ui/RowMenu";
 import { useToast } from "@/components/overlays/Toast";
 
@@ -92,38 +93,40 @@ export function MemberList({ roomId, members, myRole, myUserId }: { roomId: stri
   }
 
   return (
-    <ul className="flex flex-col gap-1">
-      <AnimatePresence initial={false}>
-        {sorted.map((m) => {
-          const can = actionsFor(myRole, m.role);
-          const hasActions = m.userId !== myUserId && (can.promote || can.demote || can.remove);
-          return (
-            <motion.li
-              key={m.userId}
-              layout
-              exit={{ opacity: 0, height: 0, transition: { duration: dur.base, ease: easeOut } }}
-              transition={spring.glide}
-              className="relative flex h-10 items-center gap-2.5 rounded-[10px] px-2 text-[13px] hover:bg-surface-2"
-            >
-              <Avatar name={m.username} online={m.online} />
-              <span className="flex min-w-0 flex-col">
-                <span className="truncate leading-4">{m.username}{m.userId === myUserId && <span className="text-text-3"> (you)</span>}{m.online && <span className="sr-only">, online</span>}</span>
-                {!m.online && m.lastSeen && (
-                  <span suppressHydrationWarning className="truncate font-mono text-[11px] leading-4 text-text-3">last seen {timeAgo(m.lastSeen, now)}</span>
+    <PanelSection title="Members" count={String(sorted.length)}>
+      <ul className="-mx-2 flex flex-col gap-1">
+        <AnimatePresence initial={false}>
+          {sorted.map((m) => {
+            const can = actionsFor(myRole, m.role);
+            const hasActions = m.userId !== myUserId && (can.promote || can.demote || can.remove);
+            return (
+              <motion.li
+                key={m.userId}
+                layout
+                exit={{ opacity: 0, height: 0, transition: { duration: dur.base, ease: easeOut } }}
+                transition={spring.glide}
+                className="relative flex h-10 items-center gap-2.5 rounded-[10px] px-2 text-[13px] hover:bg-surface-2"
+              >
+                <Avatar name={m.username} online={m.online} />
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate leading-4">{m.username}{m.userId === myUserId && <span className="text-text-3"> (you)</span>}{m.online && <span className="sr-only">, online</span>}</span>
+                  {!m.online && m.lastSeen && (
+                    <span suppressHydrationWarning className="truncate font-mono text-[11px] leading-4 text-text-3">last seen {timeAgo(m.lastSeen, now)}</span>
+                  )}
+                </span>
+                <span className="ml-auto"><RoleBadge role={m.role} /></span>
+                {hasActions && (
+                  <RowMenu open={openFor === m.userId} onToggle={(o) => setOpenFor(o ? m.userId : null)} name={m.username}>
+                    {can.promote && <MenuItem onClick={() => change(m, "promote")}>Make admin</MenuItem>}
+                    {can.demote && <MenuItem onClick={() => change(m, "demote")}>Make member</MenuItem>}
+                    {can.remove && <MenuItem danger onClick={() => change(m, "remove")}>Remove from room</MenuItem>}
+                  </RowMenu>
                 )}
-              </span>
-              <span className="ml-auto"><RoleBadge role={m.role} /></span>
-              {hasActions && (
-                <RowMenu open={openFor === m.userId} onToggle={(o) => setOpenFor(o ? m.userId : null)} name={m.username}>
-                  {can.promote && <MenuItem onClick={() => change(m, "promote")}>Make admin</MenuItem>}
-                  {can.demote && <MenuItem onClick={() => change(m, "demote")}>Make member</MenuItem>}
-                  {can.remove && <MenuItem danger onClick={() => change(m, "remove")}>Remove from room</MenuItem>}
-                </RowMenu>
-              )}
-            </motion.li>
-          );
-        })}
-      </AnimatePresence>
-    </ul>
+              </motion.li>
+            );
+          })}
+        </AnimatePresence>
+      </ul>
+    </PanelSection>
   );
 }

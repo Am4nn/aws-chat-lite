@@ -15,6 +15,7 @@ import { useToast } from "@/components/overlays/Toast";
 import { Button } from "@/components/ui/Button";
 import { MenuItem, RowMenu } from "@/components/ui/RowMenu";
 import { PanelLoading } from "@/components/ui/PanelLoading";
+import { PanelSection } from "@/components/ui/PanelSection";
 import { AgentForm, TOOL_KINDS, type AgentInput } from "./AgentForm";
 import { AgentAvatar } from "@/components/ui/AgentAvatar";
 import { useRoomData } from "./useRoomData";
@@ -77,55 +78,60 @@ export function AgentsPanel({ roomId, me, rooms, models, archived }: {
     }
   }
 
-  if (!data) return <PanelLoading failed={failed} onRetry={reload} />;
+  const newButton = data && !archived && editing !== "new" && (
+    <Button onClick={() => setEditing("new")} size="sm" aria-label="New agent"><Plus aria-hidden="true" size={14} />New</Button>
+  );
 
   return (
-    <div className="flex flex-col gap-2">
-      <ul className="flex flex-col gap-1">
-        {data.agents.map((a) => {
-          const canEdit = !archived && canEditAgent(a, me);
-          const canCopy = !a.builtIn && targets.length > 0;
-          return (
-            <li key={a.agentId}>
-              <AnimatePresence mode="wait" initial={false}>
-                {editing === a.agentId
-                  ? (
-                    <motion.div key="form" {...swap}>
-                      <AgentForm initial={a} kinds={data.kinds} models={models} busy={busy} onCancel={() => setEditing(null)} onSubmit={(input) => save(a, input)} />
-                    </motion.div>
-                  )
-                  : (
-                    <motion.div key="row" {...swap} className="flex min-h-12 items-center gap-2.5 rounded-[10px] px-2 py-1.5 hover:bg-surface-2">
-                      <AgentAvatar size={28} />
-                      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                        <span className="flex items-center gap-1.5">
-                          <span className="truncate font-mono text-[13px] font-medium">@{a.name}</span>
-                          <span className="shrink-0 rounded-md bg-surface-3 px-1.5 py-px text-[11px] text-text-2">{modelChip(a, models)}</span>
-                        </span>
-                        <span className="flex items-center gap-1.5 text-[11.5px] text-text-3">
-                          <span className="flex gap-1" aria-label={`Tools: ${toolNames(a.tools)}`} role="img">
-                            {TOOL_KINDS.filter((k) => a.tools.includes(k.kind)).map(({ kind, icon: Icon }) => <Icon key={kind} aria-hidden="true" size={12} />)}
+    <PanelSection title="Agents" action={newButton}>
+      {!data && <PanelLoading failed={failed} onRetry={reload} />}
+      {data && (
+        <ul className="-mx-2 flex flex-col gap-1">
+          {data.agents.map((a) => {
+            const canEdit = !archived && canEditAgent(a, me);
+            const canCopy = !a.builtIn && targets.length > 0;
+            return (
+              <li key={a.agentId}>
+                <AnimatePresence mode="wait" initial={false}>
+                  {editing === a.agentId
+                    ? (
+                      <motion.div key="form" {...swap}>
+                        <AgentForm initial={a} kinds={data.kinds} models={models} busy={busy} onCancel={() => setEditing(null)} onSubmit={(input) => save(a, input)} />
+                      </motion.div>
+                    )
+                    : (
+                      <motion.div key="row" {...swap} className="flex min-h-12 items-center gap-2.5 rounded-[10px] px-2 py-1.5 hover:bg-surface-2">
+                        <AgentAvatar size={28} />
+                        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                          <span className="flex items-center gap-1.5">
+                            <span className="truncate font-mono text-[13px] font-medium">@{a.name}</span>
+                            <span className="shrink-0 rounded-md bg-surface-3 px-1.5 py-px text-[11px] text-text-2">{modelChip(a, models)}</span>
                           </span>
-                          <span className="truncate">{a.builtIn ? "built in" : `by ${a.createdByName}`}</span>
+                          <span className="flex items-center gap-1.5 text-[11.5px] text-text-3">
+                            <span className="flex gap-1" aria-label={`Tools: ${toolNames(a.tools)}`} role="img">
+                              {TOOL_KINDS.filter((k) => a.tools.includes(k.kind)).map(({ kind, icon: Icon }) => <Icon key={kind} aria-hidden="true" size={12} />)}
+                            </span>
+                            <span className="truncate">{a.builtIn ? "built in" : `by ${a.createdByName}`}</span>
+                          </span>
                         </span>
-                      </span>
-                      {(canEdit || canCopy) && (
-                        <RowMenu open={menuFor === a.agentId} onToggle={(o) => setMenuFor(o ? a.agentId : null)} name={`@${a.name}`}>
-                          {canEdit && <MenuItem onClick={() => { setMenuFor(null); setEditing(a.agentId); }}>Edit</MenuItem>}
-                          {canCopy && targets.map((r) => <MenuItem key={r.roomId} onClick={() => copy(a, r)}>Copy to {r.name}</MenuItem>)}
-                          {canEdit && !a.builtIn && <MenuItem danger onClick={() => { setMenuFor(null); setDeleting(a); }}>Delete</MenuItem>}
-                        </RowMenu>
-                      )}
-                    </motion.div>
-                  )}
-              </AnimatePresence>
-            </li>
-          );
-        })}
-      </ul>
-      {!archived && (editing === "new"
-        ? <AgentForm kinds={data.kinds} models={models} busy={busy} onCancel={() => setEditing(null)} onSubmit={(input) => save(undefined, input)} />
-        : <Button onClick={() => setEditing("new")} className="w-full"><Plus aria-hidden="true" size={14} />New agent</Button>)}
+                        {(canEdit || canCopy) && (
+                          <RowMenu open={menuFor === a.agentId} onToggle={(o) => setMenuFor(o ? a.agentId : null)} name={`@${a.name}`}>
+                            {canEdit && <MenuItem onClick={() => { setMenuFor(null); setEditing(a.agentId); }}>Edit</MenuItem>}
+                            {canCopy && targets.map((r) => <MenuItem key={r.roomId} onClick={() => copy(a, r)}>Copy to {r.name}</MenuItem>)}
+                            {canEdit && !a.builtIn && <MenuItem danger onClick={() => { setMenuFor(null); setDeleting(a); }}>Delete</MenuItem>}
+                          </RowMenu>
+                        )}
+                      </motion.div>
+                    )}
+                </AnimatePresence>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {data && editing === "new" && (
+        <AgentForm kinds={data.kinds} models={models} busy={busy} onCancel={() => setEditing(null)} onSubmit={(input) => save(undefined, input)} />
+      )}
 
       <Modal open={!!deleting} onClose={() => setDeleting(null)} title={`Delete @${deleting?.name}?`}>
         {deleting && (
@@ -134,7 +140,7 @@ export function AgentsPanel({ roomId, me, rooms, models, archived }: {
           </Confirm>
         )}
       </Modal>
-    </div>
+    </PanelSection>
   );
 }
 

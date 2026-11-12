@@ -7,6 +7,7 @@ import { bff, bffOrNull, errorText } from "@/lib/client/bff";
 import { swap } from "@/lib/motion";
 import { Button } from "@/components/ui/Button";
 import { PanelLoading } from "@/components/ui/PanelLoading";
+import { PanelSection } from "@/components/ui/PanelSection";
 import { useToast } from "@/components/overlays/Toast";
 import { expiresIn, inviteUrl } from "./invite";
 
@@ -65,7 +66,7 @@ export function InvitePanel({ roomId }: { roomId: string }) {
   };
 
   return (
-    <div className="flex flex-col gap-3">
+    <PanelSection title="Invite">
       <p className="text-[12.5px] leading-relaxed text-text-3">Anyone with the link can join as a member for 7 days.</p>
       <AnimatePresence mode="wait" initial={false}>
         {(state.kind === "loading" || state.kind === "failed") && (
@@ -102,6 +103,6 @@ export function InvitePanel({ roomId }: { roomId: string }) {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </PanelSection>
   );
 }

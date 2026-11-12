@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { motion, useReducedMotion } from "motion/react";
-import { Activity, Bot, CalendarClock, Folder, NotebookPen, Plug, Search, UserPlus, Users, Workflow } from "lucide-react";
 import { bff, errorText } from "@/lib/client/bff";
 import { useLive, useLiveEvent, useLiveStatus } from "@/lib/client/LiveProvider";
 import { ModelsProvider } from "@/lib/client/ModelsProvider";
@@ -24,6 +23,7 @@ import { MemberList } from "@/components/rooms/MemberList";
 import { MemoryPanel } from "@/components/rooms/MemoryPanel";
 import { SchedulesPanel } from "@/components/rooms/SchedulesPanel";
 import { MentionSound } from "@/components/chat/MentionSound";
+import { PanelSections } from "@/components/ui/PanelSection";
 import { FilesPanel } from "@/components/files/FilesPanel";
 import { useRoomFiles } from "@/components/files/useRoomFiles";
 import { SearchPanel } from "@/components/chat/SearchPanel";
@@ -39,6 +39,7 @@ import { Backdrop, MobileNav } from "./MobileNav";
 import { useCurrentPlace, useNavPending } from "./NavPending";
 import { NeedsYouToast } from "./NeedsYouToast";
 import { Panel } from "./Panel";
+import { PANEL_TABS, panelTabIds, type PanelTabId } from "./panelTabs";
 import { RoomDialogs, type Dialog } from "./RoomDialogs";
 import { RoomPalette } from "./RoomPalette";
 import { RoomSwitcher } from "./RoomSwitcher";
@@ -78,7 +79,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, navHidden, children
   const [navCollapsed, setNavCollapsed] = useState(navHidden);
   // An overlay left open counts only while the window is still narrow enough to show it as one.
   const covered = (overlay === "nav" && phone) || (overlay === "panel" && narrow);
-  const [panelTab, setPanelTab] = useState(number === undefined ? "members" : "context");
+  const [panelTab, setPanelTab] = useState<PanelTabId>(number === undefined ? "people" : "context");
   const [searchFocus, setSearchFocus] = useState(0);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -99,7 +100,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, navHidden, children
   const files = useRoomFiles(roomId);
   const push = usePush();
   const exitRoom = useRoomExit({ roomId, rooms, onExited: () => setDialog(null) });
-  const { pickGitHub, clearPick } = useFlowReturn(() => setPanelTab("connections"));
+  const { pickGitHub, clearPick } = useFlowReturn(() => setPanelTab("room"));
   const query = useSearchParams();
   const onMap = !!activeThread && !!inRoom?.map;
   // A step picked on another run's Map (another thread's, or this thread's before its next run) isn't shown.
@@ -155,7 +156,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, navHidden, children
     else setPanelOpen((o) => !o);
   }
 
-  function showPanel(tab: string) {
+  function showPanel(tab: PanelTabId) {
     setPanelTab(tab);
     if (isNarrowNow()) setOverlay("panel");
     else setPanelOpen(true);
@@ -211,6 +212,30 @@ export function RoomShell({ view, rooms, me, serverTimeZone, navHidden, children
   const shownRoom = (inRoom ? null : rooms.find((r) => r.roomId === place?.roomId)) ?? room;
   const activeChat = view.chats.find((c) => c.chatId === chatId);
   const meInRoom = { userId: me.userId, role: view.me.role };
+  const tabContent: Record<PanelTabId, ReactNode> = {
+    step: shownStep && <StepDetails {...shownStep} />,
+    context: activeThread && <RunPanel thread={activeThread} files={files.files} />,
+    agents: (
+      <PanelSections>
+        <AgentsPanel key={`agents-${roomId}`} roomId={roomId} me={meInRoom} rooms={rooms} models={view.models} archived={archived} />
+        <SchedulesPanel key={`schedules-${roomId}`} roomId={roomId} me={meInRoom} chats={view.chats} archived={archived} />
+        <MemoryPanel key={`memory-${roomId}`} roomId={roomId} archived={archived} />
+      </PanelSections>
+    ),
+    room: (
+      <PanelSections>
+        <FilesPanel roomId={roomId} store={files} threads={threads.threads} internet={view.sandboxInternet} canSwitch={canManage} canWrite={!archived} />
+        <ConnectionsPanel roomId={roomId} archived={archived} pickGitHub={pickGitHub} onPickStarted={clearPick} />
+      </PanelSections>
+    ),
+    people: (
+      <PanelSections>
+        <MemberList roomId={roomId} members={members} myRole={view.me.role} myUserId={me.userId} />
+        {canManage && <InvitePanel roomId={roomId} />}
+      </PanelSections>
+    ),
+    search: <SearchPanel roomId={roomId} chats={view.chats} serverTimeZone={serverTimeZone} focusSignal={searchFocus} onPick={() => setOverlay(null)} />,
+  };
 
   return (
     <ModelsProvider view={view}>
@@ -244,7 +269,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, navHidden, children
               </>
             )}
             taint={activeThread?.taint} panelOpen={narrow ? overlay === "panel" : panelOpen}
-            navCollapsed={navCollapsed} onMenu={() => (phone ? setOverlay("nav") : setNav(false))} onSearch={openSearch} onTogglePanel={togglePanel}
+            navCollapsed={navCollapsed} onMenu={() => (phone ? setOverlay("nav") : setNav(false))} onPeople={() => showPanel("people")} onTogglePanel={togglePanel}
           />
           <div className="relative min-h-0 flex-1 overflow-hidden">
             <motion.div
@@ -260,33 +285,8 @@ export function RoomShell({ view, rooms, me, serverTimeZone, navHidden, children
           open={panelOpen}
           overlayOpen={overlay === "panel"}
           active={panelTab}
-          onActiveChange={setPanelTab}
-          tabs={[
-            ...(shownStep ? [{ id: "step", label: "Step", icon: Workflow, content: <StepDetails {...shownStep} /> }] : []),
-            ...(activeThread ? [{ id: "context", label: "Context", icon: Activity, content: <RunPanel thread={activeThread} files={files.files} /> }] : []),
-            { id: "memory", label: "Memory", icon: NotebookPen, content: <MemoryPanel key={roomId} roomId={roomId} archived={archived} /> },
-            {
-              id: "agents", label: "Agents", icon: Bot,
-              content: <AgentsPanel key={roomId} roomId={roomId} me={meInRoom} rooms={rooms} models={view.models} archived={archived} />,
-            },
-            {
-              id: "schedules", label: "Schedules", icon: CalendarClock,
-              content: <SchedulesPanel key={roomId} roomId={roomId} me={meInRoom} chats={view.chats} archived={archived} />,
-            },
-            {
-              id: "files", label: `Files · ${files.files.length}`, icon: Folder,
-              content: (
-                <FilesPanel
-                  roomId={roomId} store={files} threads={threads.threads} internet={view.sandboxInternet}
-                  canSwitch={canManage} canWrite={!archived}
-                />
-              ),
-            },
-            { id: "connections", label: "Connections", icon: Plug, content: <ConnectionsPanel roomId={roomId} archived={archived} pickGitHub={pickGitHub} onPickStarted={clearPick} /> },
-            { id: "members", label: `Members · ${members.length}`, icon: Users, content: <MemberList roomId={roomId} members={members} myRole={view.me.role} myUserId={me.userId} /> },
-            ...(canManage ? [{ id: "invite", label: "Invite", icon: UserPlus, content: <InvitePanel roomId={roomId} /> }] : []),
-            { id: "search", label: "Search", icon: Search, content: <SearchPanel roomId={roomId} chats={view.chats} serverTimeZone={serverTimeZone} focusSignal={searchFocus} onPick={() => setOverlay(null)} /> },
-          ]}
+          onActiveChange={(id) => setPanelTab(id as PanelTabId)}
+          tabs={panelTabIds({ thread: !!activeThread, step: !!shownStep }).map((id) => ({ id, ...PANEL_TABS[id], content: tabContent[id] }))}
         />
         <Backdrop open={covered} onClose={() => setOverlay(null)} />
       </div>

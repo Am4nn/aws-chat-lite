@@ -45,6 +45,12 @@ describe("AgentsPanel", () => {
     expect(await screen.findByText("@scout")).toBeTruthy();
   });
 
+  it("puts New in the Agents title row", async () => {
+    show();
+    const title = (await screen.findByRole("heading", { level: 2, name: "Agents" })).parentElement!;
+    expect(within(title).getByRole("button", { name: "New agent" })).toBeTruthy();
+  });
+
   it("lists each agent with its model, tool kinds and creator", async () => {
     show();
     expect(await screen.findByText("@scout")).toBeTruthy();
