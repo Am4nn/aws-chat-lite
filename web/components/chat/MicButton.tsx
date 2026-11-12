@@ -29,7 +29,7 @@ export function DictationRow({ dictation }: { dictation: Dictation }) {
     <div className="flex items-center gap-2.5 px-4 pt-2.5 text-[12.5px] text-text-2">
       <MicOff aria-hidden="true" size={13} className="shrink-0 text-amber" />
       <span role="alert" className="min-w-0 flex-1">{dictation.error}</span>
-      <button onClick={dictation.cancel} aria-label="Dismiss" className="grid size-6 shrink-0 place-items-center rounded-md text-text-3 transition-colors hover:bg-surface-3 hover:text-text">
+      <button onClick={dictation.cancel} aria-label="Dismiss" className="grid size-6 shrink-0 place-items-center rounded-md text-text-3 transition-[background-color,color,scale] hover:bg-surface-3 hover:text-text active:scale-90">
         <X aria-hidden="true" size={13} />
       </button>
     </div>
