@@ -32,8 +32,10 @@ afterEach(() => {
   toasts.mockReset();
 });
 
-const show = (rooms: RoomSummary[] = [room("r1", "member")]) =>
-  render(<AgentsPanel roomId="r1" me={{ userId: "u1", role: "member" }} rooms={rooms} models={MODELS} archived={false} />);
+// Tests that change the list use a room of their own, since the panel cache outlives a test.
+const show = (rooms: RoomSummary[] = [room("r1", "member")], roomId = "r1") =>
+  render(<AgentsPanel roomId={roomId} me={{ userId: "u1", role: "member" }} rooms={rooms} models={MODELS} archived={false} />);
+const rowNames = () => screen.getAllByText(/^@/).map((n) => n.textContent);
 
 describe("AgentsPanel", () => {
   it("offers a retry when the first load fails, instead of spinning for good", async () => {
@@ -84,5 +86,39 @@ describe("AgentsPanel", () => {
     await vi.waitFor(() => expect(mockedBff).toHaveBeenCalledWith("/bff/api/rooms/r1/agents", {
       body: { name: "reviewer", instructions: "", tools: ["web"], model: "haiku" },
     }));
+  });
+
+  it("shows the saved agent as the server answered, without waiting for a refetch", async () => {
+    show([room("r1", "member")], "r-edit");
+    fireEvent.click(await screen.findByRole("button", { name: "Actions for @scout" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit" }));
+    mockedBff.mockResolvedValueOnce({ agent: agent("scout", { model: "haiku" }) });
+    fireEvent.click(await screen.findByRole("button", { name: "Save" }));
+    await vi.waitFor(() => expect(screen.queryByRole("button", { name: "Save" })).toBeNull());
+    expect(screen.getAllByText("room default")).toHaveLength(2);
+    expect(screen.getAllByText("Haiku")).toHaveLength(1);
+    expect(mockedBff.mock.calls.filter(([path]) => path.endsWith("/agents"))).toHaveLength(1);
+  });
+
+  it("adds a created agent at the end of the list", async () => {
+    show([room("r1", "member")], "r-create");
+    fireEvent.click(await screen.findByRole("button", { name: "New agent" }));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "reviewer" } });
+    mockedBff.mockResolvedValueOnce({ agent: agent("reviewer") });
+    fireEvent.click(screen.getByRole("button", { name: "Create agent" }));
+    await vi.waitFor(() => expect(rowNames()).toEqual(["@agent", "@scout", "@critic", "@reviewer"]));
+  });
+
+  it("deletes on the confirm's tap, and puts the agent back in its place when the server refuses", async () => {
+    show([room("r1", "member")], "r-delete");
+    fireEvent.click(await screen.findByRole("button", { name: "Actions for @scout" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+    let refuse!: (e: unknown) => void;
+    mockedBff.mockReturnValueOnce(new Promise((_, reject) => { refuse = reject; }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete agent" }));
+    await vi.waitFor(() => expect(rowNames()).toEqual(["@agent", "@critic"]));
+    refuse("Only its creator or an admin can do that.");
+    await vi.waitFor(() => expect(toasts).toHaveBeenCalledWith("Only its creator or an admin can do that.", "error"));
+    await vi.waitFor(() => expect(rowNames()).toEqual(["@agent", "@scout", "@critic"]));
   });
 });

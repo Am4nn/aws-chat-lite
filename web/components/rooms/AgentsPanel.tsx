@@ -6,6 +6,7 @@ import { Plus } from "lucide-react";
 import { canEditAgent, copyTargets, copyToast, type CopyResult } from "@/lib/client/agents";
 import { bff, errorText } from "@/lib/client/bff";
 import { useLiveEvent } from "@/lib/client/LiveProvider";
+import { removeOptimistically } from "@/lib/client/optimistic";
 import { swap } from "@/lib/motion";
 import type { Agent, ModelOption, Role, RoomSummary, ToolKind } from "@/lib/types";
 import { Confirm } from "@/components/overlays/Confirm";
@@ -24,7 +25,8 @@ type Me = { userId: string; role: Role };
 /**
  * The room's agents: anyone uses any of them and adds their own; an agent's creator or an admin changes it. The
  * server's list is the truth, fetched again when the agents change and when the room does (its connections decide
- * which tool kinds are on offer).
+ * which tool kinds are on offer). A save shows the server's answer at once; a delete shows on the tap and is undone
+ * if the server refuses.
  */
 export function AgentsPanel({ roomId, me, rooms, models, archived }: {
   roomId: string; me: Me; rooms: RoomSummary[]; models: ModelOption[]; archived: boolean;
@@ -36,7 +38,8 @@ export function AgentsPanel({ roomId, me, rooms, models, archived }: {
   const [busy, setBusy] = useState(false);
   const base = `/bff/api/rooms/${roomId}/agents`;
   const targets = copyTargets(rooms, roomId);
-  const { data, failed, reload } = useRoomData<Agents>(base);
+  const { data, setData, failed, reload } = useRoomData<Agents>(base);
+  const setAgents = (change: (list: Agent[]) => Agent[]) => setData((d) => d && { ...d, agents: change(d.agents) });
   const refetch = (e: { roomId: string }) => e.roomId === roomId && reload();
   useLiveEvent("agents.changed", refetch);
   useLiveEvent("room.updated", refetch);
@@ -46,10 +49,11 @@ export function AgentsPanel({ roomId, me, rooms, models, archived }: {
     try {
       // The built-in @agent can't be renamed, so its name isn't sent at all.
       const { instructions, tools, model } = input;
-      if (agent) await bff(`${base}/${agent.agentId}`, { method: "PATCH", body: agent.builtIn ? { instructions, tools, model } : input });
-      else await bff(base, { body: input });
+      const { agent: saved } = agent
+        ? await bff<{ agent: Agent }>(`${base}/${agent.agentId}`, { method: "PATCH", body: agent.builtIn ? { instructions, tools, model } : input })
+        : await bff<{ agent: Agent }>(base, { body: input });
+      setAgents((list) => (agent ? list.map((a) => (a.agentId === saved.agentId ? saved : a)) : [...list, saved]));
       setEditing(null);
-      reload();
     } catch (e) {
       toast(errorText(e), "error");
     } finally {
@@ -57,15 +61,11 @@ export function AgentsPanel({ roomId, me, rooms, models, archived }: {
     }
   }
 
-  async function remove(agent: Agent) {
-    try {
-      await bff(`${base}/${agent.agentId}`, { method: "DELETE", body: {} });
-      setDeleting(null);
-      reload();
-      toast(`@${agent.name} deleted`);
-    } catch (e) {
-      toast(errorText(e), "error");
-    }
+  function remove(agent: Agent) {
+    setDeleting(null);
+    removeOptimistically({ list: data!.agents, item: agent, key: (a) => a.agentId, set: setAgents }, () =>
+      bff(`${base}/${agent.agentId}`, { method: "DELETE", body: {} }))
+      .then(() => toast(`@${agent.name} deleted`), (e) => toast(errorText(e), "error"));
   }
 
   async function copy(agent: Agent, room: RoomSummary) {
@@ -129,7 +129,7 @@ export function AgentsPanel({ roomId, me, rooms, models, archived }: {
 
       <Modal open={!!deleting} onClose={() => setDeleting(null)} title={`Delete @${deleting?.name}?`}>
         {deleting && (
-          <Confirm action="Delete agent" onCancel={() => setDeleting(null)} onConfirm={() => remove(deleting)}>
+          <Confirm action="Delete agent" onCancel={() => setDeleting(null)} onConfirm={async () => remove(deleting)}>
             Its schedules are deleted too. Its threads stay, and @agent answers them from now on.
           </Confirm>
         )}
