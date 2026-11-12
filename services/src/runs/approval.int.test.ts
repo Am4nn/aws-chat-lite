@@ -6,7 +6,7 @@ import { decideApproval } from "../approvals/decide.js";
 import { approvalsRepo } from "../approvals/repo.js";
 import { auditRepo } from "../audit/repo.js";
 import { docClient, tableName } from "../lib/db.js";
-import { Conflict } from "../lib/errors.js";
+import { Conflict, Gone } from "../lib/errors.js";
 import { roomsRepo } from "../rooms/repo.js";
 import { recordGitHub } from "../tools/fake-github.js";
 import { toolEnv } from "../tools/index.js";
@@ -150,6 +150,16 @@ describe("approvals in the run loop, on Floci", { timeout: 60_000 }, () => {
     const text = (await eventsOf(runId, "text")).map((e) => (e.type === "text" ? e.text : "")).join("");
     expect(text.endsWith(`\n\n(Skipped because no one approved in time: ${COMMENT_TITLE})`)).toBe(true);
     expect((run as Run & { pausedMs?: number }).pausedMs).toBeGreaterThanOrEqual(5000);
+  });
+
+  it("archiving the room refuses the decision, and the waiting run ends as archived once its approval expires", async () => {
+    const at = await room({ approvalTimeoutSec: 5 });
+    const { thread, runId } = await startRun("go call:github_comment", at);
+    await waiting(at.roomId, thread.threadId);
+    await roomsRepo().archiveRoom(at.roomId, at.aman.userId);
+    await expect(decideApproval(at.bea, runId, 1, "approve")).rejects.toEqual(new Gone("This room is archived."));
+    expect(await finished(runId, 40_000)).toMatchObject({ status: "stopped", reason: "The room was archived." });
+    expect(await eventsOf(runId, "step.finished")).toEqual([]);
   });
 
   it("a stop while waiting ends the run within seconds and cancels the approval", async () => {

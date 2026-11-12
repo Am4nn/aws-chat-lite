@@ -2,7 +2,7 @@ import { GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { findMember } from "../chat/membership.js";
 import type { User } from "../lib/auth.js";
 import { conditionFailed, docClient, tableName } from "../lib/db.js";
-import { Conflict, Forbidden, NotFound } from "../lib/errors.js";
+import { Conflict, Forbidden, Gone, NotFound } from "../lib/errors.js";
 import type { ToolCall } from "../models/gateway.js";
 import type { ApprovalStatus } from "../threads/types.js";
 import { conflictCopy } from "./model.js";
@@ -73,11 +73,13 @@ export function approvalsRepo() {
       }
     },
 
-    /** Any member of the run's room may decide, once, before the approval expires. */
+    /** Any member of the run's room may decide, once, before the approval expires, unless the room was archived. */
     async decide(user: User, runId: string, step: number, decision: "approve" | "deny") {
       const item = await get(runId, step);
       if (!item) throw new NotFound("Approval not found.");
-      if (!(await findMember(item.roomId, user.userId))) throw new Forbidden("Only members of this room can approve.");
+      const member = await findMember(item.roomId, user.userId);
+      if (!member) throw new Forbidden("Only members of this room can approve.");
+      if (member.archived) throw new Gone("This room is archived.");
       const status: "approved" | "denied" = decision === "approve" ? "approved" : "denied";
       try {
         const { Attributes } = await db.send(new UpdateCommand({

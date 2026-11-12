@@ -14,6 +14,7 @@ export const eventSk = (seq: number) => `EV#${String(seq).padStart(10, "0")}`;
 
 type RunState = {
   stopRequestedBy?: string;
+  archived?: boolean;
   steps: number;
   startedAtMs: number;
   /** Time spent waiting for approvals, which doesn't count toward the run's time limit. */
@@ -25,9 +26,13 @@ type RunState = {
 
 export const stoppedBy = (username: string) => ({ status: "stopped" as const, reason: `Stopped by ${username}.` });
 
-/** Why a run must end now, or null to keep going. A member's stop outranks the automatic limits. */
+/**
+ * Why a run must end now, or null to keep going. A member's stop outranks the room's archiving, which outranks the
+ * automatic limits.
+ */
 export function endReason(s: RunState, nowMs: number): { status: RunEndStatus; reason: string } | null {
   if (s.stopRequestedBy) return stoppedBy(s.stopRequestedBy);
+  if (s.archived) return { status: "stopped", reason: "The room was archived." };
   if (s.spentMicros >= s.capMicros) return { status: "capped", reason: budgetText(s.capMicros, s.month) };
   if (s.steps >= RUN_MAX_STEPS) return { status: "failed", reason: `Step limit reached (${RUN_MAX_STEPS} steps).` };
   if (nowMs - s.startedAtMs - (s.pausedMs ?? 0) > RUN_MAX_MS) return { status: "failed", reason: `Time limit reached (${RUN_MAX_MS / 3_600_000} hours).` };

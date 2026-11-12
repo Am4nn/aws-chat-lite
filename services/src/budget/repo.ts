@@ -24,17 +24,21 @@ export function budgetRepo() {
   const meta = async (roomId: string) =>
     (await db.send(new GetCommand({ TableName, Key: metaKey(roomId), ConsistentRead: true }))).Item;
 
-  async function get(roomId: string, now: Date): Promise<Budget> {
+  /** The budget, and from the same read of the room, whether it was archived, which also ends its runs. */
+  async function withArchived(roomId: string, now: Date): Promise<{ budget: Budget; archived: boolean }> {
     const month = monthKey(now);
     const [room, { Item: usage }] = await Promise.all([
       meta(roomId),
       db.send(new GetCommand({ TableName, Key: usageKey(roomId, month), ConsistentRead: true })),
     ]);
-    return budgetOf(month, room, usage);
+    return { budget: budgetOf(month, room, usage), archived: !!room?.archived };
   }
+
+  const get = async (roomId: string, now: Date): Promise<Budget> => (await withArchived(roomId, now)).budget;
 
   return {
     get,
+    withArchived,
 
     /**
      * A model call's cost, as a write for the transaction that records the call. ADD is atomic, so calls finishing

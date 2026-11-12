@@ -93,11 +93,16 @@ export async function load(runId: string): Promise<{ run: Run; provisional: bool
   return { run, provisional: !!thread && isNumberedName(thread.name), agent, others: all.filter((a) => a.agentId !== agent.agentId).map(agentCard) };
 }
 
-/** Stop, budget, steps and time, checked before every model call and every tool call. */
+/**
+ * Stop, archive, budget, steps and time, checked before every model call and every tool call. An archived room takes
+ * no decisions, so a run waiting on one there ends at this check once its approval expires.
+ */
 export async function limitsReached(run: Run): Promise<End | null> {
-  const [current, budget] = await Promise.all([runsRepo().getRun(run.runId), budgetRepo().get(run.roomId, new Date())]);
+  const [current, { budget, archived }] = await Promise.all([
+    runsRepo().getRun(run.runId), budgetRepo().withArchived(run.roomId, new Date()),
+  ]);
   return endReason({
-    stopRequestedBy: current?.stopRequestedBy, steps: run.steps, startedAtMs: Date.parse(run.startedAt), pausedMs: current?.pausedMs,
+    stopRequestedBy: current?.stopRequestedBy, archived, steps: run.steps, startedAtMs: Date.parse(run.startedAt), pausedMs: current?.pausedMs,
     spentMicros: budget.spentMicros, capMicros: budget.capMicros, month: budget.month,
   }, Date.now());
 }
