@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { GetCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, GetCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { docClient } from "../lib/db.js";
 import { Conflict } from "../lib/errors.js";
 import { roomsRepo } from "./repo.js";
@@ -51,6 +51,21 @@ describe("archiveRoom", () => {
     expect(meta.Update?.Key).toEqual({ pk: "ROOM#r1", sk: "META" });
     expect(meta.Update?.ConditionExpression).toContain("(attribute_not_exists(joinCount) OR joinCount = :joins)");
     expect(meta.Update?.ExpressionAttributeValues).toMatchObject({ ":joins": 4 });
+  });
+});
+
+describe("removeMember", () => {
+  it("also deletes the removed member's socket subscriptions to the room, as leaving does", async () => {
+    const send = fakeTable((c) => {
+      if (c instanceof GetCommand) return { Item: { role: c.input.Key?.sk === "MEMBER#u1" ? "owner" : "member" } };
+      if (c instanceof QueryCommand) return { Items: [{ pk: "ROOM#r1", sk: "CONN#s1", userId: "u2" }] };
+      return {};
+    });
+    await roomsRepo().removeMember("r1", "u1", "u2");
+    const query = send.mock.calls.map(([c]) => c).find((c) => c instanceof QueryCommand) as QueryCommand;
+    expect(query.input).toMatchObject({ FilterExpression: "userId = :u", ExpressionAttributeValues: { ":p": "ROOM#r1", ":c": "CONN#", ":u": "u2" } });
+    const deleted = send.mock.calls.map(([c]) => c).filter((c) => c instanceof DeleteCommand).map((c) => (c as DeleteCommand).input.Key);
+    expect(deleted).toEqual([{ pk: "ROOM#r1", sk: "MEMBER#u2" }, { pk: "ROOM#r1", sk: "CONN#s1" }]);
   });
 });
 

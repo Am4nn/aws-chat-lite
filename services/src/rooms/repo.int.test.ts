@@ -210,6 +210,17 @@ describe("rooms repo on Floci", () => {
     expect(Item).toBeUndefined();
   });
 
+  it("a removed member's socket subscriptions go with them", async () => {
+    const { owner, member, roomId } = await roomWithMember();
+    const subscription = { pk: `ROOM#${roomId}`, sk: `CONN#${randomUUID()}`, userId: member.userId };
+    await docClient().send(new PutCommand({ TableName: tableName(), Item: subscription }));
+    await repo.removeMember(roomId, owner.userId, member.userId);
+    const { Item } = await docClient().send(new GetCommand({
+      TableName: tableName(), Key: { pk: subscription.pk, sk: subscription.sk }, ConsistentRead: true,
+    }));
+    expect(Item).toBeUndefined();
+  });
+
   it("archive: owner only; the room leaves everyone's list and the view says archived", async () => {
     const { owner, member, roomId } = await roomWithMember();
     await expect(repo.archiveRoom(roomId, member.userId)).rejects.toBeInstanceOf(Forbidden);

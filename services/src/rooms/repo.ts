@@ -88,6 +88,18 @@ export function roomsRepo() {
     return role;
   }
 
+  /**
+   * Someone who left or was removed loses their sockets' subscriptions to the room. Live events already skip anyone
+   * who isn't a member; deleting the subscriptions saves the room's fan-out from reading them.
+   */
+  async function dropSubscriptions(roomId: string, userId: string) {
+    const subscriptions = await queryAll({
+      KeyConditionExpression: "pk = :p AND begins_with(sk, :c)", FilterExpression: "userId = :u",
+      ExpressionAttributeValues: { ":p": roomKey(roomId), ":c": "CONN#", ":u": userId },
+    });
+    await Promise.all(subscriptions.map((s) => db.send(new DeleteCommand({ TableName, Key: { pk: s.pk, sk: s.sk } }))));
+  }
+
   async function roomMeta(roomId: string) {
     const { Item } = await db.send(new GetCommand({ TableName, Key: { pk: roomKey(roomId), sk: "META" } }));
     if (!Item) throw new NotFound("Room not found.");
@@ -299,6 +311,7 @@ export function roomsRepo() {
         if (conditionFailed(e)) throw new Conflict("Their role just changed; try again.");
         throw e;
       }
+      await dropSubscriptions(roomId, targetId);
       return {};
     },
 
@@ -326,18 +339,10 @@ export function roomsRepo() {
       return { muted };
     },
 
-    /**
-     * Your membership goes, and so do your sockets' subscriptions to the room. Live events already skip anyone who
-     * isn't a member; deleting the subscriptions saves the room's fan-out from reading them.
-     */
     async leaveRoom(roomId: string, userId: string) {
       if (!can("leave", await requireMember(roomId, userId))) throw new Forbidden("The owner can't leave their own room.");
       await db.send(new DeleteCommand({ TableName, Key: memberKey(roomId, userId) }));
-      const subscriptions = await queryAll({
-        KeyConditionExpression: "pk = :p AND begins_with(sk, :c)", FilterExpression: "userId = :u",
-        ExpressionAttributeValues: { ":p": roomKey(roomId), ":c": "CONN#", ":u": userId },
-      });
-      await Promise.all(subscriptions.map((s) => db.send(new DeleteCommand({ TableName, Key: { pk: s.pk, sk: s.sk } }))));
+      await dropSubscriptions(roomId, userId);
       return {};
     },
 
