@@ -89,7 +89,7 @@ export const MessageRow = memo(function MessageRow({ rowKey, message: m, status,
           {m.replyTo && !m.deleted && (
             <button
               onClick={() => actions.jump(m.replyTo!.seq)}
-              className="mb-0.5 mt-1 flex max-w-full items-center gap-1.5 border-l-2 border-line-strong pl-2 text-left text-[12.5px] text-text-3 transition-colors hover:border-line-hover hover:text-text-2"
+              className="mb-0.5 mt-1 flex max-w-full items-center gap-1.5 border-l-2 border-quote-line pl-2 text-left text-[12.5px] text-text-3 transition-colors hover:border-line-hover hover:text-text-2"
             >
               <CornerUpLeft aria-hidden="true" size={12} className="shrink-0" />
               <span className="shrink-0 font-medium text-text-2">{m.replyTo.authorName}</span>

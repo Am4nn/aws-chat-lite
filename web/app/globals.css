@@ -36,6 +36,13 @@
   --color-danger-line: #4a2a26;
   --color-danger-wash: #150f0e;
 
+  /* Role shades kept apart from the scale above: a step's raw output reads dimmer than prose, and the run map and quote bar keep their own tints. */
+  --color-output: #0f1213;
+  --color-output-text: #b7c2c1;
+  --color-map-selected: #131a11;
+  --color-map-file: #b7e36a;
+  --color-quote-line: #2b3336;
+
   /* Floating layers, by how far they sit above the page. */
   --shadow-ring: inset 0 0 0 1px var(--color-line-strong);
   --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.45);
