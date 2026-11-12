@@ -10,6 +10,7 @@ import { BUILT_IN } from "../agents/model.js";
 import { can, type Role } from "../rooms/access.js";
 import type { Schedule } from "../threads/types.js";
 import { nextFire, parseCadence } from "./cadence.js";
+import { enabledOf, promptOf, titleOf } from "./model.js";
 import { DEFAULT_TIME_ZONE, roomTimeZone } from "./zone.js";
 
 type ScheduleInput = { agentId: unknown; title: unknown; prompt: unknown; cadence: unknown; chatId: unknown };
@@ -21,24 +22,8 @@ const FIRE_CLAIM_TTL_SEC = 7 * 86_400;
 
 const nowIso = () => new Date().toISOString();
 const scheduleKey = (roomId: string, id: string) => ({ pk: roomKey(roomId), sk: `SCHED#${id}` });
-const idOf = (raw: unknown) => (typeof raw === "string" ? raw : "");
-
-function titleOf(raw: unknown): string {
-  const title = typeof raw === "string" ? raw.trim() : "";
-  if (title.length < 1 || title.length > 40) throw new ValidationError("Schedule titles are 1 to 40 characters.");
-  return title;
-}
-
-function promptOf(raw: unknown): string {
-  const prompt = typeof raw === "string" ? raw.trim() : "";
-  if (prompt.length < 1 || prompt.length > 2000) throw new ValidationError("A schedule's prompt is 1 to 2,000 characters.");
-  return prompt;
-}
-
-function enabledOf(raw: unknown): boolean {
-  if (typeof raw !== "boolean") throw new ValidationError("enabled must be true or false.");
-  return raw;
-}
+/** An id as given, or "" (which matches nothing) for anything but a string. */
+const idText = (raw: unknown) => (typeof raw === "string" ? raw : "");
 
 /**
  * The room's schedules (single table, `SCHED#<id>` in the room partition). The item is the truth about a schedule;
@@ -155,8 +140,8 @@ export function schedulesRepo() {
     /** The agent and the people chat are checked in the same transaction that takes the slot, so neither can vanish in between. */
     async create(user: User, roomId: string, input: ScheduleInput): Promise<Schedule> {
       const fields = { title: titleOf(input.title), prompt: promptOf(input.prompt), cadence: parseCadence(input.cadence) };
-      const agentId = idOf(input.agentId);
-      const chatId = idOf(input.chatId);
+      const agentId = idText(input.agentId);
+      const chatId = idText(input.chatId);
       await requireMember(roomId, user.userId, { writing: true });
       const schedule: Schedule = {
         scheduleId: randomUUID(), agentId, ...fields, chatId, enabled: true,
@@ -180,7 +165,7 @@ export function schedulesRepo() {
         ...(patch.title !== undefined && { title: titleOf(patch.title) }),
         ...(patch.prompt !== undefined && { prompt: promptOf(patch.prompt) }),
         ...(patch.cadence !== undefined && { cadence: parseCadence(patch.cadence) }),
-        ...(patch.chatId !== undefined && { chatId: idOf(patch.chatId) }),
+        ...(patch.chatId !== undefined && { chatId: idText(patch.chatId) }),
         ...(patch.enabled !== undefined && { enabled: enabledOf(patch.enabled) }),
       };
       const role = await requireMember(roomId, user.userId, { writing: true });
