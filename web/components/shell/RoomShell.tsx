@@ -12,6 +12,7 @@ import { sidebarThreads } from "@/lib/client/threads";
 import { useThreads } from "@/lib/client/ThreadsProvider";
 import { useNow } from "@/lib/client/useNow";
 import { useTimeZone } from "@/lib/client/useTimeZone";
+import { saveNavCollapsed } from "@/lib/client/navCookie";
 import { NARROW_QUERY, useIsNarrow, useIsPhone } from "@/lib/client/useIsPhone";
 import { enterFrom } from "@/lib/motion";
 import { isAdmin, type Chat, type Me, type RoomSummary, type RoomView } from "@/lib/types";
@@ -54,8 +55,8 @@ type Overlay = "nav" | "panel" | null;
 
 const isNarrowNow = () => window.matchMedia(NARROW_QUERY).matches;
 
-export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
-  view: RoomView; rooms: RoomSummary[]; me: Me; serverTimeZone: string; children: ReactNode;
+export function RoomShell({ view, rooms, me, serverTimeZone, navHidden, children }: {
+  view: RoomView; rooms: RoomSummary[]; me: Me; serverTimeZone: string; navHidden: boolean; children: ReactNode;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -66,6 +67,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
   const { chatId, number } = useParams<{ chatId?: string; number?: string }>();
   const [panelOpen, setPanelOpen] = useState(true);
   const [overlay, setOverlay] = useState<Overlay>(null);
+  const [navCollapsed, setNavCollapsed] = useState(navHidden);
   // An overlay left open counts only while the window is still narrow enough to show it as one.
   const covered = (overlay === "nav" && phone) || (overlay === "panel" && narrow);
   const [panelTab, setPanelTab] = useState(number ? "context" : "members");
@@ -136,6 +138,11 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  function setNav(collapsed: boolean) {
+    setNavCollapsed(collapsed);
+    saveNavCollapsed(collapsed);
+  }
+
   function togglePanel() {
     if (isNarrowNow()) setOverlay((o) => (o === "panel" ? null : "panel"));
     else setPanelOpen((o) => !o);
@@ -197,7 +204,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
       <MentionSound meId={me.userId} />
       <NeedsYouToast roomId={roomId} openThreadId={activeThread?.threadId} panelOpen={panelOpen} />
       <div className="flex h-dvh overflow-hidden bg-ink">
-        <MobileNav open={overlay === "nav"}>
+        <MobileNav open={overlay === "nav"} collapsed={navCollapsed}>
           <Sidebar
             chats={badges.chats} me={me} roomId={roomId} canManage={canManage}
             activeChatId={chatId} newChatIds={newChatIds}
@@ -211,7 +218,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
               />
             )}
             onPalette={() => setPaletteOpen(true)} onNewChat={() => setDialog("chat")} onRename={(chat) => setDialog({ rename: chat })}
-            onArchive={setChatArchived} onMute={mute} onSignOut={signOutToLogin}
+            onArchive={setChatArchived} onMute={mute} onSignOut={signOutToLogin} onCollapse={() => setNav(true)}
           />
         </MobileNav>
         <main inert={covered} className="flex min-w-0 flex-1 flex-col">
@@ -225,7 +232,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
               </>
             )}
             taint={activeThread?.taint} panelOpen={narrow ? overlay === "panel" : panelOpen}
-            onMenu={() => setOverlay("nav")} onSearch={openSearch} onTogglePanel={togglePanel}
+            navCollapsed={navCollapsed} onMenu={() => (phone ? setOverlay("nav") : setNav(false))} onSearch={openSearch} onTogglePanel={togglePanel}
           />
           <div className="relative min-h-0 flex-1 overflow-hidden">
             <motion.div key={pathname} {...enter} initial={navigated ? enter.initial : false} className="absolute inset-0">
