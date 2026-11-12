@@ -121,11 +121,11 @@ export async function agentChecks(stamp: number, owner: Person, guest: Person) {
   await A.evaluate(() => ([...document.querySelectorAll("main button[aria-expanded=false]")] as HTMLElement[])
     .filter((b) => /^\d+ steps?\b/.test(b.textContent ?? "")).at(-1)?.click());
   const delegateRow = 'main button[aria-expanded]';
-  const collapsed = await until(A, (sel) => [...document.querySelectorAll(sel)].some((b) => b.querySelector(".font-mono")?.textContent === "researcher"), delegateRow, 15_000);
-  await A.evaluate((sel) => ([...document.querySelectorAll(sel)] as HTMLElement[]).find((b) => b.querySelector(".font-mono")?.textContent === "researcher")!.click(), delegateRow);
+  const collapsed = await until(A, (sel) => [...document.querySelectorAll(sel)].some((b) => b.textContent?.includes("Asked @researcher")), delegateRow, 15_000);
+  await A.evaluate((sel) => ([...document.querySelectorAll(sel)] as HTMLElement[]).find((b) => b.textContent?.includes("Asked @researcher"))!.click(), delegateRow);
   const inner = await until(A, () => {
-    const row = ([...document.querySelectorAll("main button[aria-expanded=true]")] as HTMLElement[]).find((b) => b.querySelector(".font-mono")?.textContent === "researcher");
-    return row?.parentElement?.querySelectorAll(".border-l > div > button").length === 2;
+    const row = ([...document.querySelectorAll("main button[aria-expanded=true]")] as HTMLElement[]).find((b) => b.textContent?.includes("Asked @researcher"));
+    return row?.parentElement?.querySelectorAll("[aria-label='Helper steps'] > div > button").length === 2;
   });
   check(collapsed && inner, `"@agent ask:researcher" (#${helped.number}) shows one collapsed researcher step that opens onto the helper's 2 steps`);
 

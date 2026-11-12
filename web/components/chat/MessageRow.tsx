@@ -60,7 +60,7 @@ export const MessageRow = memo(function MessageRow({ rowKey, message: m, status,
       transition={reduced ? instant : { duration: 0.2, ease: easeOut }}
       onPointerUp={(e) => e.pointerType === "touch" && onActivate(rowKey)}
       className={`group relative rounded-[10px] px-3 transition-colors ${groupStart ? "mt-3 pb-px pt-1" : "py-px"} ${
-        editing ? "bg-surface-2" : mentionsMe ? "bg-amber-wash shadow-[inset_2px_0_0_var(--color-amber)]" : "hover:bg-surface-2"
+        editing ? "bg-surface-2" : mentionsMe ? "bg-amber-wash" : "hover:bg-surface-2"
       }`}
     >
       {flash !== undefined && (
@@ -84,12 +84,13 @@ export const MessageRow = memo(function MessageRow({ rowKey, message: m, status,
             <div className="flex items-baseline gap-2">
               <span className="text-[13.5px] font-semibold">{m.authorName}</span>
               <time dateTime={m.createdAt} className="font-mono text-[11px] text-text-3">{time}</time>
+              {mentionsMe && <span aria-label="Mentions you" title="Mentions you" className="font-mono text-[11px] font-semibold text-amber">@</span>}
             </div>
           )}
           {m.replyTo && !m.deleted && (
             <button
               onClick={() => actions.jump(m.replyTo!.seq)}
-              className="mb-0.5 mt-1 flex max-w-full items-center gap-1.5 border-l-2 border-quote-line pl-2 text-left text-[12.5px] text-text-3 transition-colors hover:border-line-hover hover:text-text-2"
+              className="mb-0.5 mt-1 flex max-w-full items-center gap-1.5 text-left text-[12.5px] text-text-3 transition-colors hover:text-text-2"
             >
               <CornerUpLeft aria-hidden="true" size={12} className="shrink-0" />
               <span className="shrink-0 font-medium text-text-2">{m.replyTo.authorName}</span>

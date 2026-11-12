@@ -1,9 +1,10 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Bot, Users } from "lucide-react";
+import { Users } from "lucide-react";
 import type { MentionOption } from "@/lib/client/mentions";
 import { dur, easeOut, instant } from "@/lib/motion";
+import { AgentAvatar } from "@/components/ui/AgentAvatar";
 import { Avatar } from "@/components/ui/Avatar";
 
 /**
@@ -38,7 +39,7 @@ export function MentionList({ id, options, highlight, onPick, onHighlight }: {
               onMouseEnter={() => onHighlight(i)}
               className={`flex h-9 cursor-pointer items-center gap-2.5 rounded-lg px-2 text-[13px] ${i === highlight ? "bg-surface-3 text-text" : "text-text-2"}`}
             >
-              {kind === "agent" && <span className="grid size-[22px] place-items-center rounded-full bg-lime-wash text-lime"><Bot aria-hidden="true" size={12} /></span>}
+              {kind === "agent" && <AgentAvatar size={22} />}
               {kind === "everyone" && <span className="grid size-[22px] place-items-center rounded-full bg-surface-4"><Users aria-hidden="true" size={12} /></span>}
               {kind === "member" && <Avatar name={name} size={22} />}
               {name}

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Bot, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { canEditAgent, copyTargets, copyToast, type CopyResult } from "@/lib/client/agents";
 import { bff, errorText } from "@/lib/client/bff";
 import { useLiveEvent } from "@/lib/client/LiveProvider";
@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/Button";
 import { MenuItem, RowMenu } from "@/components/ui/RowMenu";
 import { PanelLoading } from "@/components/ui/PanelLoading";
 import { AgentForm, TOOL_KINDS, type AgentInput } from "./AgentForm";
+import { AgentAvatar } from "@/components/ui/AgentAvatar";
 import { useRoomData } from "./useRoomData";
 
 type Agents = { agents: Agent[]; kinds: ToolKind[] };
@@ -95,7 +96,7 @@ export function AgentsPanel({ roomId, me, rooms, models, archived }: {
                   )
                   : (
                     <motion.div key="row" {...swap} className="flex min-h-12 items-center gap-2.5 rounded-[10px] px-2 py-1.5 hover:bg-surface-2">
-                      <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-lime-wash text-lime"><Bot aria-hidden="true" size={14} /></span>
+                      <AgentAvatar size={28} />
                       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <span className="flex items-center gap-1.5">
                           <span className="truncate font-mono text-[13px] font-medium">@{a.name}</span>

@@ -41,7 +41,6 @@
   --color-output-text: #b7c2c1;
   --color-map-selected: #131a11;
   --color-map-file: #b7e36a;
-  --color-quote-line: #2b3336;
 
   /* Floating layers, by how far they sit above the page. */
   --shadow-ring: inset 0 0 0 1px var(--color-line-strong);
