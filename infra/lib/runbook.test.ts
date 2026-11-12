@@ -1,10 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
-import { dashboardMetrics, template } from "./test-templates.js";
+import { Template } from "aws-cdk-lib/assertions";
+import { buildPipelineStack, dashboardMetrics, template } from "./test-templates.js";
 
 const runbook = readFileSync(new URL("../../docs/runbook-aws.md", import.meta.url), "utf8");
 const aws = template("aws").toJSON();
-const awsText = JSON.stringify(aws);
+const pipelineStack = buildPipelineStack();
+const pipelineText = JSON.stringify(Template.fromStack(pipelineStack).toJSON());
+const awsText = JSON.stringify(aws) + pipelineText;
 const OUTPUTS = ["SiteUrl", "DistributionDomain", "WebFunctionUrl", "ApiUrl", "WsUrl", "StreamUrl", "UserPoolId", "OpsTopicArn", "OpsDashboardUrl"];
 
 describe("the AWS runbook", () => {
@@ -13,6 +16,19 @@ describe("the AWS runbook", () => {
     const names = [...runbook.matchAll(/cl-aws-[a-z0-9-]+(?![a-z0-9*-])/g)].map((m) => m[0]).filter((n) => n !== "cl-aws-core");
     expect(names.length).toBeGreaterThan(0);
     expect(names.filter((n) => !awsText.includes(n))).toEqual([]);
+  });
+
+  it("points cdk only at the stacks the aws app has", () => {
+    const stacks = [pipelineStack.node.path, pipelineStack.prod.core.node.path];
+    const targets = [...runbook.matchAll(/npx cdk (?:synth|diff|deploy|destroy) ([^\s-]\S*)/g)].map((m) => m[1]);
+    expect(targets.length).toBeGreaterThan(0);
+    expect(targets.filter((target) => !stacks.includes(target))).toEqual([]);
+  });
+
+  it("creates every Parameter Store value the pipeline reads", () => {
+    const names = [...new Set(pipelineText.match(/\/chat-lite\/[a-z-]+/g))];
+    expect(names).toHaveLength(3);
+    for (const name of names) expect(runbook).toContain(`ssm put-parameter --name ${name} `);
   });
 
   it("names only outputs the stack has", () => {
