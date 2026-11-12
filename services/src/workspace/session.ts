@@ -12,7 +12,7 @@ import { LANGUAGES, MAX_TIMEOUT_SEC, SandboxGone, type ExecResult, type Language
 import { LIST_CODE, parseListing, removeCode, type Listing } from "../sandbox/scripts.js";
 import { MAX_ROOM_FILE_BYTES } from "./limits.js";
 import { capSynced, execText, toolOutput } from "./output.js";
-import { QuotaError, roomFile, workspaceRepo, type WorkspaceRepo } from "./repo.js";
+import { commitObject, QuotaError, roomFile, workspaceRepo, type WorkspaceRepo } from "./repo.js";
 import { deleteObjects, getBytes, newObjectKey, putBytes } from "./storage.js";
 import { keptNote, overwroteNote, pullPlan, pushPlan, quotaNote } from "./sync.js";
 import type { FileAuthor, FilesSynced, FilesUpdated, Manifest, RoomFile } from "./types.js";
@@ -257,9 +257,8 @@ async function push(run: RunRef, handle: string, loaded: Manifest, known: (path:
     await deps.storage.putBytes(objectKey, file.bytes, contentType);
     let committed;
     try {
-      committed = await deps.files.commit(run.roomId, { path, objectKey, size: file.bytes.length, contentType, by });
+      committed = await commitObject(deps, run.roomId, { path, objectKey, size: file.bytes.length, contentType, by });
     } catch (e) {
-      await bestEffort("dropping a refused object", () => deps.storage.deleteObjects([objectKey]));
       if (e instanceof QuotaError) synced.notes.push(quotaNote(path, e.message));
       else if (e instanceof Conflict) synced.notes.push(`${path} kept changing in the room files while this run saved it, so this run's version wasn't saved.`);
       else throw e;
@@ -267,7 +266,6 @@ async function push(run: RunRef, handle: string, loaded: Manifest, known: (path:
     }
     const { file: stored, replaced } = committed;
     if (replaced) {
-      await bestEffort("deleting a replaced object", () => deps.storage.deleteObjects([replaced.objectKey]));
       if (replaced.v !== known(path)) synced.notes.push(overwroteNote(path, replaced.updatedBy));
     } else if (known(path) !== undefined) {
       synced.notes.push(`${path} was deleted from the room files after this run loaded it; this run's version brought it back.`);

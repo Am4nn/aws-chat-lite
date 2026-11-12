@@ -8,7 +8,7 @@ import { requireMember } from "../chat/membership.js";
 import { broadcastToRoom } from "../live/broadcast.js";
 import { MAX_ROOM_FILE_BYTES, MAX_ROOM_FILES, OVER_QUOTA, ROOM_FILES_BYTES, TOO_BIG, TOO_MANY } from "./limits.js";
 import { pathClash, workspacePath } from "./paths.js";
-import { roomFile, workspaceRepo, type WorkspaceRepo } from "./repo.js";
+import { commitObject, roomFile, workspaceRepo, type WorkspaceRepo } from "./repo.js";
 import * as storage from "./storage.js";
 import { newObjectKey, stagingPrefix } from "./storage.js";
 import type { FilesUpdated, RoomFile } from "./types.js";
@@ -86,18 +86,10 @@ export function makeHandler(deps: Deps) {
           if (size > MAX_ROOM_FILE_BYTES) throw new ValidationError(TOO_BIG);
           const objectKey = newObjectKey(roomId);
           await deps.storage.copyObject(uploadKey, objectKey);
-          let committed;
-          try {
-            committed = await deps.files.commit(roomId, {
-              path, objectKey, size, contentType, by: { kind: "member", userId: user.userId, name: user.username },
-            });
-          } catch (e) {
-            // The upload stays in staging, where it expires, so a refused commit can be tried again.
-            await bestEffort("dropping a refused copy", () => deps.storage.deleteObjects([objectKey]));
-            throw e;
-          }
-          const garbage = [committed.replaced?.objectKey, uploadKey].filter((k): k is string => !!k);
-          await bestEffort("deleting replaced objects", () => deps.storage.deleteObjects(garbage));
+          // A refused commit leaves the upload in staging, where it expires, so it can be tried again.
+          const committed = await commitObject(deps, roomId, {
+            path, objectKey, size, contentType, by: { kind: "member", userId: user.userId, name: user.username },
+          }, [uploadKey]);
           const file = roomFile(committed.file);
           await changed(roomId, [file], []);
           return json(200, file);

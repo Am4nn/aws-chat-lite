@@ -1,4 +1,5 @@
 import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { bestEffort } from "../lib/best-effort.js";
 import { docClient, failedAt, queryAll, tableName, transactionConflict } from "../lib/db.js";
 import { Conflict, ValidationError } from "../lib/errors.js";
 import { roomKey, roomMetaKey } from "../lib/keys.js";
@@ -21,6 +22,30 @@ const storedFile = (item: Record<string, unknown>): StoredFile => ({
 /** A file as members see it: where it lives in S3 stays on the server. */
 export function roomFile({ objectKey: _, ...file }: StoredFile): RoomFile {
   return file;
+}
+
+type Commit = Parameters<WorkspaceRepo["commit"]>[1];
+
+/**
+ * Commits an object already in the bucket as a room file. A refused commit deletes the object it would have been and
+ * rethrows, for the caller to word; one that replaced a file deletes the replaced object, with any `done` keys the
+ * caller no longer needs. Both deletes are best effort: the index is what readers follow, so a leftover object is only
+ * stray bytes.
+ */
+export async function commitObject(
+  deps: { files: Pick<WorkspaceRepo, "commit">; storage: { deleteObjects: (keys: string[]) => Promise<unknown> } },
+  roomId: string, c: Commit, done: string[] = [],
+): Promise<{ file: StoredFile; replaced?: StoredFile }> {
+  let committed;
+  try {
+    committed = await deps.files.commit(roomId, c);
+  } catch (e) {
+    await bestEffort("dropping a refused object", () => deps.storage.deleteObjects([c.objectKey]));
+    throw e;
+  }
+  const garbage = [...(committed.replaced ? [committed.replaced.objectKey] : []), ...done];
+  if (garbage.length) await bestEffort("deleting replaced objects", () => deps.storage.deleteObjects(garbage));
+  return committed;
 }
 
 /**
