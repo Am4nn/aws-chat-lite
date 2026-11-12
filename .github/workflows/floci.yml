@@ -1,0 +1,71 @@
+# The whole local stack on a fresh Floci in a GitHub runner: the integration suite in one job, the browser smoke in
+# another, each on its own runner, because the smoke slows down on a Floci the suite has already filled.
+#
+# Started by hand for now. The local stage was built on Docker Desktop, where a container reaches the host's
+# loopback as host.docker.internal; Floci's Lambdas reach the sandbox and MCP test servers that way, and those bind
+# 127.0.0.1 only. A runner has Docker Engine, where that name is the bridge gateway instead. The routing step below
+# sends the gateway to loopback, as Docker Desktop does, but until a run proves it on GitHub's runners this stays a
+# manual check rather than a required one.
+name: Floci
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: floci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  floci:
+    name: Floci ${{ matrix.suite }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [int, smoke]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Route host.docker.internal to the runner's loopback
+        run: |
+          gateway=$(docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}')
+          sudo sysctl -w net.ipv4.conf.all.route_localnet=1
+          sudo iptables -t nat -I PREROUTING -d "$gateway" -p tcp -j DNAT --to-destination 127.0.0.1
+      - run: npm run sandbox:build
+      - run: npm run floci:up
+      - run: npm run deploy:local
+
+      - name: Integration suite
+        if: matrix.suite == 'int'
+        run: npm -w services run test:int
+
+      - name: Start the web app and its local helpers
+        if: matrix.suite == 'smoke'
+        run: |
+          nohup npm run dev > dev.log 2>&1 &
+          timeout 300 sh -c 'until curl -fs -o /dev/null http://localhost:3000/login; do sleep 3; done'
+      - name: Browser smoke
+        if: matrix.suite == 'smoke'
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+        run: npm run smoke
+
+      - name: Collect logs
+        if: failure()
+        run: docker logs floci-chat > floci.log 2>&1 || true
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: floci-${{ matrix.suite }}-logs
+          path: |
+            floci.log
+            dev.log
+          if-no-files-found: ignore
