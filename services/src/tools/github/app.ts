@@ -7,8 +7,29 @@ export type Permissions = Record<string, "read" | "write">;
 const API = "https://api.github.com";
 const HEADERS = { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
 
-/** A GitHub refusal, its message already written for the model. */
-export class GitHubError extends Error {}
+/**
+ * A GitHub refusal in our own words, for the model and the thread. GitHub's words go only to the log: its error
+ * bodies are third-party text that can echo what was sent.
+ */
+export class GitHubError extends Error {
+  constructor(message: string, readonly status?: number) {
+    super(message);
+  }
+}
+
+const REFUSALS: Record<number, string> = {
+  401: "GitHub didn't accept chat-lite's credentials.",
+  403: "GitHub didn't allow that.",
+  404: "GitHub couldn't find that, or the App can't see it.",
+  409: "GitHub refused: the repo changed meanwhile, or is empty.",
+  422: "GitHub refused the request as invalid.",
+  429: "GitHub is rate-limiting chat-lite; try again later.",
+};
+const refusal = (status: number) =>
+  REFUSALS[status] ?? (status >= 500 ? "GitHub is having trouble; try again later." : `GitHub refused the request (${status}).`);
+// Installation tokens, personal tokens, JWTs and PEM blocks, in case GitHub echoes a credential back, which the log
+// mustn't keep either.
+const SECRET = /gh[opsu]_\w+|github_pat_\w+|eyJ[\w-]+\.[\w-]+\.[\w-]+|-----BEGIN [A-Z ]+-----[\s\S]*?(?:-----END [A-Z ]+-----|$)/g;
 
 const base64url = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
 
@@ -49,7 +70,10 @@ export async function githubCall(env: GitHubEnv, auth: string, method: string, p
   } catch {
     if (res.ok) throw new GitHubError(`GitHub sent a reply that isn't JSON (${res.status}).`);
   }
-  if (!res.ok) throw new GitHubError(`GitHub said ${res.status}: ${failure(data, text).slice(0, 500)}`);
+  if (!res.ok) {
+    console.error("GitHub refused", method, path, res.status, failure(data, text).slice(0, 500).replace(SECRET, "[redacted]"));
+    throw new GitHubError(refusal(res.status), res.status);
+  }
   return data;
 }
 
@@ -75,7 +99,7 @@ export async function installationToken(env: GitHubEnv, installationId: number, 
   try {
     return (await githubCall(env, jwtOf(env), "POST", `/app/installations/${installationId}/access_tokens`, body)).token;
   } catch (e) {
-    if (e instanceof GitHubError && e.message.startsWith("GitHub said 422")) {
+    if (e instanceof GitHubError && e.status === 422) {
       const asked = Object.entries(permissions).map(([name, level]) => `${name}:${level}`);
       throw new GitHubError(`The GitHub App lacks ${asked.join(", ")} permission.`);
     }

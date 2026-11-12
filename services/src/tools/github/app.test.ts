@@ -1,5 +1,5 @@
 import { generateKeyPairSync, verify } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { fakeKeys, recordGitHub } from "../fake-github.js";
 import { appJwt, githubCall, installationToken } from "./app.js";
 
@@ -51,12 +51,14 @@ describe("installationToken", () => {
 });
 
 describe("githubCall", () => {
-  it("adds a refusal's reasons to GitHub's message", async () => {
-    const body = { message: "Validation Failed", errors: [{ resource: "PullRequest", code: "custom", message: "No commits between main and b" }, { field: "head", code: "invalid" }] };
+  it("answers a refusal in our words and logs GitHub's, reasons included, with any credential redacted", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const body = { message: "Validation Failed ghs_leaked", errors: [{ resource: "PullRequest", code: "custom", message: "No commits between main and b" }, { field: "head", code: "invalid" }] };
     const env = { keys: {}, fetch: (async () => Response.json(body, { status: 422 })) as typeof fetch };
-    await expect(githubCall(env, "t", "POST", "/repos/o/r/pulls", {})).rejects.toThrow(
-      "GitHub said 422: Validation Failed (No commits between main and b; head invalid)",
-    );
+    const refused = await githubCall(env, "t", "POST", "/repos/o/r/pulls", {}).catch((e) => e);
+    expect(refused).toMatchObject({ message: "GitHub refused the request as invalid.", status: 422 });
+    expect(String(logged.mock.calls)).toContain("Validation Failed [redacted] (No commits between main and b; head invalid)");
+    logged.mockRestore();
   });
 
   const failing = (code: string) => Object.assign(new TypeError("fetch failed"), { cause: { code } });

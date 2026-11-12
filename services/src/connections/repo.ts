@@ -123,7 +123,8 @@ export function connectionsRepo() {
       try {
         await requireManager(flow.roomId, user.userId, { writing: true });
         if (error || typeof code !== "string") {
-          throw new Upstream(`GitHub didn't allow access (${typeof error === "string" ? cut(error, 100) : "no code"}).`);
+          console.error("GitHub sign-in came back without a code", flow.roomId, typeof error === "string" ? cut(error, 100) : error);
+          throw new Upstream("GitHub didn't allow access.");
         }
         const installations = await find(code, flow.verifier, flow.redirectUri).catch((e) => {
           throw e instanceof GitHubError ? new Upstream(e.message) : e;
