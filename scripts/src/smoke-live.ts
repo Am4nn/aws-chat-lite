@@ -213,6 +213,8 @@ export async function liveChecks(stamp: number, owner: Person, guest: Person, th
   check(renamed && await until(B, () => [...document.querySelectorAll('nav[aria-label="Room"] a span.truncate')].some((s) => s.textContent === "off-topic")),
     `A renames #random to #off-topic, and B's sidebar follows${refusal ? ` (refused: ${refusal})` : ""}`);
   if (!renamed) await A.keyboard.press("Escape");
+  // The dialog's backdrop takes clicks until it has faded out.
+  await until(A, () => !document.querySelector("[role=dialog]"));
   const generalItems = await chatMenu(A, "general");
   await A.keyboard.press("Escape");
   await chatMenu(A, "off-topic", "Archive");
