@@ -17,7 +17,6 @@ import { panelInput } from "@/components/ui/Field";
 import { Hint } from "@/components/ui/Hint";
 import { PanelLoading } from "@/components/ui/PanelLoading";
 import { RowButton } from "@/components/ui/RowButton";
-import { Spinner } from "@/components/ui/Spinner";
 import { useRoomData } from "./useRoomData";
 
 const PRIVATE_HINT = "Saved from a thread with private content, so DeepSeek never sees it.";
@@ -178,8 +177,8 @@ function EditMemory({ initial, onCancel, onSave }: { initial: string; onCancel: 
       />
       <div className="flex items-center gap-2">
         <span className="font-mono text-[11px] tabular-nums text-text-3">{text.length}/{MEMORY_CHARS}</span>
-        <Button onClick={onCancel} className="ml-auto h-8 px-3">Cancel</Button>
-        <Button variant="primary" onClick={save} disabled={busy || !trimmed || trimmed === initial} className="h-8 px-3">{busy && <Spinner />}Save</Button>
+        <Button onClick={onCancel} size="sm" className="ml-auto">Cancel</Button>
+        <Button variant="primary" onClick={save} busy={busy} disabled={!trimmed || trimmed === initial} size="sm">Save</Button>
       </div>
     </div>
   );

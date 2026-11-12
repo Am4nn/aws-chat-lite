@@ -104,7 +104,7 @@ export function SchedulesPanel({ roomId, me, chats, archived }: { roomId: string
       <div className="flex h-8 items-center gap-2">
         <span className="font-mono text-[11.5px] text-text-3">{schedules.length} of {max}</span>
         {!archived && schedules.length < max && editing !== "new" && (
-          <Button onClick={() => setEditing("new")} className="ml-auto h-8 px-3"><Plus aria-hidden="true" size={14} />New</Button>
+          <Button onClick={() => setEditing("new")} size="sm" className="ml-auto"><Plus aria-hidden="true" size={14} />New</Button>
         )}
       </div>
       <TimeZoneRow timeZone={timeZone} canSet={isAdmin(me.role) && !archived} onSet={setTimeZone} />
