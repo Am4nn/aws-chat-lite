@@ -106,7 +106,7 @@ describe("mcpCaller", () => {
     expect(await call({ roomId: "r1", name: "test" }, "fail", {})).toEqual({ ok: false, output: "it failed" });
     const unknown = await call({ roomId: "r1", name: "test" }, "nope", {});
     expect(unknown.ok).toBe(false);
-    expect(unknown.output).toMatch(/^test didn't answer: .*There's no tool called nope\.$/);
+    expect(unknown.output).toMatch(/^test refused the call \(error -?\d+\)\.$/);
   });
 
   it("keeps a remote failure to one short line, so an answer echoing a token never reaches the run", async () => {
