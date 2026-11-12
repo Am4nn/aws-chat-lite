@@ -43,8 +43,8 @@ export function budgetRepo() {
     spend(roomId: string, costMicros: number, now: Date): TransactItem {
       return {
         Update: {
-          TableName, Key: usageKey(roomId, monthKey(now)), UpdateExpression: "ADD costMicros :c, #calls :one",
-          ExpressionAttributeNames: { "#calls": "calls" }, ExpressionAttributeValues: { ":c": costMicros, ":one": 1 },
+          TableName, Key: usageKey(roomId, monthKey(now)), UpdateExpression: "ADD costMicros :c",
+          ExpressionAttributeValues: { ":c": costMicros },
         },
       };
     },

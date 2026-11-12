@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HeadObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
-import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { budgetText } from "../budget/model.js";
 import { docClient } from "../lib/db.js";
 import { Conflict, Gone, NotFound, ValidationError } from "../lib/errors.js";
@@ -19,20 +19,28 @@ const ref = { chatId: "c1", seq: 4 };
 const answer = (o: Record<string, unknown> = {}) => ({ roomId: "r", chatId: "c1", seq: 4, authorId: "agent", text: "Hello there.", ...o });
 
 /** Room `r` with u1 in it and message c1/4; `stored` says whether its MP3 is already in S3. */
-function fakes(opts: { message?: Record<string, unknown>; spent?: number; stored?: boolean } = {}) {
+function fakes(opts: { message?: Record<string, unknown>; spent?: number; stored?: boolean; archived?: boolean; claimed?: boolean } = {}) {
   const spends: number[] = [];
+  const claims: PutCommand[] = [];
+  const released: DeleteCommand[] = [];
   vi.spyOn(docClient(), "send").mockImplementation((async (c: unknown) => {
     if (c instanceof GetCommand) {
       const { pk, sk } = c.input.Key!;
-      if (sk === "MEMBER#u1") return { Item: { role: "member" } };
+      if (sk === "MEMBER#u1") return { Item: { role: "member", ...(opts.archived && { archived: true }) } };
       if (pk === "CHAT#c1" && sk === "MSG#0000000004") return { Item: opts.message ?? answer() };
       if (String(sk).startsWith("USAGE#")) return { Item: { costMicros: opts.spent ?? 0 } };
       return {};
     }
-    if (c instanceof TransactWriteCommand) {
-      for (const w of c.input.TransactItems!) spends.push(Number(w.Update!.ExpressionAttributeValues![":c"]));
-      return {};
+    if (c instanceof UpdateCommand) {
+      // A refund is a negative spend, so only the cost is counted: no call count that refunds would inflate.
+      expect(c.input.UpdateExpression).toBe("ADD costMicros :c");
+      return spends.push(Number(c.input.ExpressionAttributeValues![":c"])), {};
     }
+    if (c instanceof PutCommand) {
+      if (opts.claimed) throw Object.assign(new Error("taken"), { name: "ConditionalCheckFailedException" });
+      return claims.push(c), {};
+    }
+    if (c instanceof DeleteCommand) return released.push(c), {};
     throw new Error(`unexpected ${(c as object).constructor.name}`);
   }) as never);
   const puts: PutObjectCommand[] = [];
@@ -46,7 +54,7 @@ function fakes(opts: { message?: Record<string, unknown>; spent?: number; stored
   }) as never);
   const texts: string[] = [];
   const speaker: Speaker = { synthesize: async (text) => (texts.push(text), Uint8Array.from([texts.length])) };
-  return { spends, puts, texts, speaker };
+  return { spends, puts, texts, speaker, claims, released };
 }
 
 describe("speak", () => {
@@ -70,6 +78,34 @@ describe("speak", () => {
     expect(texts.join(" ")).toBe(text);
     expect(spends).toEqual([96_000]);
     expect([...puts[0]!.input.Body as Uint8Array]).toEqual([1, 2, 3]);
+  });
+
+  it("claims the answer for a minute before synthesis, so a second play at the same time waits instead of paying again", async () => {
+    const { claims, speaker } = fakes();
+    await speak(me, "r", ref, speaker);
+    expect(claims[0]!.input).toMatchObject({
+      Item: { pk: "ROOM#r", sk: "SPEECH#c1#4" }, ConditionExpression: "attribute_not_exists(pk) OR #ttl < :now",
+    });
+    expect(Number(claims[0]!.input.Item!.ttl) - Date.now() / 1000).toBeCloseTo(60, -1);
+    const second = fakes({ claimed: true });
+    await expect(speak(me, "r", ref, second.speaker)).rejects.toEqual(new Conflict("Preparing the audio; try again in a moment."));
+    expect([second.texts, second.spends]).toEqual([[], []]);
+  });
+
+  it("a failed synthesis gives the claim back, so the next try can go at once", async () => {
+    const { released, spends } = fakes();
+    const failing: Speaker = { synthesize: async () => { throw new Error("throttled"); } };
+    await expect(speak(me, "r", ref, failing)).rejects.toThrow("throttled");
+    expect(released[0]!.input.Key).toEqual({ pk: "ROOM#r", sk: "SPEECH#c1#4" });
+    expect(spends).toEqual([]);
+  });
+
+  it("an archived room still plays what was read before, but makes no new audio", async () => {
+    const cached = fakes({ archived: true, stored: true });
+    expect((await speak(me, "r", ref, cached.speaker)).cached).toBe(true);
+    const fresh = fakes({ archived: true });
+    await expect(speak(me, "r", ref, fresh.speaker)).rejects.toEqual(new Gone("This room is archived."));
+    expect(fresh.texts).toEqual([]);
   });
 
   it("an answer already read plays from S3, with no synthesis and no bill", async () => {
