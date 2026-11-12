@@ -98,12 +98,12 @@ describe("the pipeline", () => {
     });
   });
 
-  it("lets the broadening check read the live stack through CDK's read-only lookup role", () => {
+  it("lets the broadening check read the live stack and upload the template it diffs against as a change set", () => {
     const policies = Object.entries(t.findResources("AWS::IAM::Policy")) as [string, any][];
     const [, check] = policies.find(([id]) => id.includes("SecurityCheckCDKSecurityCheck"))!;
     expect(check.Properties.PolicyDocument.Statement).toContainEqual(expect.objectContaining({
       Action: "sts:AssumeRole",
-      Condition: { "ForAnyValue:StringEquals": { "iam:ResourceTag/aws-cdk:bootstrap-role": ["lookup"] } },
+      Condition: { "ForAnyValue:StringEquals": { "iam:ResourceTag/aws-cdk:bootstrap-role": ["lookup", "file-publishing"] } },
     }));
   });
 
