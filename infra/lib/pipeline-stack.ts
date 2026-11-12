@@ -114,13 +114,14 @@ export class PipelineStack extends Stack {
 
     pipeline.buildPipeline();
     // CDK lets the broadening check assume only the bootstrap deploy role, but the CDK CLI reads the live stack for
-    // its diff through the read-only lookup role. Without it the check sees no stack, so every existing permission
-    // looks new and each run asks for an approval.
+    // its diff through the read-only lookup role, and uploads the new template through the file-publishing role so it
+    // can diff against a change set. Without the lookup role the check sees no stack, so every existing permission
+    // looks new and each run asks for an approval; without the other it falls back to a less exact template diff.
     const check = pipeline.node.findChild("PipelinesSecurityCheck").node.findChild("CDKSecurityCheck") as codebuild.Project;
     check.addToRolePolicy(new iam.PolicyStatement({
       actions: ["sts:AssumeRole"],
       resources: ["*"],
-      conditions: { "ForAnyValue:StringEquals": { "iam:ResourceTag/aws-cdk:bootstrap-role": ["lookup"] } },
+      conditions: { "ForAnyValue:StringEquals": { "iam:ResourceTag/aws-cdk:bootstrap-role": ["lookup", "file-publishing"] } },
     }));
     const onFailure = pipeline.pipeline.notifyOn("NotifyOnFailure", topic, {
       events: [codepipeline.PipelineNotificationEvents.PIPELINE_EXECUTION_FAILED],
