@@ -61,7 +61,7 @@ describe("runMap", () => {
 
   it("spaces cards 16 px apart from 24 px right of the prompt, level with the prompt's middle", () => {
     const m = runMap([usage(0, {}), started(0, 1, "a"), finished(1, 1, 1000), usage(1, {}), started(1, 2, "b")], T0);
-    expect([byId(m, "step-1"), byId(m, "step-2")].map((n) => [n.x, n.y])).toEqual([[24, 12], [148, 12]]);
+    expect([byId(m, "step-1"), byId(m, "step-2")].map((n) => [n.x, n.y])).toEqual([[24, 12], [168, 12]]);
     expect(m.edges.find((e) => e.from === "prompt")?.d).toBe(edgePath({ x: 0, y: 48 }, { x: 24, y: 48 }));
   });
 
