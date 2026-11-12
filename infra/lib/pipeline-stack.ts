@@ -113,9 +113,12 @@ export class PipelineStack extends Stack {
     });
 
     pipeline.buildPipeline();
-    pipeline.pipeline.notifyOn("NotifyOnFailure", topic, {
+    const onFailure = pipeline.pipeline.notifyOn("NotifyOnFailure", topic, {
       events: [codepipeline.PipelineNotificationEvents.PIPELINE_EXECUTION_FAILED],
     });
+    // CodeStar Notifications refuses a target it can't publish to yet ("Invalid request"), and CloudFormation would
+    // otherwise create the rule and the topic's policy side by side.
+    onFailure.node.addDependency(topic.node.findChild("Policy"));
   }
 }
 
