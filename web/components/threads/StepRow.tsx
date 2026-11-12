@@ -103,7 +103,7 @@ export function StepRow({ roomId, step, enter }: { roomId: string; step: Step; e
               </div>
             )}
             {!running && (
-              <pre className="mb-2 ml-10 mr-3 mt-0.5 whitespace-pre-wrap break-words rounded-[10px] border border-line bg-surface-2 px-3 py-2.5 font-mono text-[11.5px] leading-[1.6] text-text-body">
+              <pre className="mb-2 ml-10 mr-3 mt-0.5 whitespace-pre-wrap break-words rounded-[10px] border border-line bg-output px-3 py-2.5 font-mono text-[11.5px] leading-[1.6] text-output-text">
                 {output || "No output."}
               </pre>
             )}
