@@ -15,7 +15,7 @@ BEGIN {
 
   # The allow-list. Fake values the tests use on purpose are cut out of a line before it is matched, so a real
   # secret on the same line still blocks. Exact literals only: a pattern here would let real values through.
-  split("ghs_fake ghs_other", fake_token, " ")
+  split("ghs_fake ghs_other ghs_leak", fake_token, " ")
   split("noreply@anthropic.com a@b.com a@b.co p@x.com pw@x.com x@alice.com a@scout.com a@reviewer.com a@agent.com", fake_email, " ")
   for (i in fake_email) allowed_email[fake_email[i]] = 1
   # Reserved for documentation and tests (RFC 2606), so no one receives mail there.
