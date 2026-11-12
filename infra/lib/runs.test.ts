@@ -54,9 +54,9 @@ describe("run engine", () => {
     expect(secretReads("cl-local-threads")).toEqual([]);
   });
 
-  it("the threads, live and run Lambdas may wake a waiting run, only on the run function, which is named rather than referenced", () => {
+  it("the threads, live, rooms and run Lambdas may wake a waiting run, only on the run function, which is named rather than referenced", () => {
     // The run function wakes itself, and a reference to its own ARN in its own role would be a dependency cycle.
-    for (const name of ["cl-local-threads", "cl-local-live", "cl-local-run"]) {
+    for (const name of ["cl-local-threads", "cl-local-live", "cl-local-rooms", "cl-local-run"]) {
       const callbacks = statementsOf(fnNamed(name))
         .filter((s: any) => [s.Action].flat().includes("lambda:SendDurableExecutionCallbackSuccess"));
       expect(callbacks, name).toHaveLength(1);

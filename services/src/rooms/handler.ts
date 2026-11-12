@@ -5,6 +5,7 @@ import { Forbidden, ValidationError } from "../lib/errors.js";
 import { parsePick } from "../models/picks.js";
 import { callerFromEvent, claimsFromEvent, subFromEvent } from "../lib/auth.js";
 import { roomUpdated, sendToUser } from "../live/broadcast.js";
+import { endWaitingRuns } from "../runs/stop.js";
 import { isCreator } from "./claims.js";
 import { roomsRepo, type RoomsRepo } from "./repo.js";
 
@@ -14,9 +15,12 @@ type Event = APIGatewayProxyEventV2WithJWTAuthorizer;
  * Rooms API: one Lambda, routed by API Gateway's routeKey. A write that changes what members see (chats, their names and
  * archiving, members, the default model, the sandbox's internet, archive) tells the room's open sockets, which refetch
  * the room view. That is best effort: the write has already happened, and the event carries no data, so a client that
- * misses it loses nothing it won't get on its next load.
+ * misses it loses nothing it won't get on its next load. Archiving also ends the runs waiting on an approval
+ * (`endWaiting`), best effort too: a run that misses its wake still ends once its approval expires.
  */
-export function makeHandler(repo: RoomsRepo, notifyRoom: (roomId: string, alsoUserId?: string) => Promise<unknown>) {
+export function makeHandler(
+  repo: RoomsRepo, notifyRoom: (roomId: string, alsoUserId?: string) => Promise<unknown>, endWaiting: (roomId: string, by: string) => Promise<void>,
+) {
   const changed = async (statusCode: number, result: unknown, roomId: string, alsoUserId?: string) => {
     await bestEffort("room.updated broadcast", () => notifyRoom(roomId, alsoUserId));
     return json(statusCode, result);
@@ -56,8 +60,11 @@ export function makeHandler(repo: RoomsRepo, notifyRoom: (roomId: string, alsoUs
           return changed(200, await repo.removeMember(params.roomId!, subFromEvent(event), params.userId!), params.roomId!, params.userId!);
         case "POST /rooms/{roomId}/leave":
           return changed(200, await repo.leaveRoom(params.roomId!, subFromEvent(event)), params.roomId!, subFromEvent(event));
-        case "POST /rooms/{roomId}/archive":
-          return changed(200, await repo.archiveRoom(params.roomId!, subFromEvent(event)), params.roomId!);
+        case "POST /rooms/{roomId}/archive": {
+          const archived = await repo.archiveRoom(params.roomId!, subFromEvent(event));
+          await bestEffort("ending waiting runs", () => endWaiting(params.roomId!, callerFromEvent(event).username));
+          return changed(200, archived, params.roomId!);
+        }
         case "PUT /rooms/{roomId}/model": {
           const pick = parsePick(body.model, process.env.STAGE ?? "");
           if (!pick) throw new ValidationError("Pick a model.");
@@ -94,4 +101,4 @@ const roomAndUserUpdated = (roomId: string, alsoUserId?: string) =>
 
 // Built on first use, so tests can import makeHandler without a table configured.
 let liveHandler: ReturnType<typeof makeHandler> | undefined;
-export const handler = (event: Event) => (liveHandler ??= makeHandler(roomsRepo(), roomAndUserUpdated))(event);
+export const handler = (event: Event) => (liveHandler ??= makeHandler(roomsRepo(), roomAndUserUpdated, endWaitingRuns))(event);

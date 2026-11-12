@@ -46,7 +46,8 @@ export async function gateOf(run: RoutedRun, call: ToolCall, taint: TaintSource[
  * The wait's submitter: stores the approval with the input the gate pinned, logs it once, shows the thread as
  * waiting and tells the whole room, since any member may approve. A retried submitter is handed the same callback; it
  * finds the approval already decided, or the run already asked to stop, and then wakes the wait itself, since nothing
- * else will.
+ * else will. The same goes for a stop or an archive that landed before the run showed as waiting: they found nothing
+ * to wake, so the run checks its limits again once it waits, and cancels and wakes itself.
  */
 export async function requestApproval(
   run: RoutedRun, call: ToolCall, step: number, gate: { timeoutSec: number; title: string; input: Record<string, unknown> }, callbackId: string,
@@ -69,7 +70,7 @@ export async function requestApproval(
   if (!logged) {
     await enqueuePush({ kind: "approval", roomId: run.roomId, threadId: run.threadId, number: run.number, runId: run.runId, step, title });
   }
-  if (stopRequestedBy && await approvals.cancel(run.runId, step, stopRequestedBy)) await wakeRun(callbackId);
+  if ((stopRequestedBy || await limitsReached(run)) && await approvals.cancel(run.runId, step, stopRequestedBy)) await wakeRun(callbackId);
 }
 
 /**

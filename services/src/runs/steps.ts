@@ -79,7 +79,7 @@ export async function load(runId: string): Promise<{ run: Run; provisional: bool
 
 /**
  * Stop, archive, budget, steps and time, checked before every model call and every tool call. An archived room takes
- * no decisions, so a run waiting on one there ends at this check once its approval expires.
+ * no decisions; archiving cancels and wakes a run waiting on one, which then ends here.
  */
 export async function limitsReached(run: Run): Promise<End | null> {
   const [current, { budget, archived }] = await Promise.all([
