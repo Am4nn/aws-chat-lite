@@ -33,7 +33,7 @@ process.env.MODEL_GATEWAY = "fake";
 
 const run = {
   runId: "run1", roomId: "r1", threadId: "t1", number: 3, agentId: "agent", status: "running", pick: "sonnet", pickBy: "pick",
-  model: "claude-sonnet-5-5", startedBy: "aman", startedAt: new Date().toISOString(), deadAt: "2026-11-12T02:00:00.000Z",
+  model: "claude-sonnet-5-5", startedBy: "aman", startedById: "u-aman", startedAt: new Date().toISOString(), deadAt: "2026-11-12T02:00:00.000Z",
   firstSeq: 1, seenSeq: 1, steps: 0, costMicros: 0, agent: { ...BUILT_IN, tools: ["images", "sandbox"] }, others: [],
 } satisfies RoutedRun;
 

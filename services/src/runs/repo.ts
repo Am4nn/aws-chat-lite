@@ -21,9 +21,9 @@ export type Run = {
   pickBy: "pick" | "default";
   /** The model id it routed to; unset until it has routed. */
   model?: string;
-  /** The starter's username; `startedById` is their user id, unset on runs from before it was stored. */
+  /** The starter's username; `startedById` is their user id. */
   startedBy: string;
-  startedById?: string;
+  startedById: string;
   startedAt: string;
   /** Past this the run can't be alive: the claim plus the execution's own limit, moved past each approval's expiry. */
   deadAt: string;
@@ -46,6 +46,7 @@ export type Run = {
 type Item = Record<string, unknown>;
 
 const MODEL_CONTEXT = 50;
+const EVENTS_PAGE = 100;
 const FORCED_CLOSE_ATTEMPTS = 5;
 
 const callKey = (runId: string, call: string) => ({ pk: `RUN#${runId}`, sk: `CALL#${call}` });
@@ -142,9 +143,10 @@ export function runsRepo() {
       };
     },
 
-    async events(runId: string, afterSeq: number, limit = 100): Promise<RunEvent[]> {
+    /** At most a page of 100 events after `afterSeq`: what the stream sends at a time. */
+    async events(runId: string, afterSeq: number): Promise<RunEvent[]> {
       const { Items = [] } = await db.send(new QueryCommand({
-        TableName, KeyConditionExpression: "pk = :p AND sk BETWEEN :from AND :to", ConsistentRead: true, Limit: limit,
+        TableName, KeyConditionExpression: "pk = :p AND sk BETWEEN :from AND :to", ConsistentRead: true, Limit: EVENTS_PAGE,
         ExpressionAttributeValues: { ":p": `RUN#${runId}`, ":from": eventSk(afterSeq + 1), ":to": eventSk(LAST_SEQ) },
       }));
       return Items.map((i) => withoutKeys<RunEvent>(i));

@@ -87,7 +87,7 @@ async function runningThread(text: string, startedAt = new Date().toISOString())
   const { owner, roomId, thread: t, message } = await thread(text);
   const run = {
     runId: randomUUID(), roomId, threadId: t.threadId, number: t.number, agentId: "agent", status: "running", model: "fake", pick: "auto",
-    pickBy: "default", startedBy: owner.username, startedAt, deadAt: new Date(Date.parse(startedAt) + DEAD_AFTER_MS).toISOString(),
+    pickBy: "default", startedBy: owner.username, startedById: owner.userId, startedAt, deadAt: new Date(Date.parse(startedAt) + DEAD_AFTER_MS).toISOString(),
     firstSeq: message.seq, seenSeq: message.seq, steps: 0,
     costMicros: 0,
   } satisfies Run;

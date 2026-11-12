@@ -76,11 +76,6 @@ describe("summary", () => {
     expect(t).toMatchObject({ threadId: "t", number: 1, status: "done", rev: 4, archived: true, deadAt: "2026-11-11T02:10:00Z" });
   });
 
-  it("gives a thread stored without an agent to the built-in @agent", () => {
-    expect(summary(stored, now).agentId).toBe("agent");
-    expect(summary({ ...stored, agentId: "a1" }, now).agentId).toBe("a1");
-  });
-
   it("gives the taint as a sorted list, read from the stored string set, and [] when there is none", () => {
     expect(summary(stored, now).taint).toEqual([]);
     expect(summary({ ...stored, taint: new Set(["attachment"]) }, now).taint).toEqual(["attachment"]);

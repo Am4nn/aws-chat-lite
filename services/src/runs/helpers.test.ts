@@ -61,7 +61,7 @@ describe("startHelper", () => {
   };
   const run = {
     runId: "run1", roomId: "r1", threadId: "t1", number: 1, agentId: "agent", status: "running", pick: "sonnet", pickBy: "pick",
-    model: "claude-sonnet-5-5", startedBy: "aman", startedAt: "2026-11-12T00:00:00.000Z", deadAt: "2026-11-12T01:00:00.000Z",
+    model: "claude-sonnet-5-5", startedBy: "aman", startedById: "u-aman", startedAt: "2026-11-12T00:00:00.000Z", deadAt: "2026-11-12T01:00:00.000Z",
     firstSeq: 1, seenSeq: 1, steps: 1, costMicros: 0, agent: BUILT_IN, others: [agentCard(researcher)],
   } satisfies RoutedRun;
   const call = { id: "c1", name: "delegate", input: { agent: "researcher", task: "Look it up." } };

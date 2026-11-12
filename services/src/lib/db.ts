@@ -3,6 +3,7 @@ import {
   BatchGetCommand, DeleteCommand, DynamoDBDocumentClient, QueryCommand, TransactWriteCommand,
   type BatchGetCommandInput, type BatchGetCommandOutput, type QueryCommandInput, type QueryCommandOutput, type TransactWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
+import { requiredEnv } from "./env.js";
 import { Unavailable } from "./errors.js";
 import { sleep } from "./sleep.js";
 
@@ -16,11 +17,7 @@ export function docClient(): DynamoDBDocumentClient {
   return cached;
 }
 
-export const tableName = () => {
-  const t = process.env.TABLE_NAME;
-  if (!t) throw new Error("TABLE_NAME not set");
-  return t;
-};
+export const tableName = () => requiredEnv("TABLE_NAME");
 
 export type TransactItem = NonNullable<TransactWriteCommandInput["TransactItems"]>[number];
 

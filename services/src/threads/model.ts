@@ -61,7 +61,7 @@ export function summary(
     const { currentStep: _step, approval: _approval, ...dead } = thread;
     thread = { ...dead, status: "failed", summary: DEAD_REASON };
   }
-  return { ...thread, agentId: thread.agentId ?? "agent", taint: [...((taint as Set<TaintSource> | undefined) ?? [])].sort(), archived: isArchived(thread, nowMs) };
+  return { ...thread, taint: [...((taint as Set<TaintSource> | undefined) ?? [])].sort(), archived: isArchived(thread, nowMs) };
 }
 
 /** `#12` or `#name` at the very start of a message; a tag later in the text is just text. */

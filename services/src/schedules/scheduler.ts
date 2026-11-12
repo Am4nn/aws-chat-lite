@@ -2,6 +2,7 @@ import {
   CreateScheduleCommand, DeleteScheduleCommand, GetScheduleCommand, SchedulerClient, UpdateScheduleCommand,
   type CreateScheduleCommandInput,
 } from "@aws-sdk/client-scheduler";
+import { requiredEnv } from "../lib/env.js";
 import type { Schedule } from "../threads/types.js";
 import { cronOf } from "./cadence.js";
 
@@ -12,11 +13,7 @@ const notFound = (e: unknown) => (e as { name?: string }).name === "ResourceNotF
  * schedule item stays the truth, and the fire handler re-checks it.
  */
 export function scheduleTrigger(client = new SchedulerClient({}), env: Record<string, string | undefined> = process.env) {
-  const setting = (name: string) => {
-    const value = env[name];
-    if (!value) throw new Error(`${name} not set`);
-    return value;
-  };
+  const setting = (name: string) => requiredEnv(name, env);
 
   return {
     /**

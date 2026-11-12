@@ -406,7 +406,7 @@ export function roomsRepo() {
       await requireRole(roomId, userId, "manageInvite");
       const invite = await currentInvite(roomId);
       if (!invite || inviteState(invite, nowSec()) !== "ok") throw new NotFound("No active invite link.");
-      return { code: String(invite.code), expiresAt: Number(invite.expiresAt) };
+      return { code: invite.code, expiresAt: invite.expiresAt };
     },
 
     async revokeInvite(roomId: string, userId: string) {

@@ -1,4 +1,5 @@
 import { S3Client } from "@aws-sdk/client-s3";
+import { requiredEnv } from "./env.js";
 
 let signing: S3Client | undefined;
 let calling: S3Client | undefined;
@@ -21,11 +22,7 @@ export function objects() {
   return (calling ??= new S3Client(process.env.AWS_ENDPOINT_URL ? { forcePathStyle: true } : {}));
 }
 
-export function filesBucket() {
-  const b = process.env.FILES_BUCKET;
-  if (!b) throw new Error("FILES_BUCKET not set");
-  return b;
-}
+export const filesBucket = () => requiredEnv("FILES_BUCKET");
 
 /** S3 answers a missing key with 403, not 404, to a caller without ListBucket (as these Lambdas are on AWS). */
 export const missingObject = (e: unknown) => ["NotFound", "Forbidden"].includes((e as Error).name);

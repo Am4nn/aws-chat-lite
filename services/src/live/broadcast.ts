@@ -1,6 +1,7 @@
 import { ApiGatewayManagementApiClient, PostToConnectionCommand } from "@aws-sdk/client-apigatewaymanagementapi";
 import { roomMembers } from "../chat/membership.js";
 import { bestEffort } from "../lib/best-effort.js";
+import { requiredEnv } from "../lib/env.js";
 import { queryAll } from "../lib/db.js";
 import { forgetConnection } from "./connections.js";
 import { isOnline, markDisconnected, type Presence } from "./presence.js";
@@ -8,9 +9,7 @@ import { isOnline, markDisconnected, type Presence } from "./presence.js";
 let cached: ApiGatewayManagementApiClient | undefined;
 
 function managementApi() {
-  const endpoint = process.env.WS_CALLBACK_URL;
-  if (!endpoint) throw new Error("WS_CALLBACK_URL not set");
-  return (cached ??= new ApiGatewayManagementApiClient({ endpoint }));
+  return (cached ??= new ApiGatewayManagementApiClient({ endpoint: requiredEnv("WS_CALLBACK_URL") }));
 }
 
 /** The `CONN#<connId>` items under one partition: a user's sockets, or a room's subscriptions (which name the owner). */

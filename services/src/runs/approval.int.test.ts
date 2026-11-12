@@ -214,7 +214,7 @@ describe("approvals in the run loop, on Floci", { timeout: 60_000 }, () => {
     const { thread, message } = await threadsRepo().createThread(at.aman, at.roomId, { text: "x", clientId: `k${++clients}` });
     const run: Run & { model: string } = {
       runId: randomUUID(), roomId: at.roomId, threadId: thread.threadId, number: thread.number, agentId: "agent", status: "running", model: "fake",
-      pick: "auto", pickBy: "default", startedBy: "aman", startedAt: new Date().toISOString(),
+      pick: "auto", pickBy: "default", startedBy: "aman", startedById: at.aman.userId, startedAt: new Date().toISOString(),
       deadAt: new Date(Date.now() + 7_800_000).toISOString(), firstSeq: message.seq, seenSeq: message.seq, steps: 0, costMicros: 0,
     };
     await docClient().send(new PutCommand({ TableName: tableName(), Item: { pk: `RUN#${run.runId}`, sk: "META", ...run } }));

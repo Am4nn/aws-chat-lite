@@ -79,7 +79,6 @@ export async function finishRun(
  * stopped needs no news.
  */
 async function tellStarter(run: Run, end: { status: RunEndStatus; reason?: string }, summary: string) {
-  if (!run.startedById) return;
   const stopper = end.status === "stopped" ? (await runsRepo().getRun(run.runId))?.stopRequestedBy : undefined;
   if (stopper === run.startedBy) return;
   await enqueuePush({

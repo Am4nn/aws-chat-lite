@@ -33,7 +33,7 @@ async function runningThread(startedAt = new Date().toISOString()) {
   const { thread, message } = await threadsRepo().createThread(owner, roomId, { text: "go", clientId: `k${++clients}` });
   const run: Run = {
     runId: randomUUID(), roomId, threadId: thread.threadId, number: thread.number, agentId: "agent", status: "running", model: "fake",
-    pick: "auto", pickBy: "default", startedBy: owner.username, startedAt, deadAt: new Date(Date.parse(startedAt) + 7_800_000).toISOString(),
+    pick: "auto", pickBy: "default", startedBy: owner.username, startedById: owner.userId, startedAt, deadAt: new Date(Date.parse(startedAt) + 7_800_000).toISOString(),
     firstSeq: message.seq, seenSeq: message.seq, steps: 0, costMicros: 0,
   };
   await docClient().send(new PutCommand({ TableName: tableName(), Item: { pk: `RUN#${run.runId}`, sk: "META", ...run } }));
