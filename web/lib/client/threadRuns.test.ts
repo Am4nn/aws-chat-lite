@@ -14,9 +14,9 @@ describe("threadRuns", () => {
     expect(threadRuns(messages, "r2")).toEqual([{ runId: "r1", prompt: "check PR 41" }, { runId: "r2", prompt: "summarise the diff" }]);
   });
 
-  it("adds the latest run while it has no answer yet", () => {
+  it("adds the latest run while it has no answer yet, named by the newest message since the last answer", () => {
     const messages = [msg(1, "check PR 41"), msg(2, "Looks fine.", { runId: "r1", firstSeq: 1 }), msg(3, "now post it")];
-    expect(threadRuns(messages, "r2")).toEqual([{ runId: "r1", prompt: "check PR 41" }, { runId: "r2", prompt: "" }]);
+    expect(threadRuns(messages, "r2")).toEqual([{ runId: "r1", prompt: "check PR 41" }, { runId: "r2", prompt: "now post it" }]);
   });
 
   it("is empty before anything has run", () => expect(threadRuns([msg(1, "hi")], undefined)).toEqual([]));
