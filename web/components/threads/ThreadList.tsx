@@ -78,7 +78,7 @@ function ThreadRow({ thread: t, href, active, fresh, meta, agent }: {
       <Link
         href={href}
         aria-current={active ? "page" : undefined}
-        className={`relative isolate flex h-10 items-center gap-2.5 rounded-[10px] px-2.5 text-[13.5px] font-medium transition-colors ${
+        className={`relative isolate flex h-10 items-center gap-2.5 rounded-[10px] px-2.5 text-[13.5px] font-medium transition-colors active:bg-surface-3 ${
           active ? "text-text" : "text-text-2 hover:bg-surface-2 hover:text-text"
         }`}
       >
