@@ -60,7 +60,7 @@ describe("the AWS runbook", () => {
     const cdk = runbook.split("\n").filter((line) => line.includes("npx cdk "));
     expect(cdk.length).toBeGreaterThan(0);
     for (const line of cdk) expect(line).not.toContain("--profile");
-    expect(runbook).toContain("$env:AWS_PROFILE = 'ig'");
+    expect(runbook).toContain("$env:AWS_PROFILE = 'ig'; $env:AWS_REGION = 'ap-southeast-2'");
   });
 
   it("has the heading every alarm links to", () => {

@@ -8,7 +8,7 @@ Every numbered step ends with:
 
 ## Conventions
 - **Shell:** PowerShell, from the repo root. `cdk` commands run in `infra\` (each block says so).
-- **`cdk` reads the profile from the environment:** run `$env:AWS_PROFILE = 'ig'` once per shell before any `cdk` command. CDK can't resolve an `aws login` session through `--profile` and stops with "Unable to resolve AWS account".
+- **`cdk` reads the profile from the environment:** run `$env:AWS_PROFILE = 'ig'; $env:AWS_REGION = 'ap-southeast-2'` once per shell before any `cdk` command. CDK can't resolve an `aws login` session through `--profile`, and the `ig` profile keeps no region, so without both it stops with "Unable to resolve AWS account".
 - **Every `aws` command** carries `--profile ig --region ap-southeast-2`. The only exception is ACM, with `--region us-east-1`, because CloudFront reads certificates only from there.
 - **Build the web app before every `cdk synth`, `diff`, `deploy` and `destroy`:** `npm -w web run build:open-next`. The stack ships whatever is in `web\.open-next`, and a synth without it fails with `Build the web app first`.
 - **Values never written down here:** the account ID, the alert address, the certificate ARN and every key. The runbook says where each one lives. Two helpers read them when you need them:
