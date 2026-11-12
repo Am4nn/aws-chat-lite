@@ -81,7 +81,7 @@ type Failure = { message?: string; errors?: ({ message?: string; field?: string;
 
 /** A 422's message is only "Validation Failed"; the reason sits in its errors list. */
 function failure(data: Failure | null, text: string): string {
-  const reasons = (data?.errors ?? []).map((e) => (typeof e === "string" ? e : (e.message ?? [e.field, e.code].filter(Boolean).join(" "))));
+  const reasons = (data?.errors ?? []).map((r) => (typeof r === "string" ? r : (r.message ?? [r.field, r.code].filter(Boolean).join(" "))));
   return `${data?.message ?? text}${reasons.length ? ` (${reasons.join("; ")})` : ""}`;
 }
 

@@ -22,20 +22,19 @@ export function parseBody(event: { body?: string; isBase64Encoded?: boolean }): 
   }
 }
 
-/** Error class → HTTP status. Anything else is a 500 (logged). */
+/** Error class → HTTP status, with the UserError's own message. Anything else is a 500 with the default line, logged. */
 export function errorResponse(e: unknown): APIGatewayProxyStructuredResultV2 {
   if (e instanceof FlowFailed) {
     const res = errorResponse(e.error);
     return json(res.statusCode!, { ...JSON.parse(String(res.body)), roomId: e.roomId });
   }
-  const msg = (e as Error).message;
-  if (e instanceof ValidationError) return json(400, { error: msg });
-  if (e instanceof Forbidden) return json(403, { error: msg });
-  if (e instanceof NotFound) return json(404, { error: msg });
-  if (e instanceof Conflict) return json(409, { error: msg });
-  if (e instanceof Gone) return json(410, { error: msg });
-  if (e instanceof Upstream) return json(502, { error: msg });
-  if (e instanceof Unavailable) return json(503, { error: msg });
+  if (e instanceof ValidationError) return json(400, { error: e.message });
+  if (e instanceof Forbidden) return json(403, { error: e.message });
+  if (e instanceof NotFound) return json(404, { error: e.message });
+  if (e instanceof Conflict) return json(409, { error: e.message });
+  if (e instanceof Gone) return json(410, { error: e.message });
+  if (e instanceof Upstream) return json(502, { error: e.message });
+  if (e instanceof Unavailable) return json(503, { error: e.message });
   console.error("request failed", e);
   return json(500, { error: DEFAULT_ERROR });
 }

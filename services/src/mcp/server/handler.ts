@@ -3,6 +3,7 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { CallToolRequestSchema, ListToolsRequestSchema, type CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { chatRepo } from "../../chat/repo.js";
+import { DEFAULT_ERROR, UserError } from "../../lib/errors.js";
 import { json } from "../../lib/http.js";
 import { broadcastToRoom } from "../../live/broadcast.js";
 import { issuer, siteUrl } from "../../oauth/model.js";
@@ -53,8 +54,8 @@ export function makeMcpHandler(verify: OAuthRepo["verifyAccess"], deps: ServerDe
       try {
         return textResult(await tool.run(access.user, params.arguments ?? {}, deps));
       } catch (e) {
-        // A tool rejects only with a UserError, written for the person behind the client.
-        return textResult((e as Error).message, true);
+        // The tools already turn any other failure into a UserError with the default line, having logged it.
+        return textResult(e instanceof UserError ? e.message : DEFAULT_ERROR, true);
       }
     });
     const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
