@@ -36,8 +36,9 @@ const helperContext = (ctx: DurableContext, name: string, fn: (child: DurableCon
  * crash or a timeout the execution replays finished steps from their results and carries on where it stopped. The
  * loop's own state (cursor, steps, cost) is rebuilt from those results, which is why every step returns it.
  *
- * A write, or a web call in a thread with private content, first waits on a durable callback for a member's decision. The execution is suspended meanwhile, so
- * the wait costs no compute; a decision, a stop or the timeout wakes it, and the approval item says which.
+ * A write, or a web, MCP or image call in a thread with private content, first waits on a durable callback for a
+ * member's decision. The execution is suspended meanwhile, so the wait costs no compute; a decision, a stop or the
+ * timeout wakes it, and the approval item says which.
  */
 export async function runLoop({ runId }: { runId: string }, ctx: DurableContext): Promise<void> {
   const step = <T>(name: string, fn: () => Promise<T>) => ctx.step(name, fn, { retryStrategy });
