@@ -31,7 +31,7 @@ export function CreateRoom({ onDone }: { onDone?: () => void }) {
   return (
     <form onSubmit={submit} className="flex flex-col gap-4 text-left">
       <Field id="room-name" label="Room name" placeholder="dev-team" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} required autoFocus />
-      {error && <p role="alert" className="text-[13px] text-[#ff9b8f]">{error}</p>}
+      {error && <p role="alert" className="text-[13px] text-danger">{error}</p>}
       <div className="flex justify-end gap-2">
         {onDone && <Button type="button" onClick={onDone}>Cancel</Button>}
         <Button type="submit" variant="primary" disabled={busy || !name.trim()}>{busy && <Spinner />}Create room</Button>

@@ -58,7 +58,7 @@ export function RoomSwitcher({ current, rooms, hasMentions, canCreate, canLeave,
             exit={{ opacity: 0, scale: 0.97, transition: reduced ? instant : { duration: dur.fast } }}
             transition={reduced ? instant : { duration: dur.base, ease: easeOut }}
             style={{ transformOrigin: "top left" }}
-            className="absolute inset-x-0 top-12 z-30 rounded-xl border border-line-strong bg-surface-2 p-1.5 shadow-[0_20px_50px_rgba(0,0,0,.5)]"
+            className="absolute inset-x-0 top-12 z-30 rounded-xl border border-line-strong bg-surface-2 p-1.5 shadow-menu"
           >
             {rooms.map((r) => (
               <Link
@@ -87,7 +87,7 @@ export function RoomSwitcher({ current, rooms, hasMentions, canCreate, canLeave,
 
 function MenuItem({ danger = false, icon, onClick, children }: { danger?: boolean; icon: ReactNode; onClick: () => void; children: ReactNode }) {
   return (
-    <button role="menuitem" onClick={onClick} className={`${MENU_ITEM} hover:bg-surface-3 ${danger ? "text-[#ff9b8f]" : "text-text-2 hover:text-text"}`}>
+    <button role="menuitem" onClick={onClick} className={`${MENU_ITEM} hover:bg-surface-3 ${danger ? "text-danger" : "text-text-2 hover:text-text"}`}>
       {icon}
       {children}
     </button>

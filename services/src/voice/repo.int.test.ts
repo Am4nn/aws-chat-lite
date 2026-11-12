@@ -4,12 +4,13 @@ import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { budgetRepo } from "../budget/repo.js";
 import { seqKey } from "../chat/model.js";
 import { docClient, tableName } from "../lib/db.js";
-import { Conflict } from "../lib/errors.js";
+import { sleep } from "../lib/sleep.js";
+import { Conflict, Gone } from "../lib/errors.js";
 import { roomsRepo } from "../rooms/repo.js";
 import { deleteObjects, headObject } from "../workspace/storage.js";
 import { speechMicros, transcribeMicros } from "./prices.js";
 import { voiceRepo } from "./repo.js";
-import { fakeSpeaker } from "./speaker.js";
+import { fakeSpeaker, type Speaker } from "./speaker.js";
 import { speak } from "./speech.js";
 
 // Runs against DynamoDB and S3 on Floci: npm run floci:up && npm run deploy:local, then npm -w services run test:int
@@ -59,5 +60,31 @@ describe("read aloud on Floci", () => {
     expect((await speak(owner, roomId, { chatId, seq: 900 }, fakeSpeaker())).cached).toBe(true);
     expect(await spent(roomId) - before).toBe(speechMicros("Done. It works.".length));
     await deleteObjects([key]);
+  });
+
+  it("two plays at once make the audio once and charge the room once", async () => {
+    const { owner, roomId, chatId } = await room();
+    await docClient().send(new PutCommand({
+      TableName: tableName(),
+      Item: { pk: `CHAT#${chatId}`, sk: seqKey(901), roomId, chatId, seq: 901, authorId: "agent", authorName: "agent", text: "Twice." },
+    }));
+    const before = await spent(roomId);
+    // A slow synthesis keeps the first play's claim held while the second arrives.
+    const slow: Speaker = { synthesize: async (text) => (await sleep(500), fakeSpeaker().synthesize(text)) };
+    const plays = await Promise.allSettled([1, 2].map(() => speak(owner, roomId, { chatId, seq: 901 }, slow)));
+    expect(plays.filter((p) => p.status === "fulfilled")).toHaveLength(1);
+    expect(plays.find((p) => p.status === "rejected")).toMatchObject({ reason: new Conflict("Preparing the audio; try again in a moment.") });
+    expect(await spent(roomId) - before).toBe(speechMicros("Twice.".length));
+    await deleteObjects([`speech/${roomId}/${chatId}/901.mp3`]);
+  });
+
+  it("an archived room makes no new audio", async () => {
+    const { owner, roomId, chatId } = await room();
+    await docClient().send(new PutCommand({
+      TableName: tableName(),
+      Item: { pk: `CHAT#${chatId}`, sk: seqKey(902), roomId, chatId, seq: 902, authorId: "agent", authorName: "agent", text: "Late." },
+    }));
+    await roomsRepo().archiveRoom(roomId, owner.userId);
+    await expect(speak(owner, roomId, { chatId, seq: 902 }, fakeSpeaker())).rejects.toEqual(new Gone("This room is archived."));
   });
 });

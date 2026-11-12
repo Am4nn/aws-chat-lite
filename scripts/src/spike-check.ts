@@ -4,7 +4,8 @@ import { useLocalEnv, FLOCI_ENDPOINT } from "./env.js";
 import { assertOurFlociUp } from "./floci-owner.js";
 import { keepAwsSection } from "./aws-section.js";
 import { cleanStaleStacks } from "./stale.js";
-import { cdk, readOutputs } from "./deploy-local.js";
+import { cdk, readOutputs } from "./cdk.js";
+import { run } from "./cli.js";
 import { renderReport, type CheckResult } from "./report.js";
 import * as websocket from "./checks/websocket.js";
 import * as sse from "./checks/sse.js";
@@ -95,4 +96,4 @@ async function main() {
   }
 }
 
-main().catch((e) => { console.error(String(e.message ?? e)); process.exit(1); });
+run(main);

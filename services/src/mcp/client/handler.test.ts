@@ -56,6 +56,14 @@ function fakeTable(roles: Record<string, Role>, rows: Record<string, unknown>[] 
       return { Attributes: old };
     }
     if (c instanceof TransactWriteCommand) {
+      const reasons = c.input.TransactItems!.map((t) => {
+        const count = Number(items.get(keyOf(t.Update?.Key))?.mcpCount ?? 0);
+        const full = t.Update?.ConditionExpression?.includes("mcpCount < :max") && count >= Number(t.Update.ExpressionAttributeValues![":max"]);
+        return { Code: full ? "ConditionalCheckFailed" : "None" };
+      });
+      if (reasons.some((r) => r.Code !== "None")) {
+        throw Object.assign(new Error("cancelled"), { name: "TransactionCanceledException", CancellationReasons: reasons });
+      }
       for (const t of c.input.TransactItems!) {
         if (t.Put) items.set(keyOf(t.Put.Item), t.Put.Item!);
         if (t.Delete) items.delete(keyOf(t.Delete.Key));
@@ -90,7 +98,7 @@ function setup(roles: Record<string, Role> = { u1: "admin" }, rows?: Record<stri
 }
 
 const connect = (body: Record<string, unknown>) => ["POST /rooms/{roomId}/connections/mcp", { name: "test", redirectUri: REDIRECT, ...body }] as const;
-const mcpRow = (name: string) => ({ pk: "ROOM#r", sk: `CONN#mcp#${name}`, name, url: "https://x.example/mcp", auth: "none", status: "connected" });
+const mcpRow = (name: string) => ({ pk: "ROOM#r", sk: `LINK#mcp#${name}`, name, url: "https://x.example/mcp", auth: "none", status: "connected" });
 
 describe("who may change a room's MCP servers", () => {
   it("a member gets 403 on every change, and nothing is written or sent", async () => {
@@ -158,13 +166,21 @@ describe("adding a server", () => {
       ["echo", true], ["add_note", false], ["whoami", true], ["fail", true],
     ]);
     const [write] = t.commands(TransactWriteCommand);
-    const [conn, audit] = write!.input.TransactItems!;
-    expect(conn!.Put?.Item).toMatchObject({ pk: "ROOM#r", sk: "CONN#mcp#test", status: "connected" });
-    // Room subscriptions share the CONN# prefix and are matched by userId, so a connection must never carry one.
-    expect(conn!.Put?.Item).not.toHaveProperty("userId");
+    const [conn, audit, count] = write!.input.TransactItems!;
+    expect(conn!.Put?.Item).toMatchObject({ pk: "ROOM#r", sk: "LINK#mcp#test", status: "connected" });
     expect(audit!.Put?.Item).toMatchObject({ kind: "connected", actor: "aman", detail: "MCP test (127.0.0.1)" });
-    expect(write!.input.TransactItems).toHaveLength(2);
+    expect(count!.Update).toMatchObject({
+      Key: { pk: "ROOM#r", sk: "META" }, UpdateExpression: "ADD mcpCount :one",
+      ConditionExpression: "attribute_not_exists(mcpCount) OR mcpCount < :max", ExpressionAttributeValues: { ":one": 1, ":max": 5 },
+    });
+    expect(write!.input.TransactItems).toHaveLength(3);
     expect(t.notify).toHaveBeenCalledWith("r");
+  });
+
+  it("the room's server count refuses a sixth that raced past the first check", async () => {
+    const server = await start({ auth: "none" });
+    const t = setup({ u1: "admin" }, [{ pk: "ROOM#r", sk: "META", mcpCount: 5 }]);
+    expect(await t.call(...connect({ url: server.url }))).toEqual({ status: 409, body: { error: "A room can connect up to 5 MCP servers." } });
   });
 
   it("a server with sign-in gets an authorize URL, and the flow keeps its verifier sealed", async () => {
@@ -221,7 +237,7 @@ describe("finishing a sign-in", () => {
     expect(res.body).toMatchObject({ roomId: "r", connection: { name: "test", auth: "oauth", status: "connected", toolCount: 4 } });
     const [write] = t.commands(TransactWriteCommand);
     const [conn, auth, audit] = write!.input.TransactItems!;
-    expect(conn!.Put?.Item).toMatchObject({ sk: "CONN#mcp#test", auth: "oauth" });
+    expect(conn!.Put?.Item).toMatchObject({ sk: "LINK#mcp#test", auth: "oauth" });
     expect(auth!.Update).toMatchObject({ Key: { pk: "ROOM#r", sk: "MCPAUTH#test" }, UpdateExpression: "SET sealed = :sealed ADD #version :one" });
     const sealed = String(auth!.Update!.ExpressionAttributeValues![":sealed"]);
     const stored = JSON.parse(unseal(KEY, sealed, "r#test"));
@@ -265,8 +281,9 @@ describe("a connected server", () => {
     expect(update!.input.ExpressionAttributeValues).toMatchObject({ ":count": 6, ":connected": "connected" });
     const removed = await t.call("DELETE /rooms/{roomId}/connections/mcp/{name}");
     expect(removed.status).toBe(204);
-    const [conn, auth, audit] = t.commands(TransactWriteCommand)[0]!.input.TransactItems!;
-    expect(conn!.Delete?.Key).toEqual({ pk: "ROOM#r", sk: "CONN#mcp#test" });
+    const [conn, auth, audit, count] = t.commands(TransactWriteCommand)[0]!.input.TransactItems!;
+    expect(conn!.Delete?.Key).toEqual({ pk: "ROOM#r", sk: "LINK#mcp#test" });
+    expect(count!.Update).toMatchObject({ Key: { pk: "ROOM#r", sk: "META" }, UpdateExpression: "ADD mcpCount :minus", ExpressionAttributeValues: { ":minus": -1 } });
     expect(auth!.Delete?.Key).toEqual({ pk: "ROOM#r", sk: "MCPAUTH#test" });
     expect(audit!.Put?.Item).toMatchObject({ kind: "disconnected", detail: "MCP test" });
     expect(t.notify).toHaveBeenCalledTimes(2);

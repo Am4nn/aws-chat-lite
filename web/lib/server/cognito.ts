@@ -1,3 +1,4 @@
+import "server-only";
 import {
   CognitoIdentityProviderClient, ConfirmSignUpCommand, InitiateAuthCommand, ResendConfirmationCodeCommand,
   RevokeTokenCommand, SignUpCommand,

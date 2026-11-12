@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { docClient } from "../lib/db.js";
-import { Conflict, Forbidden } from "../lib/errors.js";
+import { Conflict, Forbidden, Gone } from "../lib/errors.js";
 import { approvalsRepo } from "./repo.js";
 
 Object.assign(process.env, { TABLE_NAME: "t", AWS_REGION: "us-east-1" });
@@ -49,6 +49,12 @@ describe("decide", () => {
   it("refuses someone outside the approval's room", async () => {
     const send = fakeTable((c) => (isMember(c) ? {} : { Item: stored }));
     await expect(approvalsRepo().decide(bea, "run1", 3, "approve")).rejects.toBeInstanceOf(Forbidden);
+    expect(updates(send)).toHaveLength(0);
+  });
+
+  it("refuses a decision in an archived room", async () => {
+    const send = fakeTable((c) => (isMember(c) ? { Item: { role: "admin", archived: true } } : { Item: { ...stored, status: "pending" } }));
+    await expect(approvalsRepo().decide(bea, "run1", 3, "approve")).rejects.toEqual(new Gone("This room is archived."));
     expect(updates(send)).toHaveLength(0);
   });
 });

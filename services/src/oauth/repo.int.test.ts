@@ -16,10 +16,12 @@ const RESOURCE = "http://api.test/mcp";
 const ip = () => `test-${randomUUID()}`;
 type Tokens = { access_token: string; refresh_token: string; scope: string };
 
-/** Registers a native client, then signs `user` in through authorize and consent, up to the code. */
-async function signIn(scope?: string) {
-  const user = { userId: randomUUID(), username: "aman" };
-  const { client_id: clientId } = await repo.registerClient({ redirect_uris: ["http://127.0.0.1:1/callback"], client_name: "Claude Code" }, ip()) as { client_id: string };
+/** Registers a native client (or reuses `again`'s), then signs its user in through authorize and consent, up to the code. */
+async function signIn(scope?: string, again?: { user: { userId: string; username: string }; clientId: string }) {
+  const user = again?.user ?? { userId: randomUUID(), username: "aman" };
+  const clientId = again?.clientId ?? (await repo.registerClient(
+    { redirect_uris: ["http://127.0.0.1:1/callback"], client_name: "Claude Code" }, ip(),
+  ) as { client_id: string }).client_id;
   const verifier = randomBytes(32).toString("base64url");
   const redirectUri = "http://127.0.0.1:33418/callback";
   const started = await repo.startRequest({
@@ -114,6 +116,15 @@ describe("OAuth authorization server on Floci", () => {
     await repo.revokeApp(s.user.userId, app.grantId);
     expect(await repo.verifyAccess(tokens.access_token)).toBeNull();
     expect(await repo.listApps(s.user.userId)).toEqual([]);
+  });
+
+  it("signing in again from the same app replaces its grant: one row in Connected apps, and the old token dies", async () => {
+    const s = await signIn();
+    const old = await exchange(s);
+    const fresh = await exchange(await signIn(undefined, s));
+    expect(await repo.listApps(s.user.userId)).toHaveLength(1);
+    expect(await repo.verifyAccess(old.access_token)).toBeNull();
+    expect(await repo.verifyAccess(fresh.access_token)).not.toBeNull();
   });
 
   it("revoking either token ends the grant", async () => {

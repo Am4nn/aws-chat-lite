@@ -55,7 +55,7 @@ describe("a connection's token store", () => {
     const { tokens, send, notify } = store();
     await tokens.markNeedsAuth();
     expect((send.mock.calls[0]![0] as UpdateCommand).input).toMatchObject({
-      Key: { pk: "ROOM#r", sk: "CONN#mcp#test" }, ExpressionAttributeValues: { ":status": "needs_auth" },
+      Key: { pk: "ROOM#r", sk: "LINK#mcp#test" }, ExpressionAttributeValues: { ":status": "needs_auth" },
     });
     expect(notify).toHaveBeenCalledWith("r");
     const removed = store(conditionFailed);

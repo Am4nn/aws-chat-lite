@@ -1,8 +1,9 @@
 import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
 import { auditRepo } from "../audit/repo.js";
-import { requireMember } from "../chat/membership.js";
+import { requireMember } from "../rooms/membership.js";
 import { callerFromEvent, subFromEvent } from "../lib/auth.js";
 import { Conflict } from "../lib/errors.js";
+import { bestEffort } from "../lib/best-effort.js";
 import { errorResponse, json, parseBody } from "../lib/http.js";
 import { roomUpdated } from "../live/broadcast.js";
 import { fakeSignInPage } from "../tools/fake-github.js";
@@ -24,11 +25,7 @@ export function makeHandler(
   repo: ConnectionsRepo, githubApp: GitHubApp, notifyRoom: (roomId: string) => Promise<unknown>, signInPage: (signIn: SignIn) => string,
 ) {
   const changed = async (roomId: string, result: APIGatewayProxyStructuredResultV2) => {
-    try {
-      await notifyRoom(roomId);
-    } catch (e) {
-      console.error("room.updated broadcast failed", roomId, e);
-    }
+    await bestEffort("room.updated broadcast", () => notifyRoom(roomId));
     return result;
   };
 
@@ -68,7 +65,7 @@ export function makeHandler(
           await repo.removeGitHub(callerFromEvent(event), roomId);
           return changed(roomId, { statusCode: 204 });
         case "PUT /rooms/{roomId}/approval-timeout":
-          return changed(roomId, json(200, { approvalTimeoutMin: await repo.setTimeout(callerFromEvent(event), roomId, body.minutes) }));
+          return changed(roomId, json(200, { approvalTimeoutMin: await repo.setApprovalTimeout(callerFromEvent(event), roomId, body.minutes) }));
         case "GET /rooms/{roomId}/audit":
           await requireMember(roomId, subFromEvent(event));
           return json(200, await auditRepo().list(roomId, event.queryStringParameters?.before));

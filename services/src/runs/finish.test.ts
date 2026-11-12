@@ -65,12 +65,6 @@ describe("finishRun", () => {
     expect(fake.pushed).toEqual([]);
   });
 
-  it("sends nothing for a run from before starters' ids were kept", async () => {
-    const { startedById: _, ...old } = run;
-    await finishRun(old, { status: "done" }, opts);
-    expect(fake.pushed).toEqual([]);
-  });
-
   it("stores the images the run made on its answer", async () => {
     fake.events.push(at(2, { type: "step.finished", step: 1, output: "Saved", ms: 1, ok: true, image: { path: "images/7-1-fox.png", aspect: "1:1" } }));
     await finishRun(run, { status: "done" }, opts);

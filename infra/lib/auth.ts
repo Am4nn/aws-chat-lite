@@ -1,6 +1,7 @@
-import { RemovalPolicy, CfnOutput } from "aws-cdk-lib";
+import { CfnOutput } from "aws-cdk-lib";
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import { HttpJwtAuthorizer } from "aws-cdk-lib/aws-apigatewayv2-authorizers";
+import { FLOCI_PORT } from "./config.js";
 import type { CoreStack } from "./core-stack.js";
 
 export interface Auth {
@@ -21,8 +22,7 @@ export function addAuth(stack: CoreStack): Auth {
     selfSignUpEnabled: true,
     signInAliases: { username: true },
     passwordPolicy: { minLength: 8, requireSymbols: false, requireUppercase: false, requireDigits: false },
-    // Friends' accounts outlive a stack delete on AWS; Floci's are disposable.
-    removalPolicy: isLocal ? RemovalPolicy.DESTROY : RemovalPolicy.RETAIN,
+    removalPolicy: stack.userDataRemoval,
     lambdaTriggers: { preSignUp: stack.addFunction("presignup", "auth/presignup.ts") },
     ...(!isLocal && {
       standardAttributes: { email: { required: true, mutable: true } },
@@ -40,9 +40,9 @@ export function addAuth(stack: CoreStack): Auth {
     groupName: "creators",
     description: "May create rooms (npm run grant -- <username> creators)",
   });
-  // Floci's tokens name their issuer with a literal loopback IP, http://127.0.0.1:4566/<pool>, not localhost.
+  // Floci's tokens name their issuer with a literal loopback IP, not localhost.
   const issuer = isLocal
-    ? `http://127.0.0.1:4566/${userPool.userPoolId}`
+    ? `http://127.0.0.1:${FLOCI_PORT}/${userPool.userPoolId}`
     : `https://cognito-idp.${stack.region}.amazonaws.com/${userPool.userPoolId}`;
   const authorizer = new HttpJwtAuthorizer("Jwt", issuer, { jwtAudience: [client.userPoolClientId] });
 

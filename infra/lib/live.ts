@@ -11,7 +11,7 @@ const ACTIONS = ["send", "edit", "delete", "react", "typing", "read", "subscribe
 export function addLive(stack: CoreStack) {
   // API Gateway waits at most 29 s for an integration, and a send keeps working after its ack (handing the message to
   // the agent), so the function gets all of that rather than the default 10 s.
-  const liveFn = stack.addFunction("live", "live/handler.ts", { tableAccess: true }, { timeout: Duration.seconds(29) });
+  const liveFn = stack.addFunction("live", "live/handler.ts", { tableAccess: true, timeout: Duration.seconds(29) });
   const integration = new WebSocketLambdaIntegration("LiveIntegration", liveFn);
   const wsApi = new apigwv2.WebSocketApi(stack, "Ws", {
     apiName: `${stack.stageConfig.prefix}-ws`,

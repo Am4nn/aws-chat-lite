@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { bff, errorText } from "@/lib/client/bff";
 import { audioFrame, endFrame, readFrame } from "@/lib/client/voice/eventstream";
 import { chunker, downsample } from "@/lib/client/voice/pcm";
@@ -128,7 +128,8 @@ export function useDictation({ roomId, onText }: { roomId: string; onText: (text
   const cancel = () => (current.current ? void end(current.current, false) : setView(IDLE));
 
   // Leaving the page mid-dictation still turns the mic off and reports the time.
-  useEffect(() => () => { if (current.current) void end(current.current, false); }, []);
+  const endOnLeave = useEffectEvent(() => { if (current.current) void end(current.current, false); });
+  useEffect(() => () => endOnLeave(), []);
 
   return { ...view, start, stop, cancel };
 }

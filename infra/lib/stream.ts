@@ -3,9 +3,6 @@ import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import type { CoreStack } from "./core-stack.js";
 
-/** Floci's Function URLs stream no body, so locally the same stream code runs as a Node server (npm run dev). */
-const LOCAL_STREAM_URL = "http://localhost:4600";
-
 /**
  * A run's resumable event stream: server-sent events from a Lambda with response streaming, behind a Function URL
  * (API Gateway buffers responses, so it can't stream). The URL needs no IAM auth because the one-time ticket in it is
@@ -13,7 +10,7 @@ const LOCAL_STREAM_URL = "http://localhost:4600";
  * CloudFront routes each run's stream path to the Function URL.
  */
 export function addStream(stack: CoreStack) {
-  const fn = stack.addFunction("stream", "runs/stream-handler.ts", {}, { timeout: Duration.minutes(15) });
+  const fn = stack.addFunction("stream", "runs/stream-handler.ts", { timeout: Duration.minutes(15) });
   stack.table.grantReadData(fn);
   // Using a ticket deletes it; the condition keeps that delete to ticket items.
   fn.addToRolePolicy(new iam.PolicyStatement({
@@ -26,5 +23,6 @@ export function addStream(stack: CoreStack) {
     invokeMode: lambda.InvokeMode.RESPONSE_STREAM,
     cors: { allowedOrigins: ["*"], allowedHeaders: ["last-event-id"], allowedMethods: [lambda.HttpMethod.GET] },
   });
-  return { streamUrl: stack.stageConfig.isLocal ? LOCAL_STREAM_URL : stack.stageConfig.siteOrigins[0]!, functionUrl: url };
+  const { streamLocalUrl, siteOrigins } = stack.stageConfig;
+  return { streamUrl: streamLocalUrl ?? siteOrigins[0]!, functionUrl: url };
 }

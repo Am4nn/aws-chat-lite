@@ -15,6 +15,13 @@ function memberMessage(author: string, text: string, attachments: Attachment[] =
   return { role: "user", author, text: named, ...(images.length > 0 && { images }) };
 }
 
+/**
+ * The event of `type` logged for step `step`. Step numbers are the run's, unique across lanes (a helper's steps follow
+ * its delegate step), so the lane needn't be asked.
+ */
+export const stepEvent = <K extends RunEvent["type"]>(events: RunEvent[], type: K, step: number) =>
+  events.find((e): e is Extract<RunEvent, { type: K }> => e.type === type && "step" in e && e.step === step);
+
 /** Whether an event is in a lane: one with no lane is the thread's own agent's (lane 0). */
 export const inLane = (lane: number) => (e: RunEvent) => (e.lane ?? 0) === lane;
 

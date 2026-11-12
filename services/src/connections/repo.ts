@@ -1,13 +1,13 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { GetCommand, PutCommand, TransactWriteCommand, type TransactWriteCommandInput } from "@aws-sdk/lib-dynamodb";
 import { auditItem } from "../audit/repo.js";
-import { requireMember } from "../chat/membership.js";
+import { requireMember } from "../rooms/membership.js";
 import { formatWait, timeoutMinutes } from "../approvals/model.js";
 import type { User } from "../lib/auth.js";
-import { conditionFailed, docClient, queryAll, tableName, takeOnce } from "../lib/db.js";
+import { conditionFailed, docClient, queryAll, tableName, takeOnce, withoutKeys } from "../lib/db.js";
 import { FlowFailed, Forbidden, Gone, Upstream, ValidationError } from "../lib/errors.js";
 import { siteCallback } from "../lib/http.js";
-import { roomKey } from "../lib/keys.js";
+import { roomKey, roomMetaKey } from "../lib/keys.js";
 import { can } from "../rooms/access.js";
 import { cut } from "../tools/cut.js";
 import { GitHubError } from "../tools/github/app.js";
@@ -26,16 +26,14 @@ const GRANT_TTL_SEC = 900;
 const STATE = /^[A-Za-z0-9_-]{1,100}$/;
 const CALLBACK_PATH = "/bff/github/callback";
 
-const githubKey = (roomId: string) => ({ pk: roomKey(roomId), sk: "CONN#github" });
-const metaKey = (roomId: string) => ({ pk: roomKey(roomId), sk: "META" });
+/** Integrations are `LINK#` items, apart from the room's `CONN#` socket subscriptions that every broadcast reads. */
+const githubKey = (roomId: string) => ({ pk: roomKey(roomId), sk: "LINK#github" });
 const flowKey = (state: string) => ({ pk: `GHFLOW#${state}`, sk: "META" });
 /** What one admin's GitHub account can reach, for picking repos in one room. */
 const grantKey = (roomId: string, userId: string) => ({ pk: `GHGRANT#${roomId}#${userId}`, sk: "META" });
 const nowSec = () => Math.floor(Date.now() / 1000);
-const MCP_PREFIX = "CONN#mcp#";
+const MCP_PREFIX = "LINK#mcp#";
 export const mcpConnKey = (roomId: string, name: string) => ({ pk: roomKey(roomId), sk: `${MCP_PREFIX}${name}` });
-
-export const withoutKeys = ({ pk: _pk, sk: _sk, ...rest }: Record<string, unknown>) => rest;
 
 /** A room's remote MCP servers, in name order. */
 export async function mcpConnections(roomId: string): Promise<McpConnection[]> {
@@ -43,7 +41,7 @@ export async function mcpConnections(roomId: string): Promise<McpConnection[]> {
     KeyConditionExpression: "pk = :pk AND begins_with(sk, :prefix)", ConsistentRead: true,
     ExpressionAttributeValues: { ":pk": roomKey(roomId), ":prefix": MCP_PREFIX },
   });
-  return items.map((item) => withoutKeys(item) as McpConnection);
+  return items.map((item) => withoutKeys<McpConnection>(item));
 }
 
 /**
@@ -71,9 +69,9 @@ export function connectionsRepo() {
     const [conn, mcp, meta] = await Promise.all([
       db.send(new GetCommand({ TableName, Key: githubKey(roomId), ConsistentRead: true })),
       mcpConnections(roomId),
-      db.send(new GetCommand({ TableName, Key: metaKey(roomId), ConsistentRead: true })),
+      db.send(new GetCommand({ TableName, Key: roomMetaKey(roomId), ConsistentRead: true })),
     ]);
-    const github = conn.Item ? (withoutKeys(conn.Item) as GitHubConnection) : null;
+    const github = conn.Item ? withoutKeys<GitHubConnection>(conn.Item) : null;
     return { github, mcp, approvalTimeoutSec: Number(meta.Item?.approvalTimeoutSec ?? DEFAULT_APPROVAL_TIMEOUT_SEC) };
   }
 
@@ -174,12 +172,12 @@ export function connectionsRepo() {
     },
 
     /** Stored in seconds, which is what the durable wait takes. */
-    async setTimeout(user: User, roomId: string, rawMinutes: unknown): Promise<number> {
+    async setApprovalTimeout(user: User, roomId: string, rawMinutes: unknown): Promise<number> {
       const minutes = timeoutMinutes(rawMinutes);
       await requireManager(roomId, user.userId, { writing: true });
       await withAudit(user, roomId, "timeout", formatWait(minutes * 60), {
         Update: {
-          TableName, Key: metaKey(roomId), UpdateExpression: "SET approvalTimeoutSec = :sec", ConditionExpression: "attribute_exists(pk)",
+          TableName, Key: roomMetaKey(roomId), UpdateExpression: "SET approvalTimeoutSec = :sec", ConditionExpression: "attribute_exists(pk)",
           ExpressionAttributeValues: { ":sec": minutes * 60 },
         },
       });

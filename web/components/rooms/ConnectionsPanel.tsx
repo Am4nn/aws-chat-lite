@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useEffectEvent, useRef, useState, type KeyboardEvent } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { FolderGit2, Hourglass, Pencil } from "lucide-react";
 import { bff, errorText } from "@/lib/client/bff";
@@ -11,11 +11,13 @@ import { swap } from "@/lib/motion";
 import type { GitHubConnection, McpConnection } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { Hint } from "@/components/ui/Hint";
+import { PanelLoading } from "@/components/ui/PanelLoading";
 import { Spinner } from "@/components/ui/Spinner";
 import { useToast } from "@/components/overlays/Toast";
 import { ActivityLog } from "./ActivityLog";
 import { McpServers } from "./McpServers";
 import { RepoPicker, type Installation, type RepoPick } from "./RepoPicker";
+import { useRoomData } from "./useRoomData";
 
 type Connections = {
   github: GitHubConnection | null; mcp: McpConnection[]; approvalTimeoutMin: number; canManage: boolean; installUrl: string | null;
@@ -30,21 +32,13 @@ type Mode = { kind: "view" } | { kind: "confirmDisconnect" } | { kind: "pick"; i
 export function ConnectionsPanel({ roomId, archived, pickGitHub, onPickStarted }: {
   roomId: string; archived: boolean; pickGitHub?: boolean; onPickStarted?: () => void;
 }) {
-  const toast = useToast();
-  const [data, setData] = useState<Connections | null>(null);
+  // One counter reloads both the connections and the activity log below them.
   const [version, setVersion] = useState(0);
+  const { data, setData, failed, reload } = useRoomData<Connections>(`/bff/api/rooms/${roomId}/connections`, version);
 
   useLiveEvent("room.updated", (e) => {
     if (e.roomId === roomId) setVersion((v) => v + 1);
   });
-
-  useEffect(() => {
-    let current = true;
-    bff<Connections>(`/bff/api/rooms/${roomId}/connections`)
-      .then((d) => current && setData(d))
-      .catch((e) => toast(errorText(e), "error"));
-    return () => { current = false; };
-  }, [roomId, version, toast]);
 
   const manage = !!data?.canManage && !archived;
   /** Shown at once, then fetched again with the log, so this tab stays current even when its socket is down. */
@@ -63,13 +57,13 @@ export function ConnectionsPanel({ roomId, archived, pickGitHub, onPickStarted }
               roomId={roomId} data={data} manage={manage} pick={!!pickGitHub} onPickStarted={onPickStarted} onChange={(github) => changed({ github })}
             />
           )
-          : <div className="flex h-9 items-center justify-center text-text-3"><Spinner /></div>}
+          : <PanelLoading failed={failed} onRetry={reload} />}
       </section>
       <section className="flex flex-col gap-2">
         <h2 className="text-[11.5px] font-semibold text-text-3">MCP servers</h2>
         {data
           ? <McpServers roomId={roomId} servers={data.mcp} manage={manage} onChange={(mcp) => changed({ mcp })} />
-          : <div className="flex h-9 items-center justify-center text-text-3"><Spinner /></div>}
+          : !failed && <PanelLoading />}
       </section>
       <section className="flex flex-col gap-2">
         {/* The hint sits beside the heading, not in it, so the heading's accessible name is just "Approvals". */}
@@ -97,10 +91,12 @@ function GitHubSection({ roomId, data, manage, pick, onPickStarted, onChange }: 
   const { github, installUrl } = data;
 
   // Back from GitHub's sign-in: the picker opens once, and the room forgets the request so a later visit doesn't.
-  useEffect(() => {
-    if (!pick || !manage) return;
+  const openPicker = useEffectEvent(() => {
     onPickStarted?.();
     void startPicking();
+  });
+  useEffect(() => {
+    if (pick && manage) openPicker();
   }, [pick, manage]);
 
   /** The browser leaves for GitHub, so the spinner stays until the page goes. */
@@ -172,13 +168,13 @@ function GitHubSection({ roomId, data, manage, pick, onPickStarted, onChange }: 
             <p className="flex items-center gap-2 text-[13px] font-medium"><FolderGit2 aria-hidden="true" size={14} className="text-text-3" />{github.account}</p>
             <ul aria-label="Repos" className="mt-2.5 flex flex-wrap gap-1.5">
               {github.repos.map((r) => (
-                <li key={r} className="max-w-full truncate rounded-md bg-[#1a2023] px-1.5 py-0.5 font-mono text-[11.5px] text-text-2">{r}</li>
+                <li key={r} className="max-w-full truncate rounded-md bg-surface-4 px-1.5 py-0.5 font-mono text-[11.5px] text-text-2">{r}</li>
               ))}
             </ul>
           </div>
           {manage && (mode.kind === "confirmDisconnect" ? (
-            <div className="flex flex-col gap-2 rounded-xl border border-[#4a2a26] bg-[#150f0e] p-3">
-              <p className="text-[12.5px] text-[#ffb4aa]">Disconnect GitHub? The room&apos;s agent loses these repos.</p>
+            <div className="flex flex-col gap-2 rounded-xl border border-danger-line bg-danger-wash p-3">
+              <p className="text-[12.5px] text-danger">Disconnect GitHub? The room&apos;s agent loses these repos.</p>
               <div className="flex justify-end gap-2">
                 <Button autoFocus onClick={() => setMode({ kind: "view" })}>Cancel</Button>
                 <Button variant="danger" onClick={disconnect} disabled={busy}>{busy && <Spinner />}Disconnect</Button>
@@ -259,7 +255,7 @@ function ApprovalTimeout({ roomId, minutes, manage, onChange }: { roomId: string
               onChange={(e) => setDraft(e.target.value.replace(/\D/g, ""))}
               onKeyDown={onKeyDown}
               onBlur={() => void save()}
-              className="h-6 w-12 rounded-md border border-[#36403f] bg-ink px-1 text-right font-mono text-xs text-text tabular-nums outline-none disabled:opacity-60"
+              className="h-6 w-12 rounded-md border border-line-hover bg-ink px-1 text-right font-mono text-xs text-text tabular-nums outline-none disabled:opacity-60"
             />
             min
           </span>

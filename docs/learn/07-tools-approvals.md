@@ -11,7 +11,7 @@
 - **Timeouts.** Each room sets how long a write waits (5 to 1,440 minutes, 2 h by default). When it runs out, the action is skipped, the model is told so, and the answer ends with `(Skipped because no one approved in time: <title>)`.
 - **Connections, owned by the room.** In a new **Connections** tab, owners and admins connect one installation of the App with up to 20 of its repos, change the repos, disconnect, and set the approval timeout. Members see the same settings read-only.
 - **Sign in with GitHub before picking repos.** **Connect GitHub** and **Change repos** first send the admin through the App's GitHub sign-in. The picker then offers only the installations, and the repos inside them, that the admin's own GitHub account can reach, and the server accepts only those.
-- **An audit log.** The Connections tab ends with **Activity**, which every member can read: who asked the agent what, every tool it ran, every approval decision and skip, connections and timeout changes. It loads 50 at a time, newest first.
+- **An audit log.** The Connections tab ends with **Activity**, which every member can read: who asked the agent what, every GitHub, web, MCP, memory, sandbox and image call that actually ran (a refused or unapproved one isn't listed), each hand-off to a helper agent, every approval decision and skip, connections and timeout changes. Only the local fake lookup tool goes unlogged. It loads 50 at a time, newest first.
 - **`npm run smoke`** gained 10 tool checks (two browsers, an owner and a member, fake GitHub):
   1. signing in with the fake GitHub and connecting the fake installation, which the member sees read-only;
   2. setting the timeout, after which both changes appear in Activity;

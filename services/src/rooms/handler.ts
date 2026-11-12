@@ -1,9 +1,10 @@
 import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
+import { bestEffort } from "../lib/best-effort.js";
 import { errorResponse, json, parseBody } from "../lib/http.js";
-import { ValidationError } from "../lib/errors.js";
+import { Forbidden, ValidationError } from "../lib/errors.js";
 import { parsePick } from "../models/picks.js";
 import { callerFromEvent, claimsFromEvent, subFromEvent } from "../lib/auth.js";
-import { broadcastToRoom, sendToUser } from "../live/broadcast.js";
+import { roomUpdated, sendToUser } from "../live/broadcast.js";
 import { isCreator } from "./claims.js";
 import { roomsRepo, type RoomsRepo } from "./repo.js";
 
@@ -17,11 +18,7 @@ type Event = APIGatewayProxyEventV2WithJWTAuthorizer;
  */
 export function makeHandler(repo: RoomsRepo, notifyRoom: (roomId: string, alsoUserId?: string) => Promise<unknown>) {
   const changed = async (statusCode: number, result: unknown, roomId: string, alsoUserId?: string) => {
-    try {
-      await notifyRoom(roomId, alsoUserId);
-    } catch (e) {
-      console.error("room.updated broadcast failed", roomId, e);
-    }
+    await bestEffort("room.updated broadcast", () => notifyRoom(roomId, alsoUserId));
     return json(statusCode, result);
   };
   return async (event: Event): Promise<APIGatewayProxyStructuredResultV2> => {
@@ -38,7 +35,7 @@ export function makeHandler(repo: RoomsRepo, notifyRoom: (roomId: string, alsoUs
         case "GET /rooms":
           return json(200, { rooms: await repo.listMyRooms(subFromEvent(event)) });
         case "POST /rooms":
-          if (!isCreator(claimsFromEvent(event))) return json(403, { error: "Only creators can make rooms." });
+          if (!isCreator(claimsFromEvent(event))) throw new Forbidden("Only creators can make rooms.");
           return json(201, await repo.createRoom(callerFromEvent(event), body.name));
         case "GET /rooms/{roomId}":
           return json(200, await repo.getRoomView(params.roomId!, subFromEvent(event)));
@@ -48,11 +45,10 @@ export function makeHandler(repo: RoomsRepo, notifyRoom: (roomId: string, alsoUs
           return json(200, await repo.setChatPrefs(params.roomId!, subFromEvent(event), params.chatId!, body.muted));
         case "PATCH /rooms/{roomId}/members/{userId}":
           return changed(200, await repo.setRole(params.roomId!, subFromEvent(event), params.userId!, body.role), params.roomId!);
+        // The room fan-out no longer reaches someone removed or gone, so their own sockets are told directly.
         case "DELETE /rooms/{roomId}/members/{userId}":
-          // Like leaving: the room fan-out no longer reaches the removed member, so their sockets are told directly.
           return changed(200, await repo.removeMember(params.roomId!, subFromEvent(event), params.userId!), params.roomId!, params.userId!);
         case "POST /rooms/{roomId}/leave":
-          // The room fan-out no longer reaches someone who left, so their other tabs are told directly.
           return changed(200, await repo.leaveRoom(params.roomId!, subFromEvent(event)), params.roomId!, subFromEvent(event));
         case "POST /rooms/{roomId}/archive":
           return changed(200, await repo.archiveRoom(params.roomId!, subFromEvent(event)), params.roomId!);
@@ -86,11 +82,10 @@ export function makeHandler(repo: RoomsRepo, notifyRoom: (roomId: string, alsoUs
   };
 }
 
-function roomUpdated(roomId: string, alsoUserId?: string) {
-  const event = { type: "room.updated", roomId };
-  return Promise.all([broadcastToRoom(roomId, event), alsoUserId && sendToUser(alsoUserId, event)]);
-}
+/** The room hears it, and so do `alsoUserId`'s own sockets, which the room fan-out no longer reaches. */
+const roomAndUserUpdated = (roomId: string, alsoUserId?: string) =>
+  Promise.all([roomUpdated(roomId), alsoUserId && sendToUser(alsoUserId, { type: "room.updated", roomId })]);
 
 // Built on first use, so tests can import makeHandler without a table configured.
 let liveHandler: ReturnType<typeof makeHandler> | undefined;
-export const handler = (event: Event) => (liveHandler ??= makeHandler(roomsRepo(), roomUpdated))(event);
+export const handler = (event: Event) => (liveHandler ??= makeHandler(roomsRepo(), roomAndUserUpdated))(event);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Ban, Check, Clock, Link2, MessageSquare, Timer, Unplug, Wrench, X, type LucideIcon } from "lucide-react";
 import { auditLine, auditMayHaveChanged } from "@/lib/client/audit";
 import { bff, errorText } from "@/lib/client/bff";
@@ -9,8 +9,10 @@ import { useLiveEvent } from "@/lib/client/LiveProvider";
 import { useNow } from "@/lib/client/useNow";
 import type { AuditEntry, AuditKind, ThreadSummary } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
+import { PanelLoading } from "@/components/ui/PanelLoading";
 import { Spinner } from "@/components/ui/Spinner";
 import { useToast } from "@/components/overlays/Toast";
+import { useRoomData } from "./useRoomData";
 
 type Page = { entries: AuditEntry[]; next?: string };
 
@@ -28,26 +30,17 @@ const CLOCK_TICK_MS = 60_000;
 export function ActivityLog({ roomId, version }: { roomId: string; version: number }) {
   const toast = useToast();
   const now = useNow(true, CLOCK_TICK_MS);
-  const [page, setPage] = useState<Page | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [runNews, setRunNews] = useState(0);
   const threads = useRef(new Map<string, ThreadSummary>());
   const path = `/bff/api/rooms/${roomId}/audit`;
+  const { data: page, setData: setPage, failed, reload } = useRoomData<Page>(path, version);
   const next = page?.next;
 
   useLiveEvent("run.updated", (e) => {
     if (e.roomId !== roomId) return;
-    if (auditMayHaveChanged(threads.current.get(e.thread.threadId), e.thread)) setRunNews((n) => n + 1);
+    if (auditMayHaveChanged(threads.current.get(e.thread.threadId), e.thread)) reload();
     threads.current.set(e.thread.threadId, e.thread);
   });
-
-  useEffect(() => {
-    let current = true;
-    bff<Page>(path)
-      .then((p) => current && setPage(p))
-      .catch((e) => toast(errorText(e), "error"));
-    return () => { current = false; };
-  }, [path, version, runNews, toast]);
 
   async function loadMore(before: string) {
     setLoadingMore(true);
@@ -64,7 +57,7 @@ export function ActivityLog({ roomId, version }: { roomId: string; version: numb
   return (
     <section className="flex flex-col gap-2">
       <h2 className="text-[11.5px] font-semibold text-text-3">Activity</h2>
-      {!page && <div className="flex h-9 items-center justify-center text-text-3"><Spinner /></div>}
+      {!page && <PanelLoading failed={failed} onRetry={reload} />}
       {page?.entries.length === 0 && <p className="text-[12.5px] text-text-3">Nothing yet.</p>}
       {!!page?.entries.length && (
         <ul className="flex flex-col">

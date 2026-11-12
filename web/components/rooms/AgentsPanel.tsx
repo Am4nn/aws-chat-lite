@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Bot, Plus } from "lucide-react";
 import { canEditAgent, copyTargets, copyToast, type CopyResult } from "@/lib/client/agents";
@@ -13,8 +13,9 @@ import { Modal } from "@/components/overlays/Modal";
 import { useToast } from "@/components/overlays/Toast";
 import { Button } from "@/components/ui/Button";
 import { MenuItem, RowMenu } from "@/components/ui/RowMenu";
-import { Spinner } from "@/components/ui/Spinner";
+import { PanelLoading } from "@/components/ui/PanelLoading";
 import { AgentForm, TOOL_KINDS, type AgentInput } from "./AgentForm";
+import { useRoomData } from "./useRoomData";
 
 type Agents = { agents: Agent[]; kinds: ToolKind[] };
 type Me = { userId: string; role: Role };
@@ -28,25 +29,16 @@ export function AgentsPanel({ roomId, me, rooms, models, archived }: {
   roomId: string; me: Me; rooms: RoomSummary[]; models: ModelOption[]; archived: boolean;
 }) {
   const toast = useToast();
-  const [data, setData] = useState<Agents | null>(null);
-  const [version, setVersion] = useState(0);
   const [editing, setEditing] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Agent | null>(null);
   const [busy, setBusy] = useState(false);
   const base = `/bff/api/rooms/${roomId}/agents`;
   const targets = copyTargets(rooms, roomId);
-  const refetch = (e: { roomId: string }) => e.roomId === roomId && setVersion((v) => v + 1);
+  const { data, failed, reload } = useRoomData<Agents>(base);
+  const refetch = (e: { roomId: string }) => e.roomId === roomId && reload();
   useLiveEvent("agents.changed", refetch);
   useLiveEvent("room.updated", refetch);
-
-  useEffect(() => {
-    let current = true;
-    bff<Agents>(base)
-      .then((d) => current && setData(d))
-      .catch((e) => toast(errorText(e), "error"));
-    return () => { current = false; };
-  }, [base, version, toast]);
 
   async function save(agent: Agent | undefined, input: AgentInput) {
     setBusy(true);
@@ -56,7 +48,7 @@ export function AgentsPanel({ roomId, me, rooms, models, archived }: {
       if (agent) await bff(`${base}/${agent.agentId}`, { method: "PATCH", body: agent.builtIn ? { instructions, tools, model } : input });
       else await bff(base, { body: input });
       setEditing(null);
-      setVersion((v) => v + 1);
+      reload();
     } catch (e) {
       toast(errorText(e), "error");
     } finally {
@@ -68,7 +60,7 @@ export function AgentsPanel({ roomId, me, rooms, models, archived }: {
     try {
       await bff(`${base}/${agent.agentId}`, { method: "DELETE", body: {} });
       setDeleting(null);
-      setVersion((v) => v + 1);
+      reload();
       toast(`@${agent.name} deleted`);
     } catch (e) {
       toast(errorText(e), "error");
@@ -84,7 +76,7 @@ export function AgentsPanel({ roomId, me, rooms, models, archived }: {
     }
   }
 
-  if (!data) return <div className="flex h-9 items-center justify-center text-text-3"><Spinner /></div>;
+  if (!data) return <PanelLoading failed={failed} onRetry={reload} />;
 
   return (
     <div className="flex flex-col gap-2">
@@ -103,7 +95,7 @@ export function AgentsPanel({ roomId, me, rooms, models, archived }: {
                   )
                   : (
                     <motion.div key="row" {...swap} className="flex min-h-12 items-center gap-2.5 rounded-[10px] px-2 py-1.5 hover:bg-surface-2">
-                      <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-[#172014] text-lime"><Bot aria-hidden="true" size={14} /></span>
+                      <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-lime-wash text-lime"><Bot aria-hidden="true" size={14} /></span>
                       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <span className="flex items-center gap-1.5">
                           <span className="truncate font-mono text-[13px] font-medium">@{a.name}</span>

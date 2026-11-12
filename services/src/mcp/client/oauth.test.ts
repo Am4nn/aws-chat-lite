@@ -170,6 +170,16 @@ describe("withFreshAuth", () => {
     expect(store.markNeedsAuth).toHaveBeenCalledTimes(1);
   });
 
+  it("an expired sign-in with no refresh token needs auth at once, with no wait for a race that can't happen", async () => {
+    const server = await start();
+    const auth = await signIn(server);
+    const store = memoryStore({ ...auth, expiresAt: 0, tokens: { access_token: "old", token_type: "Bearer" } });
+    const t0 = Date.now();
+    await expect(withFreshAuth(store, f, vi.fn())).rejects.toBeInstanceOf(NeedsAuth);
+    expect(Date.now() - t0).toBeLessThan(300);
+    expect(store.markNeedsAuth).toHaveBeenCalledTimes(1);
+  });
+
   it("needs auth when nothing is stored", async () => {
     const store = memoryStore(null);
     const use = vi.fn();

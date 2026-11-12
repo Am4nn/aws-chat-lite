@@ -1,5 +1,6 @@
+import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DeleteCommand, GetCommand, PutCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, GetCommand, PutCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { docClient } from "../lib/db.js";
 import { NotFound } from "../lib/errors.js";
 import { hashOf } from "./model.js";
@@ -17,13 +18,14 @@ const conditionFailed = () => Object.assign(new Error("condition"), { name: "Con
  * Rate counters answer `hits`; reads answer `items` by pk; deletes fail their condition when `deleteFails`, and
  * transactions are cancelled for `transactFails`.
  */
-function fakeTable(opts: { hits?: number; items?: Record<string, object>; deleteFails?: boolean; transactFails?: string } = {}) {
+function fakeTable(opts: { hits?: number; items?: Record<string, object>; grants?: object[]; deleteFails?: boolean; transactFails?: string } = {}) {
   return vi.spyOn(docClient(), "send").mockImplementation((async (c: unknown) => {
     if (c instanceof TransactWriteCommand && opts.transactFails) {
       throw Object.assign(new Error("cancelled"), { name: "TransactionCanceledException", CancellationReasons: [{ Code: opts.transactFails }] });
     }
     if (c instanceof UpdateCommand && String(c.input.Key?.pk).startsWith("RATE#")) return { Attributes: { n: opts.hits ?? 1 } };
     if (c instanceof GetCommand) return { Item: opts.items?.[String(c.input.Key?.pk)] };
+    if (c instanceof QueryCommand) return { Items: opts.grants ?? [] };
     if (c instanceof DeleteCommand && opts.deleteFails) throw conditionFailed();
     if (c instanceof DeleteCommand) return { Attributes: opts.items?.[String(c.input.Key?.pk)] };
     return {};
@@ -96,6 +98,29 @@ describe("decide", () => {
     const refused = oauthRepo().decide(user, "r1", "allow");
     await expect(refused).rejects.toBeInstanceOf(NotFound);
     await expect(refused).rejects.toThrow("This sign-in request expired. Start again from your app.");
+  });
+});
+
+describe("code exchange", () => {
+  const verifier = "v".repeat(43);
+  const code = `cl_code_${"c".repeat(43)}`;
+  const items = {
+    [`OAUTHCODE#${hashOf(code)}`]: {
+      clientId: "c1", redirectUri: "https://x.com/cb", codeChallenge: createHash("sha256").update(verifier).digest("base64url"),
+      scopes: ["rooms:read"], userId: "u1", username: "aman", ttl: nowSec() + 60,
+    },
+    "OAUTHCLIENT#c1": { clientId: "c1", clientName: "App", ttl: nowSec() + 999 },
+  };
+  const form = new URLSearchParams({ grant_type: "authorization_code", code, client_id: "c1", redirect_uri: "https://x.com/cb", code_verifier: verifier });
+
+  it("signing in again from the same app replaces its older grant, so Connected apps lists it once", async () => {
+    const send = fakeTable({ items, grants: [{ grantId: "old", clientId: "c1" }] });
+    await oauthRepo().token(form);
+    const [query] = sent(send, QueryCommand);
+    expect(query.input).toMatchObject({
+      IndexName: "gsi1", FilterExpression: "clientId = :c", ExpressionAttributeValues: { ":u": "MCPAPPS#u1", ":c": "c1" },
+    });
+    expect(sent(send, DeleteCommand).map((d) => d.input.Key)).toEqual([{ pk: "OAUTHGRANT#old", sk: "META" }]);
   });
 });
 

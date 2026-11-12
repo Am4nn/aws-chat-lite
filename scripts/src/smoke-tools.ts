@@ -6,8 +6,8 @@
 import type { Page } from "puppeteer-core";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, UpdateCommand } from "@aws-sdk/lib-dynamodb";
-import { readOutputs } from "./deploy-local.js";
-import { PANEL, WEB, bff, check, clickButton, eventually, openTab, panelShows, send, socketOpen, until } from "./smoke-page.js";
+import { readOutputs } from "./cdk.js";
+import { PANEL, WEB, bff, check, clickButton, eventually, openTab, panelShows, sampleFrames, send, socketOpen, until } from "./smoke-page.js";
 
 type Person = { page: Page; name: string };
 type Thread = { threadId: string; number: number; status: string; steps: number };
@@ -18,26 +18,21 @@ const RUN_MS = 60_000;
 
 /**
  * Counts the frames in which a pending approval card was still growing or fading in, from the first frame it shows
- * until a second later. The grow is on the second clipping wrapper around the card (the first is the card's own exit). Sent as text because the TypeScript
- * runner wraps named functions in a helper that doesn't exist inside the browser.
+ * until a second later. The grow is on the second clipping wrapper around the card (the first is the card's own exit).
  */
-const CARD_FRAMES = `new Promise((resolve) => {
-  let seen = 0, moving = 0, firstSeen = 0;
-  const start = performance.now();
-  const sample = (now) => {
-    const line = [...document.querySelectorAll("main p")].find((p) => p.textContent.includes("anyone in the room can approve"));
+const CARD_FRAMES = sampleFrames({
+  vars: "let seen = 0, moving = 0, firstSeen = 0;",
+  perFrame: `const line = [...document.querySelectorAll("main p")].find((p) => p.textContent.includes("anyone in the room can approve"));
     if (line) {
       seen++;
       firstSeen ||= now;
       const clips = [];
       for (let el = line; el && clips.length < 2; el = el.parentElement) if (el.className === "overflow-hidden") clips.push(el);
       if (clips[1] && Number(getComputedStyle(clips[1]).opacity) < 1) moving++;
-    }
-    if ((firstSeen && now - firstSeen > 1000) || now - start > 60000) resolve({ seen, moving });
-    else requestAnimationFrame(sample);
-  };
-  requestAnimationFrame(sample);
-})`;
+    }`,
+  done: "(firstSeen && now - firstSeen > 1000) || now - start > 60000",
+  result: "{ seen, moving }",
+});
 type Frames = { seen: number; moving: number };
 
 const mainShows = (page: Page, text: string, timeout = RUN_MS) =>

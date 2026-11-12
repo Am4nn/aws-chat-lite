@@ -56,7 +56,7 @@ const finished = (runId: string, ms?: number) =>
   }, ms);
 
 const eventOf = (runId: string, match: (e: RunEvent) => boolean) =>
-  until("an event", async () => (await runs.events(runId, 0, 1000)).find(match));
+  until("an event", async () => (await runs.allEvents(runId)).find(match));
 
 const threadItem = async (roomId: string, n: number) =>
   (await docClient().send(new GetCommand({ TableName: tableName(), Key: { pk: `ROOM#${roomId}`, sk: threadSk(n) }, ConsistentRead: true }))).Item;
@@ -116,7 +116,7 @@ describe("the run loop on Floci", { timeout: 60_000 }, () => {
     const run = await finished(runId);
     expect(run.status).toBe("done");
 
-    const events = await runs.events(runId, 0, 1000);
+    const events = await runs.allEvents(runId);
     expect(events.map((e) => e.seq)).toEqual(events.map((_, i) => i + 1));
     const shape = events.map((e) => (e.type === "usage" ? `usage:${e.job}` : e.type));
     // The router and the naming call, then three model turns: two tool calls, then the answer.
@@ -188,7 +188,7 @@ describe("the run loop on Floci", { timeout: 60_000 }, () => {
     expect(await steer(owner, roomId, thread.threadId, "also check prod")).toEqual({ runId, started: false });
     expect((await finished(runId, 40_000)).status).toBe("done");
 
-    const events = await runs.events(runId, 0, 1000);
+    const events = await runs.allEvents(runId);
     expect(events.find((e) => e.type === "steer")).toMatchObject({ messageSeq: 2, authorName: "owner", text: "also check prod" });
     expect(events.filter((e) => e.type === "step.finished")).toHaveLength(3);
     expect((await answersIn(owner, roomId, thread.threadId))[0]).toMatchObject({ seq: 3, agent: { steps: 3 } });
@@ -200,7 +200,7 @@ describe("the run loop on Floci", { timeout: 60_000 }, () => {
     await steer(owner, roomId, thread.threadId, "and one more");
     expect((await finished(runId, 45_000)).status).toBe("done");
 
-    const events = await runs.events(runId, 0, 1000);
+    const events = await runs.allEvents(runId);
     const steerAt = events.findIndex((e) => e.type === "steer");
     // The steer follows the first answer's text: the run only read it after its first close found it unread.
     expect(events.slice(0, steerAt).some((e) => e.type === "text")).toBe(true);
@@ -222,7 +222,7 @@ describe("the run loop on Floci", { timeout: 60_000 }, () => {
     expect(Date.now() - stoppedAt).toBeLessThan(3_000);
     expect(run.status).toBe("stopped");
 
-    const events = await runs.events(runId, 0, 1000);
+    const events = await runs.allEvents(runId);
     expect(events.at(-1)).toMatchObject({ type: "run.finished", status: "stopped", reason: "Stopped by owner." });
     const [answer] = await answersIn(owner, roomId, thread.threadId);
     expect(answer!.text).toMatch(/^Fake answer for/);
@@ -237,7 +237,7 @@ describe("the run loop on Floci", { timeout: 60_000 }, () => {
     const run = await finished(runId);
     expect(run.status).toBe("capped");
 
-    const events = await runs.events(runId, 0, 1000);
+    const events = await runs.allEvents(runId);
     expect(events.some((e) => e.type === "usage")).toBe(false);
     // Auto at the cap takes Sonnet without asking the router.
     expect(events.find((e) => e.type === "routed")).toMatchObject({ model: "claude-sonnet-5-5", by: "auto" });
@@ -249,7 +249,7 @@ describe("the run loop on Floci", { timeout: 60_000 }, () => {
     const { roomId, thread, runId } = await startRun("fail");
     const run = await finished(runId);
     expect(run.status).toBe("failed");
-    expect((await runs.events(runId, 0, 1000)).at(-1)).toMatchObject({ type: "run.finished", reason: "The agent hit an error." });
+    expect((await runs.allEvents(runId)).at(-1)).toMatchObject({ type: "run.finished", reason: "The agent hit an error." });
     const item = await threadItem(roomId, thread.number);
     expect(item).toMatchObject({ status: "failed" });
     expect(item?.activeRunId).toBeUndefined();
@@ -302,7 +302,7 @@ describe("routing, privacy and how a model call ends, on Floci", { timeout: 60_0
   it("Auto asks the router on Haiku, then answers on Sonnet; naming runs on Haiku", async () => {
     const { owner, roomId, thread, runId } = await startRun("go tools:0 words:5");
     expect((await finished(runId)).status).toBe("done");
-    const events = await runs.events(runId, 0, 1000);
+    const events = await runs.allEvents(runId);
     expect(events.filter((e) => e.type === "routed")).toEqual([expect.objectContaining({ model: "claude-sonnet-5-5", by: "auto" })]);
     expect(usageOf(events)).toEqual(["route:claude-haiku-5-5", "name:claude-haiku-5-5", "run:claude-sonnet-5-5"]);
     const [answer] = await answersIn(owner, roomId, thread.threadId);
@@ -315,14 +315,14 @@ describe("routing, privacy and how a model call ends, on Floci", { timeout: 60_0
     const opus = await startRun("route:opus hi tools:0");
     for (const [{ runId }, model] of [[haiku, "claude-haiku-5-5"], [opus, "claude-sonnet-5-5"]] as const) {
       expect((await finished(runId)).status).toBe("done");
-      expect((await runs.events(runId, 0, 1000)).find((e) => e.type === "routed")).toMatchObject({ model, by: "auto" });
+      expect((await runs.allEvents(runId)).find((e) => e.type === "routed")).toMatchObject({ model, by: "auto" });
     }
   });
 
   it("a manual pick routes straight to its model, with no router call", async () => {
     const { runId } = await startRun("go tools:0 words:3", undefined, "opus");
     expect((await finished(runId)).status).toBe("done");
-    const events = await runs.events(runId, 0, 1000);
+    const events = await runs.allEvents(runId);
     expect(events.find((e) => e.type === "routed")).toMatchObject({ model: "claude-opus-5-5", by: "pick" });
     expect(usageOf(events)).toEqual(["name:claude-haiku-5-5", "run:claude-opus-5-5"]);
   });
@@ -330,7 +330,7 @@ describe("routing, privacy and how a model call ends, on Floci", { timeout: 60_0
   it("each model call that ended logs its native turn, and the event stream never sends one", async () => {
     const { owner, runId } = await startRun("go tools:2 words:3");
     expect((await finished(runId)).status).toBe("done");
-    const turns = (await runs.events(runId, 0, 1000)).filter((e) => e.type === "model.turn");
+    const turns = (await runs.allEvents(runId)).filter((e) => e.type === "model.turn");
     expect(turns).toHaveLength(3);
     expect(turns[0]).toMatchObject({ model: "claude-sonnet-5-5", content: { fake: true, calls: ["call-1"] } });
 
@@ -346,7 +346,7 @@ describe("routing, privacy and how a model call ends, on Floci", { timeout: 60_0
     await eventOf(runId, (e) => e.type === "step.started");
     expect(await steer(owner, roomId, thread.threadId, "and this", { attachments: [file] })).toEqual({ runId, started: false });
     expect(await finished(runId)).toMatchObject({ status: "failed", reason: RUN_REFUSED });
-    const events = await runs.events(runId, 0, 1000);
+    const events = await runs.allEvents(runId);
     const steerSeq = events.find((e) => e.type === "steer")!.seq;
     expect(events.some((e) => e.type === "usage" && e.job === "run" && e.seq > steerSeq)).toBe(false);
   });
@@ -359,7 +359,7 @@ describe("routing, privacy and how a model call ends, on Floci", { timeout: 60_0
     expect((await threadsRepo().threadById(roomId, thread.threadId))!.taint).toEqual([]);
     const { runId } = await steer(owner, roomId, thread.threadId, "go tools:0", { pick: "deepseek-flash" });
     expect(await finished(runId)).toMatchObject({ status: "failed", reason: RUN_REFUSED });
-    expect(usageOf(await runs.events(runId, 0, 1000)).some((u) => u.startsWith("run:"))).toBe(false);
+    expect(usageOf(await runs.allEvents(runId)).some((u) => u.startsWith("run:"))).toBe(false);
   });
 
   it("a call that drops mid-answer ends the run failed, keeping its text once", async () => {
@@ -372,7 +372,7 @@ describe("routing, privacy and how a model call ends, on Floci", { timeout: 60_0
   it("an answer cut off at the length limit runs no tools and ends done with a note", async () => {
     const { owner, roomId, thread, runId } = await startRun("cutoff");
     expect((await finished(runId)).status).toBe("done");
-    expect((await runs.events(runId, 0, 1000)).some((e) => e.type === "step.started")).toBe(false);
+    expect((await runs.allEvents(runId)).some((e) => e.type === "step.started")).toBe(false);
     const [answer] = await answersIn(owner, roomId, thread.threadId);
     expect(answer!.text.endsWith("\n\n(The answer was cut off at the length limit.)")).toBe(true);
   });

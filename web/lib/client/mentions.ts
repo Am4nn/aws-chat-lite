@@ -23,7 +23,7 @@ export function parseMentions(text: string, members: Mentionable[]) {
   return { mentions: [...ids], everyone: found.some((f) => f.name === "everyone") };
 }
 
-type MentionOption = { name: string; kind: "agent" | "everyone" | "member" };
+export type MentionOption = { name: string; kind: "agent" | "everyone" | "member" };
 
 const MENTION_OPTIONS = 6;
 

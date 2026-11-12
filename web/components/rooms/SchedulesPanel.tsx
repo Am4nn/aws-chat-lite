@@ -1,6 +1,6 @@
 "use client";
 
-import { useContext, useEffect, useState } from "react";
+import { useContext, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Globe, Pencil, Plus, Trash2 } from "lucide-react";
 import { agentLabel, RoomAgentsContext } from "@/lib/client/agents";
@@ -14,10 +14,11 @@ import { Modal } from "@/components/overlays/Modal";
 import { useToast } from "@/components/overlays/Toast";
 import { Button } from "@/components/ui/Button";
 import { panelInput } from "@/components/ui/Field";
+import { PanelLoading } from "@/components/ui/PanelLoading";
 import { RowButton } from "@/components/ui/RowButton";
-import { Spinner } from "@/components/ui/Spinner";
 import { Switch } from "@/components/ui/Switch";
 import { ScheduleForm, type ScheduleInput } from "./ScheduleForm";
+import { useRoomData } from "./useRoomData";
 
 type Schedules = { schedules: Schedule[]; timeZone: string; max: number };
 type Me = { userId: string; role: Role };
@@ -30,24 +31,14 @@ type Me = { userId: string; role: Role };
 export function SchedulesPanel({ roomId, me, chats, archived }: { roomId: string; me: Me; chats: Chat[]; archived: boolean }) {
   const toast = useToast();
   const agents = useContext(RoomAgentsContext);
-  const [data, setData] = useState<Schedules | null>(null);
-  const [version, setVersion] = useState(0);
   const [editing, setEditing] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Schedule | null>(null);
   const [busy, setBusy] = useState(false);
   const base = `/bff/api/rooms/${roomId}/schedules`;
-  const refetch = () => setVersion((v) => v + 1);
+  const { data, setData, failed, reload: refetch } = useRoomData<Schedules>(base);
   useLiveEvent("schedules.changed", (e) => {
     if (e.roomId === roomId) refetch();
   });
-
-  useEffect(() => {
-    let current = true;
-    bff<Schedules>(base)
-      .then((d) => current && setData(d))
-      .catch((e) => toast(errorText(e), "error"));
-    return () => { current = false; };
-  }, [base, version, toast]);
 
   const put = (s: Schedule) => setData((d) => d && { ...d, schedules: d.schedules.map((x) => (x.scheduleId === s.scheduleId ? s : x)) });
 
@@ -102,7 +93,7 @@ export function SchedulesPanel({ roomId, me, chats, archived }: { roomId: string
     }
   }
 
-  if (!data) return <div className="flex h-9 items-center justify-center text-text-3"><Spinner /></div>;
+  if (!data) return <PanelLoading failed={failed} onRetry={refetch} />;
   const { schedules, timeZone, max } = data;
   const form = (s?: Schedule) => (
     <ScheduleForm initial={s} agents={agents} chats={chats} busy={busy} onCancel={() => setEditing(null)} onSubmit={(input) => save(s, input)} />

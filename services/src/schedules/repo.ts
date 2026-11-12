@@ -1,49 +1,29 @@
 import { randomUUID } from "node:crypto";
-import { GetCommand, PutCommand, TransactWriteCommand, UpdateCommand, type TransactWriteCommandInput } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { User } from "../lib/auth.js";
-import { bestEffort } from "../lib/best-effort.js";
-import { conditionFailed, docClient, failedAt, queryAll, setFields, tableName, transactionConflict } from "../lib/db.js";
+import { conditionFailed, docClient, failedAt, queryAll, setFields, tableName, type TransactItem, transactWrite, withoutKeys } from "../lib/db.js";
 import { Forbidden, NotFound, ValidationError } from "../lib/errors.js";
-import { counterKey, roomKey } from "../lib/keys.js";
-import { requireMember } from "../chat/membership.js";
-import { broadcastToRoom } from "../live/broadcast.js";
+import { counterKey, roomKey, roomMetaKey } from "../lib/keys.js";
+import { requireMember } from "../rooms/membership.js";
+import { roomChanged } from "../live/broadcast.js";
 import { BUILT_IN } from "../agents/model.js";
 import { can, type Role } from "../rooms/access.js";
 import type { Schedule } from "../threads/types.js";
 import { nextFire, parseCadence } from "./cadence.js";
+import { enabledOf, promptOf, titleOf } from "./model.js";
 import { DEFAULT_TIME_ZONE, roomTimeZone } from "./zone.js";
 
-type TransactItem = NonNullable<TransactWriteCommandInput["TransactItems"]>[number];
 type ScheduleInput = { agentId: unknown; title: unknown; prompt: unknown; cadence: unknown; chatId: unknown };
 type SchedulePatch = Partial<Omit<ScheduleInput, "agentId"> & { enabled: unknown }>;
 
 const MAX_SCHEDULES = 5;
 /** Well past Scheduler's last retry of an occurrence (an hour), after which no duplicate can arrive. */
 const FIRE_CLAIM_TTL_SEC = 7 * 86_400;
-const CONFLICT_ATTEMPTS = 3;
 
 const nowIso = () => new Date().toISOString();
-const metaKey = (roomId: string) => ({ pk: roomKey(roomId), sk: "META" });
 const scheduleKey = (roomId: string, id: string) => ({ pk: roomKey(roomId), sk: `SCHED#${id}` });
-const toSchedule = ({ pk: _pk, sk: _sk, ...rest }: Record<string, unknown>) => rest as Schedule;
-const idOf = (raw: unknown) => (typeof raw === "string" ? raw : "");
-
-function titleOf(raw: unknown): string {
-  const title = typeof raw === "string" ? raw.trim() : "";
-  if (title.length < 1 || title.length > 40) throw new ValidationError("Schedule titles are 1 to 40 characters.");
-  return title;
-}
-
-function promptOf(raw: unknown): string {
-  const prompt = typeof raw === "string" ? raw.trim() : "";
-  if (prompt.length < 1 || prompt.length > 2000) throw new ValidationError("A schedule's prompt is 1 to 2,000 characters.");
-  return prompt;
-}
-
-function enabledOf(raw: unknown): boolean {
-  if (typeof raw !== "boolean") throw new ValidationError("enabled must be true or false.");
-  return raw;
-}
+/** An id as given, or "" (which matches nothing) for anything but a string. */
+const idText = (raw: unknown) => (typeof raw === "string" ? raw : "");
 
 /**
  * The room's schedules (single table, `SCHED#<id>` in the room partition). The item is the truth about a schedule;
@@ -54,24 +34,11 @@ export function schedulesRepo() {
   const db = docClient();
   const TableName = tableName();
 
-  /** Two transactions on the room's counter at once can cancel each other instead of one failing its condition. */
-  async function transact(TransactItems: TransactItem[]) {
-    for (let attempt = 1; ; attempt++) {
-      try {
-        return await db.send(new TransactWriteCommand({ TransactItems }));
-      } catch (e) {
-        if (!transactionConflict(e) || attempt === CONFLICT_ATTEMPTS) throw e;
-      }
-    }
-  }
-
-  const changed = (roomId: string) =>
-    bestEffort("schedules.changed broadcast", () => broadcastToRoom(roomId, { type: "schedules.changed", roomId }));
 
   /** The counter counts disabled schedules too, so switching one on never needs a free slot. */
   const claimSlot = (roomId: string): TransactItem => ({
     Update: {
-      TableName, Key: metaKey(roomId), UpdateExpression: "ADD scheduleCount :one",
+      TableName, Key: roomMetaKey(roomId), UpdateExpression: "ADD scheduleCount :one",
       ConditionExpression: "attribute_exists(pk) AND (attribute_not_exists(scheduleCount) OR scheduleCount < :max)",
       ExpressionAttributeValues: { ":one": 1, ":max": MAX_SCHEDULES },
     },
@@ -93,7 +60,7 @@ export function schedulesRepo() {
   });
 
   /** Fails at item 0 when the room is full; `checks` follow it. */
-  const insert = (roomId: string, schedule: Schedule, checks: TransactItem[]) => transact([
+  const insert = (roomId: string, schedule: Schedule, checks: TransactItem[]) => transactWrite([
     claimSlot(roomId),
     ...checks,
     { Put: { TableName, Item: { ...scheduleKey(roomId, schedule.scheduleId), ...schedule }, ConditionExpression: "attribute_not_exists(pk)" } },
@@ -102,9 +69,9 @@ export function schedulesRepo() {
   /** False when it was already gone. */
   async function deleteSchedule(roomId: string, id: string): Promise<boolean> {
     try {
-      await transact([
+      await transactWrite([
         { Delete: { TableName, Key: scheduleKey(roomId, id), ConditionExpression: "attribute_exists(pk)" } },
-        { Update: { TableName, Key: metaKey(roomId), UpdateExpression: "ADD scheduleCount :minus", ExpressionAttributeValues: { ":minus": -1 } } },
+        { Update: { TableName, Key: roomMetaKey(roomId), UpdateExpression: "ADD scheduleCount :minus", ExpressionAttributeValues: { ":minus": -1 } } },
       ]);
       return true;
     } catch (e) {
@@ -115,7 +82,7 @@ export function schedulesRepo() {
 
   async function get(roomId: string, id: string): Promise<Schedule | null> {
     const { Item } = await db.send(new GetCommand({ TableName, Key: scheduleKey(roomId, id), ConsistentRead: true }));
-    return Item ? toSchedule(Item) : null;
+    return Item ? withoutKeys<Schedule>(Item) : null;
   }
 
   async function all(roomId: string): Promise<Schedule[]> {
@@ -123,12 +90,12 @@ export function schedulesRepo() {
       KeyConditionExpression: "pk = :p AND begins_with(sk, :s)", ConsistentRead: true,
       ExpressionAttributeValues: { ":p": roomKey(roomId), ":s": "SCHED#" },
     });
-    return items.map(toSchedule).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    return items.map((i) => withoutKeys<Schedule>(i)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }
 
   async function timeZoneOf(roomId: string): Promise<string> {
     const { Item } = await db.send(new GetCommand({
-      TableName, Key: metaKey(roomId), ConsistentRead: true, ProjectionExpression: "#tz", ExpressionAttributeNames: { "#tz": "timeZone" },
+      TableName, Key: roomMetaKey(roomId), ConsistentRead: true, ProjectionExpression: "#tz", ExpressionAttributeNames: { "#tz": "timeZone" },
     }));
     return (Item?.timeZone as string | undefined) ?? DEFAULT_TIME_ZONE;
   }
@@ -157,7 +124,7 @@ export function schedulesRepo() {
       if (conditionFailed(e)) return;
       throw e;
     }
-    await changed(roomId);
+    await roomChanged("schedules.changed", roomId);
   }
 
   return {
@@ -173,8 +140,8 @@ export function schedulesRepo() {
     /** The agent and the people chat are checked in the same transaction that takes the slot, so neither can vanish in between. */
     async create(user: User, roomId: string, input: ScheduleInput): Promise<Schedule> {
       const fields = { title: titleOf(input.title), prompt: promptOf(input.prompt), cadence: parseCadence(input.cadence) };
-      const agentId = idOf(input.agentId);
-      const chatId = idOf(input.chatId);
+      const agentId = idText(input.agentId);
+      const chatId = idText(input.chatId);
       await requireMember(roomId, user.userId, { writing: true });
       const schedule: Schedule = {
         scheduleId: randomUUID(), agentId, ...fields, chatId, enabled: true,
@@ -189,7 +156,7 @@ export function schedulesRepo() {
         if (failedAt(e, 2)) throw new NotFound("No such agent.");
         throw e;
       }
-      await changed(roomId);
+      await roomChanged("schedules.changed", roomId);
       return withNext(schedule, await timeZoneOf(roomId));
     },
 
@@ -198,7 +165,7 @@ export function schedulesRepo() {
         ...(patch.title !== undefined && { title: titleOf(patch.title) }),
         ...(patch.prompt !== undefined && { prompt: promptOf(patch.prompt) }),
         ...(patch.cadence !== undefined && { cadence: parseCadence(patch.cadence) }),
-        ...(patch.chatId !== undefined && { chatId: idOf(patch.chatId) }),
+        ...(patch.chatId !== undefined && { chatId: idText(patch.chatId) }),
         ...(patch.enabled !== undefined && { enabled: enabledOf(patch.enabled) }),
       };
       const role = await requireMember(roomId, user.userId, { writing: true });
@@ -206,7 +173,7 @@ export function schedulesRepo() {
       const names = Object.keys(fields);
       if (names.length) {
         try {
-          await transact([
+          await transactWrite([
             {
               Update: {
                 TableName, Key: scheduleKey(roomId, id), ConditionExpression: "attribute_exists(pk)",
@@ -220,7 +187,7 @@ export function schedulesRepo() {
           if (failedAt(e, 1)) throw new NotFound("Chat not found.");
           throw e;
         }
-        await changed(roomId);
+        await roomChanged("schedules.changed", roomId);
       }
       return withNext({ ...current, ...fields }, await timeZoneOf(roomId));
     },
@@ -229,7 +196,7 @@ export function schedulesRepo() {
       const role = await requireMember(roomId, user.userId, { writing: true });
       await changeable(user, role, roomId, id);
       if (!(await deleteSchedule(roomId, id))) throw new NotFound("No such schedule.");
-      await changed(roomId);
+      await roomChanged("schedules.changed", roomId);
     },
 
     /** The ids removed, so their EventBridge schedules can go too. */
@@ -238,7 +205,7 @@ export function schedulesRepo() {
       for (const { scheduleId } of (await all(roomId)).filter((s) => s.agentId === agentId)) {
         if (await deleteSchedule(roomId, scheduleId)) removed.push(scheduleId);
       }
-      if (removed.length) await changed(roomId);
+      if (removed.length) await roomChanged("schedules.changed", roomId);
       return removed;
     },
 
@@ -260,7 +227,7 @@ export function schedulesRepo() {
         }
         copied++;
       }
-      if (copied) await changed(roomId);
+      if (copied) await roomChanged("schedules.changed", roomId);
       return { copied, skipped: schedules.length - copied };
     },
 
@@ -290,10 +257,10 @@ export function schedulesRepo() {
       const role = await requireMember(roomId, user.userId, { writing: true });
       if (!can("setTimeZone", role)) throw new Forbidden("Only admins can set the room's time zone.");
       await db.send(new UpdateCommand({
-        TableName, Key: metaKey(roomId), UpdateExpression: "SET #tz = :tz", ExpressionAttributeNames: { "#tz": "timeZone" }, ConditionExpression: "attribute_exists(pk)",
+        TableName, Key: roomMetaKey(roomId), UpdateExpression: "SET #tz = :tz", ExpressionAttributeNames: { "#tz": "timeZone" }, ConditionExpression: "attribute_exists(pk)",
         ExpressionAttributeValues: { ":tz": timeZone },
       }));
-      await changed(roomId);
+      await roomChanged("schedules.changed", roomId);
       return timeZone;
     },
   };

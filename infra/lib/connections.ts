@@ -8,10 +8,10 @@ import type { CoreStack } from "./core-stack.js";
  */
 export function addConnections(stack: CoreStack) {
   const { toolKeys, toolEnvironment } = stack.runs;
-  const fn = stack.addFunction("connections", "connections/handler.ts", { tableAccess: true }, {
+  const fn = stack.addFunction("connections", "connections/handler.ts", {
+    tableAccess: true,
     timeout: Duration.seconds(15),
-    // The GitHub sign-in's return address must be one of the site's own, so its code can't be handed to another site.
-    environment: { ...toolEnvironment, SITE_ORIGINS: stack.stageConfig.siteOrigins.join(",") },
+    environment: { ...toolEnvironment, ...stack.siteOriginsEnvironment() },
   });
   toolKeys.grantRead(fn);
   stack.allowBroadcast(fn);

@@ -1,4 +1,4 @@
-/** The first bytes of an image of each type, enough of the header to read its size. */
+/* The first bytes of an image of each type, enough of the header to read its size. */
 
 function bytes(length: number, write: (v: DataView, b: Uint8Array) => void): Uint8Array {
   const b = new Uint8Array(length);

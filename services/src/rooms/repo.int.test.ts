@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { DeleteCommand, GetCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { roomsRepo } from "./repo.js";
+import { threadsRepo } from "../threads/repo.js";
 import { chatRepo } from "../chat/repo.js";
 import { markConnected } from "../live/presence.js";
 import { docClient, tableName } from "../lib/db.js";
@@ -210,6 +211,17 @@ describe("rooms repo on Floci", () => {
     expect(Item).toBeUndefined();
   });
 
+  it("a removed member's socket subscriptions go with them", async () => {
+    const { owner, member, roomId } = await roomWithMember();
+    const subscription = { pk: `ROOM#${roomId}`, sk: `CONN#${randomUUID()}`, userId: member.userId };
+    await docClient().send(new PutCommand({ TableName: tableName(), Item: subscription }));
+    await repo.removeMember(roomId, owner.userId, member.userId);
+    const { Item } = await docClient().send(new GetCommand({
+      TableName: tableName(), Key: { pk: subscription.pk, sk: subscription.sk }, ConsistentRead: true,
+    }));
+    expect(Item).toBeUndefined();
+  });
+
   it("archive: owner only; the room leaves everyone's list and the view says archived", async () => {
     const { owner, member, roomId } = await roomWithMember();
     await expect(repo.archiveRoom(roomId, member.userId)).rejects.toBeInstanceOf(Forbidden);
@@ -295,12 +307,14 @@ describe("rooms repo on Floci", () => {
     }
   });
 
-  it("muting a chat shows in the view; a chat from another room is NotFound", async () => {
+  it("muting a chat shows in the view; a chat from another room, or a thread, is NotFound", async () => {
     const { owner, roomId, generalChatId } = await roomWithMember();
     const other = await repo.createRoom(user("o2"), "Other");
     expect(await repo.setChatPrefs(roomId, owner.userId, generalChatId, true)).toEqual({ muted: true });
     expect((await repo.getRoomView(roomId, owner.userId)).chats[0]).toMatchObject({ chatId: generalChatId, muted: true });
     await expect(repo.setChatPrefs(roomId, owner.userId, other.generalChatId, true)).rejects.toBeInstanceOf(NotFound);
+    const { thread } = await threadsRepo().createThread(owner, roomId, { text: "notes", clientId: randomUUID() });
+    await expect(repo.setChatPrefs(roomId, owner.userId, thread.threadId, true)).rejects.toBeInstanceOf(NotFound);
   });
 
   it("the view counts unread messages and mentions per chat; the room list totals mentions", async () => {

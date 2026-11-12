@@ -1,11 +1,11 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { assertPortFree } from "./ports.js";
+import { FLOCI_PORT, assertPortFree } from "./ports.js";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 
 try {
-  assertPortFree(4566, "floci-chat");
+  assertPortFree(FLOCI_PORT, "floci-chat");
 } catch (e) {
   console.error((e as Error).message);
   process.exit(1);

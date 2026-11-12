@@ -66,7 +66,7 @@ export function ThreadTitle({ thread: t }: { thread: ThreadSummary }) {
             onBlur={() => setDraft(null)}
             onFocus={(e) => e.target.select()}
             style={{ width: `${Math.max(draft.length, 6) + 2}ch` }}
-            className="-mx-1 min-w-0 max-w-[40vw] rounded-md border border-[#36403f] bg-ink px-1 outline-none"
+            className="-mx-1 min-w-0 max-w-[40vw] rounded-md border border-line-hover bg-ink px-1 outline-none"
           />
         )}
       <span className="shrink-0 font-mono text-[12.5px] font-normal text-text-3 max-sm:hidden">{agent}</span>

@@ -4,13 +4,15 @@
  * It always talks to Floci, never to AWS.
  */
 import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
-import { assertFlociUp, useLocalEnv } from "./env.js";
+import { run } from "./cli.js";
+import { useLocalEnv } from "./env.js";
+import { assertOurFlociUp } from "./floci-owner.js";
 
 async function main() {
   const [roomId, scheduleId] = process.argv.slice(2);
   if (!roomId || !scheduleId) throw new Error("Usage: npm run schedule:fire -- <roomId> <scheduleId>");
+  await assertOurFlociUp();
   useLocalEnv();
-  await assertFlociUp();
   const res = await new LambdaClient({}).send(new InvokeCommand({
     FunctionName: "cl-local-schedule-fire", Payload: JSON.stringify({ roomId, scheduleId, at: new Date().toISOString() }),
   }));
@@ -19,4 +21,4 @@ async function main() {
   console.log(`Fired: ${JSON.parse(reply)}`);
 }
 
-main().catch((e) => { console.error(String(e.message ?? e)); process.exit(1); });
+run(main);

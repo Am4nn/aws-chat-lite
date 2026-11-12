@@ -66,7 +66,7 @@ sequenceDiagram
   C->>C: take the flow (one delete), same admin?
   C->>S: POST /token (code + verifier + resource)
   C->>S: tools/list → snapshot
-  C->>C: CONN#mcp#<name> + MCPAUTH#<name> (sealed) + audit, one transaction
+  C->>C: LINK#mcp#<name> + MCPAUTH#<name> (sealed) + audit, one transaction
   C-->>W: {roomId, connection}
   W-->>A: 303 /r/{id}?mcp=<name> → "Connected <name>"
 ```

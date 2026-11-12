@@ -4,6 +4,7 @@ import { motion, useReducedMotion } from "motion/react";
 import type { MapEdge } from "@/lib/client/runMap";
 
 const DRAW = { duration: 0.6, ease: [0.4, 0, 0.2, 1] } as const;
+// The theme's sky, line and amber, written out: the end-to-end check finds a hand-off by its stroke="#7CC7FF".
 const COLOR = { flow: "#34403F", helper: "#7CC7FF", waiting: "#FFC46B", waits: "#2C3437" };
 
 /**
@@ -30,7 +31,7 @@ export function MapEdges({ edges, width, height, delayOf }: { edges: MapEdge[]; 
           return (
             <motion.g key={key} initial={reduced ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4, delay }}>
               <path id={`map-arc-${e.from}-${e.to}`} d={e.d} stroke={COLOR.waits} strokeDasharray="1 6" />
-              <text dy={-6} className="fill-[#5b6668] font-mono text-[10.5px]">
+              <text dy={-6} className="fill-text-4 font-mono text-[10.5px]">
                 <textPath href={`#map-arc-${e.from}-${e.to}`} startOffset="50%" textAnchor="middle">waits for helper</textPath>
               </text>
             </motion.g>

@@ -1,5 +1,5 @@
 import { DeleteCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
-import { docClient, queryAll, tableName } from "../lib/db.js";
+import { docClient, queryAll, tableName, withoutKeys } from "../lib/db.js";
 import { subscriptionId } from "./endpoints.js";
 import type { PushSubscriptionInput, StoredSubscription } from "./types.js";
 
@@ -21,7 +21,7 @@ export function pushRepo() {
       KeyConditionExpression: "pk = :p AND begins_with(sk, :s)", ConsistentRead: true,
       ExpressionAttributeValues: { ":p": userPk(userId), ":s": "PUSH#" },
     });
-    return items.map(({ pk, sk, ...sub }) => sub as StoredSubscription);
+    return items.map((i) => withoutKeys<StoredSubscription>(i));
   }
 
   const remove = async (userId: string, id: string) => {

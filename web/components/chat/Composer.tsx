@@ -3,15 +3,15 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useParams } from "next/navigation";
-import { ArrowUp, Bot, CornerDownRight, Paperclip, Pencil, Reply, Square, Users, X } from "lucide-react";
+import { ArrowUp, Paperclip, Square } from "lucide-react";
 import { mentionOptions, mentionQuery, type Mentionable } from "@/lib/client/mentions";
-import { useThreads } from "@/lib/client/ThreadsProvider";
 import { useEscape } from "@/lib/client/useEscape";
 import { dur, easeOut, instant } from "@/lib/motion";
 import type { Message } from "@/lib/types";
-import { Avatar } from "@/components/ui/Avatar";
 import { UploadChip } from "./Attachments";
+import { MentionList } from "./MentionList";
 import { DictationRow, isDictating, MicButton } from "./MicButton";
+import { ModeBanner } from "./ModeBanner";
 import { useDictation } from "./useDictation";
 import type { useUploads } from "./useUploads";
 
@@ -25,22 +25,23 @@ const MAX_HEIGHT_PX = 200;
 
 /**
  * `agents`: the room's agents, offered first in the @ list where naming one starts a thread with it (a people chat).
- * `uploads`: absent where files can't be sent, which hides the paperclip. `steering`: an agent is running here, so a
- * message steers it, and Stop (`onStop`) sits beside Send. `pill`: the model choice, left of Send.
+ * `mode`: reply, edit or send-into-a-thread, where the view offers them (`onModeChange`); ArrowUp in an empty box edits
+ * my last message when `onEditLast` finds one. `uploads`: absent where files can't be sent, which hides the paperclip.
+ * `steering`: an agent is running here, so a message steers it, and Stop (`onStop`) sits beside Send. `pill`: the model
+ * choice, left of Send.
  */
 type Props = {
-  members: Mentionable[]; agents?: { name: string }[]; meId: string; mode: ComposerMode;
+  members: Mentionable[]; agents?: { name: string }[]; meId: string; mode?: ComposerMode;
   uploads?: ReturnType<typeof useUploads>; placeholder?: string; steering?: boolean; stopping?: boolean; pill?: ReactNode;
-  onModeChange: (mode: ComposerMode) => void; onSend: (text: string) => void; onSaveEdit: (m: Message, text: string) => void;
-  onEditLast: () => boolean; onTyping: () => void; onStop?: () => void;
+  onModeChange?: (mode: ComposerMode) => void; onSend: (text: string) => void; onSaveEdit?: (m: Message, text: string) => void;
+  onEditLast?: () => boolean; onTyping: () => void; onStop?: () => void;
 };
 
 export function Composer({
-  members, agents = [], meId, mode, uploads, placeholder = "Message", steering = false, stopping = false, pill,
+  members, agents = [], meId, mode = null, uploads, placeholder = "Message", steering = false, stopping = false, pill,
   onModeChange, onSend, onSaveEdit, onEditLast, onTyping, onStop,
 }: Props) {
   const reduced = useReducedMotion();
-  const { byId } = useThreads();
   const { roomId } = useParams<{ roomId: string }>();
   const listId = useId();
   const area = useRef<HTMLTextAreaElement>(null);
@@ -123,10 +124,10 @@ export function Composer({
 
   function submit() {
     if (!canSubmit) return;
-    if (editing) onSaveEdit(editing, trimmed);
+    if (editing) onSaveEdit?.(editing, trimmed);
     else onSend(trimmed);
     setText(editing ? draft : "");
-    onModeChange(null);
+    onModeChange?.(null);
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -152,8 +153,8 @@ export function Composer({
       submit();
     } else if (e.key === "Escape" && mode) {
       e.preventDefault();
-      onModeChange(null);
-    } else if (e.key === "ArrowUp" && !text && !mode && onEditLast()) {
+      onModeChange?.(null);
+    } else if (e.key === "ArrowUp" && !text && !mode && onEditLast?.()) {
       e.preventDefault();
     }
   }
@@ -169,66 +170,10 @@ export function Composer({
 
   return (
     <div className="relative mx-auto w-full max-w-[836px] px-4 pb-5 sm:px-7">
-      <AnimatePresence>
-        {options.length > 0 && (
-          <motion.ul
-            id={listId}
-            role="listbox"
-            aria-label="Mention someone"
-            initial={{ opacity: 0, y: reduced ? 0 : 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, transition: motionFast }}
-            transition={motionFast}
-            className="absolute bottom-full left-4 z-20 mb-2 w-64 rounded-xl border border-line-strong bg-surface-2 p-1 shadow-[0_16px_40px_rgba(0,0,0,.5)] sm:left-7"
-          >
-            {options.map(({ name, kind }, i) => (
-              <li
-                key={`${kind}-${name}`}
-                id={`${listId}-${i}`}
-                role="option"
-                aria-selected={i === highlight}
-                onMouseDown={(e) => { e.preventDefault(); insertMention(name); }}
-                onMouseEnter={() => setHighlight(i)}
-                className={`flex h-9 cursor-pointer items-center gap-2.5 rounded-lg px-2 text-[13px] ${i === highlight ? "bg-surface-3 text-text" : "text-text-2"}`}
-              >
-                {kind === "agent" && <span className="grid size-[22px] place-items-center rounded-full bg-[#172014] text-lime"><Bot aria-hidden="true" size={12} /></span>}
-                {kind === "everyone" && <span className="grid size-[22px] place-items-center rounded-full bg-[#1c2225]"><Users aria-hidden="true" size={12} /></span>}
-                {kind === "member" && <Avatar name={name} size={22} />}
-                {name}
-                {kind === "agent" && <span className="ml-auto text-[11.5px] text-text-3">agent</span>}
-                {kind === "everyone" && <span className="ml-auto text-[11.5px] text-text-3">whole room</span>}
-              </li>
-            ))}
-          </motion.ul>
-        )}
-      </AnimatePresence>
+      <MentionList id={listId} options={options} highlight={highlight} onPick={insertMention} onHighlight={setHighlight} />
 
-      <div className={`rounded-2xl border bg-surface-2 transition-colors duration-300 ${steering ? "border-[#3b5420]" : "border-line-strong focus-within:border-[#36403f]"}`}>
-        <AnimatePresence initial={false}>
-          {mode && (
-            <motion.div
-              key={mode.kind}
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={reduced ? instant : { duration: dur.fast, ease: easeOut }}
-              className="overflow-hidden"
-            >
-              <div className="flex items-center gap-2 px-4 pt-2.5 text-[12.5px] text-text-2">
-                {mode.kind === "reply" && <Reply aria-hidden="true" size={13} className="shrink-0 text-text-3" />}
-                {mode.kind === "edit" && <Pencil aria-hidden="true" size={12} className="shrink-0 text-text-3" />}
-                {mode.kind === "thread" && <CornerDownRight aria-hidden="true" size={13} className="shrink-0 text-lime" />}
-                {mode.kind === "reply" && <span className="min-w-0 truncate">Replying to <b className="font-semibold text-text">{mode.message.authorName}</b> <span className="text-text-3">{mode.message.text}</span></span>}
-                {mode.kind === "edit" && <span>Editing message</span>}
-                {mode.kind === "thread" && <span className="min-w-0 truncate">to <b className="font-mono font-medium text-text">#{byId(mode.threadId)?.name}</b></span>}
-                <kbd className="ml-auto shrink-0 font-mono text-[11px] text-text-3">Esc</kbd>
-                <button onClick={() => onModeChange(null)} aria-label="Cancel" className="grid size-6 shrink-0 place-items-center rounded-md text-text-3 transition-colors hover:bg-surface-3 hover:text-text">
-                  <X aria-hidden="true" size={13} />
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+      <div className={`rounded-2xl border bg-surface-2 transition-colors duration-300 ${steering ? "border-lime-line" : "border-line-strong focus-within:border-line-hover"}`}>
+        <ModeBanner mode={mode} onCancel={() => onModeChange?.(null)} />
 
         {uploads && uploads.uploads.length > 0 && (
           <div className="flex flex-wrap gap-2 px-3 pt-3">
@@ -309,7 +254,7 @@ export function Composer({
                 disabled={stopping}
                 aria-label="Stop the run"
                 title="Stop the run"
-                className="grid size-[38px] shrink-0 place-items-center rounded-[11px] border border-line-strong bg-surface-3 text-text transition-[background,border-color,transform] hover:border-[#36403f] hover:bg-[#1c2225] active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+                className="grid size-[38px] shrink-0 place-items-center rounded-[11px] border border-line-strong bg-surface-3 text-text transition-[background,border-color,transform] hover:border-line-hover hover:bg-surface-4 active:scale-95 disabled:pointer-events-none disabled:opacity-50"
               >
                 <Square aria-hidden="true" size={12} fill="currentColor" strokeWidth={0} />
               </motion.button>
@@ -319,7 +264,7 @@ export function Composer({
             onClick={submit}
             disabled={!canSubmit}
             aria-label={editing ? "Save edit" : steering ? "Steer the running agent" : "Send"}
-            className="grid size-[38px] shrink-0 place-items-center rounded-[11px] bg-lime text-lime-ink transition-[background,color,transform] hover:bg-[#d7fa8a] active:scale-95 disabled:bg-surface-3 disabled:text-text-3"
+            className="grid size-[38px] shrink-0 place-items-center rounded-[11px] bg-lime text-lime-ink transition-[background,color,transform] hover:bg-lime-soft active:scale-95 disabled:bg-surface-3 disabled:text-text-3"
           >
             <ArrowUp aria-hidden="true" size={16} strokeWidth={2.6} />
           </button>
@@ -332,7 +277,7 @@ export function Composer({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={reduced ? instant : { duration: dur.base }}
-            className="pointer-events-none absolute inset-x-0 bottom-[3px] text-center font-mono text-[11px] text-[#5b6668] max-sm:hidden"
+            className="pointer-events-none absolute inset-x-0 bottom-[3px] text-center font-mono text-[11px] text-text-4 max-sm:hidden"
           >
             Enter steers the running agent
           </motion.p>

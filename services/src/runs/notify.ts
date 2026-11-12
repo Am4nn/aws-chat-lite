@@ -1,4 +1,5 @@
 import { budgetRepo } from "../budget/repo.js";
+import { bestEffort } from "../lib/best-effort.js";
 import { broadcastToRoom } from "../live/broadcast.js";
 import type { ThreadSummary } from "../threads/types.js";
 
@@ -9,10 +10,8 @@ import type { ThreadSummary } from "../threads/types.js";
  */
 export async function notifyRun(roomId: string, thread: ThreadSummary | null, lastSeq: number): Promise<void> {
   if (!thread) return;
-  try {
+  await bestEffort("run.updated broadcast", async () => {
     const budget = await budgetRepo().get(roomId, new Date());
     await broadcastToRoom(roomId, { type: "run.updated", roomId, thread, lastSeq, budget });
-  } catch (e) {
-    console.error("run.updated broadcast failed", roomId, e);
-  }
+  });
 }

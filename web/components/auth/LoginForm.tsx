@@ -110,7 +110,7 @@ export function LoginForm({ next, emailSignup }: { next: string; emailSignup: bo
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
               transition={{ duration: dur.base, ease: easeOut }}
-              className="overflow-hidden text-[13px] text-[#ff9b8f]"
+              className="overflow-hidden text-[13px] text-danger"
             >
               {error}
             </motion.p>

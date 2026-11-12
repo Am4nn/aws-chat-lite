@@ -1,5 +1,6 @@
 import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
 import { callerFromEvent } from "../../lib/auth.js";
+import { bestEffort } from "../../lib/best-effort.js";
 import { errorResponse, json, parseBody } from "../../lib/http.js";
 import { roomUpdated } from "../../live/broadcast.js";
 import { mcpRepo, type McpRepo } from "./repo.js";
@@ -14,11 +15,7 @@ type Result = APIGatewayProxyStructuredResultV2;
  */
 export function makeHandler(repo: McpRepo, notifyRoom: (roomId: string) => Promise<unknown>) {
   const changed = async (roomId: string, result: Result) => {
-    try {
-      await notifyRoom(roomId);
-    } catch (e) {
-      console.error("room.updated broadcast failed", roomId, e);
-    }
+    await bestEffort("room.updated broadcast", () => notifyRoom(roomId));
     return result;
   };
   // 200 sends the admin to the server's sign-in; 201 means it needed none and is already connected.

@@ -1,4 +1,6 @@
-export const FLOCI_ENDPOINT = "http://localhost:4566";
+import { FLOCI_PORT } from "./ports.js";
+
+export const FLOCI_ENDPOINT = `http://localhost:${FLOCI_PORT}`;
 
 /** Env vars that point the AWS CLI, SDK and CDK at Floci. */
 export function flociEnv(): Record<string, string> {
@@ -37,14 +39,14 @@ export async function assertFlociUp(fetchFn: typeof fetch = fetch): Promise<void
 }
 
 /**
- * Floci answers AWS hostnames under *.localhost.floci.io:4566 (public DNS → 127.0.0.1), over plain http/ws.
+ * Floci answers AWS hostnames under *.localhost.floci.io on its port (public DNS → 127.0.0.1), over plain http/ws.
  * Parsed by regex, not `new URL()`: Floci's own Function URL form `<id>.lambda-url.us-east-1.127.0.0.1:4566`
  * is not a valid URL host.
  */
 export function flociHost(awsUrl: string): string {
   const m = /^[a-z]+:\/\/([a-z0-9]+)\.(execute-api|lambda-url)\./.exec(awsUrl);
   if (!m) throw new Error(`unknown AWS URL: ${awsUrl}`);
-  return `${m[1]}.${m[2] === "lambda-url" ? "lambda-url.us-east-1" : "execute-api"}.localhost.floci.io:4566`;
+  return `${m[1]}.${m[2] === "lambda-url" ? "lambda-url.us-east-1" : "execute-api"}.localhost.floci.io:${FLOCI_PORT}`;
 }
 
 export const AWS_STAGE_REGION = "ap-southeast-2";

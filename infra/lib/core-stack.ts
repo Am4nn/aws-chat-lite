@@ -5,10 +5,11 @@ import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
+import type * as s3 from "aws-cdk-lib/aws-s3";
 import { NodejsFunction, type NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
 import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
-import { EDGE_THROTTLE, type StageConfig } from "./config.js";
+import { EDGE_THROTTLE, FLOCI_PORT, type StageConfig } from "./config.js";
 import { addAuth, type Auth } from "./auth.js";
 import { addRooms } from "./rooms.js";
 import { addLive } from "./live.js";
@@ -32,12 +33,18 @@ import { addWeb, WEB_BUILD, type WebBuild } from "./web.js";
 export const servicePath = (file: string) =>
   fileURLToPath(new URL(`../../services/src/${file}`, import.meta.url));
 
+/** Floci serves each API on its own host; the amazonaws.com URLs CloudFormation reports don't resolve locally. */
+const flociApiHost = (apiId: string) => `${apiId}.execute-api.localhost.floci.io:${FLOCI_PORT}`;
+
 /** One JSON line per request, so Logs Insights can filter on any field. */
 const ACCESS_LOG_FORMAT = JSON.stringify({
   requestId: "$context.requestId", ip: "$context.identity.sourceIp", requestTime: "$context.requestTime",
   routeKey: "$context.routeKey", status: "$context.status", responseLength: "$context.responseLength",
   authorizerError: "$context.authorizer.error", integrationError: "$context.integrationErrorMessage",
 });
+
+/** What `addFunction` takes: the function's own settings, and whether it may read and write the table. */
+type FunctionOptions = Partial<NodejsFunctionProps> & { tableAccess?: boolean };
 
 export interface CoreStackProps extends StackProps {
   config: StageConfig;
@@ -59,11 +66,14 @@ export class CoreStack extends Stack {
   readonly wsUrl: string;
   /** Where MCP clients reach the OAuth and MCP endpoints: the issuer, and the base of the resource `/mcp`. */
   readonly publicApiUrl: string;
+  /** For users' data and hand-set keys: on AWS they outlive a stack delete, since nothing could bring them back. */
+  readonly userDataRemoval: RemovalPolicy;
 
   constructor(scope: Construct, id: string, props: CoreStackProps) {
     super(scope, id, props);
     this.stageConfig = props.config;
     const { prefix, isLocal } = props.config;
+    this.userDataRemoval = isLocal ? RemovalPolicy.DESTROY : RemovalPolicy.RETAIN;
 
     // Single-table design: every entity lives in this one table, and gsi1 serves the lookups by user.
     this.table = new dynamodb.Table(this, "Main", {
@@ -73,8 +83,8 @@ export class CoreStack extends Stack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       timeToLiveAttribute: "ttl",
       stream: dynamodb.StreamViewType.NEW_IMAGE,
-      // On AWS users' data outlives a stack delete, and point-in-time recovery can undo a bad write. Floci's is disposable.
-      removalPolicy: isLocal ? RemovalPolicy.DESTROY : RemovalPolicy.RETAIN,
+      // On AWS point-in-time recovery can also undo a bad write.
+      removalPolicy: this.userDataRemoval,
       ...(!isLocal && { pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true } }),
     });
     this.table.addGlobalSecondaryIndex({
@@ -92,14 +102,13 @@ export class CoreStack extends Stack {
         destinationArn: this.logGroup("ApiAccessLogs", `/aws/apigateway/${prefix}-api`).logGroupArn, format: ACCESS_LOG_FORMAT,
       };
     }
-    // Floci serves each HTTP API on its own host, as it does the WebSocket API.
-    this.publicApiUrl = props.config.isLocal ? `http://${this.api.apiId}.execute-api.localhost.floci.io:4566` : props.config.mcpBaseUrl!;
+    this.publicApiUrl = isLocal ? `http://${flociApiHost(this.api.apiId)}` : props.config.mcpBaseUrl!;
     this.auth = addAuth(this);
     this.route("GET", "/health", this.addFunction("health", "health.ts"), { public: true });
     this.live = addLive(this);
-    this.wsUrl = props.config.isLocal ? `ws://${this.flociWsEndpoint()}` : this.live.stage.url;
+    this.wsUrl = isLocal ? `ws://${this.flociWsEndpoint()}` : this.live.stage.url;
     this.allowBroadcast(this.live.liveFn);
-    this.allowBroadcast(addRooms(this));
+    addRooms(this);
     const files = addChat(this);
     this.runs = addRuns(this);
     addSandbox(this, this.runs.runFn);
@@ -114,18 +123,13 @@ export class CoreStack extends Stack {
     // already decided, or a stop already flagged, wakes itself.
     this.allowRunCallback(this.live.liveFn);
     this.allowRunCallback(this.runs.runFn);
-    const threadsFn = addThreads(this);
-    this.allowBroadcast(threadsFn);
-    this.allowRunStart(threadsFn);
-    this.allowRunCallback(threadsFn);
-    this.allowPush(threadsFn);
+    const { streamUrl, functionUrl } = addStream(this);
+    addThreads(this, streamUrl);
     addConnections(this);
     addMcpConnections(this);
     addOAuth(this);
     addMcpServer(this, files);
     addAgents(this, addSchedules(this));
-    const { streamUrl, functionUrl } = addStream(this);
-    threadsFn.addEnvironment("STREAM_URL", streamUrl);
     if (props.config.prod) addWeb(this, props.config.prod, props.webBuild ?? WEB_BUILD, functionUrl);
 
     new CfnOutput(this, "ApiUrl", { value: this.api.apiEndpoint });
@@ -133,7 +137,7 @@ export class CoreStack extends Stack {
     new CfnOutput(this, "TableName", { value: this.table.tableName });
     new CfnOutput(this, "StreamUrl", { value: streamUrl });
     new CfnOutput(this, "McpBaseUrl", { value: this.publicApiUrl });
-    if (props.config.prod) addOps(this, props.config.prod.alertEmail);
+    if (props.config.prod) addOps(this, prefix, props.config.prod.alertEmail);
   }
 
   /** Adds a route; JWT-protected unless `public`. */
@@ -189,12 +193,23 @@ export class CoreStack extends Stack {
     fn.addEnvironment("PUSH_FN_NAME", this.push.functionName);
   }
 
+  /** Where a Lambda finds the files bucket, and S3 as the browser reaches it for the links it signs. */
+  filesEnvironment(files: s3.IBucket): Record<string, string> {
+    const { s3PublicEndpoint } = this.stageConfig;
+    return { FILES_BUCKET: files.bucketName, ...(s3PublicEndpoint && { S3_PUBLIC_ENDPOINT: s3PublicEndpoint }) };
+  }
+
   /**
-   * Floci serves each WebSocket API, sockets and management calls alike, on its own host; the amazonaws.com URLs
-   * CloudFormation reports for it don't resolve locally.
+   * The site's public origins: the web gate accepts browser writes only from them, and a sign-in's return address must
+   * be one of them, so its code can't be handed to another site.
    */
+  siteOriginsEnvironment() {
+    return { SITE_ORIGINS: this.stageConfig.siteOrigins.join(",") };
+  }
+
+  /** Floci serves a WebSocket API's sockets and management calls on the API's own host, with the stage as the path. */
   private flociWsEndpoint() {
-    return `${this.live.wsApi.apiId}.execute-api.localhost.floci.io:4566/${this.live.stage.stageName}`;
+    return `${flociApiHost(this.live.wsApi.apiId)}/${this.live.stage.stageName}`;
   }
 
   /**
@@ -202,7 +217,7 @@ export class CoreStack extends Stack {
    * variables. Table read/write is opt-in, so each function gets least privilege. On AWS it logs to its own group, kept
    * for a month instead of Lambda's default of forever.
    */
-  addFunction(name: string, entry: string, opts: { tableAccess?: boolean } = {}, props: Partial<NodejsFunctionProps> = {}): NodejsFunction {
+  addFunction(name: string, entry: string, { tableAccess, ...props }: FunctionOptions = {}): NodejsFunction {
     const functionName = `${this.stageConfig.prefix}-${name}`;
     const fn = new NodejsFunction(this, `Fn-${name}`, {
       functionName,
@@ -215,7 +230,7 @@ export class CoreStack extends Stack {
       ...props,
       environment: { STAGE: this.stageConfig.stage, TABLE_NAME: this.table.tableName, ...props.environment },
     });
-    if (opts.tableAccess) this.table.grantReadWriteData(fn);
+    if (tableAccess) this.table.grantReadWriteData(fn);
     return fn;
   }
 
@@ -223,7 +238,7 @@ export class CoreStack extends Stack {
    * A month of logs. The group goes with the stack: logs aren't users' data, and a group left behind would make the
    * next deploy fail on its name.
    */
-  private logGroup(id: string, logGroupName: string) {
+  logGroup(id: string, logGroupName: string) {
     return new logs.LogGroup(this, id, { logGroupName, retention: logs.RetentionDays.ONE_MONTH, removalPolicy: RemovalPolicy.DESTROY });
   }
 }

@@ -57,19 +57,36 @@ describe("message versions", () => {
     expect(update.ExpressionAttributeValues).toMatchObject({ ":v": 0 });
   });
 
-  it("a delete returns the stored message, so a reaction racing it can't leave two broadcasts with one version", async () => {
-    const send = fakeTable(stored({ v: 1 }), () => ({ Attributes: stored({ v: 3, deleted: "self", reactions: { heart: new Set(["u2"]) } }) }));
-    expect(await chatRepo().remove(me, { ...at, seq: 1 })).toMatchObject({ deleted: "self", v: 3 });
-    expect((writes(send)[0] as UpdateCommand).input.ReturnValues).toBe("ALL_NEW");
+  it("a delete returns the message as stored after it, so a reaction racing it can't leave two broadcasts with one version", async () => {
+    let written = false;
+    vi.spyOn(docClient(), "send").mockImplementation((async (c: unknown) => {
+      if (c instanceof TransactWriteCommand) return (written = true), {};
+      if (String((c as GetCommand).input.Key?.sk).startsWith("MEMBER#")) return { Item: { role: "member" } };
+      return { Item: written ? stored({ v: 3, deleted: "self", reactions: { heart: new Set(["u2"]) } }) : stored({ v: 1 }) };
+    }) as never);
+    const { message } = await chatRepo().remove(me, { ...at, seq: 1 });
+    expect(message).toMatchObject({ deleted: "self", v: 3, reactions: { heart: ["u2"] } });
   });
 
   it("a delete and a reaction each bump the version", async () => {
     const send = fakeTable(stored({ v: 1 }), (c) => ({ Attributes: { ...stored({ v: 2 }), reactions: { thumbs: new Set(["u1"]) } }, c }));
     await chatRepo().remove(me, { ...at, seq: 1 });
     await chatRepo().react(me, { ...at, seq: 1, reaction: "thumbs", on: true });
-    const [del, react] = writes(send) as UpdateCommand[];
-    expect(del.input.UpdateExpression).toContain("ADD v :one");
+    const [del, react] = writes(send) as [TransactWriteCommand, UpdateCommand];
+    expect(del.input.TransactItems![0]!.Update!.UpdateExpression).toContain("ADD v :one");
     expect(react.input.UpdateExpression).toContain("v :one");
+  });
+
+  it("deleting a message also deletes its copy in the thread it went to, in the same transaction", async () => {
+    const send = fakeTable(stored({ threadRef: { threadId: "t1", kind: "delivered", seq: 5 } }));
+    const { copy } = await chatRepo().remove(me, { ...at, seq: 1 });
+    const [original, inThread] = (writes(send)[0] as TransactWriteCommand).input.TransactItems!;
+    expect(original!.Update).toMatchObject({ Key: { pk: "CHAT#c1", sk: "MSG#0000000001" }, ConditionExpression: "attribute_not_exists(deleted)" });
+    expect(inThread!.Update).toMatchObject({
+      Key: { pk: "CHAT#t1", sk: "MSG#0000000005" }, UpdateExpression: "SET deleted = if_not_exists(deleted, :d) ADD v :one",
+      ConditionExpression: "attribute_exists(sk)", ExpressionAttributeValues: { ":d": "self", ":one": 1 },
+    });
+    expect(copy).toBeDefined();
   });
 });
 

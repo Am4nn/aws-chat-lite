@@ -1,6 +1,6 @@
 import { NotFound } from "../lib/errors.js";
 import { sleep } from "../lib/sleep.js";
-import { requireMember } from "../chat/membership.js";
+import { requireMember } from "../rooms/membership.js";
 import type { RunEvent } from "../threads/types.js";
 import { runsRepo, type Run } from "./repo.js";
 import { consumeStreamTicket } from "./stream-tickets.js";

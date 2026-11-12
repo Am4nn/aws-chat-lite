@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
-import { template } from "./test-templates.js";
+import { dashboardMetrics, template } from "./test-templates.js";
 
 const runbook = readFileSync(new URL("../../docs/runbook-aws.md", import.meta.url), "utf8");
 const aws = template("aws").toJSON();
@@ -35,6 +35,13 @@ describe("the AWS runbook", () => {
     expect(runbook).toContain(`${count("AWS::CloudWatch::Alarm")} of them: one errors alarm for each of the ${named} functions`);
     expect(runbook).toContain(`up to all ${count("AWS::CloudWatch::Alarm")} if you confirm`);
     expect(runbook).toContain(`$0.40 per secret, ${count("AWS::SecretsManager::Secret")} of them`);
+    expect(runbook).toContain(`$0.10 per alarm, ${count("AWS::CloudWatch::Alarm")} of them`);
+    expect(runbook).toContain(`${dashboardMetrics(template("aws")).length} metrics, under the 50`);
+  });
+
+  it("sets the Anthropic spend limit before any key goes in", () => {
+    const [before] = runbook.split("## 2.");
+    expect(before).toMatch(/Claude Console[^\n]*\$10 a month/);
   });
 
   it("checks for leftover function log groups without CDK's helpers, whose groups the stack never owns", () => {

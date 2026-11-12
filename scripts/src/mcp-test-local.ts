@@ -1,12 +1,15 @@
 import { fileURLToPath } from "node:url";
 import { startMcpTestServer } from "../../services/src/mcp/testing/server.js";
+import { MCP_TEST_PORT } from "./ports.js";
 
 /**
- * The OAuth MCP test server for the local stage, on port 4710. Floci's Lambdas reach it at host.docker.internal, so
+ * The OAuth MCP test server for the local stage. Floci's Lambdas reach it at host.docker.internal, so
  * that is its origin; the admin's browser can't resolve that name, so the authorize page is sent to localhost.
  */
 export async function startLocalMcpTestServer() {
-  const server = await startMcpTestServer({ port: 4710, origin: "http://host.docker.internal:4710", publicOrigin: "http://localhost:4710" });
+  const server = await startMcpTestServer({
+    port: MCP_TEST_PORT, origin: `http://host.docker.internal:${MCP_TEST_PORT}`, publicOrigin: `http://localhost:${MCP_TEST_PORT}`,
+  });
   console.log(`MCP test server: ${server.url} (add it in a room's Connections)`);
   return server;
 }

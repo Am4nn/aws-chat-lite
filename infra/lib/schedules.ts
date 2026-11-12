@@ -13,7 +13,7 @@ export function addSchedules(stack: CoreStack) {
   const group = new scheduler.CfnScheduleGroup(stack, "AgentSchedules", { name: `${stack.stageConfig.prefix}-agent-schedules` });
   const groupName = group.name!;
 
-  const fireFn = stack.addFunction("schedule-fire", "schedules/fire.ts", { tableAccess: true }, { timeout: Duration.seconds(30) });
+  const fireFn = stack.addFunction("schedule-fire", "schedules/fire.ts", { tableAccess: true, timeout: Duration.seconds(30) });
   // A stale schedule (its item gone or off, its agent deleted, its room archived) deletes itself when it fires.
   allowSchedules(stack, fireFn, groupName, ["DeleteSchedule"]);
   stack.allowBroadcast(fireFn);
@@ -28,7 +28,8 @@ export function addSchedules(stack: CoreStack) {
   // Schedules target the function itself, never a version or alias.
   role.addToPolicy(new iam.PolicyStatement({ actions: ["lambda:InvokeFunction"], resources: [fireFn.functionArn] }));
 
-  const fn = stack.addFunction("schedules", "schedules/handler.ts", { tableAccess: true }, {
+  const fn = stack.addFunction("schedules", "schedules/handler.ts", {
+    tableAccess: true,
     timeout: Duration.seconds(15),
     environment: { SCHEDULER_ROLE_ARN: role.roleArn, SCHEDULE_TARGET_ARN: fireFn.functionArn },
   });

@@ -6,7 +6,6 @@ import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
 import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
 import * as lambda from "aws-cdk-lib/aws-lambda";
-import * as logs from "aws-cdk-lib/aws-logs";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as s3deploy from "aws-cdk-lib/aws-s3-deployment";
 import type { ProdSettings } from "./config.js";
@@ -47,9 +46,6 @@ export function addWeb(stack: CoreStack, prod: ProdSettings, build: WebBuild, st
   const site = `https://${prod.domainName}`;
   const secretHeader = { "x-origin-verify": originSecret(stack) };
 
-  const logGroup = new logs.LogGroup(stack, "WebLogs", {
-    logGroupName: `/aws/lambda/${prefix}-web`, retention: logs.RetentionDays.ONE_MONTH, removalPolicy: RemovalPolicy.DESTROY,
-  });
   const server = new lambda.Function(stack, "WebServer", {
     functionName: `${prefix}-web`,
     runtime: lambda.Runtime.NODEJS_22_X,
@@ -57,15 +53,16 @@ export function addWeb(stack: CoreStack, prod: ProdSettings, build: WebBuild, st
     code: lambda.Code.fromAsset(build.serverDir),
     // Lambda's CPU scales with memory, and server rendering is CPU-bound: 1 GB keeps renders and cold starts quick.
     memorySize: 1024,
-    timeout: Duration.seconds(15),
-    logGroup,
+    // The BFF waits up to 29 s on an API call, just under the 30 s at which API Gateway gives up on an integration.
+    timeout: Duration.seconds(30),
+    logGroup: stack.logGroup("WebLogs", `/aws/lambda/${prefix}-web`),
     environment: {
       API_URL: stack.api.apiEndpoint,
       USER_POOL_CLIENT_ID: stack.auth.client.userPoolClientId,
       COGNITO_REGION: stack.region,
       SIGNUP_EMAIL: "required",
       SECURE_COOKIES: "true",
-      SITE_ORIGINS: site,
+      ...stack.siteOriginsEnvironment(),
       ORIGIN_VERIFY_SECRET: originSecret(stack),
     },
   });

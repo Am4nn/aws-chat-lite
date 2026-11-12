@@ -32,4 +32,4 @@ export function fakeSpeaker(): Speaker {
   return { synthesize: async () => SILENCE };
 }
 
-export const speaker = (mode = process.env.VOICE_MODE): Speaker => (mode === "live" ? pollySpeaker() : fakeSpeaker());
+export const speaker = (mode: string | undefined): Speaker => (mode === "live" ? pollySpeaker() : fakeSpeaker());

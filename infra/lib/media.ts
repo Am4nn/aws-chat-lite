@@ -1,4 +1,4 @@
-import { Duration, RemovalPolicy } from "aws-cdk-lib";
+import { Duration } from "aws-cdk-lib";
 import * as iam from "aws-cdk-lib/aws-iam";
 import type * as s3 from "aws-cdk-lib/aws-s3";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
@@ -10,8 +10,7 @@ import type { CoreStack } from "./core-stack.js";
  * and reads answers aloud.
  */
 export function addMedia(stack: CoreStack, files: s3.Bucket) {
-  const { prefix, isLocal, pushMode, voiceMode, transcribeLocalUrl, s3PublicEndpoint } = stack.stageConfig;
-  const filesEnvironment = { FILES_BUCKET: files.bucketName, ...(s3PublicEndpoint && { S3_PUBLIC_ENDPOINT: s3PublicEndpoint }) };
+  const { prefix, pushMode, voiceMode, transcribeLocalUrl } = stack.stageConfig;
 
   // JSON {VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT}, set outside CloudFormation like the model keys. The
   // routes a browser calls need only the public key, and a secret is read whole, so they get a copy of it in a secret
@@ -23,19 +22,19 @@ export function addMedia(stack: CoreStack, files: s3.Bucket) {
     secretName,
     description,
     generateSecretString: { secretStringTemplate: "{}", generateStringKey: "unset" },
-    removalPolicy: isLocal ? RemovalPolicy.DESTROY : RemovalPolicy.RETAIN,
+    removalPolicy: stack.userDataRemoval,
   });
   const keysName = `${prefix}-push-keys`;
   const publicKeyName = `${prefix}-push-public-key`;
   const pushKeys = pushSecret("PushKeys", keysName, "VAPID keys that sign web push notifications");
   const publicKey = pushSecret("PushPublicKey", publicKeyName, "The VAPID public key browsers subscribe to web push with");
-  const pushFn = stack.addFunction("push", "push/delivery/handler.ts", {}, {
+  const pushFn = stack.addFunction("push", "push/delivery/handler.ts", {
     timeout: Duration.seconds(30),
     environment: { PUSH_MODE: pushMode, PUSH_KEYS_SECRET: keysName },
   });
   // Lambda retries a failed async event twice by default; a late duplicate notification is worse than a missed one.
   pushFn.configureAsyncInvoke({ retryAttempts: 0, maxEventAge: Duration.minutes(5) });
-  const routesFn = stack.addFunction("push-routes", "push/handler.ts", {}, { environment: { PUSH_PUBLIC_KEY_SECRET: publicKeyName } });
+  const routesFn = stack.addFunction("push-routes", "push/handler.ts", { environment: { PUSH_PUBLIC_KEY_SECRET: publicKeyName } });
   pushKeys.grantRead(pushFn);
   publicKey.grantRead(routesFn);
   for (const fn of [pushFn, routesFn]) {
@@ -48,10 +47,11 @@ export function addMedia(stack: CoreStack, files: s3.Bucket) {
   stack.route("DELETE", "/me/push/{id}", routesFn);
 
   // A long answer is synthesized in several Polly calls, and API Gateway gives up on an integration after 30 s.
-  const voiceFn = stack.addFunction("voice", "voice/handler.ts", { tableAccess: true }, {
+  const voiceFn = stack.addFunction("voice", "voice/handler.ts", {
+    tableAccess: true,
     timeout: Duration.seconds(25),
     memorySize: 512,
-    environment: { VOICE_MODE: voiceMode, ...filesEnvironment, ...(transcribeLocalUrl && { TRANSCRIBE_LOCAL_URL: transcribeLocalUrl }) },
+    environment: { VOICE_MODE: voiceMode, ...stack.filesEnvironment(files), ...(transcribeLocalUrl && { TRANSCRIBE_LOCAL_URL: transcribeLocalUrl }) },
   });
   // Neither action supports resource-level permissions. The browser streams on a URL signed with this role's
   // credentials, so the role itself must be allowed to start the stream.

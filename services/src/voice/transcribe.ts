@@ -1,6 +1,7 @@
 import { defaultProvider } from "@aws-sdk/credential-provider-node";
 import { Hash } from "@smithy/hash-node";
 import { SignatureV4 } from "@smithy/signature-v4";
+import { requiredEnv } from "../lib/env.js";
 
 export const SAMPLE_RATE = 16_000;
 /** The longest a presigned Transcribe socket URL may live; the browser connects within seconds. */
@@ -19,9 +20,7 @@ export async function transcribeUrl(
   mode: string | undefined, o: { sessionId: string; region: string; now: Date; credentials?: Credentials },
 ): Promise<string> {
   if (mode !== "live") {
-    const local = process.env.TRANSCRIBE_LOCAL_URL;
-    if (!local) throw new Error("TRANSCRIBE_LOCAL_URL not set");
-    return `${local}${PATH}?${new URLSearchParams({ ...QUERY, session: o.sessionId })}`;
+    return `${requiredEnv("TRANSCRIBE_LOCAL_URL")}${PATH}?${new URLSearchParams({ ...QUERY, session: o.sessionId })}`;
   }
   const hostname = `transcribestreaming.${o.region}.amazonaws.com`;
   const signer = new SignatureV4({

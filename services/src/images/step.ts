@@ -5,7 +5,7 @@ import { imageModel } from "../models/images.js";
 import type { Run } from "../runs/repo.js";
 import type { Aspect, GeneratedImage, RunEvent } from "../threads/types.js";
 import { MAX_ROOM_FILES, ROOM_FILES_BYTES } from "../workspace/limits.js";
-import { QuotaError, roomFile, workspaceRepo, type WorkspaceRepo } from "../workspace/repo.js";
+import { commitObject, QuotaError, roomFile, workspaceRepo, type WorkspaceRepo } from "../workspace/repo.js";
 import { copyObject, deleteObjects, findObject, newObjectKey, putBytes } from "../workspace/storage.js";
 import type { FilesSynced, FilesUpdated } from "../workspace/types.js";
 
@@ -98,17 +98,14 @@ export async function generateImageStep(
   const path = imagePath(run, step, name, staged.contentType);
   const objectKey = newObjectKey(run.roomId);
   await deps.storage.copyObject(key, objectKey);
-  let committed;
+  let file;
   try {
     const by = { kind: "thread" as const, threadId: run.threadId, number: run.number };
-    committed = await deps.files.commit(run.roomId, { path, objectKey, size: staged.size, contentType: staged.contentType, by });
+    ({ file } = await commitObject(deps, run.roomId, { path, objectKey, size: staged.size, contentType: staged.contentType, by }));
   } catch (e) {
-    await bestEffort("dropping a refused image", () => deps.storage.deleteObjects([objectKey]));
     if (e instanceof QuotaError) return { ok: false, output: FULL };
     throw e;
   }
-  const { file, replaced } = committed;
-  if (replaced) await bestEffort("deleting a replaced object", () => deps.storage.deleteObjects([replaced.objectKey]));
   const updated: FilesUpdated = { type: "files.updated", roomId: run.roomId, files: [roomFile(file)], deleted: [] };
   await bestEffort("files.updated broadcast", () => deps.notify(run.roomId, updated));
   return saved(path);

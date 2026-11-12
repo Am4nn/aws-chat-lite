@@ -1,9 +1,9 @@
-import { spawnSync } from "node:child_process";
-import { createRequire } from "node:module";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { PutSecretValueCommand, SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { cdk, readOutputs } from "./cdk.js";
+import { run } from "./cli.js";
 import { flociHost, localEnv, useLocalEnv } from "./env.js";
 import { assertOurFlociUp } from "./floci-owner.js";
 import { cleanStaleStacks } from "./stale.js";
@@ -11,23 +11,9 @@ import { devEnvFile } from "./dev-env.js";
 import { MODEL_KEY_NAMES, PUSH_KEY_NAMES, TOOL_KEY_NAMES, modelKeysSecret, pushKeysSecret, pushPublicKeySecret, toolKeysSecret } from "./keys-secrets.js";
 import { localSandboxToken } from "./sandbox-token.js";
 
-const infraDir = fileURLToPath(new URL("../../infra/", import.meta.url));
 const webEnvPath = fileURLToPath(new URL("../../web/.env.development.local", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const repoEnvPath = `${repoRoot}.env`;
-
-/** Run the CDK CLI inside infra/ (default: with Floci env vars). Throws on non-zero exit. */
-export function cdk(args: string[], env: NodeJS.ProcessEnv = localEnv(process.env)): void {
-  // Run the CLI through node directly: no shell, so the space in the path is safe.
-  const cdkBin = createRequire(`${infraDir}package.json`).resolve("aws-cdk/bin/cdk");
-  const res = spawnSync(process.execPath, [cdkBin, ...args], { cwd: infraDir, env, stdio: "inherit" });
-  if (res.status !== 0) throw new Error(`cdk ${args[0]} failed (exit ${res.status})`);
-}
-
-export function readOutputs(stack: string, file = "outputs-local.json"): Record<string, string> {
-  const all = JSON.parse(readFileSync(`${infraDir}cdk.out/${file}`, "utf8"));
-  return all[stack] ?? {};
-}
 
 async function putSecret(name: string, value: string, keyNames: readonly string[], what: string) {
   await new SecretsManagerClient({}).send(new PutSecretValueCommand({ SecretId: name, SecretString: value }));
@@ -72,11 +58,8 @@ async function main() {
   } else console.log("push keys not in .env: notifications are off locally");
   const out = readOutputs("cl-local-core");
   const api = `http://${flociHost(out.ApiUrl)}`;
-  writeFileSync(webEnvPath, devEnvFile({ apiUrl: api, userPoolClientId: out.UserPoolClientId, streamUrl: out.StreamUrl }));
+  writeFileSync(webEnvPath, devEnvFile({ apiUrl: api, userPoolClientId: out.UserPoolClientId }));
   console.log(`\nAPI: ${api}  (try: curl ${api}/health)\nWrote web/.env.development.local. Next: npm run dev (the web app and the run stream)\n`);
 }
 
-// The other scripts import cdk() and readOutputs() from here, so the deploy only runs when this file is executed.
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  main().catch((e) => { console.error(String(e.message ?? e)); process.exit(1); });
-}
+run(main);

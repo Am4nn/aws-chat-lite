@@ -127,9 +127,10 @@ async function winnersTokens(store: TokenStore, version: number, grace = 0): Pro
  * with `invalid_grant`. The loser takes the winner's tokens from the store instead of asking for a reconnect.
  */
 async function refreshed(store: TokenStore, { auth, version }: Loaded, f: typeof fetch): Promise<Loaded> {
+  // Without a refresh token there was no refresh to lose, so only a reconnect can have moved the version on.
+  if (!auth.tokens.refresh_token) return winnersTokens(store, version);
   let next: StoredAuth;
   try {
-    if (!auth.tokens.refresh_token) throw new InvalidGrantError("No refresh token.");
     const tokens = await refreshAuthorization(auth.issuer, {
       metadata: auth.metadata,
       clientInformation: auth.client,

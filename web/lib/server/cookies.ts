@@ -1,3 +1,5 @@
+import "server-only";
+
 /**
  * The two login cookies. Both are httpOnly, so JavaScript in the page can never read a token.
  * - cl_id holds the Cognito ID token. It is sent with every request to the site and lives as long as the token.

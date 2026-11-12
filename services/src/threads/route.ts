@@ -95,8 +95,8 @@ export async function routeSend(user: User, input: SendInput): Promise<{ message
   }
   const message = await chat.send(user, { roomId, chatId, clientId, text: ready.text, replyToSeq: input.replyToSeq }, ready);
 
-  const link = async (thread: string, kind: "started" | "delivered") => {
-    const linked = await chat.linkThread(message, { threadId: thread, kind });
+  const link = async (copy: Message, kind: "started" | "delivered") => {
+    const linked = await chat.linkThread(message, { threadId: copy.chatId, kind, seq: copy.seq });
     await broadcastToRoom(roomId, { type: "message.updated", message: linked });
   };
   // Its own client id, so a tab settling its pending send by client id never takes the copy for the original.
@@ -110,13 +110,13 @@ export async function routeSend(user: User, input: SendInput): Promise<{ message
         const copy = await chat.send(user, { roomId, chatId: target.threadId, clientId: copyId, text: ready.text }, ready, { copy: true });
         await broadcastToRoom(roomId, { type: "message.new", message: copy });
         await startOrSteer(user, roomId, target.threadId, copy, pick);
-        await link(target.threadId, "delivered");
+        await link(copy, "delivered");
       } else if (mentioned) {
         const started = await threads.createThread(user, roomId, {
           text: ready.text, clientId: copyId, from: { chatId, seq: message.seq }, admitted: ready, agentId: mentioned.agentId,
         });
         await startOrSteer(user, roomId, started.thread.threadId, started.message, pick);
-        await link(started.thread.threadId, "started");
+        await link(started.message, "started");
       }
     } catch (e) {
       console.error("handing a message to the agent failed", roomId, chatId, message.seq, e);

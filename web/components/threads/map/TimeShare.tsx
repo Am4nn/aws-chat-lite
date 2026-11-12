@@ -18,7 +18,7 @@ export function TimeShare({ events }: { events: RunEvent[] }) {
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
       <span className="text-[11.5px] font-semibold tracking-[.02em] text-text-3">Where the time went</span>
-      <div role="group" aria-label="Measure" className="flex rounded-lg border border-[#1a1f22] bg-surface-2 p-0.5">
+      <div role="group" aria-label="Measure" className="flex rounded-lg border border-line bg-surface-2 p-0.5">
         {(["time", "cost"] as const).map((b) => (
           <button
             key={b}
@@ -26,7 +26,7 @@ export function TimeShare({ events }: { events: RunEvent[] }) {
             aria-pressed={by === b}
             className={`relative isolate h-6 rounded-md px-2 text-[11.5px] capitalize transition-colors ${by === b ? "text-text" : "text-text-3 hover:text-text"}`}
           >
-            {by === b && <motion.span layoutId="time-share-by" transition={reduced ? instant : spring.glide} className="absolute inset-0 -z-10 rounded-md bg-[#1c2225]" />}
+            {by === b && <motion.span layoutId="time-share-by" transition={reduced ? instant : spring.glide} className="absolute inset-0 -z-10 rounded-md bg-surface-4" />}
             {b}
           </button>
         ))}
@@ -37,7 +37,7 @@ export function TimeShare({ events }: { events: RunEvent[] }) {
         initial={reduced ? false : { scaleX: 0 }}
         animate={{ scaleX: 1 }}
         transition={{ duration: 0.5, ease: easeOut }}
-        className="flex h-1.5 w-[200px] origin-left overflow-hidden rounded-full bg-[#1a1f22] max-sm:w-full"
+        className="flex h-1.5 w-[200px] origin-left overflow-hidden rounded-full bg-surface-4 max-sm:w-full"
       >
         {shares.map((s) => <span key={s.key} className="h-full transition-[width] duration-300" style={{ width: `${s.pct}%`, background: s.color }} />)}
       </motion.span>

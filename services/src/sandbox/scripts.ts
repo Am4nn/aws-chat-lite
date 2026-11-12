@@ -80,7 +80,7 @@ export function parseListing(stdout: string): Listing {
     if (l && Array.isArray(l.files) && l.files.every(isListed) && isTexts(l.unreadable) && isTexts(l.badNames)
       && Number.isInteger(l.more)) return l;
   } catch {
-    // Falls through to the error below.
+    // Not JSON: as bad a listing as a wrong shape.
   }
   throw new Error("Bad sandbox listing");
 }

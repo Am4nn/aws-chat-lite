@@ -18,7 +18,7 @@ export async function bff<T = unknown>(path: string, init: { method?: string; bo
   if (res.status === 401 && !path.startsWith("/bff/auth/")) {
     const refreshed = await fetch("/bff/auth/refresh", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
     if (!refreshed.ok) {
-      window.location.assign(`/login?next=${encodeURIComponent(window.location.pathname)}`);
+      window.location.assign(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
       throw new BffError(401, "Signed out.");
     }
     res = await send();

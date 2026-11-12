@@ -31,7 +31,7 @@ export function ThreadStatusIcon({ status, size = 14, done = "text-sky", track =
         >
           {kind === "running" && (
             <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" strokeWidth="3" strokeLinecap="round" className="animate-[spin_.8s_linear_infinite] motion-reduce:animate-none">
-              {track && <circle cx="12" cy="12" r="9" stroke="#1e2427" />}
+              {track && <circle cx="12" cy="12" r="9" stroke="var(--color-line-strong)" />}
               <path d="M21 12a9 9 0 0 0-9-9" stroke="var(--color-lime)" />
             </svg>
           )}

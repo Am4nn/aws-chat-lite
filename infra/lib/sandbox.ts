@@ -9,10 +9,10 @@ import type { CoreStack } from "./core-stack.js";
  * Neither has an execution role: code inside must never hold AWS credentials.
  */
 export function addSandbox(stack: CoreStack, runFn: NodejsFunction) {
-  const { prefix, isLocal } = stack.stageConfig;
-  if (isLocal) {
+  const { prefix, sandboxLocalUrl } = stack.stageConfig;
+  if (sandboxLocalUrl) {
     runFn.addEnvironment("SANDBOX_KIND", "docker");
-    runFn.addEnvironment("SANDBOX_URL", "http://host.docker.internal:4700");
+    runFn.addEnvironment("SANDBOX_URL", sandboxLocalUrl);
     return;
   }
 

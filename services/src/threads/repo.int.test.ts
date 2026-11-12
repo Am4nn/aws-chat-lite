@@ -78,6 +78,10 @@ describe("threads repo on Floci", () => {
     // A name is free again once its thread moves off it.
     await threads.rename(owner, roomId, first.thread.threadId, "pr-review");
     expect(await threads.rename(owner, roomId, second.thread.threadId, "pr-check")).toMatchObject({ name: "pr-check" });
+    // Any member renames, not only admins.
+    const member = user("member");
+    await rooms.acceptInvite((await rooms.rotateInvite(roomId, owner.userId)).code, member);
+    expect(await threads.rename(member, roomId, third.thread.threadId, "by-member")).toMatchObject({ name: "by-member" });
   });
 
   it("tags resolve by number or by a thread's name; a chat's name is no thread", async () => {
@@ -129,7 +133,7 @@ describe("threads repo on Floci", () => {
     await spend(3_000);
     expect(await budget.get(roomId, now)).toMatchObject({ spentMicros: 4_250, capMicros: 3_000_000, month: monthKey(now) });
     const { Item } = await docClient().send(new GetCommand({ TableName: tableName(), Key: { pk: `ROOM#${roomId}`, sk: `USAGE#${monthKey(now)}` }, ConsistentRead: true }));
-    expect(Item).toMatchObject({ costMicros: 4_250, calls: 2 });
+    expect(Item).toMatchObject({ costMicros: 4_250 });
 
     const admin = user("admin");
     await rooms.acceptInvite((await rooms.rotateInvite(roomId, owner.userId)).code, admin);

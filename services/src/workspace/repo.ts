@@ -1,7 +1,8 @@
 import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { bestEffort } from "../lib/best-effort.js";
 import { docClient, failedAt, queryAll, tableName, transactionConflict } from "../lib/db.js";
 import { Conflict, ValidationError } from "../lib/errors.js";
-import { roomKey } from "../lib/keys.js";
+import { roomKey, roomMetaKey } from "../lib/keys.js";
 import { countTowardsRate } from "../lib/rate.js";
 import { MAX_ROOM_FILES, OVER_QUOTA, ROOM_FILES_BYTES, TOO_MANY } from "./limits.js";
 import type { FileAuthor, RoomFile, StoredFile } from "./types.js";
@@ -12,7 +13,6 @@ export class QuotaError extends ValidationError {}
 const ATTEMPTS = 3;
 const UPLOADS_PER_HOUR = 100;
 const fileKey = (roomId: string, path: string) => ({ pk: roomKey(roomId), sk: `FILE#${path}` });
-const metaKey = (roomId: string) => ({ pk: roomKey(roomId), sk: "META" });
 
 const storedFile = (item: Record<string, unknown>): StoredFile => ({
   path: String(item.path), size: Number(item.size), contentType: String(item.contentType), v: Number(item.v),
@@ -22,6 +22,30 @@ const storedFile = (item: Record<string, unknown>): StoredFile => ({
 /** A file as members see it: where it lives in S3 stays on the server. */
 export function roomFile({ objectKey: _, ...file }: StoredFile): RoomFile {
   return file;
+}
+
+type Commit = Parameters<WorkspaceRepo["commit"]>[1];
+
+/**
+ * Commits an object already in the bucket as a room file. A refused commit deletes the object it would have been and
+ * rethrows, for the caller to word; one that replaced a file deletes the replaced object, with any `done` keys the
+ * caller no longer needs. Both deletes are best effort: the index is what readers follow, so a leftover object is only
+ * stray bytes.
+ */
+export async function commitObject(
+  deps: { files: Pick<WorkspaceRepo, "commit">; storage: { deleteObjects: (keys: string[]) => Promise<unknown> } },
+  roomId: string, c: Commit, done: string[] = [],
+): Promise<{ file: StoredFile; replaced?: StoredFile }> {
+  let committed;
+  try {
+    committed = await deps.files.commit(roomId, c);
+  } catch (e) {
+    await bestEffort("dropping a refused object", () => deps.storage.deleteObjects([c.objectKey]));
+    throw e;
+  }
+  const garbage = [...(committed.replaced ? [committed.replaced.objectKey] : []), ...done];
+  if (garbage.length) await bestEffort("deleting replaced objects", () => deps.storage.deleteObjects(garbage));
+  return committed;
 }
 
 /**
@@ -40,7 +64,7 @@ export function workspaceRepo() {
 
   async function usage(roomId: string) {
     const { Item } = await db.send(new GetCommand({
-      TableName, Key: metaKey(roomId), ConsistentRead: true, ProjectionExpression: "filesBytes, filesCount",
+      TableName, Key: roomMetaKey(roomId), ConsistentRead: true, ProjectionExpression: "filesBytes, filesCount",
     }));
     return { bytes: Number(Item?.filesBytes ?? 0), count: Number(Item?.filesCount ?? 0) };
   }
@@ -48,7 +72,7 @@ export function workspaceRepo() {
   /** Adds `bytes` and `count` (negative to give space back) to the room's totals. */
   const addToTotals = (roomId: string, bytes: number, count: number, ConditionExpression?: string, values = {}) => ({
     Update: {
-      TableName, Key: metaKey(roomId), UpdateExpression: "ADD filesBytes :bytes, filesCount :count", ConditionExpression,
+      TableName, Key: roomMetaKey(roomId), UpdateExpression: "ADD filesBytes :bytes, filesCount :count", ConditionExpression,
       ExpressionAttributeValues: { ":bytes": bytes, ":count": count, ...values },
     },
   });
