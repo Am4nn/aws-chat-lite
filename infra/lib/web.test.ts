@@ -92,10 +92,10 @@ describe("the site behind CloudFront", () => {
     const web = fnNamed("cl-aws-web", "aws").props;
     expect(web).toMatchObject({ MemorySize: 1024, Timeout: 30, Handler: "index.handler", Runtime: "nodejs22.x" });
     expect(Object.keys(web.Environment.Variables).sort()).toEqual(
-      ["API_URL", "COGNITO_REGION", "ORIGIN_VERIFY_SECRET", "SECURE_COOKIES", "SIGNUP_EMAIL", "SITE_ORIGINS", "USER_POOL_CLIENT_ID"],
+      ["API_URL", "COGNITO_REGION", "DICTATION", "ORIGIN_VERIFY_SECRET", "SECURE_COOKIES", "SIGNUP_EMAIL", "SITE_ORIGINS", "USER_POOL_CLIENT_ID"],
     );
     expect(web.Environment.Variables).toMatchObject({
-      SECURE_COOKIES: "true", SIGNUP_EMAIL: "required", SITE_ORIGINS: "https://chat.amanarya.com", COGNITO_REGION: "ap-southeast-2",
+      SECURE_COOKIES: "true", SIGNUP_EMAIL: "required", DICTATION: "browser", SITE_ORIGINS: "https://chat.amanarya.com", COGNITO_REGION: "ap-southeast-2",
       ORIGIN_VERIFY_SECRET: secretSentTo(site().DefaultCacheBehavior),
     });
     const logGroupId = web.LoggingConfig.LogGroup.Ref;

@@ -9,8 +9,8 @@ describe("loadConfig", () => {
     expect(loadConfig("local", FLOCI)).toEqual({
       stage: "local", prefix: "cl-local", isLocal: true, region: "us-east-1",
       siteOrigins: ["http://localhost:3000", "http://localhost:3100"], s3PublicEndpoint: "http://localhost:4566",
-      modelGateway: "fake", toolMode: "fake", pushMode: "fake", voiceMode: "fake", transcribeLocalUrl: "ws://localhost:4601",
-      streamLocalUrl: "http://localhost:4600", sandboxLocalUrl: "http://host.docker.internal:4700",
+      modelGateway: "fake", toolMode: "fake", pushMode: "fake", voiceMode: "fake", dictation: "transcribe",
+      transcribeLocalUrl: "ws://localhost:4601", streamLocalUrl: "http://localhost:4600", sandboxLocalUrl: "http://host.docker.internal:4700",
     });
   });
 
@@ -42,7 +42,7 @@ describe("loadConfig", () => {
     expect(loadConfig("aws", {}, TEST_CONTEXT)).toEqual({
       stage: "aws", prefix: "cl-aws", isLocal: false, region: "ap-southeast-2", siteOrigins: ["https://chat.amanarya.com"],
       mcpBaseUrl: "https://chat.amanarya.com", modelGateway: "live", toolMode: "live", pushMode: "live", voiceMode: "live",
-      prod: { domainName: "chat.amanarya.com", ...TEST_CONTEXT },
+      dictation: "browser", prod: { domainName: "chat.amanarya.com", ...TEST_CONTEXT },
     });
   });
 

@@ -61,6 +61,7 @@ export function addWeb(stack: CoreStack, prod: ProdSettings, build: WebBuild, st
       USER_POOL_CLIENT_ID: stack.auth.client.userPoolClientId,
       COGNITO_REGION: stack.region,
       SIGNUP_EMAIL: "required",
+      DICTATION: stack.stageConfig.dictation,
       SECURE_COOKIES: "true",
       ...stack.siteOriginsEnvironment(),
       ORIGIN_VERIFY_SECRET: originSecret(stack),
