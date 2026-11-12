@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Lock, Pencil, Trash2 } from "lucide-react";
 import { bff, errorText } from "@/lib/client/bff";
@@ -44,7 +44,8 @@ export function MemoryPanel({ roomId, archived }: { roomId: string; archived: bo
     if (e.roomId === roomId) reload();
   });
 
-  useEffect(() => {
+  // Before paint, so an entry that arrives never shows for a frame without its highlight.
+  useLayoutEffect(() => {
     if (!entries) return;
     const ids = entries.map((m) => m.memoryId);
     const added = seen.current ? ids.filter((id) => !seen.current!.has(id)) : [];
