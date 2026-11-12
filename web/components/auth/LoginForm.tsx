@@ -7,7 +7,6 @@ import { rememberTimeZone } from "@/lib/client/useTimeZone";
 import { dur, easeOut, spring } from "@/lib/motion";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
-import { Spinner } from "@/components/ui/Spinner";
 
 type Mode = "signin" | "signup" | "confirm";
 
@@ -117,8 +116,7 @@ export function LoginForm({ next, emailSignup }: { next: string; emailSignup: bo
           )}
         </AnimatePresence>
 
-        <Button type="submit" variant="primary" disabled={busy} className="mt-1 h-11">
-          {busy && <Spinner />}
+        <Button type="submit" variant="primary" busy={busy} size="lg" className="mt-1">
           {mode === "signin" ? "Sign in" : mode === "signup" ? "Create account" : "Confirm and sign in"}
         </Button>
       </form>

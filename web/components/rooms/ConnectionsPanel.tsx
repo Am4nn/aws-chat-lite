@@ -177,12 +177,12 @@ function GitHubSection({ roomId, data, manage, pick, onPickStarted, onChange }: 
               <p className="text-[12.5px] text-danger">Disconnect GitHub? The room&apos;s agent loses these repos.</p>
               <div className="flex justify-end gap-2">
                 <Button autoFocus onClick={() => setMode({ kind: "view" })}>Cancel</Button>
-                <Button variant="danger" onClick={disconnect} disabled={busy}>{busy && <Spinner />}Disconnect</Button>
+                <Button variant="danger" onClick={disconnect} busy={busy}>Disconnect</Button>
               </div>
             </div>
           ) : (
             <div className="flex gap-2">
-              <Button onClick={signIn} disabled={busy} className="flex-1">{busy && <Spinner />}Change repos</Button>
+              <Button onClick={signIn} busy={busy} className="flex-1">Change repos</Button>
               <Button onClick={() => setMode({ kind: "confirmDisconnect" })}>Disconnect</Button>
             </div>
           ))}
@@ -192,8 +192,8 @@ function GitHubSection({ roomId, data, manage, pick, onPickStarted, onChange }: 
         <motion.div key="off" {...swap}>
           {manage
             ? (
-              <Button variant="primary" onClick={signIn} disabled={busy} className="w-full">
-                {busy ? <Spinner /> : <FolderGit2 aria-hidden="true" size={15} />}Connect GitHub
+              <Button variant="primary" onClick={signIn} busy={busy} className="w-full">
+                <FolderGit2 aria-hidden="true" size={15} />Connect GitHub
               </Button>
             )
             : <p className="text-[12.5px] text-text-3">Not connected</p>}

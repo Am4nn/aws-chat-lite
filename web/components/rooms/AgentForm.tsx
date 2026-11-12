@@ -6,7 +6,6 @@ import type { Agent, AgentModel, ModelOption, ToolKind } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { panelInput } from "@/components/ui/Field";
 import { Hint } from "@/components/ui/Hint";
-import { Spinner } from "@/components/ui/Spinner";
 
 export type AgentInput = { name: string; instructions: string; tools: ToolKind[]; model: AgentModel };
 
@@ -103,7 +102,7 @@ export function AgentForm({ initial, kinds, models, busy, onCancel, onSubmit }: 
       </div>
       <div className="flex justify-end gap-2">
         <Button type="button" onClick={onCancel}>Cancel</Button>
-        <Button type="submit" variant="primary" disabled={busy || !name.trim()}>{busy && <Spinner />}{initial ? "Save" : "Create agent"}</Button>
+        <Button type="submit" variant="primary" busy={busy} disabled={!name.trim()}>{initial ? "Save" : "Create agent"}</Button>
       </div>
     </form>
   );

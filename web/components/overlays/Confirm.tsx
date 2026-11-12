@@ -2,7 +2,6 @@
 
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
-import { Spinner } from "@/components/ui/Spinner";
 
 /** A confirm dialog's body: what will happen, then Cancel (focused, the safe choice) and the action. */
 export function Confirm({ children, action, onCancel, onConfirm }: {
@@ -22,7 +21,7 @@ export function Confirm({ children, action, onCancel, onConfirm }: {
       <p className="mb-5 text-[13.5px] leading-relaxed text-text-2">{children}</p>
       <div className="flex justify-end gap-2">
         <Button autoFocus onClick={onCancel}>Cancel</Button>
-        <Button variant="danger" onClick={confirm} disabled={busy}>{busy && <Spinner />}{action}</Button>
+        <Button variant="danger" onClick={confirm} busy={busy}>{action}</Button>
       </div>
     </>
   );
