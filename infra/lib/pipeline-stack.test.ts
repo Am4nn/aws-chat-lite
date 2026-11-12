@@ -98,6 +98,12 @@ describe("the pipeline", () => {
     });
   });
 
+  it("creates the failure rule only once the topic lets the notification service publish", () => {
+    const [policyId] = Object.keys(t.findResources("AWS::SNS::TopicPolicy"));
+    const [rule] = Object.values(t.findResources("AWS::CodeStarNotifications::NotificationRule")) as any[];
+    expect(rule.DependsOn).toContain(policyId);
+  });
+
   it("builds on small CodeBuild machines with Node 22", () => {
     expect(projects.length).toBeGreaterThan(3);
     for (const p of projects) expect(p.Properties.Environment.ComputeType).toBe("BUILD_GENERAL1_SMALL");
