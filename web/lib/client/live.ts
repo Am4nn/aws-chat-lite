@@ -1,8 +1,8 @@
 import type { LiveEvent } from "../types";
-import { DEFAULT_ERROR, UserError } from "./bff";
+import { DEFAULT_ERROR, UserError } from "./errors";
 
 // Only a request refused before it went out is certainly not sent: one that got no ack may have been stored.
-const NOT_SENT = "Not connected, so it wasn't sent.";
+const NOT_SENT = "Not connected, so nothing was sent.";
 const UNCONFIRMED = "The server didn't confirm it. Check before retrying.";
 
 export type ClientEvent = LiveEvent | { type: "reconnected" };

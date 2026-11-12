@@ -243,7 +243,7 @@ export function mcpRepo(deps: Deps = liveDeps()) {
         await connections.requireManager(flow.roomId, user.userId, { writing: true });
         const host = new URL(flow.url).hostname;
         if (error || typeof code !== "string") {
-          console.error("MCP sign-in came back without a code", flow.roomId, typeof error === "string" ? cut(error, 100) : error);
+          console.warn("MCP sign-in came back without a code", flow.roomId, typeof error === "string" ? cut(error, 100) : error);
           throw new Upstream(`${host} didn't allow access.`);
         }
         const pending = JSON.parse(unseal(await deps.key(), flow.pending, flow.state)) as PendingAuth;

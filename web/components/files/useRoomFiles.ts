@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { bff, errorText, UserError } from "@/lib/client/bff";
+import { bff, errorText } from "@/lib/client/bff";
+import { UserError } from "@/lib/client/errors";
 import { applyFilesUpdate } from "@/lib/client/files";
 import { useLiveEvent } from "@/lib/client/LiveProvider";
 import type { RoomFile } from "@/lib/types";

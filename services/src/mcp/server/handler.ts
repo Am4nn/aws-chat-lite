@@ -54,7 +54,7 @@ export function makeMcpHandler(verify: OAuthRepo["verifyAccess"], deps: ServerDe
       try {
         return textResult(await tool.run(access.user, params.arguments ?? {}, deps));
       } catch (e) {
-        // The tools already turn any other failure into a UserError with the default line, having logged it.
+        // The tools log any other failure and rethrow it as a UserError; this check keeps a new tool from leaking one.
         return textResult(e instanceof UserError ? e.message : DEFAULT_ERROR, true);
       }
     });

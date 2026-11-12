@@ -56,9 +56,16 @@ describe("githubCall", () => {
     const body = { message: "Validation Failed ghs_leaked", errors: [{ resource: "PullRequest", code: "custom", message: "No commits between main and b" }, { field: "head", code: "invalid" }] };
     const env = { keys: {}, fetch: (async () => Response.json(body, { status: 422 })) as typeof fetch };
     const refused = await githubCall(env, "t", "POST", "/repos/o/r/pulls", {}).catch((e) => e);
-    expect(refused).toMatchObject({ message: "GitHub refused the request as invalid.", status: 422 });
+    expect(refused).toMatchObject({ message: "GitHub refused the request as invalid (head invalid).", status: 422 });
     expect(String(logged.mock.calls)).toContain("Validation Failed [redacted] (No commits between main and b; head invalid)");
     logged.mockRestore();
+  });
+
+  it("reads a 403 that carries a rate limit's headers as a rate limit", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const limited = { keys: {}, fetch: (async () => Response.json({ message: "secondary rate limit" }, { status: 403, headers: { "retry-after": "60" } })) as typeof fetch };
+    await expect(githubCall(limited, "t", "GET", "/repos/o/r")).rejects.toThrow("GitHub is rate-limiting chat-lite; try again later.");
+    vi.restoreAllMocks();
   });
 
   const failing = (code: string) => Object.assign(new TypeError("fetch failed"), { cause: { code } });

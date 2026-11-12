@@ -22,10 +22,10 @@ describe("/bff/github/callback", () => {
 
   it("passes GitHub's refusal on, and lands in the room with the API's error", async () => {
     api.idToken.mockResolvedValueOnce(fresh(600));
-    api.callApi.mockResolvedValueOnce(Response.json({ roomId: "r1", error: "GitHub didn't allow access (access_denied)." }, { status: 502 }));
+    api.callApi.mockResolvedValueOnce(Response.json({ roomId: "r1", error: "GitHub didn't allow access." }, { status: 502 }));
     const res = await open("state=s1&error=access_denied");
     expect(api.callApi).toHaveBeenLastCalledWith("/github-flows/finish", expect.any(String), { method: "POST", body: '{"state":"s1","error":"access_denied"}' });
-    expect(res.headers.get("location")).toBe("/r/r1?githubError=GitHub+didn%27t+allow+access+%28access_denied%29.");
+    expect(res.headers.get("location")).toBe("/r/r1?githubError=GitHub+didn%27t+allow+access.");
   });
 
   it("lands with a timeout message when the API doesn't answer in time", async () => {

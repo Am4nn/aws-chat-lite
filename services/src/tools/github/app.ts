@@ -22,11 +22,22 @@ const REFUSALS: Record<number, string> = {
   403: "GitHub didn't allow that.",
   404: "GitHub couldn't find that, or the App can't see it.",
   409: "GitHub refused: the repo changed meanwhile, or is empty.",
-  422: "GitHub refused the request as invalid.",
-  429: "GitHub is rate-limiting chat-lite; try again later.",
 };
-const refusal = (status: number) =>
-  REFUSALS[status] ?? (status >= 500 ? "GitHub is having trouble; try again later." : `GitHub refused the request (${status}).`);
+// A 422's field and code (head invalid, ref already_exists) say what to fix, and both are GitHub's identifiers, not
+// prose; a "custom" code carries its reason only as prose, so it stays in the log.
+const IDENTIFIER = /^[A-Za-z_]{1,40}$/;
+
+function refusal(res: Response, data: Failure | null): string {
+  // GitHub sends its secondary rate limit as a 403, told apart only by these headers.
+  const limited = res.status === 429 || (res.status === 403 && (res.headers.has("retry-after") || res.headers.get("x-ratelimit-remaining") === "0"));
+  if (limited) return "GitHub is rate-limiting chat-lite; try again later.";
+  if (res.status === 422) {
+    const fields = (data?.errors ?? []).flatMap((r) =>
+      typeof r !== "string" && r.code !== "custom" && IDENTIFIER.test(r.field ?? "") && IDENTIFIER.test(r.code ?? "") ? [`${r.field} ${r.code}`] : []);
+    return `GitHub refused the request as invalid${fields.length ? ` (${fields.join("; ")})` : ""}.`;
+  }
+  return REFUSALS[res.status] ?? (res.status >= 500 ? "GitHub is having trouble; try again later." : `GitHub refused the request (${res.status}).`);
+}
 // Installation tokens, personal tokens, JWTs and PEM blocks: GitHub may echo a credential back in an error, and the
 // log mustn't keep one.
 const SECRET = /gh[opsu]_\w+|github_pat_\w+|eyJ[\w-]+\.[\w-]+\.[\w-]+|-----BEGIN [A-Z ]+-----[\s\S]*?(?:-----END [A-Z ]+-----|$)/g;
@@ -72,7 +83,7 @@ export async function githubCall(env: GitHubEnv, auth: string, method: string, p
   }
   if (!res.ok) {
     console.error("GitHub refused", method, path, res.status, failure(data, text).slice(0, 500).replace(SECRET, "[redacted]"));
-    throw new GitHubError(refusal(res.status), res.status);
+    throw new GitHubError(refusal(res, data), res.status);
   }
   return data;
 }

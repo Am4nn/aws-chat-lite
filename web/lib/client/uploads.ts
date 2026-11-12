@@ -1,4 +1,5 @@
-import { bff, UserError } from "./bff";
+import { bff } from "./bff";
+import { UserError } from "./errors";
 
 const MAX_FILE_BYTES = 10_485_760;
 const MAX_FILES = 5;

@@ -101,7 +101,7 @@ describe("LiveSocket", () => {
   });
 
   it("refuses a request before the socket opens, saying nothing was sent", async () => {
-    expect(errorText(await make().request("edit", {}).catch((e) => e))).toBe("Not connected, so it wasn't sent.");
+    expect(errorText(await make().request("edit", {}).catch((e) => e))).toBe("Not connected, so nothing was sent.");
   });
 
   it("rejects pending requests when the socket closes", async () => {

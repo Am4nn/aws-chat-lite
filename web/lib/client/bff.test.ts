@@ -1,5 +1,6 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
-import { bff, BffError, bffOrNull, errorText, UserError } from "./bff";
+import { bff, BffError, bffOrNull, errorText } from "./bff";
+import { UserError } from "./errors";
 
 const respond = (status: number, body: unknown) => vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(body), { status })));
 
