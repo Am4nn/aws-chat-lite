@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/Button";
 import { panelInput } from "@/components/ui/Field";
 import { Hint } from "@/components/ui/Hint";
 import { PanelLoading } from "@/components/ui/PanelLoading";
+import { PanelSection } from "@/components/ui/PanelSection";
 import { RowButton } from "@/components/ui/RowButton";
 import { useRoomData } from "./useRoomData";
 
@@ -80,13 +81,12 @@ export function MemoryPanel({ roomId, archived }: { roomId: string; archived: bo
       bff(`${base}/${entry.memoryId}`, { method: "DELETE", body: {} })).catch((e) => toast(errorText(e), "error"));
   }
 
-  if (!entries) return <PanelLoading failed={failed} onRetry={reload} />;
+  if (!entries) return <PanelSection title="Memory"><PanelLoading failed={failed} onRetry={reload} /></PanelSection>;
 
   return (
-    <section className="flex flex-col gap-2">
-      <p className="font-mono text-[11.5px] text-text-3">{entries.length} of {MEMORY_MAX}</p>
-      {entries.length === 0 && <p className="text-[12.5px] text-text-3">Nothing yet. Agents save lasting facts and decisions here as they work.</p>}
-      <ul className="flex flex-col gap-1 empty:hidden">
+    <PanelSection title="Memory" count={entries.length ? `${entries.length} of ${MEMORY_MAX}` : undefined}>
+      {entries.length === 0 && <p className="text-[12.5px] leading-relaxed text-text-3">Agents save lasting facts and decisions here as they work.</p>}
+      <ul className="-mx-2 flex flex-col gap-1 empty:hidden">
         <AnimatePresence initial={false}>
           {entries.map((m) => (
             <MemoryRow
@@ -105,7 +105,7 @@ export function MemoryPanel({ roomId, archived }: { roomId: string; archived: bo
           </Confirm>
         )}
       </Modal>
-    </section>
+    </PanelSection>
   );
 }
 

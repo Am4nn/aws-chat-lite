@@ -16,6 +16,7 @@ import { useToast } from "@/components/overlays/Toast";
 import { Button } from "@/components/ui/Button";
 import { panelInput } from "@/components/ui/Field";
 import { PanelLoading } from "@/components/ui/PanelLoading";
+import { PanelSection } from "@/components/ui/PanelSection";
 import { RowButton } from "@/components/ui/RowButton";
 import { Switch } from "@/components/ui/Switch";
 import { ScheduleForm, type ScheduleInput } from "./ScheduleForm";
@@ -94,26 +95,26 @@ export function SchedulesPanel({ roomId, me, chats, archived }: { roomId: string
     }
   }
 
-  if (!data) return <PanelLoading failed={failed} onRetry={refetch} />;
+  if (!data) return <PanelSection title="Schedules"><PanelLoading failed={failed} onRetry={refetch} /></PanelSection>;
   const { schedules, timeZone, max } = data;
   const form = (s?: Schedule) => (
     <ScheduleForm initial={s} agents={agents} chats={chats} busy={busy} onCancel={() => setEditing(null)} onSubmit={(input) => save(s, input)} />
   );
 
   return (
-    <section className="flex flex-col gap-2">
-      <div className="flex h-8 items-center gap-2">
-        <span className="font-mono text-[11.5px] text-text-3">{schedules.length} of {max}</span>
-        {!archived && schedules.length < max && editing !== "new" && (
-          <Button onClick={() => setEditing("new")} size="sm" className="ml-auto"><Plus aria-hidden="true" size={14} />New</Button>
-        )}
-      </div>
+    <PanelSection
+      title="Schedules"
+      count={schedules.length ? `${schedules.length} of ${max}` : undefined}
+      action={!archived && schedules.length < max && editing !== "new" && (
+        <Button onClick={() => setEditing("new")} size="sm" aria-label="New schedule"><Plus aria-hidden="true" size={14} />New</Button>
+      )}
+    >
       <TimeZoneRow timeZone={timeZone} canSet={isAdmin(me.role) && !archived} onSet={setTimeZone} />
       {editing === "new" && form()}
       {schedules.length === 0 && editing !== "new" && (
-        <p className="text-[12.5px] text-text-3">None yet. A schedule runs an agent on a clock, such as a digest every morning.</p>
+        <p className="text-[12.5px] leading-relaxed text-text-3">A schedule runs an agent on a clock, such as a digest every morning.</p>
       )}
-      <ul className="flex flex-col gap-1 empty:hidden">
+      <ul className="-mx-2 flex flex-col gap-1 empty:hidden">
         {schedules.map((s) => {
           const canEdit = !archived && canEditSchedule(s, me);
           return (
@@ -154,7 +155,7 @@ export function SchedulesPanel({ roomId, me, chats, archived }: { roomId: string
           </Confirm>
         )}
       </Modal>
-    </section>
+    </PanelSection>
   );
 }
 

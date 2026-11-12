@@ -49,6 +49,15 @@ describe("MemoryPanel", () => {
     expect(screen.getAllByRole("button", { name: "Saved from a thread with private content, so DeepSeek never sees it." })).toHaveLength(1);
   });
 
+  it("heads the list with a quiet title row, and shows no count while there is nothing to count", async () => {
+    stored = [];
+    render(<MemoryPanel roomId={roomId} archived={false} />);
+    expect(await screen.findByText("Agents save lasting facts and decisions here as they work.")).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 2, name: "Memory" })).toBeTruthy();
+    expect(screen.queryByText(/of 50/)).toBeNull();
+    expect(screen.queryByText(/Nothing yet/)).toBeNull();
+  });
+
   it("edits an entry in place", async () => {
     render(<MemoryPanel roomId={roomId} archived={false} />);
     fireEvent.click((await screen.findAllByRole("button", { name: "Edit memory" }))[0]);

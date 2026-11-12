@@ -106,7 +106,7 @@ async function resetOAuthRates() {
 
 /** The text of the panel's "MCP servers" section. */
 const mcpSection = (page: Page) => page.evaluate((panel) => [...document.querySelectorAll(`${panel} section`)]
-  .find((s) => s.querySelector("h2")?.textContent === "MCP servers")?.textContent ?? "", PANEL);
+  .find((s) => s.querySelector("h3")?.textContent === "MCP servers")?.textContent ?? "", PANEL);
 
 export async function mcpChecks(stamp: number, owner: Person, guest: Person) {
   const A = owner.page;
@@ -132,7 +132,7 @@ export async function mcpChecks(stamp: number, owner: Person, guest: Person) {
   };
   for (const page of [A, B]) {
     await open(page, generalUrl);
-    await openTab(page, "Connections");
+    await openTab(page, "Room");
   }
   const toolLabels = async (page: Page) => {
     await page.bringToFront();
@@ -150,7 +150,7 @@ export async function mcpChecks(stamp: number, owner: Person, guest: Person) {
   // Connect: B, a member, sees none yet and nothing to add one with; A adds the test server and its sign-in round trip
   // lands back on the room with a toast.
   const empty = await until(B, (panel) => [...document.querySelectorAll(`${panel} section`)]
-    .some((s) => s.querySelector("h2")?.textContent === "MCP servers" && s.textContent?.includes("None yet.")), PANEL);
+    .some((s) => s.querySelector("h3")?.textContent === "MCP servers" && s.textContent?.includes("None yet.")), PANEL);
   const noAdd = await B.evaluate(() => ![...document.querySelectorAll("button")].some((b) => b.textContent?.trim() === "Add MCP server"));
   await A.bringToFront();
   await clickButton(A, "Add MCP server");
@@ -186,7 +186,7 @@ export async function mcpChecks(stamp: number, owner: Person, guest: Person) {
   check(needsYou && carded && writeDone.status === "done" && writeDone.steps === 1,
     `call:mcp__test__add_note waits: B's row says "needs you", the card reads "Run add_note on test?", and after Approve the run ends ${writeDone.status} after ${writeDone.steps} step`);
   await open(B, generalUrl);
-  await openTab(B, "Connections");
+  await openTab(B, "Room");
   const logged = await panelShows(B, [
     `${owner.name} connected MCP test (host.docker.internal)`, `@agent ran mcp__test__echo in #${read.number}`,
     `${guest.name} approved "Run add_note on test?" in #${write.number}`, `@agent ran mcp__test__add_note in #${write.number}`,
@@ -213,7 +213,7 @@ export async function mcpChecks(stamp: number, owner: Person, guest: Person) {
 
   // Reduced motion on the panel: the tool list opens with a fade normally and at once under reduced motion.
   await socketOpen(A);
-  await openTab(A, "Connections");
+  await openTab(A, "Room");
   await A.waitForSelector('li[aria-label="test"]');
   if (await A.$("#mcp-tools-test")) {
     await A.evaluate(clickText("Hide tools"));
@@ -225,7 +225,7 @@ export async function mcpChecks(stamp: number, owner: Person, guest: Person) {
   // Motion reads the preference when a component mounts, so the page loads again under it.
   await A.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "reduce" }]);
   await open(A, generalUrl);
-  await openTab(A, "Connections");
+  await openTab(A, "Room");
   await A.waitForSelector('li[aria-label="test"]');
   const instantly = await A.evaluate(fadeFrames("#mcp-tools-test", clickText("Show tools"))) as number;
   await A.emulateMediaFeatures([]);
@@ -236,7 +236,7 @@ export async function mcpChecks(stamp: number, owner: Person, guest: Person) {
   await phone.setViewport(PHONE);
   await phone.goto(generalUrl, { waitUntil: "domcontentloaded" });
   await phone.locator('button[aria-label="Toggle room panel"]').click();
-  await openTab(phone, "Connections");
+  await openTab(phone, "Room");
   const panelFits = await until(phone, () => {
     const row = document.querySelector('li[aria-label="test"]')?.getBoundingClientRect();
     return !!row && row.left >= 0 && row.right <= innerWidth && document.scrollingElement!.scrollWidth <= innerWidth;
@@ -399,9 +399,9 @@ export async function mcpChecks(stamp: number, owner: Person, guest: Person) {
 
   // Remove: B sees it go, and the log says who.
   await open(A, generalUrl);
-  await openTab(A, "Connections");
+  await openTab(A, "Room");
   await open(B, generalUrl);
-  await openTab(B, "Connections");
+  await openTab(B, "Room");
   await B.waitForSelector('li[aria-label="test"]');
 
   // A server that doesn't answer: the admin reads why in a toast, and nothing is added. Inside the Lambda, localhost

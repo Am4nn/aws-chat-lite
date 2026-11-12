@@ -17,17 +17,17 @@ type Schedule = { scheduleId: string; title: string; enabled: boolean };
 
 const RUN_MS = 60_000;
 const PHONE = { width: 390, height: 844, isMobile: true, hasTouch: true };
-/** A step card on the Map: a button in an absolutely placed wrapper (the Time | Cost toggle is a pressed button too). */
+/** A step card on the Map: a button in an absolutely placed wrapper (the time and cost figures are pressed buttons too). */
 const CARD = "main div[style*=left] > button";
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 
-/** Presses the Map's Replay and counts, for 2 s, the frames in which a card's wrapper was not yet opaque and in place. */
+/** Presses the newest turn's Replay on the Map and counts, for 2 s, the frames in which a card's wrapper was not yet opaque and in place. */
 const REPLAY_FRAMES = sampleFrames({
   vars: "let moving = 0;",
   perFrame: `if ([...document.querySelectorAll(${JSON.stringify(CARD)})].some((b) => !placed(b.parentElement))) moving++;`,
   done: "now - start >= 2000",
   result: "moving",
-  begin: `[...document.querySelectorAll("main button")].find((b) => b.textContent.trim() === "Replay").click();`,
+  begin: `document.querySelector('main button[aria-label="Replay this turn"]').click();`,
 });
 
 /** Counts the frames, until `text`'s memory row has shown for a second, in which that row was still sliding in. */
@@ -72,7 +72,7 @@ export async function agentChecks(stamp: number, owner: Person, guest: Person) {
 
   // Agents: A makes @researcher with the web only; B sees it, but nothing to edit or delete it with.
   await A.bringToFront();
-  await clickButton(A, "New agent");
+  await A.locator('button[aria-label="New agent"]').click();
   await A.waitForSelector("#agent-name-new");
   await A.type("#agent-name-new", "researcher");
   await A.type("#agent-instructions-new", "Find sources and cite them.");
@@ -129,10 +129,11 @@ export async function agentChecks(stamp: number, owner: Person, guest: Person) {
   });
   check(collapsed && inner, `"@agent ask:researcher" (#${helped.number}) shows one collapsed researcher step that opens onto the helper's 2 steps`);
 
-  // Map: two lanes, sky hand-off edges, cards that drop in on Replay, and a card's details with its tokens and cost.
+  // Map: the helper's lane named under its first card, sky hand-off edges, cards that drop in on Replay, and a card's
+  // details with its tokens and cost.
   await A.goto(`${threadUrl(helped.number)}?view=map`, { waitUntil: "domcontentloaded" });
   await A.waitForSelector(CARD);
-  const lanes = await A.$$eval("main span.sticky", (els) => els.map((e) => e.textContent));
+  const lanes = await A.$$eval("main span[style*=left]", (els) => els.map((e) => e.textContent));
   const sky = await A.$$eval('main svg path[stroke="#7CC7FF"]', (els) => els.length);
   await A.bringToFront();
   const dropping = await A.evaluate(REPLAY_FRAMES) as number;
@@ -142,8 +143,8 @@ export async function agentChecks(stamp: number, owner: Person, guest: Person) {
     .find((dt) => dt.textContent === l)?.nextElementSibling?.textContent ?? "", label);
   await panelShows(A, ["tokens", "cost"]);
   const [tokens, cost] = [await tile("tokens"), await tile("cost")];
-  check(lanes.join() === "agent,researcher · helper" && sky >= 2 && dropping >= 3 && tokens !== "—" && !!tokens && cost.startsWith("$"),
-    `the Map shows 2 lanes (${lanes.join(" | ")}), ${sky} sky hand-off edges and cards dropping in on Replay (${dropping} frames); a card's details show tokens ${tokens} and cost ${cost}`);
+  check(lanes.join() === "researcher helper" && sky >= 2 && dropping >= 3 && tokens !== "—" && !!tokens && cost.startsWith("$"),
+    `the Map names the helper's lane (${lanes.join(" | ")}), shows ${sky} sky hand-off edges and cards dropping in on Replay (${dropping} frames); a card's details show tokens ${tokens} and cost ${cost}`);
 
   // Reduced motion: Replay draws the cards in place. Motion reads the preference when the page loads.
   await A.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "reduce" }]);
@@ -153,19 +154,19 @@ export async function agentChecks(stamp: number, owner: Person, guest: Person) {
   await A.emulateMediaFeatures([]);
   check(still === 0, `under reduced motion the Map's Replay moves nothing (${still} frames)`);
 
-  // Phone: the Map scrolls inside its own box, the page never sideways; the panel's ten tabs and its new tabs fit.
+  // Phone: the Map scrolls inside its own box, the page never sideways; the panel's tabs and its grouped tabs fit.
   const P = await A.browserContext().newPage();
   await P.setViewport(PHONE);
   await P.goto(`${threadUrl(helped.number)}?view=map`, { waitUntil: "domcontentloaded" });
   await P.waitForSelector(CARD);
   const box = await P.evaluate(() => {
-    const scroller = document.querySelector("main .overflow-x-auto")!;
+    const scroller = document.querySelector("main .overflow-auto.overscroll-contain")!;
     return { page: document.scrollingElement!.scrollWidth, inner: innerWidth, map: scroller.scrollWidth, shown: scroller.clientWidth };
   });
-  // Picking a card opens the panel over the Map, with the Step tab as its tenth.
+  // Picking a card opens the panel over the Map, with the Step tab first.
   await P.locator(CARD).click();
   let fits = true;
-  for (const tab of ["Agents", "Memory", "Schedules"]) {
+  for (const tab of ["Agents", "Room"]) {
     await openTab(P, tab);
     fits &&= await until(P, () => {
       const panel = document.querySelector('aside[aria-label="Room panel"]')!.getBoundingClientRect();
@@ -176,17 +177,17 @@ export async function agentChecks(stamp: number, owner: Person, guest: Person) {
   const tablist = await P.$eval(`${PANEL} [role=tablist]`, (el) => el.scrollWidth <= el.clientWidth);
   await P.close();
   check(box.page <= box.inner && box.map > box.shown && fits && tablist && Math.min(...tabs) >= 24,
-    `at 390×844 the Map scrolls in its box (${box.map}px in ${box.shown}px) with no page scroll (${box.page}px); Agents, Memory and Schedules fit; the ${tabs.length} tabs fit, narrowest ${Math.min(...tabs)}px`);
+    `at 390×844 the Map scrolls in its box (${box.map}px in ${box.shown}px) with no page scroll (${box.page}px); Agents and Room fit; the ${tabs.length} tabs fit, narrowest ${Math.min(...tabs)}px`);
 
   // Memory: a tool saves an entry, which slides into A's panel; B edits it; the next run reads the edit.
   await open(A, generalUrl);
-  await openTab(A, "Memory");
+  await openTab(A, "Agents");
   await A.bringToFront();
   const sliding = A.evaluate(memoryFrames("fake")) as Promise<number>;
   const saved = await ask("@agent call:memory_save");
   await ended(saved.number);
   const slid = await sliding;
-  await openTab(B, "Memory");
+  await openTab(B, "Agents");
   await B.bringToFront();
   await B.waitForSelector(`${PANEL} li[aria-label="fake"] button[aria-label="Edit memory"]`);
   await B.click(`${PANEL} li[aria-label="fake"] button[aria-label="Edit memory"]`);
@@ -201,8 +202,8 @@ export async function agentChecks(stamp: number, owner: Person, guest: Person) {
   check(slid >= 3 && edited && recalled, `call:memory_save's entry slides into the Memory panel (${slid} frames); B edits it, A sees the edit, and "@agent recall" answers with it`);
 
   // Schedule: a daily 09:00 for @researcher in #general, fired on demand, opens a card and a dated thread.
-  await openTab(A, "Schedules");
-  await clickButton(A, "New");
+  await openTab(A, "Agents");
+  await A.locator('button[aria-label="New schedule"]').click();
   await A.waitForSelector("#schedule-title-new");
   await A.type("#schedule-title-new", "Morning digest");
   await A.select("#schedule-agent-new", researcher.agentId);

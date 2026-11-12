@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Browser, ElementHandle, Page } from "puppeteer-core";
 import {
-  WEB, bff, check, confirmDialog, grantCreator, person, sampleFrames, say, send, shows, signUp, sleep, socketOpen, toastSays, until,
+  WEB, bff, check, confirmDialog, grantCreator, openTab, person, sampleFrames, say, send, shows, signUp, sleep, socketOpen, toastSays, until,
 } from "./smoke-page.js";
 
 type Person = { page: Page; name: string };
@@ -240,7 +240,7 @@ export async function liveChecks(stamp: number, owner: Person, guest: Person, th
     "A unarchives it from the Archived list, and B's open chat gets its composer back");
   await B.goto(`${WEB}/r/${roomId}/c/${general}`, { waitUntil: "networkidle0" });
 
-  await A.click('header button[aria-label="Search messages"]');
+  await openTab(A, "Search");
   await A.waitForSelector('input[aria-label="Search messages"]');
   await A.keyboard.type("hello");
   const found = await until(A, () => [...document.querySelectorAll("aside section button")].some((b) => b.textContent?.includes("hello everyone")));

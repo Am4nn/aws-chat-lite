@@ -19,6 +19,16 @@ describe("Panel", () => {
   });
 });
 
+describe("Panel tabs", () => {
+  it("names each icon tab on hover and to screen readers, and names the shown panel by its tab, with no heading of its own", () => {
+    const out = html(true);
+    expect(out).toContain('aria-label="A" title="A"');
+    expect(out).not.toContain("<h2");
+    const tabId = out.match(/role="tab"[^>]*id="([^"]+)"|id="([^"]+)"[^>]*role="tab"/)!.slice(1).find(Boolean);
+    expect(out).toContain(`aria-labelledby="${tabId}"`);
+  });
+});
+
 describe("breakpoints", () => {
   // Zoomed windows have fractional widths, so a query of "at most 767px" disagrees with CSS's "under 768px" at 767.2.
   it("asks exactly what Tailwind's max-* variants ask, so behaviour and layout can't split at a fractional width", () => {

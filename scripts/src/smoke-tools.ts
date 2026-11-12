@@ -68,7 +68,7 @@ export async function toolChecks(stamp: number, owner: Person, guest: Person) {
   };
   for (const page of [A, B]) {
     await open(page, generalUrl);
-    await openTab(page, "Connections");
+    await openTab(page, "Room");
   }
 
   // Connect: the owner signs in with the fake GitHub, which sends the browser straight back to the room with the
@@ -162,7 +162,7 @@ export async function toolChecks(stamp: number, owner: Person, guest: Person) {
   check(skipped && afterSkip.status === "done", `after 5 s with no answer the write is skipped, and the answer ends "(Skipped because no one approved in time: ${TITLE})"`);
 
   // Activity: who asked, what was approved, denied and skipped, and what the agent ran.
-  await openTab(B, "Connections");
+  await openTab(B, "Room");
   const activity = await panelShows(B, [
     `${owner.name} asked @agent in #${first.number}`, `${guest.name} approved "${TITLE}"`, `${guest.name} denied "${TITLE}"`,
     `No one approved "${TITLE}"`, `@agent ran github_comment in #${first.number}`,

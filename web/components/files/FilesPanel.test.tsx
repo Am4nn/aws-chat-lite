@@ -21,6 +21,11 @@ describe("FilesPanel", () => {
     expect(html({ store: store({ files: [file("a.txt", 13_002_342)], usedBytes: 13_002_342 }) })).toContain("12.4 MB of 100 MB");
   });
 
+  it("shows no usage until the list has loaded, nor while the room has no files", () => {
+    expect(html({ store: store({ state: "loading" }) })).not.toContain("of 100 MB");
+    expect(html()).not.toContain("of 100 MB");
+  });
+
   it("invites a first file when there are none", () => {
     expect(html()).toContain("No files yet. Upload one, or ask an agent to make one.");
   });

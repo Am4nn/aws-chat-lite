@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ChevronRight, Hash, Lock, Menu, PanelRight, Search } from "lucide-react";
+import { ChevronRight, Hash, Lock, Menu, PanelRight } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { taintHint } from "@/lib/client/models";
 import type { Member, TaintSource } from "@/lib/types";
@@ -8,14 +8,14 @@ const STACK = 4;
 
 /**
  * `thread`: on a thread page, its title and run status in place of a chat's name. `taint`: what made that thread private.
- * `panelOpen`: whether the room panel shows. The sidebar button needs no such state: while the drawer is open, the
+ * `panelOpen`: whether the room panel shows. The avatar stack opens the panel's People tab; search lives in the panel. The sidebar button needs no such state: while the drawer is open, the
  * header is inert.
  */
-export function Header({ roomName, chatName, thread, taint = [], members, panelOpen, navCollapsed, onMenu, onSearch, onTogglePanel }: {
+export function Header({ roomName, chatName, thread, taint = [], members, panelOpen, navCollapsed, onMenu, onPeople, onTogglePanel }: {
   roomName: string; chatName?: string; thread?: ReactNode; taint?: TaintSource[]; members: Member[]; panelOpen: boolean;
   /** The reader hid the sidebar, so its button shows on a wide screen too. */
   navCollapsed: boolean;
-  onMenu: () => void; onSearch: () => void; onTogglePanel: () => void;
+  onMenu: () => void; onPeople: () => void; onTogglePanel: () => void;
 }) {
   // Whoever is online leads the stack, so presence is visible even in a big room.
   const stack = [...members].sort((a, b) => Number(b.online) - Number(a.online)).slice(0, STACK);
@@ -39,11 +39,15 @@ export function Header({ roomName, chatName, thread, taint = [], members, panelO
         </span>
       )}
       <div className="ml-auto flex shrink-0 items-center gap-2">
-        <span role="img" className="mr-1 flex -space-x-2 max-sm:hidden" aria-label={`${members.length} members, ${online} online`}>
+        <button
+          onClick={onPeople}
+          aria-label={`${members.length} members, ${online} online`}
+          title="People"
+          className="mr-1 flex -space-x-2 rounded-full transition-[scale,opacity] hover:opacity-85 active:scale-[0.96] max-sm:hidden"
+        >
           {/* Each avatar sits above the next, so the online dot in its corner is never covered. */}
           {stack.map((m, i) => <span key={m.userId} className="relative flex" style={{ zIndex: STACK - i }}><Avatar name={m.username} online={m.online} ring /></span>)}
-        </span>
-        <HeaderButton label="Search messages" onClick={onSearch}><Search aria-hidden="true" size={15} /></HeaderButton>
+        </button>
         <HeaderButton label="Toggle room panel" pressed={panelOpen} onClick={onTogglePanel}><PanelRight aria-hidden="true" size={15} /></HeaderButton>
       </div>
     </header>

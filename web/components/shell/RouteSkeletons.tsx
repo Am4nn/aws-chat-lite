@@ -81,18 +81,19 @@ export function ThreadSkeleton() {
   );
 }
 
-/** A turn's heading, its stats and time-share row, then the agent's lane with a few step cards. */
+/** The totals strip, then the newest turn's row: its prompt block and a few step cards level with its middle. */
 function MapSkeleton() {
   return (
     <Loading label="map">
-      <Bar className="mx-4 mt-4 h-4 w-60 max-w-[60%] sm:mx-[22px]" />
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 sm:px-[22px]">
-        <Bar className="h-4 w-56" />
-        <Bar className="h-1.5 w-[200px] rounded-full max-sm:w-full sm:ml-auto" />
-        <Bar className="h-8 w-[86px] rounded-[10px]" />
+      <div className="flex h-11 shrink-0 items-center gap-4 border-b border-line px-4 sm:px-[22px]">
+        <Bar className="h-3.5 w-40" />
+        <Bar className="h-1 w-[140px] rounded-full" />
       </div>
-      <div className="mx-4 flex h-[152px] gap-6 overflow-hidden rounded-2xl bg-surface-1 pl-[98px] pt-12">
-        {[0, 1, 2].map((i) => <Bar key={i} className="h-[72px] w-[108px] shrink-0 rounded-xl" />)}
+      <div className="flex overflow-hidden px-4 pt-6 sm:px-[22px]">
+        <Bar className="h-24 w-52 shrink-0 rounded-xl" />
+        <div className="flex gap-4 pl-6 pt-3">
+          {[0, 1, 2].map((i) => <Bar key={i} className="h-[72px] w-[128px] shrink-0 rounded-xl" />)}
+        </div>
       </div>
     </Loading>
   );
