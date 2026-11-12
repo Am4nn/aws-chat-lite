@@ -8,6 +8,7 @@ import { findTool, toolEnv } from "../tools/index.js";
 import { repoOf } from "../tools/github/repo.js";
 import { threadsRepo } from "../threads/repo.js";
 import type { ApprovalStatus } from "../threads/types.js";
+import { stepEvent } from "./context.js";
 import { DEAD_AFTER_MS } from "./model.js";
 import { notifyRun } from "./notify.js";
 import { runsRepo } from "./repo.js";
@@ -59,7 +60,7 @@ export async function requestApproval(
   });
   if (item.status !== "pending") return wakeRun(callbackId);
   const { title, expiresAt } = item;
-  const logged = (await runs.allEvents(run.runId)).find((e) => e.type === "approval.requested" && e.step === step);
+  const logged = stepEvent(await runs.allEvents(run.runId), "approval.requested", step);
   const requested = logged
     ?? await (await runs.eventWriter(run.runId, laneOf(run))).append({ type: "approval.requested", step, call: item.call, title, expiresAt });
   const deadAt = new Date(Date.parse(expiresAt) + DEAD_AFTER_MS).toISOString();
@@ -79,7 +80,7 @@ export async function settleApproval(run: RoutedRun, step: number): Promise<Appr
   const runs = runsRepo();
   const item = await approvalsRepo().settle(run.runId, step);
   const decision = item.status as Exclude<ApprovalStatus, "pending">;
-  const settled = (await runs.allEvents(run.runId)).find((e) => e.type === "approval.settled" && e.step === step)
+  const settled = stepEvent(await runs.allEvents(run.runId), "approval.settled", step)
     ?? await (await runs.eventWriter(run.runId, laneOf(run))).append({ type: "approval.settled", step, decision, by: item.by });
   await auditRepo().record(run.roomId, {
     id: `${run.runId}#${settled.seq}`, at: settled.at, actor: item.by ?? "agent", kind: decision, threadNumber: run.number,

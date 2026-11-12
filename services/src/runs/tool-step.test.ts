@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BUILT_IN } from "../agents/model.js";
 import type { RunEvent } from "../threads/types.js";
-import { toolStep, type RoutedRun } from "./steps.js";
+import type { RoutedRun } from "./steps.js";
+import { toolStep } from "./tool-step.js";
 
 const runs = {
   allEvents: vi.fn(async (): Promise<RunEvent[]> => []),

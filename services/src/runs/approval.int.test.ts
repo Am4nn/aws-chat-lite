@@ -18,7 +18,8 @@ import { DEAD_AFTER_MS } from "./model.js";
 import { BUILT_IN } from "../agents/model.js";
 import { runsRepo, type Run } from "./repo.js";
 import { startOrSteer } from "./start.js";
-import { toolStep, type RoutedRun } from "./steps.js";
+import type { RoutedRun } from "./steps.js";
+import { toolStep } from "./tool-step.js";
 import { requestStop } from "./stop.js";
 
 // Runs against the deployed run function on Floci, in fake model and tool modes: npm run deploy:local, then this file.

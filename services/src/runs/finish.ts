@@ -7,7 +7,7 @@ import { summaryLine } from "../threads/model.js";
 import { threadsRepo } from "../threads/repo.js";
 import type { RunEndStatus, RunEvent } from "../threads/types.js";
 import { closeSandbox } from "../workspace/session.js";
-import { answerOf } from "./context.js";
+import { answerOf, stepEvent } from "./context.js";
 import { notifyRun } from "./notify.js";
 import { runsRepo, type Run } from "./repo.js";
 
@@ -23,8 +23,8 @@ function skipNotes(events: RunEvent[]): string[] {
   const texts = new Set(events.flatMap((e) => (e.type === "text" ? [e.text] : [])));
   return events.flatMap((e) => {
     if (e.type !== "approval.settled" || e.decision !== "expired") return [];
-    const asked = events.find((r) => r.type === "approval.requested" && r.step === e.step);
-    const note = asked?.type === "approval.requested" ? SKIP_NOTE(asked.title) : "";
+    const asked = stepEvent(events, "approval.requested", e.step);
+    const note = asked ? SKIP_NOTE(asked.title) : "";
     return note && !texts.has(note) ? [note] : [];
   });
 }

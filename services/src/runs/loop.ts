@@ -7,7 +7,10 @@ import type { TaintSource } from "../models/privacy.js";
 import { gateOf, requestApproval, settleApproval } from "./approval.js";
 import { finishRun } from "./finish.js";
 import { finishHelper, startHelper } from "./helpers.js";
-import { failRun, laneName, load, modelTurn, nameThread, routeRun, toolStep, type End, type RoutedRun, type StepResult } from "./steps.js";
+import { modelTurn } from "./model-turn.js";
+import { nameThread, routeRun } from "./routing.js";
+import { failRun, laneName, load, type End, type RoutedRun, type StepResult } from "./steps.js";
+import { toolStep } from "./tool-step.js";
 import { DELEGATE } from "./tools.js";
 
 /** Each step is tried 3 times in all, a second or two apart, before the run gives up on it. */
@@ -21,15 +24,6 @@ type Close = (run: RoutedRun, end: End, force: boolean, turn: number) => Promise
 /** A durable step of a lane; a helper's step names carry its lane. */
 const laneStep = (ctx: DurableContext, run: RoutedRun) =>
   <T>(name: string, fn: () => Promise<T>) => ctx.step(laneName(run, name), fn, { retryStrategy });
-
-/**
- * A helper's work runs in a child context of the run's execution: its steps are checkpointed under it, and once it
- * ends its ending is, so a replay returns that without going through its steps. The ending is a few fields, well under
- * the checkpoint's size limit, past which the child would run again on every replay. A helper's step names carry its
- * lane, so on an engine that can't replay child contexts its steps can run in `ctx` itself (`fn(ctx)`) unchanged.
- */
-const helperContext = (ctx: DurableContext, name: string, fn: (child: DurableContext) => Promise<End>) =>
-  ctx.runInChildContext(name, fn);
 
 /**
  * The agent loop, as one durable execution. Each model call and each tool call is a checkpointed step, so after a
@@ -119,7 +113,10 @@ async function delegate(run: RoutedRun, call: ToolCall, i: number, taint: TaintS
   const { helper } = handover;
   let end: End | undefined;
   try {
-    end = await helperContext(ctx, `helper-${i}-${call.id}`, (child) => agentLoop(helper, child, async () => "answered"));
+    // The helper works in a child context: its steps are checkpointed under it, and once it ends its ending is, so a
+    // replay returns that without going through its steps. The ending is a few fields, well under the checkpoint's
+    // size limit, past which the child would run again on every replay.
+    end = await ctx.runInChildContext(`helper-${i}-${call.id}`, (child) => agentLoop(helper, child, async () => "answered"));
   } catch (e) {
     if (!(e instanceof DurableOperationError)) throw e;
   }

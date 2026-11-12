@@ -7,11 +7,12 @@ import { mergeTaint, type TaintSource } from "../models/privacy.js";
 import { summaryLine } from "../threads/model.js";
 import { threadsRepo } from "../threads/repo.js";
 import type { RunEvent, ToolKind } from "../threads/types.js";
-import { answerOf, inLane } from "./context.js";
+import { answerOf, inLane, stepEvent } from "./context.js";
 import { notifyRun } from "./notify.js";
 import { runsRepo } from "./repo.js";
 import { roomDefaultModel } from "./start.js";
-import { auditTool, chooseModel, costOf, laneName, limitsReached, type End, type RoutedRun, type StepResult } from "./steps.js";
+import { chooseModel } from "./routing.js";
+import { auditTool, costOf, laneName, limitsReached, type End, type RoutedRun, type StepResult } from "./steps.js";
 import { DELEGATE, firstLine, type AgentCard } from "./tools.js";
 
 /*
@@ -33,9 +34,6 @@ export function delegateResult(agent: string, end: End, answer: string): { ok: b
   const chars = Array.from(answer);
   return { ok: true, output: chars.length > MAX_ANSWER ? `${chars.slice(0, MAX_ANSWER).join("")}\n…(cut)` : answer };
 }
-
-const stepEvent = (events: RunEvent[], type: RunEvent["type"], step: number) =>
-  events.find((e) => e.type === type && "step" in e && e.step === step);
 
 /**
  * The delegate step's start, which a retry repeats without logging anything twice. It logs the main lane's step, then
