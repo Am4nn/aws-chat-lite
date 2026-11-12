@@ -159,11 +159,11 @@ describe("approvals in the run loop, on Floci", { timeout: 60_000 }, () => {
     await waiting(at.roomId, thread.threadId);
     await roomsRepo().archiveRoom(at.roomId, at.aman.userId);
     const archivedAt = Date.now();
-    await endWaitingRuns(at.roomId, at.aman.username);
+    await endWaitingRuns(at.roomId);
     await expect(decideApproval(at.bea, runId, 1, "approve")).rejects.toEqual(new Gone("This room is archived."));
     expect(await finished(runId, 10_000)).toMatchObject({ status: "stopped", reason: "The room was archived." });
     expect(Date.now() - archivedAt).toBeLessThan(5_000);
-    expect(await approvalsRepo().settle(runId, 1)).toMatchObject({ status: "cancelled", by: "aman" });
+    expect(await approvalsRepo().settle(runId, 1)).toMatchObject({ status: "cancelled" });
     expect(await eventsOf(runId, "step.finished")).toEqual([]);
   });
 

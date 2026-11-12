@@ -1,6 +1,7 @@
 import { wakeRun } from "../approvals/decide.js";
 import { approvalsRepo, type Approval } from "../approvals/repo.js";
 import { auditRepo } from "../audit/repo.js";
+import { budgetRepo } from "../budget/repo.js";
 import type { ToolCall } from "../models/gateway.js";
 import { enqueuePush } from "../push/enqueue.js";
 import { mergeTaint, type TaintSource } from "../models/privacy.js";
@@ -46,8 +47,9 @@ export async function gateOf(run: RoutedRun, call: ToolCall, taint: TaintSource[
  * The wait's submitter: stores the approval with the input the gate pinned, logs it once, shows the thread as
  * waiting and tells the whole room, since any member may approve. A retried submitter is handed the same callback; it
  * finds the approval already decided, or the run already asked to stop, and then wakes the wait itself, since nothing
- * else will. The same goes for a stop or an archive that landed before the run showed as waiting: they found nothing
- * to wake, so the run checks its limits again once it waits, and cancels and wakes itself.
+ * else will. A stop that landed first shows on the run as `markWaiting` wrote it; an archive that landed before the
+ * run showed as waiting found no waiting thread to wake, so the run reads the room once it waits. Either way it
+ * cancels and wakes its own wait.
  */
 export async function requestApproval(
   run: RoutedRun, call: ToolCall, step: number, gate: { timeoutSec: number; title: string; input: Record<string, unknown> }, callbackId: string,
@@ -70,7 +72,8 @@ export async function requestApproval(
   if (!logged) {
     await enqueuePush({ kind: "approval", roomId: run.roomId, threadId: run.threadId, number: run.number, runId: run.runId, step, title });
   }
-  if ((stopRequestedBy || await limitsReached(run)) && await approvals.cancel(run.runId, step, stopRequestedBy)) await wakeRun(callbackId);
+  const archived = !stopRequestedBy && (await budgetRepo().withArchived(run.roomId, new Date())).archived;
+  if ((stopRequestedBy || archived) && await approvals.cancel(run.runId, step, stopRequestedBy)) await wakeRun(callbackId);
 }
 
 /**

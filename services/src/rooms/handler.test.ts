@@ -102,11 +102,11 @@ describe("rooms handler", () => {
     error.mockRestore();
   });
 
-  it("archiving ends the room's runs waiting on an approval at once, in the archiver's name, and a failure there is only logged", async () => {
-    const endWaiting = vi.fn(async (_roomId: string, _by: string) => {});
+  it("archiving ends the room's runs waiting on an approval at once, and a failure there is only logged", async () => {
+    const endWaiting = vi.fn(async (_roomId: string) => {});
     const archive = (repo: RoomsRepo) => makeHandler(repo, vi.fn(), endWaiting)(ev("POST /rooms/{roomId}/archive", { params: { roomId: "r1" } }));
     await archive(fakeRepo());
-    expect(endWaiting).toHaveBeenCalledWith("r1", "aman");
+    expect(endWaiting).toHaveBeenCalledWith("r1");
     endWaiting.mockClear();
     await archive(fakeRepo({ archiveRoom: new Forbidden("owner only") }));
     expect(endWaiting).not.toHaveBeenCalled();

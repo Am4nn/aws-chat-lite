@@ -10,7 +10,7 @@ const fake = vi.hoisted(() => ({
 vi.mock("../approvals/repo.js", () => ({
   approvalsRepo: () => ({
     // A decided approval stays decided, but its callback still comes back, since the run must wake either way.
-    cancel: async (runId: string, step: number, by: string) => (fake.cancelled.push([runId, step, by]), `cb-${runId}`),
+    cancel: async (runId: string, step: number) => (fake.cancelled.push([runId, step]), `cb-${runId}`),
   }),
 }));
 vi.mock("../approvals/decide.js", () => ({ wakeRun: async (callbackId: string) => void fake.woken.push(callbackId) }));
@@ -24,25 +24,25 @@ afterEach(() => {
 });
 
 describe("endWaitingRuns", () => {
-  it("cancels every waiting thread's approval in the archiver's name and wakes its run, across pages", async () => {
+  it("cancels every waiting thread's approval and wakes its run, across pages", async () => {
     const pages = [
       { Items: [{ activeRunId: "run1", status: "waiting", approval: { step: 3 } }], LastEvaluatedKey: { pk: "x" } },
       { Items: [{ activeRunId: "run2", status: "waiting", approval: { step: 1 } }] },
     ];
     const send = vi.spyOn(docClient(), "send").mockImplementation((async () => pages.shift()) as never);
-    await endWaitingRuns("r1", "aman");
+    await endWaitingRuns("r1");
     const query = send.mock.calls[0]![0] as QueryCommand;
     expect(query.input).toMatchObject({
       KeyConditionExpression: "pk = :p AND begins_with(sk, :t)", FilterExpression: "#status = :waiting",
       ExpressionAttributeNames: { "#status": "status" }, ExpressionAttributeValues: { ":p": "ROOM#r1", ":t": "THREAD#", ":waiting": "waiting" },
     });
-    expect(fake.cancelled).toEqual([["run1", 3, "aman"], ["run2", 1, "aman"]]);
+    expect(fake.cancelled).toEqual([["run1", 3], ["run2", 1]]);
     expect(fake.woken).toEqual(["cb-run1", "cb-run2"]);
   });
 
   it("does nothing in a room with no run waiting", async () => {
     vi.spyOn(docClient(), "send").mockImplementation((async () => ({ Items: [] })) as never);
-    await endWaitingRuns("r1", "aman");
+    await endWaitingRuns("r1");
     expect(fake.woken).toEqual([]);
   });
 });

@@ -19,7 +19,7 @@ type Event = APIGatewayProxyEventV2WithJWTAuthorizer;
  * (`endWaiting`), best effort too: a run that misses its wake still ends once its approval expires.
  */
 export function makeHandler(
-  repo: RoomsRepo, notifyRoom: (roomId: string, alsoUserId?: string) => Promise<unknown>, endWaiting: (roomId: string, by: string) => Promise<void>,
+  repo: RoomsRepo, notifyRoom: (roomId: string, alsoUserId?: string) => Promise<unknown>, endWaiting: (roomId: string) => Promise<void>,
 ) {
   const changed = async (statusCode: number, result: unknown, roomId: string, alsoUserId?: string) => {
     await bestEffort("room.updated broadcast", () => notifyRoom(roomId, alsoUserId));
@@ -62,7 +62,7 @@ export function makeHandler(
           return changed(200, await repo.leaveRoom(params.roomId!, subFromEvent(event)), params.roomId!, subFromEvent(event));
         case "POST /rooms/{roomId}/archive": {
           const archived = await repo.archiveRoom(params.roomId!, subFromEvent(event));
-          await bestEffort("ending waiting runs", () => endWaiting(params.roomId!, callerFromEvent(event).username));
+          await bestEffort("ending waiting runs", () => endWaiting(params.roomId!));
           return changed(200, archived, params.roomId!);
         }
         case "PUT /rooms/{roomId}/model": {
