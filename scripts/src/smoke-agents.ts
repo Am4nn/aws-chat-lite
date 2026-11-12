@@ -160,7 +160,7 @@ export async function agentChecks(stamp: number, owner: Person, guest: Person) {
   await P.goto(`${threadUrl(helped.number)}?view=map`, { waitUntil: "domcontentloaded" });
   await P.waitForSelector(CARD);
   const box = await P.evaluate(() => {
-    const scroller = document.querySelector("main .overflow-x-auto")!;
+    const scroller = document.querySelector("main .overflow-auto.overscroll-contain")!;
     return { page: document.scrollingElement!.scrollWidth, inner: innerWidth, map: scroller.scrollWidth, shown: scroller.clientWidth };
   });
   // Picking a card opens the panel over the Map, with the Step tab first.
