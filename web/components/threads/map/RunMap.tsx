@@ -1,6 +1,6 @@
 "use client";
 
-import { useContext, useMemo, useState, type ReactNode } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import { Play } from "lucide-react";
 import { formatElapsed, formatUsd } from "@/lib/client/format";
 import { runMap, type RunMap as Layout } from "@/lib/client/runMap";
@@ -13,35 +13,57 @@ import type { Message, ThreadSummary } from "@/lib/types";
 import { Spinner } from "@/components/ui/Spinner";
 import { MapEdges } from "./MapEdges";
 import { MapNode } from "./MapNode";
-import { RunSwitcher } from "./RunSwitcher";
 import { StepPick } from "./stepPick";
 import { TimeShare } from "./TimeShare";
 
 const STAGGER_S = 0.15;
+/** How many turns load at first, and how many more each "Show earlier" adds: each turn opens its own stream. */
+const TURNS_PAGE = 10;
 const MAX_DELAY_S = 1.5;
 
 /**
- * A thread's Map page: the run named in the address, else its latest, which the thread's live status keeps current,
- * with a switcher through the thread's other runs.
+ * A thread's Map page: every turn at once, oldest first, each headed by the message that started it and drawn as its
+ * own map. It opens on the turn a message's Map link names, else the latest, which the thread's live status keeps
+ * current. The latest ten load first; earlier ones load on request.
  */
 export function ThreadMap({ thread: initial, runId, messages }: { thread: ThreadSummary; runId?: string; messages: Message[] }) {
   const thread = useThreads().byId(initial.threadId) ?? initial;
-  const shown = runId ?? thread.runId;
-  if (!shown) return <p className="p-7 text-[13.5px] text-text-3">Nothing has run here yet.</p>;
+  const runs = threadRuns(messages, thread.runId);
+  const target = runId ?? runs.at(-1)?.runId;
+  const [count, setCount] = useState(() => Math.max(TURNS_PAGE, runs.length - runs.findIndex((r) => r.runId === target)));
+  useEffect(() => {
+    document.getElementById(`run-${target}`)?.scrollIntoView({ block: "start" });
+  }, [target]);
+
+  if (!runs.length) return <p className="p-7 text-[13.5px] text-text-3">Nothing has run here yet.</p>;
+  const shown = runs.slice(-count);
+  const earlier = runs.length - shown.length;
   return (
-    <RunMap
-      key={shown} runId={shown} live={isLive(thread.status) && shown === thread.runId}
-      switcher={<RunSwitcher runs={threadRuns(messages, thread.runId)} shown={shown} />}
-    />
+    <div className="h-full overflow-y-auto overscroll-contain">
+      {earlier > 0 && (
+        <button
+          onClick={() => setCount((n) => n + TURNS_PAGE)}
+          className="mx-4 mt-3 h-8 rounded-[10px] px-3 text-[12.5px] text-text-3 transition-colors hover:bg-surface-2 hover:text-text sm:mx-[22px]"
+        >
+          Show {Math.min(earlier, TURNS_PAGE)} earlier {earlier === 1 ? "turn" : "turns"}
+        </button>
+      )}
+      {shown.map((r, i) => (
+        <section key={r.runId} id={`run-${r.runId}`} aria-label={`Turn ${runs.length - shown.length + i + 1}`} className="scroll-mt-2 border-b border-line">
+          <h3 className="truncate px-4 pt-4 text-[13.5px] text-text-2 sm:px-[22px]">{r.prompt || "This turn"}</h3>
+          <RunMap runId={r.runId} live={isLive(thread.status) && r.runId === thread.runId} />
+        </section>
+      ))}
+    </div>
   );
 }
 
 /**
  * One run as a map: a bar with its step count, helpers, time and cost and where that time went, then a lane per agent
- * with a card per step. It scrolls inside its own box, so a phone never scrolls the page sideways, and the lane
- * labels stay in view. Replay draws it in again from the start.
+ * with a card per step. A wide map scrolls sideways inside its own box, so a phone never scrolls the page sideways,
+ * and the lane labels stay in view. Replay draws it in again from the start.
  */
-export function RunMap({ runId, live, switcher }: { runId: string; live: boolean; switcher?: ReactNode }) {
+export function RunMap({ runId, live }: { runId: string; live: boolean }) {
   const { run, unavailable } = useRunStream(runId, live);
   const running = live && run.status === "running";
   const now = useNow(running);
@@ -49,16 +71,15 @@ export function RunMap({ runId, live, switcher }: { runId: string; live: boolean
   const [replays, setReplays] = useState(0);
 
   if (unavailable) return <p className="p-7 text-[13.5px] text-text-3">This run&apos;s steps couldn&apos;t be loaded.</p>;
-  if (!run.lastSeq) return <div className="grid h-full place-items-center"><Spinner /></div>;
+  if (!run.lastSeq) return <div className="grid h-24 place-items-center"><Spinner /></div>;
 
   const steps = map.nodes.filter((n) => n.kind === "tool").length;
   const helpers = map.lanes.length - 1;
   const elapsed = (run.endedAt ? Date.parse(run.endedAt) : now) - Date.parse(run.startedAt ?? run.events[0].at);
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2 border-b border-line px-4 py-3 sm:px-[22px]">
-        {switcher}
+    <div>
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 sm:px-[22px]">
         <p suppressHydrationWarning className="font-mono text-[12.5px] tabular-nums text-text-3">
           <b className="font-normal text-text">{steps}</b> {steps === 1 ? "step" : "steps"}
           {" · "}<b className="font-normal text-text">{helpers}</b> {helpers === 1 ? "helper" : "helpers"}
@@ -74,7 +95,7 @@ export function RunMap({ runId, live, switcher }: { runId: string; live: boolean
           Replay
         </button>
       </div>
-      <div className="relative min-h-0 flex-1 overflow-auto overscroll-contain">
+      <div className="relative overflow-x-auto overscroll-x-contain">
         <MapCanvas key={replays} map={map} runId={runId} live={live} />
       </div>
     </div>
