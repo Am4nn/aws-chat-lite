@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { User } from "../lib/auth.js";
-import { conditionFailed, docClient, failedAt, queryAll, setFields, tableName, transactionConflict } from "../lib/db.js";
+import { conditionFailed, docClient, failedAt, queryAll, setFields, tableName, transactionConflict, transactWrite } from "../lib/db.js";
 import { Conflict, Forbidden, NotFound, ValidationError } from "../lib/errors.js";
 import { roomKey, roomMetaKey } from "../lib/keys.js";
 import { requireMember, roomMembers } from "../chat/membership.js";
@@ -63,29 +63,24 @@ export function agentsRepo() {
    * a cancelled attempt is tried again.
    */
   async function claim(roomId: string, agent: Agent): Promise<boolean> {
-    for (let attempt = 1; ; attempt++) {
-      try {
-        await db.send(new TransactWriteCommand({
-          TransactItems: [
-            {
-              Update: {
-                TableName, Key: roomMetaKey(roomId), UpdateExpression: "ADD agentCount :one",
-                ConditionExpression: "attribute_exists(pk) AND (attribute_not_exists(agentCount) OR agentCount < :max)",
-                ExpressionAttributeValues: { ":one": 1, ":max": MAX_AGENTS },
-              },
-            },
-            { Put: { TableName, Item: { ...nameKey(roomId, agent.name), agentId: agent.agentId }, ConditionExpression: "attribute_not_exists(pk)" } },
-            { Put: { TableName, Item: { ...agentKey(roomId, agent.agentId), ...agent } } },
-          ],
-        }));
-        return true;
-      } catch (e) {
-        if (failedAt(e, 0)) throw new Conflict(`A room has at most ${MAX_AGENTS} agents.`);
-        if (failedAt(e, 1)) return false;
-        if (transactionConflict(e) && attempt < 3) continue;
-        if (transactionConflict(e)) throw new Conflict("The room just changed; try again.");
-        throw e;
-      }
+    try {
+      await transactWrite([
+        {
+          Update: {
+            TableName, Key: roomMetaKey(roomId), UpdateExpression: "ADD agentCount :one",
+            ConditionExpression: "attribute_exists(pk) AND (attribute_not_exists(agentCount) OR agentCount < :max)",
+            ExpressionAttributeValues: { ":one": 1, ":max": MAX_AGENTS },
+          },
+        },
+        { Put: { TableName, Item: { ...nameKey(roomId, agent.name), agentId: agent.agentId }, ConditionExpression: "attribute_not_exists(pk)" } },
+        { Put: { TableName, Item: { ...agentKey(roomId, agent.agentId), ...agent } } },
+      ]);
+      return true;
+    } catch (e) {
+      if (failedAt(e, 0)) throw new Conflict(`A room has at most ${MAX_AGENTS} agents.`);
+      if (failedAt(e, 1)) return false;
+      if (transactionConflict(e)) throw new Conflict("The room just changed; try again.");
+      throw e;
     }
   }
 

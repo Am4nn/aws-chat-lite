@@ -1,7 +1,5 @@
-import {
-  GetCommand, PutCommand, QueryCommand, TransactWriteCommand, UpdateCommand, type TransactWriteCommandInput,
-} from "@aws-sdk/lib-dynamodb";
-import { conditionFailed, docClient, failedAt, queryAll, setFields, tableName } from "../lib/db.js";
+import { GetCommand, PutCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { conditionFailed, docClient, failedAt, queryAll, setFields, tableName, type TransactItem, withoutKeys } from "../lib/db.js";
 import { LAST_SEQ, forReaders, seqKey, type Message, type StoredMessage } from "../chat/model.js";
 import type { ModelPick } from "../models/catalog.js";
 import { summary } from "../threads/model.js";
@@ -46,7 +44,6 @@ export type Run = {
 };
 
 type Item = Record<string, unknown>;
-export type TransactItem = NonNullable<TransactWriteCommandInput["TransactItems"]>[number];
 
 const MODEL_CONTEXT = 50;
 const FORCED_CLOSE_ATTEMPTS = 5;
@@ -64,8 +61,6 @@ const ownedThread = (run: Run, u: Update) => ({
   ExpressionAttributeValues: { ...u.ExpressionAttributeValues, ":runId": run.runId, ":one": 1 },
 });
 
-const withoutKeys = ({ pk: _pk, sk: _sk, ...rest }: Item) => rest;
-
 /**
  * A stored message without its attachment links (the model doesn't read them, and an agent's answer has none), so the
  * run needs no access to the files bucket.
@@ -82,7 +77,7 @@ export function runsRepo() {
 
   async function getRun(runId: string): Promise<Run | undefined> {
     const { Item } = await db.send(new GetCommand({ TableName, Key: runKey(runId), ConsistentRead: true }));
-    return Item && (withoutKeys(Item) as Run);
+    return Item && withoutKeys<Run>(Item);
   }
 
   async function lastEventSeq(runId: string): Promise<number> {
@@ -152,7 +147,7 @@ export function runsRepo() {
         TableName, KeyConditionExpression: "pk = :p AND sk BETWEEN :from AND :to", ConsistentRead: true, Limit: limit,
         ExpressionAttributeValues: { ":p": `RUN#${runId}`, ":from": eventSk(afterSeq + 1), ":to": eventSk(LAST_SEQ) },
       }));
-      return Items.map((i) => withoutKeys(i) as RunEvent);
+      return Items.map((i) => withoutKeys<RunEvent>(i));
     },
 
     async allEvents(runId: string): Promise<RunEvent[]> {
@@ -160,7 +155,7 @@ export function runsRepo() {
         KeyConditionExpression: "pk = :p AND begins_with(sk, :ev)", ConsistentRead: true,
         ExpressionAttributeValues: { ":p": `RUN#${runId}`, ":ev": "EV#" },
       });
-      return items.map((i) => withoutKeys(i) as RunEvent);
+      return items.map((i) => withoutKeys<RunEvent>(i));
     },
 
     /** Thread messages after the run's cursor: the steers it hasn't read yet. */
@@ -224,7 +219,7 @@ export function runsRepo() {
           ExpressionAttributeNames: { "#status": "status" }, ExpressionAttributeValues: { ":by": username, ":running": "running" },
           ReturnValues: "ALL_NEW",
         }));
-        return withoutKeys(Attributes!) as Run;
+        return withoutKeys<Run>(Attributes!);
       } catch (e) {
         if (conditionFailed(e)) return undefined;
         throw e;

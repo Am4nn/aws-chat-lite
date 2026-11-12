@@ -1,7 +1,7 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
-  BatchGetCommand, DeleteCommand, DynamoDBDocumentClient, QueryCommand,
-  type BatchGetCommandInput, type BatchGetCommandOutput, type QueryCommandInput, type QueryCommandOutput,
+  BatchGetCommand, DeleteCommand, DynamoDBDocumentClient, QueryCommand, TransactWriteCommand,
+  type BatchGetCommandInput, type BatchGetCommandOutput, type QueryCommandInput, type QueryCommandOutput, type TransactWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
 import { Unavailable } from "./errors.js";
 import { sleep } from "./sleep.js";
@@ -22,6 +22,11 @@ export const tableName = () => {
   return t;
 };
 
+export type TransactItem = NonNullable<TransactWriteCommandInput["TransactItems"]>[number];
+
+/** An item without its table keys, as the rest of the app sees it. */
+export const withoutKeys = <T = Record<string, unknown>>({ pk: _pk, sk: _sk, ...rest }: Record<string, unknown>) => rest as T;
+
 /** True when a write failed its condition (single write or one item of a transaction). */
 export function conditionFailed(e: unknown): boolean {
   const err = e as { name?: string; CancellationReasons?: { Code?: string }[] };
@@ -37,6 +42,21 @@ export function failedAt(e: unknown, index: number): boolean {
 /** True when a transaction was cancelled because another transaction was writing one of its items at the same time. */
 export function transactionConflict(e: unknown): boolean {
   return !!(e as { CancellationReasons?: { Code?: string }[] }).CancellationReasons?.some((r) => r.Code === "TransactionConflict");
+}
+
+/**
+ * One transaction, tried again when DynamoDB cancels it as a TransactionConflict: another transaction was writing one
+ * of its items at the same moment (a room's META counters, say), which is worth another go. Any other failure, a
+ * condition included, is the caller's to read.
+ */
+export async function transactWrite(TransactItems: TransactItem[], attempts = 3) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await docClient().send(new TransactWriteCommand({ TransactItems }));
+    } catch (e) {
+      if (!transactionConflict(e) || attempt === attempts) throw e;
+    }
+  }
 }
 
 /**

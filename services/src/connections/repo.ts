@@ -4,7 +4,7 @@ import { auditItem } from "../audit/repo.js";
 import { requireMember } from "../chat/membership.js";
 import { formatWait, timeoutMinutes } from "../approvals/model.js";
 import type { User } from "../lib/auth.js";
-import { conditionFailed, docClient, queryAll, tableName, takeOnce } from "../lib/db.js";
+import { conditionFailed, docClient, queryAll, tableName, takeOnce, withoutKeys } from "../lib/db.js";
 import { FlowFailed, Forbidden, Gone, Upstream, ValidationError } from "../lib/errors.js";
 import { siteCallback } from "../lib/http.js";
 import { roomKey, roomMetaKey } from "../lib/keys.js";
@@ -35,15 +35,13 @@ const nowSec = () => Math.floor(Date.now() / 1000);
 const MCP_PREFIX = "LINK#mcp#";
 export const mcpConnKey = (roomId: string, name: string) => ({ pk: roomKey(roomId), sk: `${MCP_PREFIX}${name}` });
 
-export const withoutKeys = ({ pk: _pk, sk: _sk, ...rest }: Record<string, unknown>) => rest;
-
 /** A room's remote MCP servers, in name order. */
 export async function mcpConnections(roomId: string): Promise<McpConnection[]> {
   const items = await queryAll({
     KeyConditionExpression: "pk = :pk AND begins_with(sk, :prefix)", ConsistentRead: true,
     ExpressionAttributeValues: { ":pk": roomKey(roomId), ":prefix": MCP_PREFIX },
   });
-  return items.map((item) => withoutKeys(item) as McpConnection);
+  return items.map((item) => withoutKeys<McpConnection>(item));
 }
 
 /**
@@ -73,7 +71,7 @@ export function connectionsRepo() {
       mcpConnections(roomId),
       db.send(new GetCommand({ TableName, Key: roomMetaKey(roomId), ConsistentRead: true })),
     ]);
-    const github = conn.Item ? (withoutKeys(conn.Item) as GitHubConnection) : null;
+    const github = conn.Item ? withoutKeys<GitHubConnection>(conn.Item) : null;
     return { github, mcp, approvalTimeoutSec: Number(meta.Item?.approvalTimeoutSec ?? DEFAULT_APPROVAL_TIMEOUT_SEC) };
   }
 

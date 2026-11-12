@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
-import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { agentOrDefault } from "../agents/model.js";
 import { agentsRepo } from "../agents/repo.js";
 import { auditRepo } from "../audit/repo.js";
 import type { User } from "../lib/auth.js";
-import { docClient, failedAt, setFields, tableName, transactionConflict } from "../lib/db.js";
+import { docClient, failedAt, setFields, tableName, transactWrite, type TransactItem } from "../lib/db.js";
 import { NotFound } from "../lib/errors.js";
 import { roomMetaKey, runKey, threadKey } from "../lib/keys.js";
 import type { Message } from "../chat/model.js";
@@ -18,7 +18,7 @@ import { threadsRepo } from "../threads/repo.js";
 import { finishRun } from "./finish.js";
 import { DEAD_AFTER_MS, DEAD_REASON } from "./model.js";
 import { notifyRun } from "./notify.js";
-import { runsRepo, type Run, type TransactItem } from "./repo.js";
+import { runsRepo, type Run } from "./repo.js";
 
 const CLAIM_ATTEMPTS = 5;
 
@@ -53,15 +53,13 @@ function threadAdds(taint: TaintSource[]) {
  * failed) failing means that run closed itself meanwhile, so the claim goes ahead without it.
  */
 async function claimed(items: TransactItem[], replaced?: TransactItem): Promise<boolean> {
-  for (let attempt = 1; ; attempt++) {
-    try {
-      await docClient().send(new TransactWriteCommand({ TransactItems: replaced ? [...items, replaced] : items }));
-      return true;
-    } catch (e) {
-      if (failedAt(e, 1)) return false;
-      if (replaced && failedAt(e, 2)) replaced = undefined;
-      else if (!transactionConflict(e) || attempt === CLAIM_ATTEMPTS) throw e;
-    }
+  try {
+    await transactWrite(replaced ? [...items, replaced] : items, CLAIM_ATTEMPTS);
+    return true;
+  } catch (e) {
+    if (failedAt(e, 1)) return false;
+    if (replaced && failedAt(e, 2)) return claimed(items);
+    throw e;
   }
 }
 

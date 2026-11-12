@@ -2,10 +2,10 @@ import { randomUUID } from "node:crypto";
 import { GetCommand, PutCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { auditItem } from "../../audit/repo.js";
-import { connectionsRepo, mcpConnKey, mcpConnections, withoutKeys } from "../../connections/repo.js";
+import { connectionsRepo, mcpConnKey, mcpConnections } from "../../connections/repo.js";
 import type { User } from "../../lib/auth.js";
 import { bestEffort } from "../../lib/best-effort.js";
-import { conditionFailed, docClient, failedAt, tableName, takeOnce } from "../../lib/db.js";
+import { conditionFailed, docClient, failedAt, tableName, takeOnce, withoutKeys } from "../../lib/db.js";
 import { Conflict, FlowFailed, Forbidden, Gone, NotFound, Upstream, UserError, ValidationError } from "../../lib/errors.js";
 import { siteCallback } from "../../lib/http.js";
 import { roomKey, roomMetaKey } from "../../lib/keys.js";
@@ -76,7 +76,7 @@ export function mcpRepo(deps: Deps = liveDeps()) {
 
   async function get(roomId: string, name: string): Promise<McpConnection | null> {
     const { Item } = await db.send(new GetCommand({ TableName, Key: mcpConnKey(roomId, name), ConsistentRead: true }));
-    return Item ? (withoutKeys(Item) as McpConnection) : null;
+    return Item ? withoutKeys<McpConnection>(Item) : null;
   }
 
   async function existing(roomId: string, name: string): Promise<McpConnection> {
@@ -271,7 +271,7 @@ export function mcpRepo(deps: Deps = liveDeps()) {
           ExpressionAttributeNames: { "#status": "status" },
           ExpressionAttributeValues: { ":tools": tools, ":count": toolCount, ":at": new Date().toISOString(), ":connected": "connected" },
         }));
-        return withoutKeys(Attributes ?? {}) as McpConnection;
+        return withoutKeys<McpConnection>(Attributes ?? {});
       } catch (e) {
         if (conditionFailed(e)) throw unknownServer(name);
         throw e;

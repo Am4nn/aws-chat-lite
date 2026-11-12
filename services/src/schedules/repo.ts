@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { GetCommand, PutCommand, TransactWriteCommand, UpdateCommand, type TransactWriteCommandInput } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { User } from "../lib/auth.js";
-import { conditionFailed, docClient, failedAt, queryAll, setFields, tableName, transactionConflict } from "../lib/db.js";
+import { conditionFailed, docClient, failedAt, queryAll, setFields, tableName, type TransactItem, transactWrite, withoutKeys } from "../lib/db.js";
 import { Forbidden, NotFound, ValidationError } from "../lib/errors.js";
 import { counterKey, roomKey, roomMetaKey } from "../lib/keys.js";
 import { requireMember } from "../chat/membership.js";
@@ -12,18 +12,15 @@ import type { Schedule } from "../threads/types.js";
 import { nextFire, parseCadence } from "./cadence.js";
 import { DEFAULT_TIME_ZONE, roomTimeZone } from "./zone.js";
 
-type TransactItem = NonNullable<TransactWriteCommandInput["TransactItems"]>[number];
 type ScheduleInput = { agentId: unknown; title: unknown; prompt: unknown; cadence: unknown; chatId: unknown };
 type SchedulePatch = Partial<Omit<ScheduleInput, "agentId"> & { enabled: unknown }>;
 
 const MAX_SCHEDULES = 5;
 /** Well past Scheduler's last retry of an occurrence (an hour), after which no duplicate can arrive. */
 const FIRE_CLAIM_TTL_SEC = 7 * 86_400;
-const CONFLICT_ATTEMPTS = 3;
 
 const nowIso = () => new Date().toISOString();
 const scheduleKey = (roomId: string, id: string) => ({ pk: roomKey(roomId), sk: `SCHED#${id}` });
-const toSchedule = ({ pk: _pk, sk: _sk, ...rest }: Record<string, unknown>) => rest as Schedule;
 const idOf = (raw: unknown) => (typeof raw === "string" ? raw : "");
 
 function titleOf(raw: unknown): string {
@@ -52,17 +49,6 @@ export function schedulesRepo() {
   const db = docClient();
   const TableName = tableName();
 
-  /** Two transactions on the room's counter at once can cancel each other instead of one failing its condition. */
-  async function transact(TransactItems: TransactItem[]) {
-    for (let attempt = 1; ; attempt++) {
-      try {
-        return await db.send(new TransactWriteCommand({ TransactItems }));
-      } catch (e) {
-        if (!transactionConflict(e) || attempt === CONFLICT_ATTEMPTS) throw e;
-      }
-    }
-  }
-
 
   /** The counter counts disabled schedules too, so switching one on never needs a free slot. */
   const claimSlot = (roomId: string): TransactItem => ({
@@ -89,7 +75,7 @@ export function schedulesRepo() {
   });
 
   /** Fails at item 0 when the room is full; `checks` follow it. */
-  const insert = (roomId: string, schedule: Schedule, checks: TransactItem[]) => transact([
+  const insert = (roomId: string, schedule: Schedule, checks: TransactItem[]) => transactWrite([
     claimSlot(roomId),
     ...checks,
     { Put: { TableName, Item: { ...scheduleKey(roomId, schedule.scheduleId), ...schedule }, ConditionExpression: "attribute_not_exists(pk)" } },
@@ -98,7 +84,7 @@ export function schedulesRepo() {
   /** False when it was already gone. */
   async function deleteSchedule(roomId: string, id: string): Promise<boolean> {
     try {
-      await transact([
+      await transactWrite([
         { Delete: { TableName, Key: scheduleKey(roomId, id), ConditionExpression: "attribute_exists(pk)" } },
         { Update: { TableName, Key: roomMetaKey(roomId), UpdateExpression: "ADD scheduleCount :minus", ExpressionAttributeValues: { ":minus": -1 } } },
       ]);
@@ -111,7 +97,7 @@ export function schedulesRepo() {
 
   async function get(roomId: string, id: string): Promise<Schedule | null> {
     const { Item } = await db.send(new GetCommand({ TableName, Key: scheduleKey(roomId, id), ConsistentRead: true }));
-    return Item ? toSchedule(Item) : null;
+    return Item ? withoutKeys<Schedule>(Item) : null;
   }
 
   async function all(roomId: string): Promise<Schedule[]> {
@@ -119,7 +105,7 @@ export function schedulesRepo() {
       KeyConditionExpression: "pk = :p AND begins_with(sk, :s)", ConsistentRead: true,
       ExpressionAttributeValues: { ":p": roomKey(roomId), ":s": "SCHED#" },
     });
-    return items.map(toSchedule).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    return items.map((i) => withoutKeys<Schedule>(i)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }
 
   async function timeZoneOf(roomId: string): Promise<string> {
@@ -202,7 +188,7 @@ export function schedulesRepo() {
       const names = Object.keys(fields);
       if (names.length) {
         try {
-          await transact([
+          await transactWrite([
             {
               Update: {
                 TableName, Key: scheduleKey(roomId, id), ConditionExpression: "attribute_exists(pk)",

@@ -1,7 +1,7 @@
 import { GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { findMember } from "../chat/membership.js";
 import type { User } from "../lib/auth.js";
-import { conditionFailed, docClient, tableName } from "../lib/db.js";
+import { conditionFailed, docClient, tableName, withoutKeys } from "../lib/db.js";
 import { Conflict, Forbidden, Gone, NotFound } from "../lib/errors.js";
 import type { ToolCall } from "../models/gateway.js";
 import type { ApprovalStatus } from "../threads/types.js";
@@ -24,7 +24,6 @@ export type Approval = {
 };
 
 const approvalKey = (runId: string, step: number) => ({ pk: `RUN#${runId}`, sk: `APPROVAL#${String(step).padStart(4, "0")}` });
-const withoutKeys = ({ pk: _pk, sk: _sk, ...rest }: Record<string, unknown>) => rest as Approval;
 const names = { "#status": "status" };
 
 /**
@@ -37,7 +36,7 @@ export function approvalsRepo() {
 
   async function get(runId: string, step: number): Promise<Approval | undefined> {
     const { Item } = await db.send(new GetCommand({ TableName, Key: approvalKey(runId, step), ConsistentRead: true }));
-    return Item && withoutKeys(Item);
+    return Item && withoutKeys<Approval>(Item);
   }
 
   /** Moves a pending approval to `status`; undefined when it was no longer pending. */
@@ -51,7 +50,7 @@ export function approvalsRepo() {
         ExpressionAttributeValues: { ":status": status, ":pending": "pending", ...(by && { ":by": by }) },
         ReturnValues: "ALL_NEW",
       }));
-      return withoutKeys(Attributes!);
+      return withoutKeys<Approval>(Attributes!);
     } catch (e) {
       if (conditionFailed(e)) return undefined;
       throw e;

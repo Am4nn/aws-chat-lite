@@ -1,12 +1,11 @@
 import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { User } from "../lib/auth.js";
 import { bestEffort } from "../lib/best-effort.js";
-import { docClient, tableName } from "../lib/db.js";
+import { docClient, tableName, type TransactItem } from "../lib/db.js";
 import { Forbidden } from "../lib/errors.js";
 import { requireMember } from "../chat/membership.js";
 import { broadcastToRoom } from "../live/broadcast.js";
 import { can } from "../rooms/access.js";
-import type { TransactItem } from "../runs/repo.js";
 import type { Budget } from "../threads/types.js";
 import { budgetOf, monthKey } from "./model.js";
 import { roomKey, roomMetaKey } from "../lib/keys.js";

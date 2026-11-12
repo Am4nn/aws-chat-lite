@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { requireMember } from "../chat/membership.js";
 import type { User } from "../lib/auth.js";
-import { conditionFailed, docClient, failedAt, queryAll, tableName, transactionConflict } from "../lib/db.js";
+import { conditionFailed, docClient, failedAt, queryAll, tableName, transactWrite, withoutKeys } from "../lib/db.js";
 import { NotFound, ValidationError } from "../lib/errors.js";
 import { roomKey, roomMetaKey } from "../lib/keys.js";
 import { roomChanged } from "../live/broadcast.js";
@@ -13,9 +13,8 @@ type AgentSource = Extract<MemoryEntry["source"], { kind: "agent" }>;
 
 const PREFIX = "MEMORY#";
 const memoryKey = (roomId: string, memoryId: string) => ({ pk: roomKey(roomId), sk: `${PREFIX}${memoryId}` });
-const withoutKeys = ({ pk: _pk, sk: _sk, ...rest }: Record<string, unknown>) => rest as MemoryEntry;
 const missing = (memoryId: string) => new NotFound(`No memory [${memoryId}].`);
-const ATTEMPTS = 3;
+const ID_ATTEMPTS = 3;
 
 /**
  * A room's memory: short notes its agents save and its members edit or delete, shown to every run in the room. The
@@ -33,7 +32,7 @@ export function memoryRepo() {
       KeyConditionExpression: "pk = :p AND begins_with(sk, :m)", ConsistentRead: true,
       ExpressionAttributeValues: { ":p": roomKey(roomId), ":m": PREFIX },
     });
-    return items.map(withoutKeys).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return items.map((i) => withoutKeys<MemoryEntry>(i)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
   /**
@@ -52,7 +51,7 @@ export function memoryRepo() {
         },
       }));
       await roomChanged("memory.changed", roomId);
-      return withoutKeys(Attributes!);
+      return withoutKeys<MemoryEntry>(Attributes!);
     } catch (e) {
       if (conditionFailed(e)) throw missing(memoryId);
       throw e;
@@ -81,7 +80,7 @@ export function memoryRepo() {
 
     /**
      * Called by the agent's tool, which runs for a member's thread, so it checks no one's role. A new id that clashes
-     * with an existing one, or a transaction that lost a race for the META item, tries again.
+     * with an existing one tries again with another.
      */
     async save(roomId: string, input: { text: unknown; private: boolean; source: AgentSource }): Promise<MemoryEntry> {
       const text = memoryText(input.text);
@@ -92,23 +91,21 @@ export function memoryRepo() {
           createdAt: now, updatedAt: now, updatedBy: input.source.agent,
         };
         try {
-          await db.send(new TransactWriteCommand({
-            TransactItems: [
-              { Put: { TableName, Item: { ...memoryKey(roomId, entry.memoryId), ...entry }, ConditionExpression: "attribute_not_exists(pk)" } },
-              {
-                Update: {
-                  TableName, Key: roomMetaKey(roomId), UpdateExpression: "ADD memoryCount :one",
-                  ConditionExpression: "attribute_exists(pk) AND (attribute_not_exists(memoryCount) OR memoryCount < :max)",
-                  ExpressionAttributeValues: { ":one": 1, ":max": MEMORY_MAX },
-                },
+          await transactWrite([
+            { Put: { TableName, Item: { ...memoryKey(roomId, entry.memoryId), ...entry }, ConditionExpression: "attribute_not_exists(pk)" } },
+            {
+              Update: {
+                TableName, Key: roomMetaKey(roomId), UpdateExpression: "ADD memoryCount :one",
+                ConditionExpression: "attribute_exists(pk) AND (attribute_not_exists(memoryCount) OR memoryCount < :max)",
+                ExpressionAttributeValues: { ":one": 1, ":max": MEMORY_MAX },
               },
-            ],
-          }));
+            },
+          ]);
           await roomChanged("memory.changed", roomId);
           return entry;
         } catch (e) {
           if (failedAt(e, 1)) throw new ValidationError("Room memory is full (50 entries). Forget or update one first.");
-          if ((failedAt(e, 0) || transactionConflict(e)) && attempt < ATTEMPTS) continue;
+          if (failedAt(e, 0) && attempt < ID_ATTEMPTS) continue;
           throw e;
         }
       }
