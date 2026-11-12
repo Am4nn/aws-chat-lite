@@ -211,7 +211,7 @@ export function Composer({
                 onClick={() => fileInput.current?.click()}
                 disabled={!!editing}
                 aria-label="Attach files"
-                className="grid size-[38px] shrink-0 place-items-center rounded-[11px] text-text-3 transition-[background,color,transform] hover:bg-surface-3 hover:text-text active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+                className="grid size-[38px] shrink-0 place-items-center rounded-[11px] text-text-3 transition-[background,color,scale] hover:bg-surface-3 hover:text-text active:scale-95 disabled:pointer-events-none disabled:opacity-40"
               >
                 <Paperclip aria-hidden="true" size={17} />
               </button>
@@ -262,7 +262,7 @@ export function Composer({
                 disabled={stopping}
                 aria-label="Stop the run"
                 title="Stop the run"
-                className="grid size-[38px] shrink-0 place-items-center rounded-[11px] border border-line-strong bg-surface-3 text-text transition-[background,border-color,transform] hover:border-line-hover hover:bg-surface-4 active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+                className="grid size-[38px] shrink-0 place-items-center rounded-[11px] border border-line-strong bg-surface-3 text-text transition-[background,border-color,scale] hover:border-line-hover hover:bg-surface-4 active:scale-95 disabled:pointer-events-none disabled:opacity-50"
               >
                 <Square aria-hidden="true" size={12} fill="currentColor" strokeWidth={0} />
               </motion.button>
@@ -272,7 +272,7 @@ export function Composer({
             onClick={submit}
             disabled={!canSubmit}
             aria-label={editing ? "Save edit" : steering ? "Steer the running agent" : "Send"}
-            className="grid size-[38px] shrink-0 place-items-center rounded-[11px] bg-lime text-lime-ink transition-[background,color,transform] hover:bg-lime-soft active:scale-95 disabled:bg-surface-3 disabled:text-text-3"
+            className="grid size-[38px] shrink-0 place-items-center rounded-[11px] bg-lime text-lime-ink transition-[background,color,scale] hover:bg-lime-soft active:scale-95 disabled:bg-surface-3 disabled:text-text-3"
           >
             <ArrowUp aria-hidden="true" size={16} strokeWidth={2.6} />
           </button>

@@ -14,7 +14,8 @@ export function resetsAt(month: string): string {
 /** The room's budget for `month`, from its META item (the cap) and its usage item for that month (the spend). */
 export function budgetOf(month: string, meta?: Record<string, unknown>, usage?: Record<string, unknown>): Budget {
   return {
-    spentMicros: Number(usage?.costMicros ?? 0), capMicros: Number(meta?.budgetCapMicros ?? DEFAULT_CAP_MICROS), month,
+    spentMicros: Number(usage?.costMicros ?? 0), capMicros: Number(meta?.budgetCapMicros ?? DEFAULT_CAP_MICROS),
+    capRev: Number(meta?.budgetCapRev ?? 0), month,
     resetsAt: resetsAt(month),
   };
 }

@@ -32,9 +32,10 @@ afterEach(() => {
   toasts.mockReset();
 });
 
-const show = (userId = "u1", role: Role = "member") => render(
+// Tests that change the list use a room of their own, since the panel cache outlives a test.
+const show = (userId = "u1", role: Role = "member", roomId = "r1") => render(
   <RoomAgentsContext value={[agent("agent"), agent("scout")]}>
-    <SchedulesPanel roomId="r1" me={{ userId, role }} chats={CHATS} archived={false} />
+    <SchedulesPanel roomId={roomId} me={{ userId, role }} chats={CHATS} archived={false} />
   </RoomAgentsContext>,
 );
 
@@ -46,6 +47,15 @@ describe("SchedulesPanel", () => {
     expect(screen.getByText(/Every day at 09:00/)).toBeTruthy();
     expect(screen.getByText("next Wed 09:00")).toBeTruthy();
     expect(screen.getByText("Asia/Kolkata")).toBeTruthy();
+  });
+
+  it("puts New in the title row in place of the count while there are none", async () => {
+    mockedBff.mockImplementation(async () => ({ schedules: [], timeZone: "Asia/Kolkata", max: 5 }));
+    show("u1", "member", "r-empty");
+    const title = (await screen.findByRole("heading", { level: 2, name: "Schedules" })).parentElement!;
+    expect(within(title).getByRole("button", { name: "New schedule" })).toBeTruthy();
+    expect(screen.queryByText(/of 5/)).toBeNull();
+    expect(screen.queryByText(/None yet/)).toBeNull();
   });
 
   it("switches a schedule off at once, and back when the server refuses", async () => {
@@ -85,13 +95,13 @@ describe("SchedulesPanel", () => {
     expect(await chatsOffered()).toEqual(["#general", "#old (archived)"]);
     cleanup();
     show();
-    fireEvent.click(await screen.findByRole("button", { name: "New" }));
+    fireEvent.click(await screen.findByRole("button", { name: "New schedule" }));
     expect(await chatsOffered()).toEqual(["#general"]);
   });
 
   it("creates a weekly schedule from the form", async () => {
     show();
-    fireEvent.click(await screen.findByRole("button", { name: "New" }));
+    fireEvent.click(await screen.findByRole("button", { name: "New schedule" }));
     const form = screen.getByRole("button", { name: "Create schedule" }).closest("form")!;
     fireEvent.change(within(form).getByLabelText("Title"), { target: { value: "Weekly review" } });
     fireEvent.change(within(form).getByLabelText("Prompt"), { target: { value: "Review the week." } });
@@ -110,12 +120,47 @@ describe("SchedulesPanel", () => {
       return { schedules: [schedule()], timeZone: "Asia/Kolkata", max: 5 };
     });
     show();
-    fireEvent.click(await screen.findByRole("button", { name: "New" }));
+    fireEvent.click(await screen.findByRole("button", { name: "New schedule" }));
     const form = screen.getByRole("button", { name: "Create schedule" }).closest("form")!;
     fireEvent.change(within(form).getByLabelText("Title"), { target: { value: "Weekly review" } });
     fireEvent.change(within(form).getByLabelText("Prompt"), { target: { value: "Review the week." } });
     fireEvent.click(within(form).getByRole("button", { name: "Create schedule" }));
     await vi.waitFor(() => expect(toasts).toHaveBeenCalledWith("Couldn't turn the schedule on; try again.", "error"));
     expect(screen.queryByRole("button", { name: "Create schedule" })).toBeNull();
+  });
+
+  it("shows the saved schedule as the server answered, without waiting for a refetch", async () => {
+    show("u1", "member", "r-edit");
+    fireEvent.click(await screen.findByRole("button", { name: "Edit Morning digest" }));
+    const form = (await screen.findByRole("button", { name: "Save" })).closest("form")!;
+    fireEvent.change(within(form).getByLabelText("Title"), { target: { value: "Evening digest" } });
+    mockedBff.mockResolvedValueOnce({ schedule: schedule({ title: "Evening digest" }) });
+    fireEvent.click(within(form).getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Evening digest")).toBeTruthy();
+    expect(mockedBff.mock.calls.filter(([path]) => path.endsWith("/schedules"))).toHaveLength(1);
+  });
+
+  it("adds a created schedule to the list", async () => {
+    show("u1", "member", "r-create");
+    fireEvent.click(await screen.findByRole("button", { name: "New schedule" }));
+    const form = screen.getByRole("button", { name: "Create schedule" }).closest("form")!;
+    fireEvent.change(within(form).getByLabelText("Title"), { target: { value: "Weekly review" } });
+    fireEvent.change(within(form).getByLabelText("Prompt"), { target: { value: "Review the week." } });
+    mockedBff.mockResolvedValueOnce({ schedule: schedule({ scheduleId: "s2", title: "Weekly review" }) });
+    fireEvent.click(within(form).getByRole("button", { name: "Create schedule" }));
+    expect(await screen.findByText("2 of 5")).toBeTruthy();
+    expect(screen.getByText("Weekly review")).toBeTruthy();
+  });
+
+  it("deletes on the confirm's tap, and puts the schedule back when the server refuses", async () => {
+    show("u1", "member", "r-delete");
+    fireEvent.click(await screen.findByRole("button", { name: "Delete Morning digest" }));
+    let refuse!: (e: unknown) => void;
+    mockedBff.mockReturnValueOnce(new Promise((_, reject) => { refuse = reject; }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete schedule" }));
+    await vi.waitFor(() => expect(screen.queryByText("Morning digest")).toBeNull());
+    refuse(new BffError(403, "Only its creator or an admin can do that."));
+    await vi.waitFor(() => expect(toasts).toHaveBeenCalledWith("Only its creator or an admin can do that.", "error"));
+    expect(await screen.findByText("1 of 5")).toBeTruthy();
   });
 });

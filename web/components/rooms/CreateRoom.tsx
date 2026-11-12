@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { bff, errorText } from "@/lib/client/bff";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
-import { Spinner } from "@/components/ui/Spinner";
 
 export function CreateRoom({ onDone }: { onDone?: () => void }) {
   const router = useRouter();
@@ -34,7 +33,7 @@ export function CreateRoom({ onDone }: { onDone?: () => void }) {
       {error && <p role="alert" className="text-[13px] text-danger">{error}</p>}
       <div className="flex justify-end gap-2">
         {onDone && <Button type="button" onClick={onDone}>Cancel</Button>}
-        <Button type="submit" variant="primary" disabled={busy || !name.trim()}>{busy && <Spinner />}Create room</Button>
+        <Button type="submit" variant="primary" busy={busy} disabled={!name.trim()}>Create room</Button>
       </div>
     </form>
   );

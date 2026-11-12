@@ -28,6 +28,8 @@ describe("ConsentActions", () => {
     fireEvent.click(screen.getByRole("button", { name: label }));
     expect((screen.getByRole("button", { name: "Allow" }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled).toBe(true);
+    // Only the pressed button shows it is working.
+    expect(screen.getAllByRole("button").filter((b) => b.getAttribute("aria-busy") === "true").map((b) => b.textContent)).toEqual([label]);
 
     await waitFor(() => expect(assign).toHaveBeenCalledWith("http://127.0.0.1:5555/cb?code=c&state=s"));
     expect(fetch).toHaveBeenCalledTimes(1);

@@ -2,10 +2,10 @@
 
 import { useEffect, useRef } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import type { RoomSummary } from "@/lib/types";
 import { useToast } from "@/components/overlays/Toast";
 import { nextRoomPath } from "./nav";
+import { useNavigate } from "./NavPending";
 
 /**
  * Stands in for a room whose view the server refuses: I was removed, left it in another tab, or followed a link to a
@@ -13,7 +13,7 @@ import { nextRoomPath } from "./nav";
  * The page underneath says the same with a link home, so a redirect that doesn't land never leaves a blank screen.
  */
 export function RoomGone({ roomId, rooms }: { roomId: string; rooms: RoomSummary[] }) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const toast = useToast();
   // Development runs effects twice on mount; one toast and one redirect are enough.
   const done = useRef(false);
@@ -21,8 +21,8 @@ export function RoomGone({ roomId, rooms }: { roomId: string; rooms: RoomSummary
     if (done.current) return;
     done.current = true;
     toast("You're no longer in that room");
-    router.replace(nextRoomPath(rooms, roomId));
-  }, [router, toast, rooms, roomId]);
+    navigate(nextRoomPath(rooms, roomId), { replace: true });
+  }, [navigate, toast, rooms, roomId]);
   return (
     <main className="grid min-h-dvh place-items-center bg-ink px-4 text-center">
       <p className="text-sm text-text-2">

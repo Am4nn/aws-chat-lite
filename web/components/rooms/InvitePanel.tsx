@@ -7,7 +7,7 @@ import { bff, bffOrNull, errorText } from "@/lib/client/bff";
 import { swap } from "@/lib/motion";
 import { Button } from "@/components/ui/Button";
 import { PanelLoading } from "@/components/ui/PanelLoading";
-import { Spinner } from "@/components/ui/Spinner";
+import { PanelSection } from "@/components/ui/PanelSection";
 import { useToast } from "@/components/overlays/Toast";
 import { expiresIn, inviteUrl } from "./invite";
 
@@ -66,7 +66,7 @@ export function InvitePanel({ roomId }: { roomId: string }) {
   };
 
   return (
-    <div className="flex flex-col gap-3">
+    <PanelSection title="Invite">
       <p className="text-[12.5px] leading-relaxed text-text-3">Anyone with the link can join as a member for 7 days.</p>
       <AnimatePresence mode="wait" initial={false}>
         {(state.kind === "loading" || state.kind === "failed") && (
@@ -74,8 +74,8 @@ export function InvitePanel({ roomId }: { roomId: string }) {
         )}
         {state.kind === "none" && (
           <motion.div key="none" {...swap}>
-            <Button variant="primary" onClick={create} disabled={busy} className="w-full">
-              {busy ? <Spinner /> : <Link2 aria-hidden="true" size={15} />} Create invite link
+            <Button variant="primary" onClick={create} busy={busy} className="w-full">
+              <Link2 aria-hidden="true" size={15} /> Create invite link
             </Button>
           </motion.div>
         )}
@@ -88,7 +88,7 @@ export function InvitePanel({ roomId }: { roomId: string }) {
             {state.kind === "active" ? (
               <div className="flex gap-2">
                 <Button variant="primary" onClick={() => copy(state.invite)} className="flex-1"><Copy aria-hidden="true" size={14} /> Copy link</Button>
-                <Button onClick={create} disabled={busy} aria-label="Make a new link"><RefreshCw aria-hidden="true" size={14} /></Button>
+                <Button onClick={create} busy={busy} aria-label="Make a new link"><RefreshCw aria-hidden="true" size={14} /></Button>
                 <Button onClick={() => setState({ kind: "confirmRevoke", invite: state.invite })}>Revoke</Button>
               </div>
             ) : (
@@ -96,13 +96,13 @@ export function InvitePanel({ roomId }: { roomId: string }) {
                 <p className="text-[12.5px] text-danger">Revoke this link? Anyone who hasn&apos;t joined yet can no longer use it.</p>
                 <div className="flex justify-end gap-2">
                   <Button onClick={() => setState({ kind: "active", invite: state.invite })}>Cancel</Button>
-                  <Button variant="danger" onClick={revoke} disabled={busy}>{busy && <Spinner />}Revoke</Button>
+                  <Button variant="danger" onClick={revoke} busy={busy}>Revoke</Button>
                 </div>
               </div>
             )}
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </PanelSection>
   );
 }

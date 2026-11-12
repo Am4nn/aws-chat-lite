@@ -45,7 +45,24 @@ describe("runMap", () => {
   const map = runMap(delegated(), T0 + 10_000);
 
   it("gives the run's own agent and each helper a lane", () => {
-    expect(map.lanes.map((l) => l.label)).toEqual(["reviewer", "researcher · helper"]);
+    expect(map.lanes.map((l) => [l.agent, l.helper])).toEqual([["reviewer", false], ["researcher", true]]);
+  });
+
+  it("starts at the prompt block: no card repeats the prompt, and the first calls hang off it", () => {
+    expect(map.nodes.map((n) => n.kind)).not.toContain("ask");
+    expect(map.edges.filter((e) => e.from === "prompt").map((e) => e.to)).toEqual(["step-1", "step-2"]);
+  });
+
+  it("names a helper's lane just under its first card, and leaves the run's own lane unnamed", () => {
+    const first = byId(map, "step-3");
+    expect(map.lanes[1].at).toEqual({ x: first.x, y: first.y + 72 + 6 });
+    expect(map.lanes[0].at).toBeUndefined();
+  });
+
+  it("spaces cards 16 px apart from 24 px right of the prompt, level with the prompt's middle", () => {
+    const m = runMap([usage(0, {}), started(0, 1, "a"), finished(1, 1, 1000), usage(1, {}), started(1, 2, "b")], T0);
+    expect([byId(m, "step-1"), byId(m, "step-2")].map((n) => [n.x, n.y])).toEqual([[24, 12], [148, 12]]);
+    expect(m.edges.find((e) => e.from === "prompt")?.d).toBe(edgePath({ x: 0, y: 48 }, { x: 24, y: 48 }));
   });
 
   it("stacks the calls of one turn in one column, a row apart", () => {
@@ -84,7 +101,7 @@ describe("runMap", () => {
       ev(1, { type: "approval.requested", step: 1, call: call("w", "github_comment"), title: "Comment?", expiresAt: at(7200) }),
     ], T0 + 5000);
     expect(byId(m, "step-1")).toMatchObject({ status: "waiting", ms: 4000, approval: { title: "Comment?", status: "pending" } });
-    expect(m.edges.find((e) => e.to === "step-1")).toMatchObject({ from: "ask", waiting: true });
+    expect(m.edges.find((e) => e.to === "step-1")).toMatchObject({ from: "prompt", waiting: true });
   });
 
   it("hangs the files a sandbox step saved on it, and adds its sandbox cost", () => {
@@ -125,18 +142,26 @@ describe("timeShares", () => {
   ];
 
   it("splits the time between thinking, helpers, tools and waiting", () =>
-    expect(timeShares(events, "time").map((s) => [s.key, s.pct])).toEqual([["thinking", 60], ["helpers", 20], ["tools", 15], ["waiting", 5]]));
+    expect(timeShares([events], "time").map((s) => [s.key, s.pct])).toEqual([["thinking", 60], ["helpers", 20], ["tools", 15], ["waiting", 5]]));
 
   it("splits the cost the same way, leaving out what cost nothing", () =>
-    expect(timeShares(events, "cost").map((s) => [s.key, s.pct])).toEqual([["thinking", 60], ["helpers", 30], ["tools", 10]]));
+    expect(timeShares([events], "cost").map((s) => [s.key, s.pct])).toEqual([["thinking", 60], ["helpers", 30], ["tools", 10]]));
 
   it("counts an image's cost as a tool's", () => {
     const drew = [usage(0, { ms: 1000, costMicros: 3000 }), started(1, 1, "image_generate"), usage(2, { job: "image", step: 1, costMicros: 67_000 }), finished(2, 1, 1000)];
-    expect(timeShares(drew, "cost").map((s) => [s.key, s.pct])).toEqual([["thinking", 4], ["tools", 96]]);
+    expect(timeShares([drew], "cost").map((s) => [s.key, s.pct])).toEqual([["thinking", 4], ["tools", 96]]);
   });
 
   it("rounds to whole percents that still add up to 100", () => {
     const thirds = [usage(0, { ms: 1000 }), started(1, 1, "a"), finished(2, 1, 1000), ev(2, { type: "helper.finished", lane: 1, step: 9, status: "done", summary: "", steps: 0, ms: 1000, costMicros: 0 })];
-    expect(timeShares(thirds, "time").map((s) => s.pct)).toEqual([34, 33, 33]);
+    expect(timeShares([thirds], "time").map((s) => s.pct)).toEqual([34, 33, 33]);
+  });
+
+  it("adds up several turns, timing each approval within its own turn", () => {
+    const asked = (s: number) => ev(s, { type: "approval.requested", step: 1, call: call("w", "github_comment"), title: "?", expiresAt: at(7200) });
+    const settled = (s: number) => ev(s, { type: "approval.settled", step: 1, decision: "approved", by: "bea" });
+    const first = [usage(0, { ms: 1000 }), asked(1), settled(2)];
+    const second = [asked(10), usage(11, { ms: 2000 }), settled(13)];
+    expect(timeShares([first, second], "time").map((s) => [s.key, s.pct])).toEqual([["thinking", 43], ["waiting", 57]]);
   });
 });

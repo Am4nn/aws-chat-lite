@@ -4,6 +4,7 @@ import { useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { appLine } from "@/lib/client/apps";
 import { bff, errorText } from "@/lib/client/bff";
+import { removeOptimistically } from "@/lib/client/optimistic";
 import { useNow } from "@/lib/client/useNow";
 import { dur, easeOut, instant } from "@/lib/motion";
 import type { McpApp } from "@/lib/types";
@@ -12,6 +13,7 @@ import { Confirm } from "@/components/overlays/Confirm";
 import { Modal } from "@/components/overlays/Modal";
 import { useToast } from "@/components/overlays/Toast";
 
+/** The apps signed in to my account. A removal shows on the tap and is undone if the server refuses. */
 export function AppsList({ initial }: { initial: McpApp[] }) {
   const toast = useToast();
   const reduced = useReducedMotion();
@@ -19,14 +21,10 @@ export function AppsList({ initial }: { initial: McpApp[] }) {
   const [apps, setApps] = useState(initial);
   const [removing, setRemoving] = useState<McpApp | null>(null);
 
-  async function remove(app: McpApp) {
-    try {
-      await bff(`/bff/api/me/apps/${app.grantId}`, { method: "DELETE", body: {} });
-      setApps((list) => list.filter((a) => a.grantId !== app.grantId));
-      setRemoving(null);
-    } catch (e) {
-      toast(errorText(e), "error");
-    }
+  function remove(app: McpApp) {
+    setRemoving(null);
+    removeOptimistically({ list: apps, item: app, key: (a) => a.grantId, set: setApps }, () =>
+      bff(`/bff/api/me/apps/${app.grantId}`, { method: "DELETE", body: {} })).catch((e) => toast(errorText(e), "error"));
   }
 
   return (
@@ -53,7 +51,7 @@ export function AppsList({ initial }: { initial: McpApp[] }) {
         </ul>
       )}
       <Modal open={!!removing} onClose={() => setRemoving(null)} title={removing ? `Remove ${removing.clientName}?` : ""}>
-        {removing && <Confirm action="Remove" onCancel={() => setRemoving(null)} onConfirm={() => remove(removing)}>It loses access at once.</Confirm>}
+        {removing && <Confirm action="Remove" onCancel={() => setRemoving(null)} onConfirm={async () => remove(removing)}>It loses access at once.</Confirm>}
       </Modal>
     </>
   );

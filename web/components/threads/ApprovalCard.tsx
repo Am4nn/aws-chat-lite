@@ -87,8 +87,8 @@ export function ApprovalCard({ runId, approval: a, meName, enter }: Props) {
                   </p>
                 </div>
                 <div className="flex shrink-0 gap-2 max-sm:basis-full max-sm:justify-end">
-                  <Button disabled={!!conflict} onClick={() => void decide("deny")} className="h-8 text-[12.5px]">Deny</Button>
-                  <Button variant="amber" disabled={!!conflict} onClick={() => void decide("approve")} className="h-8 text-[12.5px]">Approve</Button>
+                  <Button disabled={!!conflict} onClick={() => void decide("deny")} size="sm">Deny</Button>
+                  <Button variant="amber" disabled={!!conflict} onClick={() => void decide("approve")} size="sm">Approve</Button>
                 </div>
                 <details className="group w-full">
                   <summary className="flex h-6 w-fit cursor-pointer list-none items-center gap-1 rounded-md text-[12px] text-amber-muted transition-colors hover:text-text [&::-webkit-details-marker]:hidden">

@@ -6,7 +6,6 @@ import { bff, errorText } from "@/lib/client/bff";
 import type { Chat } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
-import { Spinner } from "@/components/ui/Spinner";
 import { useToast } from "@/components/overlays/Toast";
 
 /** Shows the name as the server will store it (lowercase, dashes) while you type. */
@@ -53,8 +52,8 @@ export function ChatNameForm({ roomId, chat, onDone }: { roomId: string; chat?: 
       {error && <p role="alert" className="text-[13px] text-danger">{error}</p>}
       <div className="flex justify-end gap-2">
         <Button type="button" onClick={onDone}>Cancel</Button>
-        <Button type="submit" variant="primary" disabled={busy || !name.trim() || preview(name) === chat?.name}>
-          {busy && <Spinner />}{chat ? "Rename" : "Create chat"}
+        <Button type="submit" variant="primary" busy={busy} disabled={!name.trim() || preview(name) === chat?.name}>
+          {chat ? "Rename" : "Create chat"}
         </Button>
       </div>
     </form>

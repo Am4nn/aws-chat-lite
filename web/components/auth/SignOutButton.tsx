@@ -18,7 +18,7 @@ export function SignOutButton() {
   return (
     <button
       onClick={leave} disabled={busy}
-      className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[13px] text-text-3 transition-[background-color,color,transform] hover:bg-surface-3 hover:text-text active:scale-[0.97] disabled:opacity-60"
+      className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[13px] text-text-3 transition-[background-color,color,scale] hover:bg-surface-3 hover:text-text active:scale-[0.97] disabled:opacity-60"
     >
       <LogOut aria-hidden="true" size={14} />
       Sign out

@@ -39,7 +39,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               className="flex items-center gap-2.5 rounded-xl border border-line-strong bg-surface-2 px-3.5 py-2.5 text-[13px] shadow-menu"
             >
               {t.tone === "error"
-                ? <CircleAlert aria-hidden="true" size={15} className="text-amber" strokeWidth={2.4} />
+                ? <CircleAlert aria-hidden="true" size={15} className="text-danger" strokeWidth={2.4} />
                 : <Check aria-hidden="true" size={15} className="text-lime" strokeWidth={2.6} />}
               {t.text}
             </motion.div>

@@ -31,7 +31,8 @@ export function StepDetails({ runId, nodeId, live }: PickedStep) {
   const node = map.nodes.find((n) => n.id === nodeId);
   if (!node) return null;
   const status = STATUS[node.status];
-  const took = node.kind === "ask" || node.kind === "steer" ? "—" : formatStepTime(node.ms ?? 0);
+  const took = node.kind === "steer" ? "—" : formatStepTime(node.ms ?? 0);
+  const lane = map.lanes.find((l) => l.lane === node.lane)!;
 
   return (
     <motion.section
@@ -43,7 +44,7 @@ export function StepDetails({ runId, nodeId, live }: PickedStep) {
       className="flex flex-col gap-4"
     >
       <div className="flex flex-col gap-1">
-        <p className="text-[11.5px] font-semibold text-text-3">{map.lanes.find((l) => l.lane === node.lane)?.label}</p>
+        <p className="text-[11.5px] font-semibold text-text-3">{lane.helper ? `${lane.agent} · helper` : lane.agent}</p>
         <p className="flex items-baseline gap-2.5">
           <span className="min-w-0 break-words font-mono text-base font-medium">{node.name}</span>
           <span className={`ml-auto shrink-0 text-[12px] ${status.tone}`}>{status.label}</span>
@@ -93,8 +94,8 @@ function Approval({ runId, step, approval }: { runId: string; step: number; appr
     <div className="flex flex-col gap-2">
       <p className="break-words text-[13px] font-semibold">{approval.title}</p>
       <div className="flex gap-2">
-        <Button disabled={!!local} onClick={() => void decide("deny")} className="h-8 flex-1 text-[12.5px]">Deny</Button>
-        <Button variant="amber" disabled={!!local} onClick={() => void decide("approve")} className="h-8 flex-1 text-[12.5px]">Approve</Button>
+        <Button disabled={!!local} onClick={() => void decide("deny")} size="sm" className="flex-1">Deny</Button>
+        <Button variant="amber" disabled={!!local} onClick={() => void decide("approve")} size="sm" className="flex-1">Approve</Button>
       </div>
     </div>
   );

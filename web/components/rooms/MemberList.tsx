@@ -9,6 +9,7 @@ import { useNow } from "@/lib/client/useNow";
 import { dur, easeOut, spring } from "@/lib/motion";
 import type { Member, Role } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
+import { PanelSection } from "@/components/ui/PanelSection";
 import { MenuItem, RowMenu } from "@/components/ui/RowMenu";
 import { useToast } from "@/components/overlays/Toast";
 
@@ -43,26 +44,48 @@ function actionsFor(me: Role, target: Role) {
   };
 }
 
+/**
+ * The room's members. A role change or removal shows on the tap and holds until the refreshed list arrives; a refusal
+ * puts the member back as they were and says why.
+ */
 export function MemberList({ roomId, members, myRole, myUserId }: { roomId: string; members: Member[]; myRole: Role; myUserId: string }) {
   const router = useRouter();
   const toast = useToast();
   const [openFor, setOpenFor] = useState<string | null>(null);
+  const [overrides, setOverrides] = useState(new Map<string, Role | "removed">());
+  // Presence makes a new list too, so only a change of members or roles (the refresh landing) clears the overrides.
+  const roster = members.map((m) => `${m.userId}:${m.role}`).join();
+  const [shownRoster, setShownRoster] = useState(roster);
+  if (shownRoster !== roster) {
+    setShownRoster(roster);
+    setOverrides(new Map());
+  }
   // The server rendered "last seen" with its own clock, so the browser's takes over at once, then every minute.
   const now = useNow(true, CLOCK_TICK_MS);
-  const sorted = [...members].sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || a.username.localeCompare(b.username));
+  const shown = members.flatMap((m) => {
+    const o = overrides.get(m.userId);
+    return o === "removed" ? [] : [o ? { ...m, role: o } : m];
+  });
+  const sorted = shown.sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || a.username.localeCompare(b.username));
 
   async function change(m: Member, action: "promote" | "demote" | "remove") {
     setOpenFor(null);
+    const role = action === "promote" ? "admin" : "member";
+    setOverrides((o) => new Map(o).set(m.userId, action === "remove" ? "removed" : role));
     try {
       if (action === "remove") {
         await bff(`/bff/api/rooms/${roomId}/members/${m.userId}`, { method: "DELETE", body: {} });
         toast(`${m.username} removed`);
       } else {
-        const role = action === "promote" ? "admin" : "member";
         await bff(`/bff/api/rooms/${roomId}/members/${m.userId}`, { method: "PATCH", body: { role } });
         toast(`${m.username} is now ${role === "admin" ? "an admin" : "a member"}`);
       }
     } catch (e) {
+      setOverrides((o) => {
+        const back = new Map(o);
+        back.delete(m.userId);
+        return back;
+      });
       toast(errorText(e), "error");
     }
     // Refresh either way: a failure usually means the member list changed underneath us.
@@ -70,38 +93,40 @@ export function MemberList({ roomId, members, myRole, myUserId }: { roomId: stri
   }
 
   return (
-    <ul className="flex flex-col gap-1">
-      <AnimatePresence initial={false}>
-        {sorted.map((m) => {
-          const can = actionsFor(myRole, m.role);
-          const hasActions = m.userId !== myUserId && (can.promote || can.demote || can.remove);
-          return (
-            <motion.li
-              key={m.userId}
-              layout
-              exit={{ opacity: 0, height: 0, transition: { duration: dur.base, ease: easeOut } }}
-              transition={spring.glide}
-              className="relative flex h-10 items-center gap-2.5 rounded-[10px] px-2 text-[13px] hover:bg-surface-2"
-            >
-              <Avatar name={m.username} online={m.online} />
-              <span className="flex min-w-0 flex-col">
-                <span className="truncate leading-4">{m.username}{m.userId === myUserId && <span className="text-text-3"> (you)</span>}{m.online && <span className="sr-only">, online</span>}</span>
-                {!m.online && m.lastSeen && (
-                  <span suppressHydrationWarning className="truncate font-mono text-[11px] leading-4 text-text-3">last seen {timeAgo(m.lastSeen, now)}</span>
+    <PanelSection title="Members" count={String(sorted.length)}>
+      <ul className="-mx-2 flex flex-col gap-1">
+        <AnimatePresence initial={false}>
+          {sorted.map((m) => {
+            const can = actionsFor(myRole, m.role);
+            const hasActions = m.userId !== myUserId && (can.promote || can.demote || can.remove);
+            return (
+              <motion.li
+                key={m.userId}
+                layout
+                exit={{ opacity: 0, height: 0, transition: { duration: dur.base, ease: easeOut } }}
+                transition={spring.glide}
+                className="relative flex h-10 items-center gap-2.5 rounded-[10px] px-2 text-[13px] hover:bg-surface-2"
+              >
+                <Avatar name={m.username} online={m.online} />
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate leading-4">{m.username}{m.userId === myUserId && <span className="text-text-3"> (you)</span>}{m.online && <span className="sr-only">, online</span>}</span>
+                  {!m.online && m.lastSeen && (
+                    <span suppressHydrationWarning className="truncate font-mono text-[11px] leading-4 text-text-3">last seen {timeAgo(m.lastSeen, now)}</span>
+                  )}
+                </span>
+                <span className="ml-auto"><RoleBadge role={m.role} /></span>
+                {hasActions && (
+                  <RowMenu open={openFor === m.userId} onToggle={(o) => setOpenFor(o ? m.userId : null)} name={m.username}>
+                    {can.promote && <MenuItem onClick={() => change(m, "promote")}>Make admin</MenuItem>}
+                    {can.demote && <MenuItem onClick={() => change(m, "demote")}>Make member</MenuItem>}
+                    {can.remove && <MenuItem danger onClick={() => change(m, "remove")}>Remove from room</MenuItem>}
+                  </RowMenu>
                 )}
-              </span>
-              <span className="ml-auto"><RoleBadge role={m.role} /></span>
-              {hasActions && (
-                <RowMenu open={openFor === m.userId} onToggle={(o) => setOpenFor(o ? m.userId : null)} name={m.username}>
-                  {can.promote && <MenuItem onClick={() => change(m, "promote")}>Make admin</MenuItem>}
-                  {can.demote && <MenuItem onClick={() => change(m, "demote")}>Make member</MenuItem>}
-                  {can.remove && <MenuItem danger onClick={() => change(m, "remove")}>Remove from room</MenuItem>}
-                </RowMenu>
-              )}
-            </motion.li>
-          );
-        })}
-      </AnimatePresence>
-    </ul>
+              </motion.li>
+            );
+          })}
+        </AnimatePresence>
+      </ul>
+    </PanelSection>
   );
 }

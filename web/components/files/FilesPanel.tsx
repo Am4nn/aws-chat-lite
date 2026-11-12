@@ -14,6 +14,8 @@ import { Modal } from "@/components/overlays/Modal";
 import { useToast } from "@/components/overlays/Toast";
 import { Button } from "@/components/ui/Button";
 import { Hint } from "@/components/ui/Hint";
+import { PanelLoading } from "@/components/ui/PanelLoading";
+import { PanelSection } from "@/components/ui/PanelSection";
 import { RowButton } from "@/components/ui/RowButton";
 import { Spinner } from "@/components/ui/Spinner";
 import { Switch } from "@/components/ui/Switch";
@@ -58,8 +60,10 @@ export function FilesPanel({ roomId, store, threads, internet, canSwitch, canWri
     pick([...e.dataTransfer.files]);
   }
 
+  // A delete closes the dialog on the tap; a replace waits, since the upload can take a while to land.
   async function answer(a: Ask) {
-    await (a.kind === "replace" ? store.upload([a.file]) : store.remove(a.path));
+    if (a.kind === "delete") store.remove(a.path);
+    else await store.upload([a.file]);
     next();
   }
 
@@ -67,26 +71,25 @@ export function FilesPanel({ roomId, store, threads, internet, canSwitch, canWri
   const subject = ask && (ask.kind === "replace" ? ask.file.name : ask.path);
 
   return (
-    <section className="flex flex-col gap-3">
-      <div className="flex items-center gap-2">
-        <span className="font-mono text-[11.5px] text-text-3">{fileSize(store.usedBytes)} of {fileSize(ROOM_FILES_BYTES)}</span>
-        {canWrite && (
-          <>
-            <Button onClick={() => input.current?.click()} className="ml-auto h-8 px-3">
-              {store.uploading ? <Spinner /> : <Upload aria-hidden="true" size={14} />}
-              Upload
-            </Button>
-            <input
-              ref={input} type="file" multiple hidden
-              onChange={(e) => {
-                pick([...(e.target.files ?? [])]);
-                e.target.value = "";
-              }}
-            />
-          </>
-        )}
-      </div>
-
+    <PanelSection
+      title="Files"
+      count={store.state === "ready" && store.files.length ? `${fileSize(store.usedBytes)} of ${fileSize(ROOM_FILES_BYTES)}` : undefined}
+      action={canWrite && (
+        <>
+          <Button onClick={() => input.current?.click()} size="sm">
+            {store.uploading ? <Spinner /> : <Upload aria-hidden="true" size={14} />}
+            Upload
+          </Button>
+          <input
+            ref={input} type="file" multiple hidden
+            onChange={(e) => {
+              pick([...(e.target.files ?? [])]);
+              e.target.value = "";
+            }}
+          />
+        </>
+      )}
+    >
       <InternetRow roomId={roomId} internet={internet} canSwitch={canSwitch} />
 
       <div
@@ -95,7 +98,10 @@ export function FilesPanel({ roomId, store, threads, internet, canSwitch, canWri
         onDrop={canWrite ? drop : undefined}
         className={`min-h-24 rounded-xl border p-1 transition-colors duration-150 ${dragging ? "border-lime/40" : "border-line-strong"}`}
       >
-        {store.files.length === 0
+        {store.state !== "ready"
+          // One row stays inside the box's minimum height, so a short list lands without moving anything.
+          ? <PanelLoading rows={1} failed={store.state === "failed"} onRetry={store.reload} />
+          : store.files.length === 0
           ? <p className="px-2 py-3 text-[12.5px] text-text-3">No files yet. Upload one, or ask an agent to make one.</p>
           : (
             <ul className="flex flex-col">
@@ -115,7 +121,7 @@ export function FilesPanel({ roomId, store, threads, internet, canSwitch, canWri
       <Modal open={!!ask} onClose={next} title={copy && subject ? copy.title(subject) : ""}>
         {ask && copy && <Confirm action={copy.action} onCancel={next} onConfirm={() => answer(ask)}>{copy.body}</Confirm>}
       </Modal>
-    </section>
+    </PanelSection>
   );
 }
 

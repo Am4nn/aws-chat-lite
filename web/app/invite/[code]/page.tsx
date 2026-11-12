@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Users } from "lucide-react";
 import { callApi, idToken } from "@/lib/server/api";
 import { expiresIn } from "@/components/rooms/invite";
+import { buttonClass } from "@/components/ui/Button";
 import { JoinButton } from "./JoinButton";
 
 type Preview = { roomName: string; memberCount: number; expiresAt: number };
@@ -37,7 +38,7 @@ function Valid({ preview, code, signedIn }: { preview: Preview; code: string; si
         ) : (
           <Link
             href={`/login?next=${encodeURIComponent(`/invite/${code}`)}`}
-            className="flex h-11 items-center justify-center rounded-[10px] bg-lime text-[13px] font-semibold text-lime-ink transition-colors hover:bg-lime-soft"
+            className={`${buttonClass({ variant: "primary", size: "lg" })} w-full`}
           >
             Sign in to join
           </Link>
@@ -52,7 +53,7 @@ function Invalid({ message }: { message: string }) {
     <>
       <h1 className="font-display text-xl font-bold">Can&apos;t join with this link</h1>
       <p className="mt-2 text-sm text-text-2">{message} Ask the room for a new one.</p>
-      <Link href="/" className="mt-5 inline-block text-[13px] text-lime hover:underline">Go to your rooms</Link>
+      <Link href="/" className="mt-5 inline-block text-[13px] text-lime transition-opacity hover:underline active:opacity-70">Go to your rooms</Link>
     </>
   );
 }

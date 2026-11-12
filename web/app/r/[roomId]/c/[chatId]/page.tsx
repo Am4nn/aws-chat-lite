@@ -5,8 +5,8 @@ import type { Me, Message, RoomView } from "@/lib/types";
 import { ChatView } from "@/components/chat/ChatView";
 
 /**
- * The newest page renders on the server, so a chat opens on its latest messages with no loading state. A room view the
- * server refuses renders nothing here: the room layout shows RoomGone in its place.
+ * The newest page renders on the server, so a chat opens on its latest messages; the chat skeleton stands in while it
+ * does. A room view the server refuses renders nothing here: the room layout shows RoomGone in its place.
  */
 export default async function ChatPage({ params }: { params: Promise<{ roomId: string; chatId: string }> }) {
   const { roomId, chatId } = await params;

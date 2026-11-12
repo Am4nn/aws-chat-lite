@@ -40,7 +40,7 @@ export function MapNode({ node: n, selected, delay, onPick }: { node: Node; sele
       <button
         onClick={onPick}
         aria-pressed={selected}
-        className={`block h-[72px] w-[108px] rounded-xl border px-2.5 py-[9px] text-left transition-[border-color,background-color,box-shadow,translate,scale] duration-200 hover:-translate-y-0.5 active:scale-[0.97] ${LOOK[selected ? "selected" : waiting ? "waiting" : "other"]}`}
+        className={`block h-[72px] w-[128px] rounded-xl border px-2.5 py-[9px] text-left transition-[border-color,background-color,box-shadow,translate,scale] duration-200 hover:-translate-y-0.5 active:scale-[0.97] ${LOOK[selected ? "selected" : waiting ? "waiting" : "other"]}`}
       >
         <span className="flex items-center gap-1.5">
           <span className="grid size-3 shrink-0 place-items-center"><StateMark status={n.status} /></span>

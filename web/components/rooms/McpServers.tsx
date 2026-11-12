@@ -11,7 +11,6 @@ import type { McpConnection } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { panelInput } from "@/components/ui/Field";
 import { Hint } from "@/components/ui/Hint";
-import { Spinner } from "@/components/ui/Spinner";
 import { useToast } from "@/components/overlays/Toast";
 
 type Answer = { authorizeUrl: string } | { connection: McpConnection };
@@ -98,7 +97,7 @@ function ServerRow({ server, fresh, manage, busy, onReconnect, onRefresh, onRemo
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const kept = keptLine(server);
-  const working = (action: string) => busy === `${action} ${server.name}` && <Spinner />;
+  const working = (action: string) => busy === `${action} ${server.name}`;
   const toolsId = `mcp-tools-${server.name}`;
 
   return (
@@ -157,14 +156,14 @@ function ServerRow({ server, fresh, manage, busy, onReconnect, onRefresh, onRemo
           <p className="text-[12.5px] text-danger">Remove {server.name}? Agents lose its tools at once.</p>
           <div className="flex justify-end gap-2">
             <Button autoFocus onClick={() => setConfirming(false)}>Cancel</Button>
-            <Button variant="danger" onClick={onRemove} disabled={busy !== null}>{working("remove")}Remove</Button>
+            <Button variant="danger" onClick={onRemove} disabled={busy !== null} busy={working("remove")}>Remove</Button>
           </div>
         </div>
       ) : (
         <div className="mt-3 flex flex-wrap gap-2">
-          <Button onClick={onReconnect} disabled={busy !== null} className="h-8 px-2.5 text-[12.5px]">{working("reconnect")}Reconnect</Button>
-          <Button onClick={onRefresh} disabled={busy !== null} className="h-8 px-2.5 text-[12.5px]">{working("refresh")}Refresh tools</Button>
-          <Button onClick={() => setConfirming(true)} disabled={busy !== null} className="h-8 px-2.5 text-[12.5px]">Remove</Button>
+          <Button onClick={onReconnect} disabled={busy !== null} busy={working("reconnect")} size="sm">Reconnect</Button>
+          <Button onClick={onRefresh} disabled={busy !== null} busy={working("refresh")} size="sm">Refresh tools</Button>
+          <Button onClick={() => setConfirming(true)} disabled={busy !== null} size="sm">Remove</Button>
         </div>
       ))}
     </motion.li>
@@ -192,7 +191,7 @@ function AddServer({ busy, onCancel, onSubmit }: { busy: boolean; onCancel: () =
       />
       <div className="flex justify-end gap-2">
         <Button type="button" onClick={onCancel}>Cancel</Button>
-        <Button type="submit" variant="primary" disabled={busy || !name || !url.trim()}>{busy && <Spinner />}Connect</Button>
+        <Button type="submit" variant="primary" busy={busy} disabled={!name || !url.trim()}>Connect</Button>
       </div>
     </form>
   );

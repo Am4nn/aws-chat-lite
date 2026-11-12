@@ -5,7 +5,7 @@ export type MapNode = {
   id: string;
   lane: number;
   step?: number;
-  kind: "ask" | "steer" | "tool" | "answer";
+  kind: "steer" | "tool" | "answer";
   name: string;
   /** What the step did, in a line. */
   detail?: string;
@@ -24,20 +24,26 @@ export type MapNode = {
 };
 
 export type MapEdge = { from: string; to: string; d: string; helper: boolean; waiting: boolean; waitsForHelper: boolean };
-export type MapLane = { lane: number; label: string; top: number; height: number };
+type Point = { x: number; y: number };
+
+/** `at`: where a helper's name shows, under its lane's first card. The run's own lane goes unnamed. */
+export type MapLane = { lane: number; agent: string; helper: boolean; at?: Point };
 export type RunMap = { lanes: MapLane[]; nodes: MapNode[]; edges: MapEdge[]; width: number; height: number };
 
-const CARD = { w: 108, h: 72 };
-const PITCH = 132;
-const FIRST_X = 114;
-const FIRST_TOP = 64;
-const LANE_HEIGHT = 152;
+const CARD = { w: 128, h: 72 };
+const PITCH = 124;
+const FIRST_X = 24;
 const ROW = 80;
-const LANE_GAP = 50;
-const CARD_TOP = 48;
-const PAD = 32;
-
-type Point = { x: number; y: number };
+const LANE_GAP = 44;
+const CARD_TOP = 12;
+const PAD = 12;
+/** A helper's name sits this far under its first card, in a line this tall. */
+const LABEL = { gap: 6, h: 18 };
+/**
+ * The map is drawn to the right of the prompt block (96 px tall), so its x = 0 is the block's right edge and the first
+ * cards sit level with the block's middle.
+ */
+const PROMPT_MID = 48;
 
 /** A smooth curve between two cards: along a lane it bends through the horizontal midpoint, across lanes the vertical. */
 export function edgePath(a: Point, b: Point, across = false): string {
@@ -61,11 +67,11 @@ function arcPath(a: MapNode, b: MapNode): string {
  * its own (the ask, an answer).
  */
 type Group = { kind: "turn" | "steers" | "solo"; col?: number; nodes: MapNode[]; tokens: number; costMicros: number };
-type LaneState = { lane: number; label: string; groups: Group[]; lastAt: number; view: Lane; delegate?: MapNode };
+type LaneState = { lane: number; agent: string; groups: Group[]; lastAt: number; view: Lane; delegate?: MapNode };
 
 /**
- * Lays a run's events out as a map: a lane per agent with time flowing left to right, a card per step, and the edges
- * between them. Calls one model turn made share a column, stacked, and a helper's turns take the columns after its
+ * Lays a run's events out as a map beside its prompt: a lane per agent with time flowing left to right, a card per
+ * step, and the edges between them, starting from the prompt. Calls one model turn made share a column, stacked, and a helper's turns take the columns after its
  * delegate step, so the lane that waited for it resumes to their right. A model turn's tokens and cost are split
  * evenly over the calls it made; the turn that made none is the lane's answer.
  */
@@ -81,8 +87,8 @@ export function runMap(events: RunEvent[], nowMs: number): RunMap {
   const own = new Map<MapNode, number>();
   let columns = 0;
 
-  const openLane = (lane: number, label: string, at: number) => {
-    const state: LaneState = { lane, label, groups: [], lastAt: at, view: { items: [], text: "" } };
+  const openLane = (lane: number, agent: string, at: number) => {
+    const state: LaneState = { lane, agent, groups: [], lastAt: at, view: { items: [], text: "" } };
     lanes.set(lane, state);
     return state;
   };
@@ -124,15 +130,12 @@ export function runMap(events: RunEvent[], nowMs: number): RunMap {
     if (e.type === "helper.started") {
       const delegate = steps.get(e.step);
       if (delegate) delegate.name = `@${e.agentName}`;
-      openLane(e.lane ?? 0, `${e.agentName} · helper`, Date.parse(e.at)).delegate = delegate;
+      openLane(e.lane ?? 0, e.agentName, Date.parse(e.at)).delegate = delegate;
       continue;
     }
     const lane = lanes.get(e.lane ?? 0);
     if (!lane) continue;
     switch (e.type) {
-      case "run.started":
-        place(lane, "solo", { id: "ask", kind: "ask", name: `${e.startedBy} asks`, detail: "Started the run", status: "done", startedMs: 0 });
-        break;
       case "steer":
         place(lane, "steers", { id: `steer-${e.messageSeq}`, kind: "steer", name: `${e.authorName} steers`, status: "done", startedMs: Date.parse(e.at) - t0, output: e.text });
         break;
@@ -192,17 +195,22 @@ export function runMap(events: RunEvent[], nowMs: number): RunMap {
   }
 
   const laneList: MapLane[] = [];
-  let top = FIRST_TOP;
+  let top = CARD_TOP;
+  let bottom = 0;
   for (const lane of lanes.values()) {
     const rows = Math.max(1, ...lane.groups.map((g) => g.nodes.length));
     for (const g of lane.groups) {
       g.nodes.forEach((n, row) => {
         n.x = FIRST_X + g.col! * PITCH;
-        n.y = top + CARD_TOP + row * ROW + ((rows - g.nodes.length) * ROW) / 2;
+        n.y = top + row * ROW + ((rows - g.nodes.length) * ROW) / 2;
       });
     }
-    const height = LANE_HEIGHT + (rows - 1) * ROW;
-    laneList.push({ lane: lane.lane, label: lane.label, top, height });
+    const helper = lane.lane > 0;
+    const first = lane.groups.find((g) => g.nodes.length)?.nodes[0];
+    const at = helper && first ? { x: first.x, y: first.y + CARD.h + LABEL.gap } : undefined;
+    laneList.push({ lane: lane.lane, agent: lane.agent, helper, at });
+    const height = CARD.h + (rows - 1) * ROW;
+    bottom = top + height + (at ? LABEL.gap + LABEL.h : 0);
     top += height + LANE_GAP;
   }
 
@@ -216,6 +224,10 @@ export function runMap(events: RunEvent[], nowMs: number): RunMap {
       : edgePath({ x: a.x + CARD.w / 2, y: a.y }, { x: b.x + CARD.w / 2, y: b.y + CARD.h }, true);
     edges.push({ from: a.id, to: b.id, d, helper: kind === "helper", waiting: b.status === "waiting", waitsForHelper: kind === "waits" });
   };
+  for (const n of columnsOf(lanes.get(0)!)[0]?.nodes ?? []) {
+    const d = edgePath({ x: 0, y: PROMPT_MID }, { x: n.x, y: n.y + CARD.h / 2 });
+    edges.push({ from: "prompt", to: n.id, d, helper: false, waiting: n.status === "waiting", waitsForHelper: false });
+  }
   for (const lane of lanes.values()) {
     const cols = columnsOf(lane);
     cols.slice(1).forEach((b, i) => {
@@ -237,7 +249,7 @@ export function runMap(events: RunEvent[], nowMs: number): RunMap {
 
   return {
     lanes: laneList, nodes: [...lanes.values()].flatMap((l) => l.groups.flatMap((g) => g.nodes)).sort((a, b) => a.x - b.x || a.y - b.y), edges,
-    width: FIRST_X + (columns - 1) * PITCH + CARD.w + PAD, height: top - LANE_GAP + PAD / 2,
+    width: columns ? FIRST_X + (columns - 1) * PITCH + CARD.w + PAD : 0, height: bottom,
   };
 }
 
@@ -254,23 +266,12 @@ const SHARES = [
 type Share = (typeof SHARES)[number] & { pct: number };
 
 /**
- * Where a run's time (or money) went, in whole percents that add up to 100: the main agent's model calls, its
- * helpers, its other tool calls, and waiting on members' approvals. A helper's own split is inside its share.
+ * Where the time (or money) of a thread's runs went, in whole percents that add up to 100: the main agent's model
+ * calls, its helpers, its other tool calls, and waiting on members' approvals. A helper's own split is inside its share.
  */
-export function timeShares(events: RunEvent[], by: "time" | "cost"): Share[] {
-  const time = by === "time";
-  const delegates = new Set(events.flatMap((e) => (e.type === "step.started" && !e.lane && e.call.name === "delegate" ? [e.step] : [])));
-  const asked = new Map<number, number>();
+export function timeShares(runs: RunEvent[][], by: "time" | "cost"): Share[] {
   const sums = { thinking: 0, helpers: 0, tools: 0, waiting: 0 };
-  for (const e of events) {
-    if (e.type === "helper.finished") sums.helpers += time ? e.ms : e.costMicros;
-    if (e.lane) continue;
-    if (e.type === "usage" && e.job === "run") sums.thinking += time ? e.ms ?? 0 : e.costMicros;
-    if (e.type === "usage" && (e.job === "sandbox" || e.job === "image") && !time) sums.tools += e.costMicros;
-    if (e.type === "step.finished" && time && !delegates.has(e.step)) sums.tools += e.ms;
-    if (e.type === "approval.requested") asked.set(e.step, Date.parse(e.at));
-    if (e.type === "approval.settled" && time && asked.has(e.step)) sums.waiting += Date.parse(e.at) - asked.get(e.step)!;
-  }
+  for (const events of runs) addShares(sums, events, by === "time");
   const total = sums.thinking + sums.helpers + sums.tools + sums.waiting;
   if (!total) return [];
   const exact = SHARES.map((s) => ({ ...s, exact: (sums[s.key] * 100) / total })).filter((s) => s.exact > 0);
@@ -280,4 +281,19 @@ export function timeShares(events: RunEvent[], by: "time" | "cost"): Share[] {
   const order = exact.map((s, i) => i).sort((a, b) => (exact[b].exact % 1) - (exact[a].exact % 1));
   for (const i of order.slice(0, left)) shares[i].pct += 1;
   return shares;
+}
+
+/** Adds one run's split to `sums`. Step numbers restart in every run, so an approval is timed within its own run. */
+function addShares(sums: Record<Share["key"], number>, events: RunEvent[], time: boolean) {
+  const delegates = new Set(events.flatMap((e) => (e.type === "step.started" && !e.lane && e.call.name === "delegate" ? [e.step] : [])));
+  const asked = new Map<number, number>();
+  for (const e of events) {
+    if (e.type === "helper.finished") sums.helpers += time ? e.ms : e.costMicros;
+    if (e.lane) continue;
+    if (e.type === "usage" && e.job === "run") sums.thinking += time ? e.ms ?? 0 : e.costMicros;
+    if (e.type === "usage" && (e.job === "sandbox" || e.job === "image") && !time) sums.tools += e.costMicros;
+    if (e.type === "step.finished" && time && !delegates.has(e.step)) sums.tools += e.ms;
+    if (e.type === "approval.requested") asked.set(e.step, Date.parse(e.at));
+    if (e.type === "approval.settled" && time && asked.has(e.step)) sums.waiting += Date.parse(e.at) - asked.get(e.step)!;
+  }
 }

@@ -11,11 +11,11 @@ describe("RepoPicker", () => {
   it("says the limit and holds Save back once more than 20 repos are ticked", () => {
     const over = html(repos);
     expect(over).toContain("Pick up to 20 repos.");
-    expect(over).toMatch(/<button[^>]*disabled=""[^>]*>Save<\/button>/);
+    expect(over).toMatch(/<button[^>]*disabled=""[^>]*><span[^>]*>Save<\/span><\/button>/);
   });
   it("saves 20 or fewer", () => {
     const ok = html(repos.slice(0, 20));
     expect(ok).not.toContain("Pick up to 20 repos.");
-    expect(ok).not.toMatch(/<button[^>]*disabled=""[^>]*>Save<\/button>/);
+    expect(ok).not.toMatch(/<button[^>]*disabled=""[^>]*><span[^>]*>Save<\/span><\/button>/);
   });
 });

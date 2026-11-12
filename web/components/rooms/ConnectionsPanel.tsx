@@ -1,22 +1,22 @@
 "use client";
 
-import { useEffect, useEffectEvent, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useEffectEvent, useId, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { FolderGit2, Hourglass, Pencil } from "lucide-react";
+import { FolderGit2 } from "lucide-react";
 import { bff, errorText } from "@/lib/client/bff";
 import { markFlowStarted } from "@/lib/client/flow-return";
-import { formatWait } from "@/lib/client/format";
 import { useLiveEvent } from "@/lib/client/LiveProvider";
 import { swap } from "@/lib/motion";
 import type { GitHubConnection, McpConnection } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
-import { Hint } from "@/components/ui/Hint";
 import { PanelLoading } from "@/components/ui/PanelLoading";
+import { PanelSection } from "@/components/ui/PanelSection";
 import { Spinner } from "@/components/ui/Spinner";
 import { useToast } from "@/components/overlays/Toast";
 import { ActivityLog } from "./ActivityLog";
 import { McpServers } from "./McpServers";
 import { RepoPicker, type Installation, type RepoPick } from "./RepoPicker";
+import { RoomSettings } from "./RoomSettings";
 import { useRoomData } from "./useRoomData";
 
 type Connections = {
@@ -25,9 +25,10 @@ type Connections = {
 type Mode = { kind: "view" } | { kind: "confirmDisconnect" } | { kind: "pick"; installations: Installation[] | null };
 
 /**
- * What the room's agent may reach and how long its writes wait, plus the room's activity log. Every member reads it;
- * admins change it. The server's answer is the truth, fetched again whenever the room changes. `pickGitHub`: the
- * admin is back from GitHub's sign-in, so the repo picker opens.
+ * The Room tab's Connections, Settings and Activity sections, which one answer from the server feeds: what the room's
+ * agent may reach, how long its writes wait, and the room's log. Every member reads them; admins change them. The
+ * server's answer is the truth, fetched again whenever the room changes. `pickGitHub`: the admin is back from GitHub's
+ * sign-in, so the repo picker opens.
  */
 export function ConnectionsPanel({ roomId, archived, pickGitHub, onPickStarted }: {
   roomId: string; archived: boolean; pickGitHub?: boolean; onPickStarted?: () => void;
@@ -40,6 +41,7 @@ export function ConnectionsPanel({ roomId, archived, pickGitHub, onPickStarted }
     if (e.roomId === roomId) setVersion((v) => v + 1);
   });
 
+  const parts = useRef<HTMLDivElement>(null);
   const manage = !!data?.canManage && !archived;
   /** Shown at once, then fetched again with the log, so this tab stays current even when its socket is down. */
   const changed = (patch: Partial<Connections>) => {
@@ -47,34 +49,45 @@ export function ConnectionsPanel({ roomId, archived, pickGitHub, onPickStarted }
     setVersion((v) => v + 1);
   };
 
+  // The Room tab opens on its files, so the picker, opening further down, is brought into view.
+  const pickStarted = () => {
+    parts.current?.scrollIntoView?.({ block: "start" });
+    onPickStarted?.();
+  };
+
   return (
-    <div className="flex flex-col gap-6">
-      <section className="flex flex-col gap-2">
-        <h2 className="text-[11.5px] font-semibold text-text-3">GitHub</h2>
-        {data
-          ? (
-            <GitHubSection
-              roomId={roomId} data={data} manage={manage} pick={!!pickGitHub} onPickStarted={onPickStarted} onChange={(github) => changed({ github })}
-            />
-          )
-          : <PanelLoading failed={failed} onRetry={reload} />}
-      </section>
-      <section className="flex flex-col gap-2">
-        <h2 className="text-[11.5px] font-semibold text-text-3">MCP servers</h2>
-        {data
-          ? <McpServers roomId={roomId} servers={data.mcp} manage={manage} onChange={(mcp) => changed({ mcp })} />
-          : !failed && <PanelLoading />}
-      </section>
-      <section className="flex flex-col gap-2">
-        {/* The hint sits beside the heading, not in it, so the heading's accessible name is just "Approvals". */}
-        <div className="relative flex items-center">
-          <h2 className="text-[11.5px] font-semibold text-text-3">Approvals</h2>
-          <Hint below text="After this, the action is skipped and the run finishes with a note." />
+    <>
+      <PanelSection title="Connections">
+        <div ref={parts} className="flex flex-col gap-5">
+          <Part label="GitHub">
+            {data
+              ? (
+                <GitHubSection
+                  roomId={roomId} data={data} manage={manage} pick={!!pickGitHub} onPickStarted={pickStarted} onChange={(github) => changed({ github })}
+                />
+              )
+              : <PanelLoading failed={failed} onRetry={reload} />}
+          </Part>
+          <Part label="MCP servers">
+            {data
+              ? <McpServers roomId={roomId} servers={data.mcp} manage={manage} onChange={(mcp) => changed({ mcp })} />
+              : !failed && <PanelLoading />}
+          </Part>
         </div>
-        {data && <ApprovalTimeout roomId={roomId} minutes={data.approvalTimeoutMin} manage={manage} onChange={(approvalTimeoutMin) => changed({ approvalTimeoutMin })} />}
-      </section>
+      </PanelSection>
+      <RoomSettings roomId={roomId} approvalTimeoutMin={data?.approvalTimeoutMin} manage={manage} onChange={(approvalTimeoutMin) => changed({ approvalTimeoutMin })} />
       <ActivityLog roomId={roomId} version={version} />
-    </div>
+    </>
+  );
+}
+
+function Part({ label, children }: { label: string; children: ReactNode }) {
+  const id = useId();
+  return (
+    <section aria-labelledby={id} className="flex flex-col gap-2">
+      <h3 id={id} className="text-[11.5px] font-semibold text-text-3">{label}</h3>
+      {children}
+    </section>
   );
 }
 
@@ -177,12 +190,12 @@ function GitHubSection({ roomId, data, manage, pick, onPickStarted, onChange }: 
               <p className="text-[12.5px] text-danger">Disconnect GitHub? The room&apos;s agent loses these repos.</p>
               <div className="flex justify-end gap-2">
                 <Button autoFocus onClick={() => setMode({ kind: "view" })}>Cancel</Button>
-                <Button variant="danger" onClick={disconnect} disabled={busy}>{busy && <Spinner />}Disconnect</Button>
+                <Button variant="danger" onClick={disconnect} busy={busy}>Disconnect</Button>
               </div>
             </div>
           ) : (
             <div className="flex gap-2">
-              <Button onClick={signIn} disabled={busy} className="flex-1">{busy && <Spinner />}Change repos</Button>
+              <Button onClick={signIn} busy={busy} className="flex-1">Change repos</Button>
               <Button onClick={() => setMode({ kind: "confirmDisconnect" })}>Disconnect</Button>
             </div>
           ))}
@@ -192,87 +205,13 @@ function GitHubSection({ roomId, data, manage, pick, onPickStarted, onChange }: 
         <motion.div key="off" {...swap}>
           {manage
             ? (
-              <Button variant="primary" onClick={signIn} disabled={busy} className="w-full">
-                {busy ? <Spinner /> : <FolderGit2 aria-hidden="true" size={15} />}Connect GitHub
+              <Button variant="primary" onClick={signIn} busy={busy} className="w-full">
+                <FolderGit2 aria-hidden="true" size={15} />Connect GitHub
               </Button>
             )
             : <p className="text-[12.5px] text-text-3">Not connected</p>}
         </motion.div>
       )}
     </AnimatePresence>
-  );
-}
-
-function ApprovalTimeout({ roomId, minutes, manage, onChange }: { roomId: string; minutes: number; manage: boolean; onChange: (minutes: number) => void }) {
-  const toast = useToast();
-  const [draft, setDraft] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  // Set by Escape, so the blur that follows doesn't save what was just cancelled.
-  const cancelled = useRef(false);
-
-  /**
-   * Saves on blur, which is how the field is left on a phone: iOS shows a number pad with no return key, and its Done
-   * button blurs the field. Enter blurs too, so there is one way to save.
-   */
-  async function save() {
-    if (cancelled.current || !draft?.trim() || Number(draft) === minutes) return setDraft(null);
-    setSaving(true);
-    try {
-      const res = await bff<{ approvalTimeoutMin: number }>(`/bff/api/rooms/${roomId}/approval-timeout`, { method: "PUT", body: { minutes: Number(draft) } });
-      onChange(res.approvalTimeoutMin);
-      setDraft(null);
-    } catch (e) {
-      toast(errorText(e), "error");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") e.currentTarget.blur();
-    if (e.key === "Escape") {
-      // Handled here, so the phone overlay around the panel stays open.
-      e.preventDefault();
-      cancelled.current = true;
-      setDraft(null);
-    }
-  }
-
-  return (
-    <div className="flex h-10 items-center gap-2 rounded-xl bg-surface-2 px-3 text-[12.5px] text-text-2">
-      <Hourglass aria-hidden="true" size={13} className="shrink-0 text-text-3" />
-      {draft === null
-        ? <span>Writes wait <span className="font-medium text-text">{formatWait(minutes * 60)}</span> for approval</span>
-        : (
-          <span className="flex items-center gap-1.5">
-            Writes wait
-            <input
-              autoFocus
-              aria-label="Approval timeout in minutes, 5 to 1440"
-              inputMode="numeric"
-              value={draft}
-              disabled={saving}
-              onChange={(e) => setDraft(e.target.value.replace(/\D/g, ""))}
-              onKeyDown={onKeyDown}
-              onBlur={() => void save()}
-              className="h-6 w-12 rounded-md border border-line-hover bg-ink px-1 text-right font-mono text-xs text-text tabular-nums outline-none disabled:opacity-60"
-            />
-            min
-          </span>
-        )}
-      {manage && draft === null && (
-        <button
-          onClick={() => {
-            cancelled.current = false;
-            setDraft(String(minutes));
-          }}
-          aria-label="Change the approval timeout"
-          title="Change the approval timeout"
-          className="-mr-1.5 ml-auto grid size-6 place-items-center rounded-md text-text-3 transition-[background-color,color,transform] hover:bg-surface-3 hover:text-text active:scale-90"
-        >
-          <Pencil aria-hidden="true" size={12} />
-        </button>
-      )}
-    </div>
   );
 }

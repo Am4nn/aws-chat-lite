@@ -16,7 +16,7 @@ export function MicButton({ dictation }: { dictation: Dictation }) {
       onClick={on ? dictation.stop : () => void dictation.start()}
       aria-label={on ? "Stop dictating" : "Dictate"}
       title={on ? "Stop dictating" : "Dictate · speak and it types"}
-      className={`grid size-[38px] shrink-0 place-items-center rounded-[11px] transition-[background,color,transform] hover:bg-surface-3 hover:text-text active:scale-95 ${on ? "bg-surface-3 text-lime" : "text-text-3"}`}
+      className={`grid size-[38px] shrink-0 place-items-center rounded-[11px] transition-[background,color,scale] hover:bg-surface-3 hover:text-text active:scale-95 ${on ? "bg-surface-3 text-lime" : "text-text-3"}`}
     >
       {busy ? <Spinner /> : on ? <Square aria-hidden="true" size={13} fill="currentColor" strokeWidth={0} /> : <Mic aria-hidden="true" size={17} />}
     </button>
@@ -29,7 +29,7 @@ export function DictationRow({ dictation }: { dictation: Dictation }) {
     <div className="flex items-center gap-2.5 px-4 pt-2.5 text-[12.5px] text-text-2">
       <MicOff aria-hidden="true" size={13} className="shrink-0 text-amber" />
       <span role="alert" className="min-w-0 flex-1">{dictation.error}</span>
-      <button onClick={dictation.cancel} aria-label="Dismiss" className="grid size-6 shrink-0 place-items-center rounded-md text-text-3 transition-colors hover:bg-surface-3 hover:text-text">
+      <button onClick={dictation.cancel} aria-label="Dismiss" className="grid size-6 shrink-0 place-items-center rounded-md text-text-3 transition-[background-color,color,scale] hover:bg-surface-3 hover:text-text active:scale-90">
         <X aria-hidden="true" size={13} />
       </button>
     </div>

@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { Spinner } from "@/components/ui/Spinner";
 
 export type Installation = { id: number; account: string; repos: string[] };
 export type RepoPick = { installationId: number; repos: string[] };
@@ -48,7 +47,7 @@ export function RepoPicker({ installations, initial, busy, onCancel, onSave }: {
       <div className="flex items-center justify-end gap-2">
         {tooMany && <p role="status" className="mr-auto text-[12.5px] text-text-3">Pick up to {MAX_REPOS} repos.</p>}
         <Button onClick={onCancel}>Cancel</Button>
-        <Button variant="primary" onClick={() => pick && onSave(pick)} disabled={busy || !pick?.repos.length || tooMany}>{busy && <Spinner />}Save</Button>
+        <Button variant="primary" onClick={() => pick && onSave(pick)} busy={busy} disabled={!pick?.repos.length || tooMany}>Save</Button>
       </div>
     </div>
   );

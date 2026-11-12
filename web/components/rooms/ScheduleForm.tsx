@@ -5,7 +5,6 @@ import { cadenceOfKind, HOUR_STEPS, WEEKDAYS } from "@/lib/client/schedules";
 import type { Agent, Cadence, Chat, Schedule, Weekday } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { panelInput } from "@/components/ui/Field";
-import { Spinner } from "@/components/ui/Spinner";
 
 export type ScheduleInput = Pick<Schedule, "agentId" | "title" | "prompt" | "cadence" | "chatId">;
 
@@ -76,8 +75,8 @@ export function ScheduleForm({ initial, agents, chats, busy, onCancel, onSubmit 
       </Labelled>
       <div className="flex justify-end gap-2">
         <Button type="button" onClick={onCancel}>Cancel</Button>
-        <Button type="submit" variant="primary" disabled={busy || !title.trim() || !prompt.trim() || !chatId}>
-          {busy && <Spinner />}{initial ? "Save" : "Create schedule"}
+        <Button type="submit" variant="primary" busy={busy} disabled={!title.trim() || !prompt.trim() || !chatId}>
+          {initial ? "Save" : "Create schedule"}
         </Button>
       </div>
     </form>

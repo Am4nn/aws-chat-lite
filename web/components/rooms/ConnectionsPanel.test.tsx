@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { bff } from "@/lib/client/bff";
 import { ConnectionsPanel } from "./ConnectionsPanel";
@@ -32,9 +32,30 @@ async function editTimeout() {
 }
 
 describe("ConnectionsPanel", () => {
-  it("names the Approvals heading without its hint", async () => {
+  it("lays the room out as Connections, then Settings, then Activity", async () => {
     render(<ConnectionsPanel roomId="r1" archived={false} />);
-    expect(await screen.findByRole("heading", { name: "Approvals" })).toBeTruthy();
+    await screen.findByText("2 h");
+    expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["Connections", "Settings", "Activity"]);
+    expect(within(screen.getByRole("region", { name: "Connections" })).getAllByRole("heading", { level: 3 }).map((h) => h.textContent))
+      .toEqual(["GitHub", "MCP servers"]);
+  });
+
+  it("keeps the approval timeout in Settings, which an admin changes", async () => {
+    render(<ConnectionsPanel roomId="r1" archived={false} />);
+    const settings = within(screen.getByRole("region", { name: "Settings" }));
+    expect(await settings.findByText("2 h")).toBeTruthy();
+    expect(settings.getByRole("button", { name: "Change the approval timeout" })).toBeTruthy();
+  });
+
+  it("shows a member the approval timeout without a way to change it", async () => {
+    const admin = mockedBff.getMockImplementation()!;
+    mockedBff.mockImplementation(async (path, init) => (path.endsWith("/connections")
+      ? { github: null, mcp: [], approvalTimeoutMin: 120, canManage: false, installUrl: null }
+      : admin(path, init)));
+    render(<ConnectionsPanel roomId="r2" archived={false} />);
+    const settings = within(screen.getByRole("region", { name: "Settings" }));
+    expect(await settings.findByText("2 h")).toBeTruthy();
+    expect(settings.queryByRole("button", { name: "Change the approval timeout" })).toBeNull();
   });
 
   it("saves the timeout when the field loses focus, as the iPhone number pad's Done does", async () => {
@@ -86,7 +107,8 @@ describe("ConnectionsPanel", () => {
       if (path.endsWith("/connections")) return { github: null, mcp: [], approvalTimeoutMin: 120, canManage: false, installUrl: null };
       return { entries: [] };
     });
-    render(<ConnectionsPanel roomId="r1" archived={false} pickGitHub onPickStarted={() => {}} />);
+    // A room of its own: the panel cache still holds the admin's answer for r1 from the tests above.
+    render(<ConnectionsPanel roomId="r2" archived={false} pickGitHub onPickStarted={() => {}} />);
     expect(await screen.findByText("Not connected")).toBeTruthy();
     expect(mockedBff.mock.calls.some(([path]) => path.endsWith("/installations"))).toBe(false);
   });

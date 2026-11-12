@@ -1,17 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { motion } from "motion/react";
 import { List, Workflow } from "lucide-react";
 import { spring } from "@/lib/motion";
+import { useCurrentPlace } from "@/components/shell/NavPending";
 
-/** A thread's Timeline | Map pill; the highlight glides to the view picked. A phone shows the icons only. */
-export function ViewSwitch({ map }: { map: boolean }) {
-  const pathname = usePathname();
+/**
+ * A thread's Timeline | Map pill; the highlight glides to the view picked on the tap, before the page has loaded. A
+ * phone shows the icons only.
+ */
+export function ViewSwitch() {
+  const place = useCurrentPlace();
+  const thread = `/r/${place?.roomId}/t/${place?.threadNumber}`;
+  const map = !!place?.map;
   const views = [
-    { label: "Timeline", href: pathname, icon: List, active: !map },
-    { label: "Map", href: `${pathname}?view=map`, icon: Workflow, active: map },
+    { label: "Timeline", href: thread, icon: List, active: !map },
+    { label: "Map", href: `${thread}?view=map`, icon: Workflow, active: map },
   ];
 
   return (
@@ -22,7 +27,7 @@ export function ViewSwitch({ map }: { map: boolean }) {
           href={href}
           scroll={false}
           aria-current={active ? "page" : undefined}
-          className={`relative isolate flex h-[26px] items-center gap-1.5 rounded-lg px-2.5 text-[12.5px] transition-[color,transform] active:scale-[0.96] ${active ? "text-text" : "text-text-2 hover:text-text"}`}
+          className={`relative isolate flex h-[26px] items-center gap-1.5 rounded-lg px-2.5 text-[12.5px] transition-[color,scale] active:scale-[0.96] ${active ? "text-text" : "text-text-2 hover:text-text"}`}
         >
           {active && <motion.span layoutId="thread-view" transition={spring.glide} className="absolute inset-0 -z-10 rounded-lg bg-surface-4" />}
           <Icon aria-hidden="true" size={13} className="sm:hidden" />

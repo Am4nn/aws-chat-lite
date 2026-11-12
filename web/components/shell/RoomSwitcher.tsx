@@ -11,7 +11,7 @@ import type { PushState } from "@/lib/client/push";
 import type { RoomSummary } from "@/lib/types";
 import { NotificationsToggle } from "./NotificationsToggle";
 
-const MENU_ITEM = "flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13.5px] transition-colors";
+const MENU_ITEM = "flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13.5px] transition-colors active:bg-surface-3";
 
 function MentionDot() {
   return <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-lime" />;
@@ -42,7 +42,7 @@ export function RoomSwitcher({ current, rooms, hasMentions, canCreate, canLeave,
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className="flex h-11 w-full items-center gap-2.5 rounded-[10px] px-2.5 text-left transition-[background-color,transform] hover:bg-surface-3 active:scale-[0.98]"
+        className="flex h-11 w-full items-center gap-2.5 rounded-[10px] px-2.5 text-left transition-[background-color,scale] hover:bg-surface-3 active:scale-[0.98]"
       >
         <span className="grid size-[30px] shrink-0 place-items-center rounded-[9px] bg-lime font-display font-bold uppercase text-lime-ink">{current.name.slice(0, 1)}</span>
         <span className="truncate font-display text-[17px] font-bold">{current.name}</span>

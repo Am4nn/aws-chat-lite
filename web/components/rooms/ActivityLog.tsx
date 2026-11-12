@@ -10,7 +10,7 @@ import { useNow } from "@/lib/client/useNow";
 import type { AuditEntry, AuditKind, ThreadSummary } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { PanelLoading } from "@/components/ui/PanelLoading";
-import { Spinner } from "@/components/ui/Spinner";
+import { PanelSection } from "@/components/ui/PanelSection";
 import { useToast } from "@/components/overlays/Toast";
 import { useRoomData } from "./useRoomData";
 
@@ -55,8 +55,7 @@ export function ActivityLog({ roomId, version }: { roomId: string; version: numb
   }
 
   return (
-    <section className="flex flex-col gap-2">
-      <h2 className="text-[11.5px] font-semibold text-text-3">Activity</h2>
+    <PanelSection title="Activity">
       {!page && <PanelLoading failed={failed} onRetry={reload} />}
       {page?.entries.length === 0 && <p className="text-[12.5px] text-text-3">Nothing yet.</p>}
       {!!page?.entries.length && (
@@ -74,8 +73,8 @@ export function ActivityLog({ roomId, version }: { roomId: string; version: numb
         </ul>
       )}
       {next && (
-        <Button onClick={() => loadMore(next)} disabled={loadingMore} className="w-full">{loadingMore && <Spinner />}Load more</Button>
+        <Button onClick={() => loadMore(next)} busy={loadingMore} className="w-full">Load more</Button>
       )}
-    </section>
+    </PanelSection>
   );
 }
