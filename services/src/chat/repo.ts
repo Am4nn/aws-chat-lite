@@ -9,7 +9,7 @@ import { storedAttachment, withUrls } from "./files.js";
 import { requireMember, roomMembers } from "../rooms/membership.js";
 import { notified, parseMentions } from "./mentions.js";
 import {
-  EDIT_WINDOW_SEC, LAST_SEQ, MAX_ATTACHMENTS, PAGE, RATE_PER_MIN, canEdit, deleteMode, excerpt, forReaders, messageText,
+  CHANGES_PER_MIN, EDIT_WINDOW_SEC, LAST_SEQ, MAX_ATTACHMENTS, PAGE, RATE_PER_MIN, canEdit, deleteMode, excerpt, forReaders, messageText,
   seqKey, validAttachment, versionKey, type Attachment, type Message, type Reaction, type StoredMessage,
 } from "./model.js";
 
@@ -23,6 +23,14 @@ const chatKey = (chatId: string) => `CHAT#${chatId}`;
 const readKey = (at: ChatRef, userId: string) => ({ pk: roomKey(at.roomId), sk: `READ#${userId}#${at.chatId}` });
 
 const NEEDS_CONTENT = "A message needs text or an attachment.";
+
+/**
+ * Edits and reactions have a limit of their own, per member and room, apart from sends: a burst of reactions never
+ * blocks a message, and a flood of them is still capped.
+ */
+const countChange = (user: User, roomId: string) => countTowardsRate(`RATE#changes#${roomId}#${user.userId}`, {
+  windowSec: 60, max: CHANGES_PER_MIN, message: `Slow down: ${CHANGES_PER_MIN} edits and reactions a minute.`,
+});
 
 /**
  * A stored message as readers get it. Reactions are stored as string sets (DynamoDB drops a set once it's empty);
@@ -189,6 +197,7 @@ export function chatRepo() {
       const at = { roomId: input.roomId, chatId: input.chatId };
       const text = messageText(input.text);
       await requireMember(at.roomId, user.userId, { writing: true });
+      await countChange(user, at.roomId);
       const old = await storedMessage(at, input.seq);
       const now = Date.now();
       if (!canEdit(old, user.userId, now)) throw new Forbidden("You can edit only your own messages, for 15 minutes.");
@@ -275,6 +284,7 @@ export function chatRepo() {
     async react(user: User, input: ChatRef & { seq: number; reaction: Reaction; on: boolean }): Promise<Message> {
       const at = { roomId: input.roomId, chatId: input.chatId };
       await requireMember(at.roomId, user.userId, { writing: true });
+      await countChange(user, at.roomId);
       try {
         const { Attributes } = await db.send(new UpdateCommand({
           TableName, Key: messageKey(at.chatId, input.seq), UpdateExpression: input.on ? "ADD reactions.#k :me, v :one" : "DELETE reactions.#k :me ADD v :one",

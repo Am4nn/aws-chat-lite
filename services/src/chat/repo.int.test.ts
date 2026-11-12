@@ -83,6 +83,22 @@ describe("chat repo on Floci", () => {
     expect(messages.map((m) => m.seq)).toEqual(Array.from({ length: 30 }, (_, i) => i + 1));
   }, 60_000);
 
+  it("edits and reactions share a cap of 60 a minute per member and room, which leaves sends alone", async () => {
+    const { owner, at } = await room();
+    if (Date.now() % 60_000 > 45_000) await sleep(60_000 - (Date.now() % 60_000) + 200);
+    const m = await say(owner, at, "first");
+    for (let i = 0; i < 55; i++) await chat.react(owner, { ...at, seq: m.seq, reaction: "thumbs", on: i % 2 === 0 });
+    for (let i = 0; i < 5; i++) await chat.edit(owner, { ...at, seq: m.seq, text: `edit ${i}` });
+    const over = new Conflict("Slow down: 60 edits and reactions a minute.");
+    await expect(chat.react(owner, { ...at, seq: m.seq, reaction: "heart", on: true })).rejects.toEqual(over);
+    await expect(chat.edit(owner, { ...at, seq: m.seq, text: "one more" })).rejects.toEqual(over);
+    expect((await say(owner, at, "still sends")).seq).toBe(2);
+    const other = await rooms.createRoom(owner, "Elsewhere");
+    const there = { roomId: other.roomId, chatId: other.generalChatId };
+    const n = await say(owner, there);
+    expect((await chat.react(owner, { ...there, seq: n.seq, reaction: "heart", on: true })).reactions.heart).toEqual([owner.userId]);
+  }, 60_000);
+
   it("empty text with no attachments is refused", async () => {
     const { owner, at } = await room();
     await expect(say(owner, at, "   ")).rejects.toBeInstanceOf(ValidationError);

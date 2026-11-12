@@ -28,7 +28,9 @@ function fakeTable(message: object, write: (c: unknown) => unknown = () => ({}))
   }) as never);
 }
 
-const writes = (send: ReturnType<typeof fakeTable>) => send.mock.calls.map(([c]) => c).filter((c) => !(c instanceof GetCommand));
+const isRate = (c: unknown) => c instanceof UpdateCommand && String(c.input.Key?.pk).startsWith("RATE#");
+/** The writes a test means: rate counters are left out (the rate tests read them on their own). */
+const writes = (send: ReturnType<typeof fakeTable>) => send.mock.calls.map(([c]) => c).filter((c) => !(c instanceof GetCommand) && !isRate(c));
 
 describe("history", () => {
   it("reads a smaller or larger page when asked, newest first from before", async () => {
@@ -106,7 +108,10 @@ describe("transaction conflicts", () => {
   });
 
   it("an edit that clashes with another transaction asks to try again", async () => {
-    fakeTable(stored(), () => { throw conflict(); });
+    fakeTable(stored(), (c) => {
+      if (c instanceof TransactWriteCommand) throw conflict();
+      return {};
+    });
     await expect(chatRepo().edit(me, { ...at, seq: 1, text: "hello" })).rejects.toThrow("That message just changed; try again.");
   });
 });
@@ -157,5 +162,35 @@ describe("send", () => {
     const send = fakeTable({}, () => ({ Attributes: { lastSeq: 5 } }));
     expect(await post({ system: true })).toMatchObject({ seq: 5, authorName: "ann" });
     expect(keysWritten(send).some((k) => k.startsWith("READ#"))).toBe(false);
+  });
+});
+
+describe("edit and reaction rate", () => {
+  /** The rate counter answers `n`; everything else as a stored message. */
+  const counting = (n: number) => fakeTable(stored(), (c) => (isRate(c) ? { Attributes: { n } } : { Attributes: stored({ v: 1 }) }));
+  const rateKeys = (send: ReturnType<typeof fakeTable>) =>
+    send.mock.calls.map(([c]) => c).filter(isRate).map((c) => (c as UpdateCommand).input.Key);
+
+  it("edits and reactions count on one key per member and room, apart from sends", async () => {
+    const send = counting(1);
+    await chatRepo().edit(me, { ...at, seq: 1, text: "hello" });
+    await chatRepo().react(me, { ...at, seq: 1, reaction: "thumbs", on: true });
+    const keys = rateKeys(send);
+    expect(keys).toHaveLength(2);
+    expect(keys[0]).toEqual(keys[1]);
+    expect(keys[0]!.pk).toBe("RATE#changes#r1#u1");
+  });
+
+  it("the 61st in a minute is refused in the words a send's limit uses", async () => {
+    counting(61);
+    await expect(chatRepo().react(me, { ...at, seq: 1, reaction: "thumbs", on: true }))
+      .rejects.toThrow("Slow down: 60 edits and reactions a minute.");
+    await expect(chatRepo().edit(me, { ...at, seq: 1, text: "hello" })).rejects.toThrow("Slow down: 60 edits and reactions a minute.");
+  });
+
+  it("a refused change writes nothing", async () => {
+    const send = counting(61);
+    await chatRepo().react(me, { ...at, seq: 1, reaction: "thumbs", on: true }).catch(() => {});
+    expect(writes(send)).toEqual([]);
   });
 });
