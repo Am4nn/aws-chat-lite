@@ -90,7 +90,6 @@ export function FilesPanel({ roomId, store, threads, internet, canSwitch, canWri
         </>
       )}
     >
-
       <InternetRow roomId={roomId} internet={internet} canSwitch={canSwitch} />
 
       <div
