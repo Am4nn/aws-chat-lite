@@ -156,6 +156,15 @@ describe("room MCP tools in the run loop, on Floci", { timeout: 60_000 }, () => 
     expect(await eventsOf(runId, "step.finished")).toMatchObject([{ ok: false, output: "it failed" }]);
   });
 
+  it("a server that stopped answering is our own line in the thread, never the network's error", async () => {
+    const server = await testServer(4728);
+    const at = await room(server);
+    await server.close();
+    const { runId } = await startRun("go call:mcp__test__echo", at);
+    await finished(runId);
+    expect(await eventsOf(runId, "step.finished")).toMatchObject([{ ok: false, output: "test didn't answer." }]);
+  });
+
   it("an expired access token is refreshed and saved before the call", async () => {
     const at = await room(await testServer(4724, 2));
     const before = await authVersion(at.roomId);

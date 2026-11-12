@@ -23,7 +23,7 @@ export function usePush(): { state: PushState; toggle: () => void } {
       await (turnOn ? enablePush() : disablePush());
     } catch (e) {
       setState(state);
-      toast(errorText(e), "error");
+      toast(errorText(e, "Notifications couldn't be changed. Try again."), "error");
     }
     pushState().then(setState, () => {});
   }

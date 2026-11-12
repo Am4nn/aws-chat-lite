@@ -1,4 +1,5 @@
 import { bff } from "./bff";
+import { UserError } from "./errors";
 
 const MAX_FILE_BYTES = 10_485_760;
 const MAX_FILES = 5;
@@ -33,6 +34,6 @@ export async function uploadFile(roomId: string, file: File, signal: AbortSignal
   for (const [k, v] of Object.entries(form.fields)) body.append(k, v);
   body.append("file", file);
   const res = await fetch(form.url, { method: "POST", body, signal });
-  if (!res.ok) throw new Error(`${file.name} didn't upload.`);
+  if (!res.ok) throw new UserError(`${file.name} didn't upload.`);
   return form.key;
 }

@@ -99,7 +99,7 @@ describe.skipIf(!process.env.REAL_TOOLS)("tools against the real services", () =
     expect(await run("github_read_file", { path: "README.md" })).toMatchObject({ ok: true });
     expect((await run("github_list", { kind: "issues", state: "all" })).ok).toBe(true);
     const missing = await run("github_read_file", { path: "no-such-file.txt" });
-    expect(missing).toMatchObject({ ok: false, output: expect.stringMatching(/^GitHub said 404/) });
+    expect(missing).toMatchObject({ ok: false, output: "GitHub couldn't find that, or the App can't see it." });
     // An error never carries an installation token or key text.
     expect(missing.output).not.toMatch(/gh[s]_|BEGIN/);
 

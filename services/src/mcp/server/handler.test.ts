@@ -97,4 +97,15 @@ describe("the /mcp endpoint", () => {
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toMatch(/^No room/);
   });
+
+  it("any other failure comes back as the default line, logged, never in its own words", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { handle, deps } = setup();
+    const denied = new Error("User: arn:aws:sts::123456789012:assumed-role/cl-role/fn is not authorized to perform: dynamodb:Query");
+    vi.mocked(deps.rooms.listMyRooms).mockRejectedValueOnce(denied);
+    const result = resultOf(await handle(call("list_rooms")));
+    expect(result).toEqual({ isError: true, content: [{ type: "text", text: "Something went wrong." }] });
+    expect(logged.mock.calls.flat()).toContain(denied);
+    logged.mockRestore();
+  });
 });

@@ -6,7 +6,7 @@ import { connectionsRepo, mcpConnKey, mcpConnections } from "../../connections/r
 import type { User } from "../../lib/auth.js";
 import { bestEffort } from "../../lib/best-effort.js";
 import { conditionFailed, docClient, failedAt, tableName, takeOnce, withoutKeys } from "../../lib/db.js";
-import { Conflict, FlowFailed, Forbidden, Gone, NotFound, Upstream, UserError, ValidationError } from "../../lib/errors.js";
+import { Conflict, FlowFailed, Forbidden, Gone, NotFound, Upstream, ValidationError } from "../../lib/errors.js";
 import { siteCallback } from "../../lib/http.js";
 import { roomKey, roomMetaKey } from "../../lib/keys.js";
 import { roomUpdated } from "../../live/broadcast.js";
@@ -50,7 +50,6 @@ async function fromRemote<T>(host: string, name: string, work: () => Promise<T>)
   } catch (e) {
     if (e instanceof NeedsAuth || e instanceof UnauthorizedError) throw needsReconnect(name);
     if (e instanceof ValidationError) throw e;
-    if (e instanceof UserError) throw new Upstream(e.message);
     throw new Upstream(remoteFailure(host, e));
   }
 }
@@ -244,7 +243,8 @@ export function mcpRepo(deps: Deps = liveDeps()) {
         await connections.requireManager(flow.roomId, user.userId, { writing: true });
         const host = new URL(flow.url).hostname;
         if (error || typeof code !== "string") {
-          throw new Upstream(`${host} didn't allow access (${typeof error === "string" ? cut(error, 100) : "no code"}).`);
+          console.warn("MCP sign-in came back without a code", flow.roomId, typeof error === "string" ? cut(error, 100) : error);
+          throw new Upstream(`${host} didn't allow access.`);
         }
         const pending = JSON.parse(unseal(await deps.key(), flow.pending, flow.state)) as PendingAuth;
         const { auth, listed } = await fromRemote(host, flow.name, async () => {

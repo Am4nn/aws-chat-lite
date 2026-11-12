@@ -53,9 +53,10 @@ export function decider(send: (d: Decision) => Promise<void>, show: (s: LocalDec
     try {
       await send(d);
     } catch (e) {
-      tell(errorText(e));
+      const text = errorText(e);
+      tell(text);
       if (e instanceof BffError && e.status === 409) {
-        show({ conflict: e.message });
+        show({ conflict: text });
         return;
       }
       busy = false;

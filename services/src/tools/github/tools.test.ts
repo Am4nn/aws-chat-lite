@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { GitHubConnection } from "../../threads/types.js";
 import { fakeKeys, type GitHubCall, recordGitHub } from "../fake-github.js";
 import type { Tool, ToolEnv } from "../types.js";
@@ -173,15 +173,18 @@ describe("GITHUB_TOOLS", () => {
     });
   });
 
-  it("never lets the token or a key into an error", async () => {
+  it("answers a failure in our words, never GitHub's or the network's, and logs the cause", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     const pem = fakeKeys().githubPrivateKey;
     const { env } = setup((c) =>
       c.path.includes("/contents/") ? Response.json({ message: `boom ghs_fake ${pem}` }, { status: 500 }) : undefined,
     );
-    const result = await tool("github_read_file").run({ path: "README.md" }, env);
-    expect(result.ok).toBe(false);
-    expect(result.output).toMatch(/^GitHub said 500: boom/);
-    expect(result.output).not.toMatch(/ghs_|BEGIN/);
+    expect(await tool("github_read_file").run({ path: "README.md" }, env)).toEqual({ ok: false, output: "GitHub is having trouble; try again later." });
+    const arn = new Error("User: arn:aws:sts::123456789012:assumed-role/x is not authorized");
+    const offline = { ...env, fetch: (async () => { throw arn; }) as typeof fetch };
+    expect(await tool("github_read_file").run({ path: "README.md" }, offline)).toEqual({ ok: false, output: "GitHub couldn't be reached." });
+    expect(logged.mock.calls.flat()).toContain(arn);
+    logged.mockRestore();
   });
 
   it("cuts each PR patch at 3,000 characters", async () => {

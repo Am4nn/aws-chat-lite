@@ -12,14 +12,6 @@ type Timeline = Pick<ReturnType<typeof useChatTimeline>, "latest" | "setTimeline
 const revokePreviews = (attachments: Attachment[]) =>
   attachments.forEach((a) => a.url?.startsWith("blob:") && URL.revokeObjectURL(a.url));
 
-/** Acks fail for three reasons; only "not connected" is certain the message never reached the server. */
-function sendError(e: unknown): string {
-  const reason = errorText(e);
-  if (reason === "not connected") return "Not connected, so it wasn't sent.";
-  if (reason === "timeout" || reason === "connection closed") return "The server didn't confirm it. Check before retrying.";
-  return reason;
-}
-
 /**
  * My messages on their way: each shows at once as pending, then becomes the stored message the server acks, or stays
  * as "not sent" with Retry and Discard. Sends aren't idempotent, so a failure is left to the user: an automatic resend
@@ -42,7 +34,7 @@ export function useOutbox({ roomId, chatId, chat, toBottom }: { roomId: string; 
       revokePreviews(p.attachments);
     } catch (e) {
       setTimeline((t) => failPending(t, p.clientId));
-      toast(sendError(e), "error");
+      toast(errorText(e), "error");
     }
   }, [live, roomId, chatId, apply, setTimeline, toast]);
 

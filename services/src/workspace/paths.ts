@@ -23,5 +23,5 @@ export function workspacePath(raw: unknown): string {
 
 /** The existing path that a file and a folder would share with `path`, if any. */
 export function pathClash(existing: string[], path: string): string | null {
-  return existing.find((e) => path.startsWith(`${e}/`) || e.startsWith(`${path}/`)) ?? null;
+  return existing.find((other) => path.startsWith(`${other}/`) || other.startsWith(`${path}/`)) ?? null;
 }

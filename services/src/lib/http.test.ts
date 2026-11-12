@@ -11,6 +11,15 @@ describe("errorResponse", () => {
     expect(errorResponse(new Upstream("x.example didn't answer."))).toMatchObject({ statusCode: 502 });
   });
 
+  it("answers anything that isn't a UserError with the default line, logging the error itself", () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const denied = Object.assign(new Error("User: arn:aws:sts::123456789012:assumed-role/cl-role/fn is not authorized to perform: polly:SynthesizeSpeech with an explicit deny in a service control policy: arn:aws:organizations::123456789012:policy/o-x/p-y"), { name: "AccessDeniedException" });
+    const res = errorResponse(denied);
+    expect(res).toEqual(expect.objectContaining({ statusCode: 500, body: JSON.stringify({ error: "Something went wrong." }) }));
+    expect(logged.mock.calls.flat()).toContain(denied);
+    logged.mockRestore();
+  });
+
   it("answers a failed sign-in flow as its error, naming the room the browser goes back to", () => {
     expect(errorResponse(new FlowFailed("r1", new Forbidden("No.")))).toMatchObject({ statusCode: 403, body: JSON.stringify({ error: "No.", roomId: "r1" }) });
     vi.spyOn(console, "error").mockImplementation(() => {});

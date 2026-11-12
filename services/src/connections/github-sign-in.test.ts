@@ -81,7 +81,7 @@ describe("userInstallations", () => {
     const { challenge } = pkce();
     const { fetch } = recordGitHub();
     const refused = userInstallations({ fetch, keys: fakeKeys() }, codeFor(challenge), pkce().verifier, REDIRECT);
-    await expect(refused).rejects.toThrow(new GitHubError("GitHub refused the sign-in (bad_verification_code)."));
+    await expect(refused).rejects.toThrow(new GitHubError("GitHub refused the sign-in."));
   });
 
   it("needs the App's client id and secret", async () => {

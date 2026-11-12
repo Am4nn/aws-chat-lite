@@ -90,7 +90,7 @@ describe("room MCP connections on Floci", () => {
   it("a server that refuses access says so", async () => {
     const { owner, roomId } = await room();
     const { repo, state, error } = await begun(denying, owner, roomId);
-    await expect(repo.finish(owner, { state, error })).rejects.toMatchObject({ error: { message: "127.0.0.1 didn't allow access (access_denied)." } });
+    await expect(repo.finish(owner, { state, error })).rejects.toMatchObject({ error: { message: "127.0.0.1 didn't allow access." } });
   });
 
   it("a server without sign-in connects with no stored tokens; names are unique and a room takes 5", async () => {

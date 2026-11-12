@@ -72,7 +72,9 @@ function parse(reply: Reply): ImageResult {
   const meta = reply.usageMetadata;
   const costMicros = meta ? geminiCostMicros(meta) : UNMETERED_MICROS;
   const candidate = reply.candidates?.[0];
-  const declined = (reason: string) => failed(`Gemini declined to make that image (${reason}).`, meta, costMicros);
+  // Gemini's reasons are enum names (IMAGE_SAFETY); anything shaped otherwise isn't one we can vouch for.
+  const declined = (reason: string) =>
+    failed(/^[A-Z_]{1,40}$/.test(reason) ? `Gemini declined to make that image (${reason}).` : "Gemini declined to make that image.", meta, costMicros);
   if (reply.promptFeedback?.blockReason) return declined(reply.promptFeedback.blockReason);
   if (candidate?.finishReason !== "STOP") return declined(candidate?.finishReason ?? "NO_IMAGE");
   // A thinking model can send draft images marked as thoughts; only the final one is the answer.

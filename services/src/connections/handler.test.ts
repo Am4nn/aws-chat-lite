@@ -169,11 +169,11 @@ describe("signing in with GitHub", () => {
   it("a refusal on GitHub's page, or a code GitHub won't take, is a line for the admin", async () => {
     let t = await signedIn();
     expect(await t.answer({ state: t.state, error: "access_denied" })).toEqual({
-      status: 502, body: { error: "GitHub didn't allow access (access_denied).", roomId: "r" },
+      status: 502, body: { error: "GitHub didn't allow access.", roomId: "r" },
     });
     t = await signedIn();
     expect(await t.answer({ state: t.state, code: "fake-code.wrong" })).toEqual({
-      status: 502, body: { error: "GitHub refused the sign-in (bad_verification_code).", roomId: "r" },
+      status: 502, body: { error: "GitHub refused the sign-in.", roomId: "r" },
     });
   });
 

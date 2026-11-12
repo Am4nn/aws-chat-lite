@@ -2,7 +2,7 @@ import { broadcastToRoom, sendToConnection, sendToUser } from "../live/broadcast
 import { subscribe } from "../live/connections.js";
 import type { User } from "../lib/auth.js";
 import { bestEffort } from "../lib/best-effort.js";
-import { UserError, ValidationError } from "../lib/errors.js";
+import { DEFAULT_ERROR, UserError, ValidationError } from "../lib/errors.js";
 import { requestStop } from "../runs/stop.js";
 import { routeSend } from "../threads/route.js";
 import { requireMember } from "../rooms/membership.js";
@@ -92,7 +92,7 @@ export async function handleAction(connId: string, user: User, frame: Frame): Pr
   } catch (e) {
     if (e instanceof UserError) return ack({ ok: false, error: e.message });
     console.error(`${String(frame.action)} failed`, e);
-    return ack({ ok: false, error: "Something went wrong." });
+    return ack({ ok: false, error: DEFAULT_ERROR });
   }
   await ack({ ok: true, data: outcome.data });
   await outcome.notify?.();

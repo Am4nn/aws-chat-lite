@@ -56,7 +56,7 @@ function liveDeps(): StreamDeps {
 }
 
 /** The SSE frame for one run event. Its id is the event's seq, which a reconnecting client sends back as Last-Event-ID. */
-const frame = (e: RunEvent) => `id: ${e.seq}\nevent: run\ndata: ${JSON.stringify(e)}\n\n`;
+const frame = (event: RunEvent) => `id: ${event.seq}\nevent: run\ndata: ${JSON.stringify(event)}\n\n`;
 
 /** The seq the client already has: a whole number, else 0 (start from the beginning). */
 const resumeAfter = (lastEventId: string | undefined) => (/^\d+$/.test(lastEventId ?? "") ? Number(lastEventId) : 0);

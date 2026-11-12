@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { bff } from "@/lib/client/bff";
+import { bff, BffError } from "@/lib/client/bff";
 import { ChatNameForm } from "./ChatNameForm";
 
 const toasts = vi.hoisted(() => vi.fn());
 const router = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
-vi.mock("@/lib/client/bff", () => ({ bff: vi.fn() }));
+vi.mock("@/lib/client/bff", async (original) => ({ ...await original<object>(), bff: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
 vi.mock("@/components/overlays/Toast", () => ({ useToast: () => toasts }));
 const mockedBff = vi.mocked(bff);
@@ -43,7 +43,7 @@ describe("ChatNameForm", () => {
   });
 
   it("shows the server's refusal in the form", async () => {
-    mockedBff.mockRejectedValueOnce(new Error("#general already exists."));
+    mockedBff.mockRejectedValueOnce(new BffError(409, "#general already exists."));
     render(<ChatNameForm roomId="r1" chat={{ chatId: "c2", name: "random" }} onDone={() => {}} />);
     type("general");
     fireEvent.click(screen.getByRole("button", { name: "Rename" }));

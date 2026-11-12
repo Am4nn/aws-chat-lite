@@ -212,7 +212,7 @@ describe("remote servers that fail", () => {
     const answers = [];
     for (const server of [url, noSignUp.url, badMetadata.url]) answers.push(await t.call(...connect({ url: server })));
     expect(answers.map((a) => a.status)).toEqual([502, 502, 502]);
-    expect(answers[0]!.body.error).toMatch(/^127\.0\.0\.1 didn't answer: .*ECONNREFUSED/);
+    expect(answers[0]!.body.error).toBe("127.0.0.1 didn't answer.");
     expect(answers[1]!.body.error).toBe("127.0.0.1 doesn't let new apps sign up, so chat-lite can't connect to it.");
     expect(answers[2]!.body.error).toBe("127.0.0.1 sent an answer chat-lite can't read.");
   });
@@ -259,7 +259,7 @@ describe("finishing a sign-in", () => {
   it("a refusal on the server's side is shown with its error, and the browser knows which room", async () => {
     const { t, state, error } = await begun({ consent: "deny" });
     expect(await t.call(finish, { state, error })).toEqual({
-      status: 502, body: { error: "127.0.0.1 didn't allow access (access_denied).", roomId: "r" },
+      status: 502, body: { error: "127.0.0.1 didn't allow access.", roomId: "r" },
     });
   });
 

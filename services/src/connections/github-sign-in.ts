@@ -32,7 +32,10 @@ async function userToken({ fetch, keys }: GitHubEnv, code: string, verifier: str
   });
   const data = (await res.json().catch(() => ({}))) as { access_token?: string; error?: string };
   // GitHub refuses a code with a 200 that carries an error field.
-  if (!data.access_token) throw new GitHubError(`GitHub refused the sign-in (${data.error ?? res.status}).`);
+  if (!data.access_token) {
+    console.error("GitHub refused the sign-in", res.status, data.error);
+    throw new GitHubError("GitHub refused the sign-in.");
+  }
   return data.access_token;
 }
 
