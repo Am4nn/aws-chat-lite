@@ -1,5 +1,5 @@
 import { ApiGatewayManagementApiClient, PostToConnectionCommand } from "@aws-sdk/client-apigatewaymanagementapi";
-import { roomMembers } from "../chat/membership.js";
+import { roomMembers } from "../rooms/membership.js";
 import { bestEffort } from "../lib/best-effort.js";
 import { requiredEnv } from "../lib/env.js";
 import { queryAll } from "../lib/db.js";

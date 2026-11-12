@@ -2,7 +2,7 @@ import { DeleteCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import type { User } from "../lib/auth.js";
 import { conditionFailed, docClient, tableName } from "../lib/db.js";
 import { NotFound } from "../lib/errors.js";
-import { requireMember } from "../chat/membership.js";
+import { requireMember } from "../rooms/membership.js";
 import { newTicket } from "../live/tickets.js";
 import { runsRepo } from "./repo.js";
 

@@ -2,7 +2,7 @@ import { QueryCommand } from "@aws-sdk/lib-dynamodb";
 import type { User } from "../lib/auth.js";
 import { docClient, queryAll, tableName } from "../lib/db.js";
 import { ValidationError } from "../lib/errors.js";
-import { requireMember } from "./membership.js";
+import { requireMember } from "../rooms/membership.js";
 import { LAST_SEQ, seqKey, type Message } from "./model.js";
 import { toMessage } from "./repo.js";
 

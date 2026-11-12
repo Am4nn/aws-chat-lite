@@ -6,7 +6,7 @@ import { counterKey, memberKey, messageKey, roomKey } from "../lib/keys.js";
 import { countTowardsRate } from "../lib/rate.js";
 import { enqueuePush } from "../push/enqueue.js";
 import { storedAttachment, withUrls } from "./files.js";
-import { requireMember, roomMembers } from "./membership.js";
+import { requireMember, roomMembers } from "../rooms/membership.js";
 import { notified, parseMentions } from "./mentions.js";
 import {
   EDIT_WINDOW_SEC, LAST_SEQ, MAX_ATTACHMENTS, PAGE, RATE_PER_MIN, canEdit, deleteMode, excerpt, forReaders, messageText,

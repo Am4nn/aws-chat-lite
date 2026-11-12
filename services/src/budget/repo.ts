@@ -3,7 +3,7 @@ import type { User } from "../lib/auth.js";
 import { bestEffort } from "../lib/best-effort.js";
 import { docClient, tableName, type TransactItem } from "../lib/db.js";
 import { Forbidden } from "../lib/errors.js";
-import { requireMember } from "../chat/membership.js";
+import { requireMember } from "../rooms/membership.js";
 import { broadcastToRoom } from "../live/broadcast.js";
 import { can } from "../rooms/access.js";
 import type { Budget } from "../threads/types.js";

@@ -4,7 +4,7 @@ import type { User } from "../lib/auth.js";
 import { conditionFailed, docClient, failedAt, queryAll, setFields, tableName, type TransactItem, transactWrite, withoutKeys } from "../lib/db.js";
 import { Forbidden, NotFound, ValidationError } from "../lib/errors.js";
 import { counterKey, roomKey, roomMetaKey } from "../lib/keys.js";
-import { requireMember } from "../chat/membership.js";
+import { requireMember } from "../rooms/membership.js";
 import { roomChanged } from "../live/broadcast.js";
 import { BUILT_IN } from "../agents/model.js";
 import { can, type Role } from "../rooms/access.js";

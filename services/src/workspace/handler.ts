@@ -4,7 +4,7 @@ import { bestEffort } from "../lib/best-effort.js";
 import { Conflict, NotFound, ValidationError } from "../lib/errors.js";
 import { errorResponse, json, parseBody } from "../lib/http.js";
 import { inlineType } from "../chat/files.js";
-import { requireMember } from "../chat/membership.js";
+import { requireMember } from "../rooms/membership.js";
 import { broadcastToRoom } from "../live/broadcast.js";
 import { MAX_ROOM_FILE_BYTES, MAX_ROOM_FILES, OVER_QUOTA, ROOM_FILES_BYTES, TOO_BIG, TOO_MANY } from "./limits.js";
 import { pathClash, workspacePath } from "./paths.js";

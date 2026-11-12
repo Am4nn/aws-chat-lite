@@ -4,7 +4,7 @@ import type { User } from "../lib/auth.js";
 import { batchGet, conditionFailed, docClient, failedAt, queryAll, tableName, transactionConflict } from "../lib/db.js";
 import { Conflict, Forbidden, Gone, NotFound, ValidationError } from "../lib/errors.js";
 import { counterKey, memberKey, roomKey, roomMetaKey } from "../lib/keys.js";
-import { findMember, liveMemberships, requireMember, roomMembers } from "../chat/membership.js";
+import { findMember, liveMemberships, requireMember, roomMembers } from "./membership.js";
 import { isOnline, type Presence } from "../live/presence.js";
 import { budgetOf, monthKey } from "../budget/model.js";
 import { modelOptions, type ModelOption, type ModelPick } from "../models/catalog.js";

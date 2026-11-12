@@ -1,5 +1,5 @@
 import { GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
-import { findMember } from "../chat/membership.js";
+import { findMember } from "../rooms/membership.js";
 import type { User } from "../lib/auth.js";
 import { conditionFailed, docClient, tableName, withoutKeys } from "../lib/db.js";
 import { Conflict, Forbidden, Gone, NotFound } from "../lib/errors.js";

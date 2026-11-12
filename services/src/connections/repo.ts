@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { GetCommand, PutCommand, TransactWriteCommand, type TransactWriteCommandInput } from "@aws-sdk/lib-dynamodb";
 import { auditItem } from "../audit/repo.js";
-import { requireMember } from "../chat/membership.js";
+import { requireMember } from "../rooms/membership.js";
 import { formatWait, timeoutMinutes } from "../approvals/model.js";
 import type { User } from "../lib/auth.js";
 import { conditionFailed, docClient, queryAll, tableName, takeOnce, withoutKeys } from "../lib/db.js";

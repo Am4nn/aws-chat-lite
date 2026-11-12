@@ -5,7 +5,7 @@ import type { User } from "../lib/auth.js";
 import { bestEffort } from "../lib/best-effort.js";
 import { conditionFailed, docClient, failedAt, tableName } from "../lib/db.js";
 import { Conflict, NotFound } from "../lib/errors.js";
-import { requireMember } from "../chat/membership.js";
+import { requireMember } from "../rooms/membership.js";
 import type { Message } from "../chat/model.js";
 import { chatRepo, type Admitted } from "../chat/repo.js";
 import { broadcastToRoom } from "../live/broadcast.js";

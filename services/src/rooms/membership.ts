@@ -2,7 +2,7 @@ import { GetCommand } from "@aws-sdk/lib-dynamodb";
 import { docClient, queryAll, tableName } from "../lib/db.js";
 import { Gone, NotFound } from "../lib/errors.js";
 import { memberKey, roomKey } from "../lib/keys.js";
-import type { Role } from "../rooms/access.js";
+import type { Role } from "./access.js";
 
 /**
  * Someone's member item, or undefined when they aren't in the room. Read strongly consistently (base-table reads

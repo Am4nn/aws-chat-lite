@@ -5,7 +5,7 @@ import { bestEffort } from "../lib/best-effort.js";
 import { UserError, ValidationError } from "../lib/errors.js";
 import { requestStop } from "../runs/stop.js";
 import { routeSend } from "../threads/route.js";
-import { requireMember } from "./membership.js";
+import { requireMember } from "../rooms/membership.js";
 import { REACTIONS, idOf, seqNumber, type Message, type Reaction } from "./model.js";
 import { chatRepo, type ChatRepo } from "./repo.js";
 

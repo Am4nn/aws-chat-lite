@@ -1,5 +1,5 @@
 import { DeleteCommand, GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
-import { liveMemberships } from "../chat/membership.js";
+import { liveMemberships } from "../rooms/membership.js";
 import type { User } from "../lib/auth.js";
 import { conditionFailed, docClient, tableName } from "../lib/db.js";
 

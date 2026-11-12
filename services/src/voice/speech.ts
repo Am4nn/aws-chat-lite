@@ -3,7 +3,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { DeleteCommand, GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { budgetText } from "../budget/model.js";
 import { budgetRepo } from "../budget/repo.js";
-import { requireMember } from "../chat/membership.js";
+import { requireMember } from "../rooms/membership.js";
 import type { User } from "../lib/auth.js";
 import { bestEffort } from "../lib/best-effort.js";
 import { conditionFailed, docClient, tableName } from "../lib/db.js";

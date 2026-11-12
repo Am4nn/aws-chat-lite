@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
-import { requireMember } from "../chat/membership.js";
+import { requireMember } from "../rooms/membership.js";
 import type { User } from "../lib/auth.js";
 import { conditionFailed, docClient, failedAt, queryAll, tableName, transactWrite, withoutKeys } from "../lib/db.js";
 import { NotFound, ValidationError } from "../lib/errors.js";

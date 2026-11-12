@@ -1,5 +1,5 @@
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
-import { roomMembers } from "../../chat/membership.js";
+import { roomMembers } from "../../rooms/membership.js";
 import { docClient, queryAll, tableName } from "../../lib/db.js";
 import { counterKey, roomKey, roomMetaKey, threadKey } from "../../lib/keys.js";
 import { pushKeys } from "../keys.js";

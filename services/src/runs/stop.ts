@@ -2,7 +2,7 @@ import { wakeRun } from "../approvals/decide.js";
 import { approvalsRepo } from "../approvals/repo.js";
 import type { User } from "../lib/auth.js";
 import { Conflict, NotFound } from "../lib/errors.js";
-import { requireMember } from "../chat/membership.js";
+import { requireMember } from "../rooms/membership.js";
 import { threadsRepo } from "../threads/repo.js";
 import { finishRun } from "./finish.js";
 import { DEAD_REASON } from "./model.js";
