@@ -39,7 +39,7 @@ export function ReadAloudButton({ roomId, chatId, seq }: { roomId: string; chatI
       aria-label={playing ? "Stop reading" : "Read aloud"}
       aria-pressed={playing}
       title={playing ? "Stop reading" : "Read aloud"}
-      className="-my-1 ml-1 inline-grid size-6 place-items-center rounded-md align-middle text-text-3 transition-[background-color,color,transform] hover:bg-surface-2 hover:text-text active:scale-[0.92] disabled:cursor-default disabled:hover:bg-transparent"
+      className="-my-1 ml-1 inline-grid size-6 place-items-center rounded-md align-middle text-text-3 transition-[background-color,color,scale] hover:bg-surface-2 hover:text-text active:scale-[0.92] disabled:cursor-default disabled:hover:bg-transparent"
     >
       {loading ? <Spinner /> : playing ? <Square aria-hidden="true" size={12} fill="currentColor" /> : <Volume2 aria-hidden="true" size={14} />}
     </button>

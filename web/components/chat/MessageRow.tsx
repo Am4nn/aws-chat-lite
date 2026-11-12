@@ -243,7 +243,7 @@ function Toolbar({ message: m, ctx, actions, pinned }: { message: Message; ctx: 
                   aria-label={`React ${REACTION_NAMES[r]}`}
                   aria-pressed={mine}
                   onClick={() => { close(); smile.current?.focus(); actions.react(m, r, !mine); }}
-                  className={`grid size-8 place-items-center rounded-lg text-[17px] transition-[background,transform] hover:bg-surface-3 focus-visible:bg-surface-3 active:scale-90 ${mine ? "bg-lime-wash" : ""}`}
+                  className={`grid size-8 place-items-center rounded-lg text-[17px] transition-[background,scale] hover:bg-surface-3 focus-visible:bg-surface-3 active:scale-90 ${mine ? "bg-lime-wash" : ""}`}
                 >
                   {EMOJI[r]}
                 </button>
@@ -282,7 +282,7 @@ function ToolButton({ ref, first = false, label, onClick, pressed, children }: {
       title={label}
       aria-pressed={pressed}
       onClick={onClick}
-      className={`grid size-7 place-items-center rounded-lg transition-[background,color,transform] hover:bg-surface-3 hover:text-text active:scale-90 ${pressed ? "bg-surface-3 text-text" : "text-text-2"}`}
+      className={`grid size-7 place-items-center rounded-lg transition-[background,color,scale] hover:bg-surface-3 hover:text-text active:scale-90 ${pressed ? "bg-surface-3 text-text" : "text-text-2"}`}
     >
       {children}
     </button>

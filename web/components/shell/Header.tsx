@@ -59,7 +59,7 @@ function HeaderButton({ label, pressed, onClick, className = "", children }: {
       aria-label={label}
       aria-pressed={pressed}
       title={label}
-      className={`grid size-8 shrink-0 place-items-center rounded-[10px] border border-line-strong bg-surface-2 text-text-2 transition-[border-color,color,transform] hover:border-line-hover hover:text-text active:scale-[0.94] ${className}`}
+      className={`grid size-8 shrink-0 place-items-center rounded-[10px] border border-line-strong bg-surface-2 text-text-2 transition-[border-color,color,scale] hover:border-line-hover hover:text-text active:scale-[0.94] ${className}`}
     >
       {children}
     </button>

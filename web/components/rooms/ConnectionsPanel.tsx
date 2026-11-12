@@ -268,7 +268,7 @@ function ApprovalTimeout({ roomId, minutes, manage, onChange }: { roomId: string
           }}
           aria-label="Change the approval timeout"
           title="Change the approval timeout"
-          className="-mr-1.5 ml-auto grid size-6 place-items-center rounded-md text-text-3 transition-[background-color,color,transform] hover:bg-surface-3 hover:text-text active:scale-90"
+          className="-mr-1.5 ml-auto grid size-6 place-items-center rounded-md text-text-3 transition-[background-color,color,scale] hover:bg-surface-3 hover:text-text active:scale-90"
         >
           <Pencil aria-hidden="true" size={12} />
         </button>

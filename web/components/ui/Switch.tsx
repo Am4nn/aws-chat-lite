@@ -2,7 +2,7 @@ export function Switch({ on, label, onToggle, className = "" }: { on: boolean; l
   return (
     <button
       role="switch" aria-checked={on} aria-label={label} onClick={onToggle}
-      className={`relative h-[18px] w-[30px] shrink-0 rounded-full border transition-[background-color,border-color,transform] duration-150 active:scale-95 ${on ? "border-lime bg-lime hover:bg-lime-soft" : "border-line-strong bg-surface-3 hover:border-line-hover"} ${className}`}
+      className={`relative h-[18px] w-[30px] shrink-0 rounded-full border transition-[background-color,border-color,scale] duration-150 active:scale-95 ${on ? "border-lime bg-lime hover:bg-lime-soft" : "border-line-strong bg-surface-3 hover:border-line-hover"} ${className}`}
     >
       <span
         aria-hidden="true"

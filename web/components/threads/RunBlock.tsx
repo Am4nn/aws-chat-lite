@@ -94,7 +94,7 @@ export function RunBlock({ roomId, runId, answer, steers, pending, active, meNam
           {...fade(true)}
           onClick={toggle}
           aria-expanded={open}
-          className="-mx-2 flex h-8 w-fit items-center gap-1.5 rounded-lg px-2 font-mono text-[12px] text-text-3 transition-[background-color,color,transform] hover:bg-surface-2 hover:text-text active:scale-[0.97]"
+          className="-mx-2 flex h-8 w-fit items-center gap-1.5 rounded-lg px-2 font-mono text-[12px] text-text-3 transition-[background-color,color,scale] hover:bg-surface-2 hover:text-text active:scale-[0.97]"
         >
           {open && !loaded && !unavailable
             ? <Spinner />

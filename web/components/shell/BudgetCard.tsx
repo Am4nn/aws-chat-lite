@@ -74,7 +74,7 @@ export function BudgetCard({ roomId, isOwner }: { roomId: string; isOwner: boole
             onClick={() => setDraft((budget.capMicros / 1_000_000).toFixed(2))}
             aria-label="Change the monthly cap"
             title="Change the monthly cap"
-            className="-mr-1.5 grid size-6 place-items-center rounded-md text-text-3 transition-[background-color,color,transform] hover:bg-surface-3 hover:text-text active:scale-90"
+            className="-mr-1.5 grid size-6 place-items-center rounded-md text-text-3 transition-[background-color,color,scale] hover:bg-surface-3 hover:text-text active:scale-90"
           >
             <Pencil aria-hidden="true" size={12} />
           </button>
