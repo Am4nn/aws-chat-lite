@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { bff, errorText } from "@/lib/client/bff";
 import { rememberTimeZone } from "@/lib/client/useTimeZone";
 import { dur, easeOut, spring } from "@/lib/motion";
+import { Brand } from "@/components/ui/Brand";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 
@@ -48,10 +49,7 @@ export function LoginForm({ next, emailSignup }: { next: string; emailSignup: bo
 
   return (
     <div className="w-full max-w-[380px]">
-      <div className="mb-8 flex items-center gap-3">
-        <span className="grid size-9 place-items-center rounded-[10px] bg-lime font-display text-lg font-bold text-lime-ink">c</span>
-        <span className="font-display text-xl font-bold">chat-lite</span>
-      </div>
+      <div className="mb-8"><Brand /></div>
 
       {mode !== "confirm" && (
         <div role="tablist" className="relative mb-6 flex rounded-xl border border-line bg-surface-2 p-[3px]">
