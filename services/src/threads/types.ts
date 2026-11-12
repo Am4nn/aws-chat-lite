@@ -94,7 +94,8 @@ export type Aspect = "1:1" | "3:4" | "4:3" | "9:16" | "16:9";
 /** An image a run generated, saved at `path` in the room's files. */
 export type GeneratedImage = { path: string; aspect: Aspect };
 
-export type Budget = { spentMicros: number; capMicros: number; month: string; resetsAt: string };
+/** `capRev`: bumped on every cap change, so a client can tell an older view of the cap from the one just set. */
+export type Budget = { spentMicros: number; capMicros: number; capRev: number; month: string; resetsAt: string };
 
 export type RunEventBody =
   /** `agentName`: who answers, as named when the run started, so the run reads the same after a rename or a delete. */

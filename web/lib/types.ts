@@ -107,7 +107,7 @@ export type ModelOption = { pick: ModelPick; id?: string; label: string; short: 
 /** MCP output is recorded per server, as `mcp:<name>`. */
 export type TaintSource = "attachment" | "github" | "sandbox" | `mcp:${string}`;
 
-export type Budget = { spentMicros: number; capMicros: number; month: string; resetsAt: string };
+export type Budget = { spentMicros: number; capMicros: number; capRev: number; month: string; resetsAt: string };
 
 export type Aspect = "1:1" | "3:4" | "4:3" | "9:16" | "16:9";
 /** An image a run generated, saved at `path` in the room's files. */

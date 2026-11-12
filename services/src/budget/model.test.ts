@@ -15,10 +15,10 @@ it("resets on the first of next month", () => {
 
 describe("budgetOf", () => {
   it("defaults to the $3 cap and nothing spent", () => {
-    expect(budgetOf("2026-11")).toEqual({ spentMicros: 0, capMicros: 3_000_000, month: "2026-11", resetsAt: "2026-12-01T00:00:00.000Z" });
+    expect(budgetOf("2026-11")).toEqual({ spentMicros: 0, capMicros: 3_000_000, capRev: 0, month: "2026-11", resetsAt: "2026-12-01T00:00:00.000Z" });
   });
   it("reads the cap from the room and the spend from the month's usage", () => {
-    expect(budgetOf("2026-11", { budgetCapMicros: 5_000_000 }, { costMicros: 42 })).toMatchObject({ spentMicros: 42, capMicros: 5_000_000 });
+    expect(budgetOf("2026-11", { budgetCapMicros: 5_000_000, budgetCapRev: 3 }, { costMicros: 42 })).toMatchObject({ spentMicros: 42, capMicros: 5_000_000, capRev: 3 });
   });
 });
 
