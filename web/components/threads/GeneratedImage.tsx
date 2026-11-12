@@ -53,7 +53,7 @@ export function GeneratedImage({ roomId, image }: { roomId: string; image: Image
   return (
     <a
       href={href} target="_blank" rel="noopener noreferrer" aria-label={`Open ${image.path}`} style={style}
-      className={`${box} transition-[border-color,transform] hover:border-line-strong active:scale-[0.99]`}
+      className={`${box} transition-[border-color,scale] hover:border-line-strong active:scale-[0.99]`}
     >
       <img
         src={src} alt={image.path} onLoad={() => setLoaded(true)} onError={() => setProblem("This image couldn't load.")}

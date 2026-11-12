@@ -10,7 +10,6 @@ import { useNow } from "@/lib/client/useNow";
 import type { AuditEntry, AuditKind, ThreadSummary } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { PanelLoading } from "@/components/ui/PanelLoading";
-import { Spinner } from "@/components/ui/Spinner";
 import { useToast } from "@/components/overlays/Toast";
 import { useRoomData } from "./useRoomData";
 
@@ -74,7 +73,7 @@ export function ActivityLog({ roomId, version }: { roomId: string; version: numb
         </ul>
       )}
       {next && (
-        <Button onClick={() => loadMore(next)} disabled={loadingMore} className="w-full">{loadingMore && <Spinner />}Load more</Button>
+        <Button onClick={() => loadMore(next)} busy={loadingMore} className="w-full">Load more</Button>
       )}
     </section>
   );

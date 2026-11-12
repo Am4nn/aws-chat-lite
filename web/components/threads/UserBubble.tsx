@@ -35,8 +35,8 @@ export function UserBubble({ text, attachments, members, authorName, status, ent
         <div className="flex items-center gap-2 px-1 text-[12px]">
           <CircleAlert aria-hidden="true" size={13} className="text-amber" />
           <span className="text-amber">Not sent</span>
-          <button onClick={onRetry} className="text-text-2 underline-offset-2 transition-colors hover:text-text hover:underline">Retry</button>
-          <button onClick={onDiscard} className="text-text-3 underline-offset-2 transition-colors hover:text-text-2 hover:underline">Discard</button>
+          <button onClick={onRetry} className="text-text-2 underline-offset-2 transition-[color,opacity] hover:text-text hover:underline active:opacity-70">Retry</button>
+          <button onClick={onDiscard} className="text-text-3 underline-offset-2 transition-[color,opacity] hover:text-text-2 hover:underline active:opacity-70">Discard</button>
         </div>
       )}
     </motion.div>

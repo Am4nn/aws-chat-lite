@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { bff, errorText } from "@/lib/client/bff";
 import { Button } from "@/components/ui/Button";
-import { Spinner } from "@/components/ui/Spinner";
 
 export function JoinButton({ code }: { code: string }) {
   const [busy, setBusy] = useState(false);
@@ -23,7 +22,7 @@ export function JoinButton({ code }: { code: string }) {
 
   return (
     <>
-      <Button variant="primary" onClick={join} disabled={busy} className="h-11 w-full">{busy && <Spinner />}Join room</Button>
+      <Button variant="primary" onClick={join} busy={busy} size="lg" className="w-full">Join room</Button>
       {error && <p role="alert" className="mt-3 text-[13px] text-danger">{error}</p>}
     </>
   );

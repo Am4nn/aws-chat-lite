@@ -14,7 +14,7 @@ export default async function AppsPage() {
           <Link
             href="/"
             aria-label="Go to your rooms"
-            className="-ml-2 grid size-8 place-items-center rounded-lg text-text-3 transition-[background-color,color,transform] hover:bg-surface-3 hover:text-text active:scale-90"
+            className="-ml-2 grid size-8 place-items-center rounded-lg text-text-3 transition-[background-color,color,scale] hover:bg-surface-3 hover:text-text active:scale-90"
           >
             <ArrowLeft aria-hidden="true" size={16} />
           </Link>

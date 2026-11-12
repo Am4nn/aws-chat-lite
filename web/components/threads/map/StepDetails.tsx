@@ -93,8 +93,8 @@ function Approval({ runId, step, approval }: { runId: string; step: number; appr
     <div className="flex flex-col gap-2">
       <p className="break-words text-[13px] font-semibold">{approval.title}</p>
       <div className="flex gap-2">
-        <Button disabled={!!local} onClick={() => void decide("deny")} className="h-8 flex-1 text-[12.5px]">Deny</Button>
-        <Button variant="amber" disabled={!!local} onClick={() => void decide("approve")} className="h-8 flex-1 text-[12.5px]">Approve</Button>
+        <Button disabled={!!local} onClick={() => void decide("deny")} size="sm" className="flex-1">Deny</Button>
+        <Button variant="amber" disabled={!!local} onClick={() => void decide("approve")} size="sm" className="flex-1">Approve</Button>
       </div>
     </div>
   );

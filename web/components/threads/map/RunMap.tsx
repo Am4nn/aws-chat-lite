@@ -89,7 +89,7 @@ export function RunMap({ runId, live }: { runId: string; live: boolean }) {
         <div className="sm:ml-auto"><TimeShare events={run.events} /></div>
         <button
           onClick={() => setReplays((n) => n + 1)}
-          className="flex h-8 items-center gap-1.5 rounded-[10px] border border-line-strong bg-surface-2 px-3 text-[12.5px] text-text-2 transition-[border-color,color,transform] hover:border-line-hover hover:text-text active:scale-[0.96]"
+          className="flex h-8 items-center gap-1.5 rounded-[10px] border border-line-strong bg-surface-2 px-3 text-[12.5px] text-text-2 transition-[border-color,color,scale] hover:border-line-hover hover:text-text active:scale-[0.96]"
         >
           <Play aria-hidden="true" size={12} fill="currentColor" />
           Replay

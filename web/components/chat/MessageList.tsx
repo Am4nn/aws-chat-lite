@@ -113,7 +113,7 @@ export function MessageList(p: Props) {
               <div className="grid h-10 place-items-center text-[12.5px] text-text-3">
                 {p.olderFailed
                   ? (
-                    <button onClick={p.onLoadOlder} className="rounded-md px-2 py-1 transition-colors hover:bg-surface-2 hover:text-text">
+                    <button onClick={p.onLoadOlder} className="rounded-md px-2 py-1 transition-[background-color,color,scale] hover:bg-surface-2 hover:text-text active:scale-[0.96]">
                       Couldn&apos;t load older messages · <span className="text-text-2 underline underline-offset-2">Retry</span>
                     </button>
                   )

@@ -102,7 +102,7 @@ export function ModelPill({ value, onChange, taint, locked = false }: {
         aria-disabled={locked || undefined}
         aria-label={`Model: ${label}`}
         title={locked ? LOCKED_HINT : undefined}
-        className={`flex h-[30px] items-center gap-[7px] rounded-[10px] border border-transparent bg-surface-3 px-3 text-[12.5px] text-text-body transition-[color,transform] ${locked ? "cursor-default opacity-60" : "hover:text-text active:scale-[0.96]"}`}
+        className={`flex h-[30px] items-center gap-[7px] rounded-[10px] border border-transparent bg-surface-3 px-3 text-[12.5px] text-text-body transition-[color,scale] ${locked ? "cursor-default opacity-60" : "hover:text-text active:scale-[0.96]"}`}
       >
         {label}
         <ChevronDown aria-hidden="true" size={11} strokeWidth={2.4} />
@@ -160,7 +160,7 @@ export function ModelPill({ value, onChange, taint, locked = false }: {
                 tabIndex={active === menu.items.length ? 0 : -1}
                 onClick={makeDefault}
                 onMouseEnter={() => setActive(menu.items.length)}
-                className="mt-1 flex h-9 w-full items-center rounded-lg border-t border-line px-2.5 text-left text-[12.5px] text-text-2 outline-none transition-[color,background,transform] hover:bg-surface-3 hover:text-text focus-visible:bg-surface-3 focus-visible:text-text active:scale-[0.98]"
+                className="mt-1 flex h-9 w-full items-center rounded-lg border-t border-line px-2.5 text-left text-[12.5px] text-text-2 outline-none transition-[color,background,scale] hover:bg-surface-3 hover:text-text focus-visible:bg-surface-3 focus-visible:text-text active:scale-[0.98]"
               >
                 Make {pillLabel(models, shown, false)} the room default
               </button>

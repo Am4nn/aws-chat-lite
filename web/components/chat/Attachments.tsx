@@ -43,7 +43,7 @@ function ImagePreview({ attachment: a, onExpired }: { attachment: Attachment; on
       rel="noopener noreferrer"
       aria-label={`Open ${a.name}`}
       style={{ maxWidth: PREVIEW.width }}
-      className="block aspect-[4/3] w-full overflow-hidden rounded-xl border border-line bg-surface-3 transition-[border-color] hover:border-line-strong"
+      className="block aspect-[4/3] w-full overflow-hidden rounded-xl border border-line bg-surface-3 transition-[border-color,opacity] hover:border-line-strong active:opacity-80"
     >
       {a.url && (
         <img
@@ -80,7 +80,7 @@ function FileCard({ attachment: a }: { attachment: Attachment }) {
   );
   const className = "group/file flex w-[300px] max-w-full items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2.5";
   return a.url
-    ? <a href={a.url} download={a.name} className={`${className} transition-[border-color] hover:border-line-strong`}>{body}</a>
+    ? <a href={a.url} download={a.name} className={`${className} transition-[border-color,background-color] hover:border-line-strong active:bg-surface-3`}>{body}</a>
     : <div className={className}>{body}</div>;
 }
 
@@ -109,7 +109,7 @@ export function UploadChip({ upload, onRemove }: { upload: Upload; onRemove: () 
       <button
         onClick={onRemove}
         aria-label={`Remove ${upload.file.name}`}
-        className="grid size-6 shrink-0 place-items-center rounded-md text-text-3 transition-colors hover:bg-surface-4 hover:text-text"
+        className="grid size-6 shrink-0 place-items-center rounded-md text-text-3 transition-[background-color,color,scale] hover:bg-surface-4 hover:text-text active:scale-90"
       >
         <X aria-hidden="true" size={13} />
       </button>

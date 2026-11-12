@@ -72,7 +72,7 @@ export function FilesPanel({ roomId, store, threads, internet, canSwitch, canWri
         <span className="font-mono text-[11.5px] text-text-3">{fileSize(store.usedBytes)} of {fileSize(ROOM_FILES_BYTES)}</span>
         {canWrite && (
           <>
-            <Button onClick={() => input.current?.click()} className="ml-auto h-8 px-3">
+            <Button onClick={() => input.current?.click()} size="sm" className="ml-auto">
               {store.uploading ? <Spinner /> : <Upload aria-hidden="true" size={14} />}
               Upload
             </Button>
