@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useContext, useState, type ReactNode } from "react";
+import { agentLabel, RoomAgentsContext } from "@/lib/client/agents";
 import { useReducedMotion } from "motion/react";
 import { errorText } from "@/lib/client/bff";
 import { useLive } from "@/lib/client/LiveProvider";
@@ -137,17 +138,13 @@ export function ThreadView({ roomId, initialThread, me, members, archived, initi
   );
 }
 
+/** The start of a thread: who answers here and how to steer it. The header already names the thread. */
 function ThreadIntro({ thread }: { thread: ThreadSummary }) {
+  const agent = agentLabel(thread.agentId, useContext(RoomAgentsContext));
   return (
     <div className="flex items-center gap-3 pb-1">
-      <AgentAvatar size={40} />
-      <div className="min-w-0">
-        <h2 className="flex items-baseline gap-2 font-display text-[19px] font-bold tracking-tight">
-          <span className="font-mono text-[14px] font-medium text-text-3">#{thread.number}</span>
-          <span className="truncate">{thread.name}</span>
-        </h2>
-        <p className="text-[13.5px] text-text-2">Messages here go to @agent. Send one while it works to steer it.</p>
-      </div>
+      <AgentAvatar size={32} />
+      <p className="text-[13.5px] text-text-3">Messages here go to {agent}. Send one while it works to steer it.</p>
     </div>
   );
 }
