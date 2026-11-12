@@ -223,7 +223,7 @@ export class CoreStack extends Stack {
    * A month of logs. The group goes with the stack: logs aren't users' data, and a group left behind would make the
    * next deploy fail on its name.
    */
-  private logGroup(id: string, logGroupName: string) {
+  logGroup(id: string, logGroupName: string) {
     return new logs.LogGroup(this, id, { logGroupName, retention: logs.RetentionDays.ONE_MONTH, removalPolicy: RemovalPolicy.DESTROY });
   }
 }
