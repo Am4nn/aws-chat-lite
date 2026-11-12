@@ -1,0 +1,50 @@
+#!/bin/sh
+# Reads a `git diff -U0` on stdin and reports each added line that holds a secret or a real email address.
+# It prints the file, the line and the kind of hit, never the value, so the report itself is safe to paste.
+# Exits 1 if anything was found.
+exec awk '
+BEGIN {
+  # The character classes in [t], [s], [y] keep these sources from matching themselves.
+  rule["AWS access key"] = "AKIA[A-Z0-9]{16}"
+  rule["Anthropic key"] = "sk-an[t]-"
+  rule["GitHub token"] = "ghp_[A-Za-z0-9]{20}"
+  rule["GitHub App token"] = "gh[s]_"
+  rule["Tavily key"] = "tvl[y]-"
+  rule["private key"] = "BEGIN [A-Z ]*PRIVATE"
+  email = "[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+([.][A-Za-z0-9-]+)*[.][A-Za-z]{2,}"
+
+  # The allow-list. Fake values the tests use on purpose are cut out of a line before it is matched, so a real
+  # secret on the same line still blocks. Exact literals only: a pattern here would let real values through.
+  split("ghs_fake ghs_other", fake_token, " ")
+  split("noreply@anthropic.com a@b.com a@b.co p@x.com pw@x.com x@alice.com a@scout.com a@reviewer.com a@agent.com", fake_email, " ")
+  for (i in fake_email) allowed_email[fake_email[i]] = 1
+  # Reserved for documentation and tests (RFC 2606), so no one receives mail there.
+  example_domain = "(^|[.])(example[.](com|net|org)|example|test|invalid|localhost)$"
+  found = 0
+}
+/^\+\+\+ / { file = substr($0, 7); next }
+/^@@ / { split($3, hunk, ","); line = substr(hunk[1], 2) + 0; next }
+/^\+/ {
+  text = substr($0, 2)
+  for (i in fake_token) gsub(fake_token[i], "", text)
+  # Tests assert that output leaks nothing with a toMatch regex of token prefixes; that regex is not a secret.
+  if (file ~ /[.]test[.]tsx?$/) gsub(/toMatch[(]\/[^\/]*\//, "", text)
+  for (name in rule) if (text ~ rule[name]) report(name)
+  # package-lock.json carries the addresses of npm package authors, which are public and not ours to remove.
+  if (file != "package-lock.json") {
+    rest = text
+    while (match(rest, email)) {
+      address = substr(rest, RSTART, RLENGTH)
+      rest = substr(rest, RSTART + RLENGTH)
+      domain = substr(address, index(address, "@") + 1)
+      if (!(address in allowed_email) && domain !~ example_domain) report("email address")
+    }
+  }
+  line++
+}
+function report(kind) {
+  print file ":" line ": " kind " (value redacted)"
+  found = 1
+}
+END { exit found }
+'

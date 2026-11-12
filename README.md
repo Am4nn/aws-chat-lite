@@ -23,6 +23,7 @@ npm test                  # unit + template tests
 npm -w services run test:int   # DynamoDB integration tests on Floci
 npm run smoke             # end-to-end in Chrome (needs npm run dev)
 ```
+Turn on the secret scan once per clone with `git config core.hooksPath .githooks`: every push then fails if its commits add a key, token, private key or real email address. Fake test values go in the allow-list in `.githooks/scan-diff`.
 
 ## Deploy to real AWS
 Follow [docs/runbook-aws.md](docs/runbook-aws.md) step by step: certificate, context file, deploy, keys, alarm email, DNS and the checks that only real AWS can pass. Nothing in the repo calls AWS by itself.
