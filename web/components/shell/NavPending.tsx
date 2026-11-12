@@ -25,10 +25,13 @@ function useNav() {
 /** Where a tap is heading (path and search), or null when nothing is in flight. */
 export const useNavPending = () => useNav().pending;
 
-/** The room page being shown or, while a tap is in flight, the one it is heading to. */
+/**
+ * The room page being shown or, while a tap is in flight, the one it is heading to. A tap out of the rooms (to /apps)
+ * leaves the room's highlight and header where they are until that page arrives.
+ */
 export function useCurrentPlace() {
   const { here, pending } = useNav();
-  return placeOf(pending ?? here);
+  return (pending && placeOf(pending)) || placeOf(here);
 }
 
 /** router.push or replace that marks its target pending first, for navigations that don't start from a link. */

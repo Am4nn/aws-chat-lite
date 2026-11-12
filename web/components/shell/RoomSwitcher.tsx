@@ -11,7 +11,7 @@ import type { PushState } from "@/lib/client/push";
 import type { RoomSummary } from "@/lib/types";
 import { NotificationsToggle } from "./NotificationsToggle";
 
-const MENU_ITEM = "flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13.5px] transition-colors";
+const MENU_ITEM = "flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13.5px] transition-colors active:bg-surface-3";
 
 function MentionDot() {
   return <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-lime" />;
