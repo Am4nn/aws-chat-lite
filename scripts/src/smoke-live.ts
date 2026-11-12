@@ -37,10 +37,11 @@ const sidebarChats = (page: Page) => page.evaluate(() =>
   [...document.querySelectorAll('nav[aria-label="Room"] ul[aria-labelledby] li a span.truncate')].map((s) => s.textContent));
 
 /**
- * Opens a sidebar chat row's menu and returns its item labels, after picking `item` when given. The menu is looked
- * for inside the row, since another row's menu may still be fading out.
+ * Opens a sidebar chat row's menu and returns its item labels, after picking `item` when given. A menu just closed
+ * keeps fading over the rows below it, so this waits for it to go and then looks only inside the row it opened.
  */
 async function chatMenu(page: Page, chat: string, item?: string): Promise<string[]> {
+  await until(page, () => !document.querySelector('nav[aria-label="Room"] [role=menu]'));
   const row = (await page.evaluateHandle((n) => [...document.querySelectorAll('nav[aria-label="Room"] li')]
     .find((li) => li.querySelector("a span.truncate")?.textContent === n), chat)).asElement() as ElementHandle<Element>;
   await row.hover();
