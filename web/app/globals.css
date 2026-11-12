@@ -93,6 +93,41 @@
     background: var(--color-ink);
     color: var(--color-text);
     scrollbar-gutter: stable;
+    /* Phones flash a grey box over whatever is tapped; every control here draws its own pressed state instead. */
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* Tailwind v4 dropped the pointer cursor on buttons; bring it back for everything that acts on a click. */
+  button:not(:disabled),
+  [role="button"],
+  [role="tab"],
+  [role="switch"],
+  [role="menuitem"],
+  summary,
+  select,
+  label:has(input[type="checkbox"]) {
+    cursor: pointer;
+  }
+  :disabled {
+    cursor: not-allowed;
+  }
+  button[aria-busy="true"] {
+    cursor: progress;
+  }
+  /* A quick second tap is a second press, not a zoom (iOS waits for it otherwise). */
+  a,
+  button,
+  [role="button"],
+  [role="tab"],
+  summary,
+  label {
+    touch-action: manipulation;
+  }
+  /* A double tap on a control shouldn't select its label. */
+  button,
+  [role="tab"],
+  nav a {
+    user-select: none;
+    -webkit-user-select: none;
   }
   body {
     @apply font-sans antialiased;

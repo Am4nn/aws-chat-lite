@@ -5,7 +5,7 @@ export function RowButton({ label, onClick, children }: { label: string; onClick
   return (
     <button
       onClick={onClick} aria-label={label} title={label}
-      className="grid size-7 shrink-0 place-items-center rounded-md text-text-3 opacity-0 transition-[opacity,background-color,color] hover:bg-surface-3 hover:text-text focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
+      className="grid size-7 shrink-0 place-items-center rounded-md text-text-3 opacity-0 transition-[opacity,background-color,color,scale] hover:bg-surface-3 active:scale-90 hover:text-text focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
     >
       {children}
     </button>
