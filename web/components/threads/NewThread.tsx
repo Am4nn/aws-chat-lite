@@ -1,13 +1,13 @@
 "use client";
 
 import { useContext, useState } from "react";
-import { useRouter } from "next/navigation";
 import { RoomAgentsContext } from "@/lib/client/agents";
 import { bff, errorText } from "@/lib/client/bff";
 import { useModelPick } from "@/lib/client/ModelsProvider";
 import { useThreads } from "@/lib/client/ThreadsProvider";
 import type { Me, Member, ThreadSummary } from "@/lib/types";
 import { useToast } from "@/components/overlays/Toast";
+import { useNavigate } from "@/components/shell/NavPending";
 import { ArchivedNotice } from "@/components/chat/ArchivedNotice";
 import { Composer } from "@/components/chat/Composer";
 import { ModelPill } from "@/components/chat/ModelPill";
@@ -19,7 +19,7 @@ import { UserBubble } from "./UserBubble";
  * agent picked here) and then opens it, replacing this page in history so Back doesn't return to an empty form.
  */
 export function NewThread({ roomId, me, members, archived }: { roomId: string; me: Me; members: Member[]; archived: boolean }) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const toast = useToast();
   const { apply } = useThreads();
   const [sent, setSent] = useState<{ text: string; failed: boolean } | null>(null);
@@ -36,7 +36,7 @@ export function NewThread({ roomId, me, members, archived }: { roomId: string; m
       });
       // The room's layout isn't fetched again on this navigation, so the new thread joins the list from the reply.
       apply(thread);
-      router.replace(`/r/${roomId}/t/${thread.number}`);
+      navigate(`/r/${roomId}/t/${thread.number}`, { replace: true });
     } catch (e) {
       setSent({ text, failed: true });
       toast(errorText(e), "error");

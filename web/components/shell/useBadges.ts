@@ -8,18 +8,19 @@ import type { Chat, RoomSummary, RoomView } from "@/lib/types";
 /**
  * The sidebar's unread and mention counts, and which rooms have mentions waiting. The room view and the room list
  * are the truth whenever they're fetched (on load, and after every `room.updated`); in between, live events keep the
- * counts moving. The open chat is read as it arrives, so it never holds a count.
+ * counts moving. The open chat is read as it arrives, so it never holds a count; nor does the one a tap is opening.
  */
-export function useBadges({ view, rooms, meId, activeChatId }: { view: RoomView; rooms: RoomSummary[]; meId: string; activeChatId?: string }) {
+export function useBadges({ view, rooms, meId, openChatIds }: { view: RoomView; rooms: RoomSummary[]; meId: string; openChatIds: string[] }) {
   const roomId = view.room.roomId;
-  const seen = (c: Chat): Chat => (c.chatId === activeChatId ? { ...c, unread: 0, mentions: 0 } : c);
+  const open = openChatIds.join(" ");
+  const seen = (c: Chat): Chat => (openChatIds.includes(c.chatId) ? { ...c, unread: 0, mentions: 0 } : c);
 
-  const [source, setSource] = useState({ chats: view.chats, rooms, activeChatId });
+  const [source, setSource] = useState({ chats: view.chats, rooms, open });
   const [chats, setChats] = useState(() => view.chats.map(seen));
   const [mentionedRooms, setMentionedRooms] = useState(() => new Set(rooms.filter((r) => r.mentions > 0).map((r) => r.roomId)));
   // Adjusted during render rather than in an effect, so a fresh fetch never paints one frame of stale counts.
-  if (source.chats !== view.chats || source.rooms !== rooms || source.activeChatId !== activeChatId) {
-    setSource({ chats: view.chats, rooms, activeChatId });
+  if (source.chats !== view.chats || source.rooms !== rooms || source.open !== open) {
+    setSource({ chats: view.chats, rooms, open });
     setChats((list) => (source.chats !== view.chats ? view.chats : list).map(seen));
     if (source.rooms !== rooms) setMentionedRooms(new Set(rooms.filter((r) => r.mentions > 0).map((r) => r.roomId)));
   }
@@ -37,5 +38,6 @@ export function useBadges({ view, rooms, meId, activeChatId }: { view: RoomView;
 
   const hasMentions = (id: string) => (id === roomId ? chats.some((c) => c.mentions > 0) : mentionedRooms.has(id));
   const setMuted = (chatId: string, muted: boolean) => update(chatId, (c) => ({ ...c, muted }));
-  return { chats, hasMentions, setMuted };
+  const setArchived = (chatId: string, archived: boolean) => update(chatId, (c) => ({ ...c, archived }));
+  return { chats, hasMentions, setMuted, setArchived };
 }
