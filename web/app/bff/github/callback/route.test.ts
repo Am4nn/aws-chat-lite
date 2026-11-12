@@ -28,6 +28,13 @@ describe("/bff/github/callback", () => {
     expect(res.headers.get("location")).toBe("/r/r1?githubError=GitHub+didn%27t+allow+access+%28access_denied%29.");
   });
 
+  it("lands with a timeout message when the API doesn't answer in time", async () => {
+    api.idToken.mockResolvedValueOnce(fresh(600));
+    api.callApi.mockRejectedValueOnce(new DOMException("The operation was aborted due to timeout", "TimeoutError"));
+    const res = await open("state=s1&code=c1");
+    expect(res.headers.get("location")).toBe("/?githubError=GitHub+took+too+long+to+answer.+Try+Connect+GitHub+again.");
+  });
+
   it("sends a user without a fresh session to sign in, without finishing", async () => {
     api.callApi.mockClear();
     api.idToken.mockResolvedValueOnce(fresh(30));
