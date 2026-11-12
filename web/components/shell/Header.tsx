@@ -19,7 +19,7 @@ export function Header({ roomName, chatName, thread, taint = [], members, onMenu
     <header className="flex h-16 shrink-0 items-center gap-3 border-b border-line px-3 md:px-5">
       <HeaderButton label="Open sidebar" onClick={onMenu} className="md:hidden"><Menu aria-hidden="true" size={16} /></HeaderButton>
       <span className="truncate text-[13px] text-text-3 max-md:hidden">{roomName}</span>
-      {(chatName || thread) && <ChevronRight aria-hidden="true" size={13} className="shrink-0 text-[#3e4749] max-md:hidden" />}
+      {(chatName || thread) && <ChevronRight aria-hidden="true" size={13} className="shrink-0 text-line-hover max-md:hidden" />}
       {chatName && (
         <h1 className="flex min-w-0 items-center gap-1 font-display text-lg font-bold">
           <Hash aria-hidden="true" size={16} className="shrink-0 text-text-3" />
@@ -50,7 +50,7 @@ function HeaderButton({ label, onClick, className = "", children }: { label: str
       onClick={onClick}
       aria-label={label}
       title={label}
-      className={`grid size-8 shrink-0 place-items-center rounded-[10px] border border-line-strong bg-surface-2 text-text-2 transition-[border-color,color,transform] hover:border-[#36403f] hover:text-text active:scale-[0.94] ${className}`}
+      className={`grid size-8 shrink-0 place-items-center rounded-[10px] border border-line-strong bg-surface-2 text-text-2 transition-[border-color,color,transform] hover:border-line-hover hover:text-text active:scale-[0.94] ${className}`}
     >
       {children}
     </button>

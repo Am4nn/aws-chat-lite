@@ -47,7 +47,7 @@ export function RunMap({ runId, live }: { runId: string; live: boolean }) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2 border-b border-[#141819] px-4 py-3 sm:px-[22px]">
+      <div className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2 border-b border-line px-4 py-3 sm:px-[22px]">
         <p suppressHydrationWarning className="font-mono text-[12.5px] tabular-nums text-text-3">
           <b className="font-normal text-text">{steps}</b> {steps === 1 ? "step" : "steps"}
           {" · "}<b className="font-normal text-text">{helpers}</b> {helpers === 1 ? "helper" : "helpers"}
@@ -57,7 +57,7 @@ export function RunMap({ runId, live }: { runId: string; live: boolean }) {
         <div className="sm:ml-auto"><TimeShare events={run.events} /></div>
         <button
           onClick={() => setReplays((n) => n + 1)}
-          className="flex h-8 items-center gap-1.5 rounded-[10px] border border-line-strong bg-surface-2 px-3 text-[12.5px] text-text-2 transition-[border-color,color,transform] hover:border-[#36403f] hover:text-text active:scale-[0.96]"
+          className="flex h-8 items-center gap-1.5 rounded-[10px] border border-line-strong bg-surface-2 px-3 text-[12.5px] text-text-2 transition-[border-color,color,transform] hover:border-line-hover hover:text-text active:scale-[0.96]"
         >
           <Play aria-hidden="true" size={12} fill="currentColor" />
           Replay
@@ -87,7 +87,7 @@ function MapCanvas({ map, runId, live }: { map: Layout; runId: string; live: boo
   return (
     <div className="relative min-w-full" style={{ width: map.width, height: map.height }}>
       {map.lanes.map((l) => (
-        <div key={l.lane} className="pointer-events-none absolute inset-x-4 rounded-2xl bg-[#0d1011]" style={{ top: l.top, height: l.height }}>
+        <div key={l.lane} className="pointer-events-none absolute inset-x-4 rounded-2xl bg-surface-1" style={{ top: l.top, height: l.height }}>
           <span className="sticky left-4 inline-block px-4 pt-3.5 text-[11.5px] font-semibold tracking-[.02em] text-text-3">{l.label}</span>
         </div>
       ))}

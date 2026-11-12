@@ -48,7 +48,7 @@ export function NewThread({ roomId, me, members, archived }: { roomId: string; m
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-[836px] flex-col gap-[18px] px-4 pb-4 pt-10 sm:px-7">
           <div className="flex flex-col gap-1.5">
-            <span className="mb-2.5 grid size-12 place-items-center rounded-2xl bg-[#172014] text-lime">
+            <span className="mb-2.5 grid size-12 place-items-center rounded-2xl bg-lime-wash text-lime">
               <Bot aria-hidden="true" size={22} />
             </span>
             <h2 className="font-display text-[27px] font-bold tracking-tight">New thread</h2>
@@ -56,7 +56,7 @@ export function NewThread({ roomId, me, members, archived }: { roomId: string; m
               Ask{" "}
               <select
                 aria-label="Agent" value={agentId} onChange={(e) => setAgentId(e.target.value)}
-                className="h-7 rounded-lg border border-line-strong bg-surface-2 px-1.5 font-mono text-[13.5px] text-text outline-none transition-colors hover:border-[#36403f] focus-visible:border-lime/60"
+                className="h-7 rounded-lg border border-line-strong bg-surface-2 px-1.5 font-mono text-[13.5px] text-text outline-none transition-colors hover:border-line-hover focus-visible:border-lime/60"
               >
                 {agents.map((a) => <option key={a.agentId} value={a.agentId}>@{a.name}</option>)}
               </select>{" "}

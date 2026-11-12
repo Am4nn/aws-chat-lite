@@ -179,7 +179,7 @@ export function Composer({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, transition: motionFast }}
             transition={motionFast}
-            className="absolute bottom-full left-4 z-20 mb-2 w-64 rounded-xl border border-line-strong bg-surface-2 p-1 shadow-[0_16px_40px_rgba(0,0,0,.5)] sm:left-7"
+            className="absolute bottom-full left-4 z-20 mb-2 w-64 rounded-xl border border-line-strong bg-surface-2 p-1 shadow-menu sm:left-7"
           >
             {options.map(({ name, kind }, i) => (
               <li
@@ -191,8 +191,8 @@ export function Composer({
                 onMouseEnter={() => setHighlight(i)}
                 className={`flex h-9 cursor-pointer items-center gap-2.5 rounded-lg px-2 text-[13px] ${i === highlight ? "bg-surface-3 text-text" : "text-text-2"}`}
               >
-                {kind === "agent" && <span className="grid size-[22px] place-items-center rounded-full bg-[#172014] text-lime"><Bot aria-hidden="true" size={12} /></span>}
-                {kind === "everyone" && <span className="grid size-[22px] place-items-center rounded-full bg-[#1c2225]"><Users aria-hidden="true" size={12} /></span>}
+                {kind === "agent" && <span className="grid size-[22px] place-items-center rounded-full bg-lime-wash text-lime"><Bot aria-hidden="true" size={12} /></span>}
+                {kind === "everyone" && <span className="grid size-[22px] place-items-center rounded-full bg-surface-4"><Users aria-hidden="true" size={12} /></span>}
                 {kind === "member" && <Avatar name={name} size={22} />}
                 {name}
                 {kind === "agent" && <span className="ml-auto text-[11.5px] text-text-3">agent</span>}
@@ -203,7 +203,7 @@ export function Composer({
         )}
       </AnimatePresence>
 
-      <div className={`rounded-2xl border bg-surface-2 transition-colors duration-300 ${steering ? "border-[#3b5420]" : "border-line-strong focus-within:border-[#36403f]"}`}>
+      <div className={`rounded-2xl border bg-surface-2 transition-colors duration-300 ${steering ? "border-lime-line" : "border-line-strong focus-within:border-line-hover"}`}>
         <AnimatePresence initial={false}>
           {mode && (
             <motion.div
@@ -309,7 +309,7 @@ export function Composer({
                 disabled={stopping}
                 aria-label="Stop the run"
                 title="Stop the run"
-                className="grid size-[38px] shrink-0 place-items-center rounded-[11px] border border-line-strong bg-surface-3 text-text transition-[background,border-color,transform] hover:border-[#36403f] hover:bg-[#1c2225] active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+                className="grid size-[38px] shrink-0 place-items-center rounded-[11px] border border-line-strong bg-surface-3 text-text transition-[background,border-color,transform] hover:border-line-hover hover:bg-surface-4 active:scale-95 disabled:pointer-events-none disabled:opacity-50"
               >
                 <Square aria-hidden="true" size={12} fill="currentColor" strokeWidth={0} />
               </motion.button>
@@ -319,7 +319,7 @@ export function Composer({
             onClick={submit}
             disabled={!canSubmit}
             aria-label={editing ? "Save edit" : steering ? "Steer the running agent" : "Send"}
-            className="grid size-[38px] shrink-0 place-items-center rounded-[11px] bg-lime text-lime-ink transition-[background,color,transform] hover:bg-[#d7fa8a] active:scale-95 disabled:bg-surface-3 disabled:text-text-3"
+            className="grid size-[38px] shrink-0 place-items-center rounded-[11px] bg-lime text-lime-ink transition-[background,color,transform] hover:bg-lime-soft active:scale-95 disabled:bg-surface-3 disabled:text-text-3"
           >
             <ArrowUp aria-hidden="true" size={16} strokeWidth={2.6} />
           </button>
@@ -332,7 +332,7 @@ export function Composer({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={reduced ? instant : { duration: dur.base }}
-            className="pointer-events-none absolute inset-x-0 bottom-[3px] text-center font-mono text-[11px] text-[#5b6668] max-sm:hidden"
+            className="pointer-events-none absolute inset-x-0 bottom-[3px] text-center font-mono text-[11px] text-text-4 max-sm:hidden"
           >
             Enter steers the running agent
           </motion.p>

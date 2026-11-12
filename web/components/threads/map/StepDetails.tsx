@@ -61,11 +61,11 @@ export function StepDetails({ runId, nodeId, live }: PickedStep) {
         <div className="flex flex-col gap-1.5">
           <h3 className="text-[11.5px] font-semibold text-text-3">Output</h3>
           {node.output && (
-            <pre className="max-h-[50vh] overflow-auto whitespace-pre-wrap break-words rounded-[10px] border border-[#1a1f22] bg-[#0f1213] px-3 py-2.5 font-mono text-[11.5px] leading-[1.6] text-[#b7c2c1]">
+            <pre className="max-h-[50vh] overflow-auto whitespace-pre-wrap break-words rounded-[10px] border border-line bg-surface-2 px-3 py-2.5 font-mono text-[11.5px] leading-[1.6] text-text-body">
               {node.output}
             </pre>
           )}
-          {node.file && <p className="truncate text-[12px] text-[#b7e36a]">↳ saved {node.file}</p>}
+          {node.file && <p className="truncate text-[12px] text-lime">↳ saved {node.file}</p>}
         </div>
       )}
     </motion.section>

@@ -9,9 +9,9 @@ import { RunningArc } from "../StepRow";
 const DROP = { duration: 0.45, ease: [0.2, 1.15, 0.4, 1] } as const;
 
 const LOOK = {
-  selected: "border-lime bg-[#131a11] shadow-[0_0_0_3px_rgba(200,241,105,.14)]",
-  waiting: "border-[#4a3e1c] bg-[#14130e] hover:border-[#6a5826]",
-  other: "border-[#20262a] bg-surface-2 hover:border-[#35403f]",
+  selected: "border-lime bg-lime-wash",
+  waiting: "border-amber-line bg-amber-wash hover:border-amber/40",
+  other: "border-line-strong bg-surface-2 hover:border-line-hover",
 };
 
 /**
@@ -50,7 +50,7 @@ export function MapNode({ node: n, selected, delay, onPick }: { node: Node; sele
           {meta}
         </span>
         {(n.file || waiting) && (
-          <span className={`mt-1 block truncate text-[10.5px] ${waiting ? "text-amber" : "text-[#b7e36a]"}`}>{waiting ? "Approve or deny" : `↳ ${n.file}`}</span>
+          <span className={`mt-1 block truncate text-[10.5px] ${waiting ? "text-amber" : "text-lime"}`}>{waiting ? "Approve or deny" : `↳ ${n.file}`}</span>
         )}
         <span className="sr-only">{`, ${waiting ? "waiting for approval" : n.status}`}</span>
       </button>

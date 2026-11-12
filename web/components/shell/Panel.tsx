@@ -31,7 +31,7 @@ export function Panel({ open, overlayOpen, active, onActiveChange, tabs }: {
       initial={false}
       animate={{ width: open ? 320 : 0 }}
       transition={spring.panel}
-      className={`shrink-0 overflow-hidden border-l border-line bg-surface-1 max-md:fixed max-md:inset-y-0 max-md:right-0 max-md:z-40 max-md:w-[min(320px,calc(100vw-48px))]! max-md:transition-transform max-md:duration-300 max-md:ease-[cubic-bezier(.2,.9,.2,1)] ${overlayOpen ? "max-md:shadow-[0_0_60px_rgba(0,0,0,.5)]" : "max-md:translate-x-full"}`}
+      className={`shrink-0 overflow-hidden border-l border-line bg-surface-1 max-md:fixed max-md:inset-y-0 max-md:right-0 max-md:z-40 max-md:w-[min(320px,calc(100vw-48px))]! max-md:transition-transform max-md:duration-300 max-md:ease-[cubic-bezier(.2,.9,.2,1)] ${overlayOpen ? "max-md:shadow-drawer" : "max-md:translate-x-full"}`}
     >
       <div className="flex h-full w-[320px] flex-col gap-4 p-4 max-md:w-full">
         <div role="tablist" aria-label="Room panel tabs" className="flex shrink-0 rounded-[11px] border border-line bg-surface-2 p-[3px]">
@@ -48,7 +48,7 @@ export function Panel({ open, overlayOpen, active, onActiveChange, tabs }: {
                 onClick={() => onActiveChange(t.id)}
                 className={`relative isolate grid h-8 min-w-0 flex-1 place-items-center rounded-lg transition-colors ${selected ? "text-text" : "text-text-3 hover:text-text"}`}
               >
-                {selected && <motion.span layoutId="panel-tab" transition={spring.glide} className="absolute inset-0 -z-10 rounded-lg bg-[#1c2225]" />}
+                {selected && <motion.span layoutId="panel-tab" transition={spring.glide} className="absolute inset-0 -z-10 rounded-lg bg-surface-4" />}
                 <t.icon aria-hidden="true" size={15} />
               </motion.button>
             );

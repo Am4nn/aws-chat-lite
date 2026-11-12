@@ -36,7 +36,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, scale: 0.96, transition: { duration: dur.fast } }}
               transition={spring.pop}
-              className="flex items-center gap-2.5 rounded-xl border border-line-strong bg-surface-2 px-3.5 py-2.5 text-[13px] shadow-[0_16px_40px_rgba(0,0,0,.45)]"
+              className="flex items-center gap-2.5 rounded-xl border border-line-strong bg-surface-2 px-3.5 py-2.5 text-[13px] shadow-menu"
             >
               {t.tone === "error"
                 ? <CircleAlert aria-hidden="true" size={15} className="text-amber" strokeWidth={2.4} />

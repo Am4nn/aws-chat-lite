@@ -196,7 +196,7 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={reduced ? instant : { duration: dur.fast }}
-            className="pointer-events-none absolute inset-3 z-30 grid place-items-center rounded-2xl border border-dashed border-[#3b5420] bg-ink/85"
+            className="pointer-events-none absolute inset-3 z-30 grid place-items-center rounded-2xl border border-dashed border-lime-line bg-ink/85"
           >
             <span className="flex items-center gap-2 text-[14px] text-text-2">
               <Paperclip aria-hidden="true" size={16} className="text-lime" />

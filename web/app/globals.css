@@ -1,21 +1,47 @@
 @import "tailwindcss";
 
-/* The palette. Accent colours carry meaning: lime is live work and the primary action, amber needs you, sky is done. */
+/*
+ * The palette. Accent colours carry meaning: lime is live work and the primary action, amber needs you, sky is done,
+ * and danger is only for what deletes or failed. Each accent has a line (its border), a wash (its tinted background)
+ * and a soft shade (hover on a filled button, or light text on its wash).
+ */
 @theme {
   --color-ink: #0a0c0d;
   --color-surface-1: #0c0f10;
   --color-surface-2: #101315;
   --color-surface-3: #161b1d;
+  --color-surface-4: #1c2225;
   --color-line: #171c1e;
   --color-line-strong: #22282b;
+  --color-line-hover: #36403f;
   --color-text: #ecf1f0;
+  --color-text-body: #d3dcdb;
   --color-text-2: #9da9a8;
   --color-text-3: #7e8a89;
+  --color-text-4: #5b6668;
   --color-lime: #c8f169;
+  --color-lime-soft: #d7fa8a;
+  --color-lime-line: #34501c;
+  --color-lime-flash: #1d2a12;
+  --color-lime-wash: #172014;
   --color-lime-ink: #10170a;
   --color-amber: #ffc46b;
+  --color-amber-soft: #ffd08a;
+  --color-amber-muted: #b9ae93;
+  --color-amber-line: #4a3e1c;
+  --color-amber-wash: #15140f;
   --color-amber-ink: #1f1505;
   --color-sky: #7cc7ff;
+  --color-danger: #ff9b8f;
+  --color-danger-line: #4a2a26;
+  --color-danger-wash: #150f0e;
+
+  /* Floating layers, by how far they sit above the page. */
+  --shadow-ring: inset 0 0 0 1px var(--color-line-strong);
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-menu: 0 16px 40px rgba(0, 0, 0, 0.5);
+  --shadow-modal: 0 30px 80px rgba(0, 0, 0, 0.55);
+  --shadow-drawer: 0 0 60px rgba(0, 0, 0, 0.5);
 }
 
 /* Fonts come from next/font as CSS variables, so the theme must reference them at use time (inline). */

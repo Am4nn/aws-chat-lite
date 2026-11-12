@@ -192,7 +192,7 @@ function SteerBubble({ row, mine, startedAt, enter, onRetry, onDiscard }: {
     >
       <div
         className={`flex items-center gap-2 rounded-xl border px-3 py-[7px] text-[13px] transition-colors duration-300 ${
-          read ? "border-[#2f4a1e] bg-[#172014]" : row.state === "failed" ? "border-[#4a3e1c] bg-surface-2" : "border-line-strong bg-surface-2"
+          read ? "border-lime-line bg-lime-wash" : row.state === "failed" ? "border-amber-line bg-surface-2" : "border-line-strong bg-surface-2"
         }`}
       >
         <CornerDownRight aria-hidden="true" size={13} strokeWidth={2.4} className={`shrink-0 transition-colors duration-300 ${read ? "text-lime" : "text-text-3"}`} />

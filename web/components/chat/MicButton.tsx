@@ -56,7 +56,7 @@ export function DictationRow({ dictation }: { dictation: Dictation }) {
         onClick={dictation.stop}
         disabled={state !== "recording"}
         aria-label="Stop dictating"
-        className="ml-auto grid size-6 shrink-0 place-items-center rounded-md border border-line-strong bg-surface-3 text-text transition-[background,border-color,transform] hover:border-[#36403f] active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+        className="ml-auto grid size-6 shrink-0 place-items-center rounded-md border border-line-strong bg-surface-3 text-text transition-[background,border-color,transform] hover:border-line-hover active:scale-95 disabled:pointer-events-none disabled:opacity-50"
       >
         <Square aria-hidden="true" size={9} fill="currentColor" strokeWidth={0} />
       </button>

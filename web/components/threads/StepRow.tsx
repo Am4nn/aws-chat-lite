@@ -51,7 +51,7 @@ export function StepRow({ roomId, step, enter }: { roomId: string; step: Step; e
         disabled={!opens}
         aria-expanded={opens ? open : undefined}
         aria-controls={opens ? outputId : undefined}
-        className="relative isolate flex h-10 w-full items-center gap-3 overflow-hidden rounded-[10px] px-3 text-left transition-colors hover:bg-[#121618] focus-visible:outline-offset-[-2px] disabled:cursor-default disabled:hover:bg-transparent"
+        className="relative isolate flex h-10 w-full items-center gap-3 overflow-hidden rounded-[10px] px-3 text-left transition-colors hover:bg-surface-2 focus-visible:outline-offset-[-2px] disabled:cursor-default disabled:hover:bg-transparent"
       >
         {ended && (
           <motion.span
@@ -59,7 +59,7 @@ export function StepRow({ roomId, step, enter }: { roomId: string; step: Step; e
             initial={{ opacity: 1 }}
             animate={{ opacity: 0 }}
             transition={reduced ? instant : { duration: 0.5, ease: easeOut }}
-            className="absolute inset-0 -z-10 bg-[#1d2a12]"
+            className="absolute inset-0 -z-10 bg-lime-flash"
           />
         )}
         <span className="grid size-4 shrink-0 place-items-center">
@@ -84,7 +84,7 @@ export function StepRow({ roomId, step, enter }: { roomId: string; step: Step; e
         </span>
         <ChevronRight
           aria-hidden="true" size={13}
-          className={`shrink-0 text-[#5b6668] transition-[transform,opacity] duration-300 ${open ? "rotate-90" : ""} ${opens ? "" : "opacity-0"}`}
+          className={`shrink-0 text-text-4 transition-[transform,opacity] duration-300 ${open ? "rotate-90" : ""} ${opens ? "" : "opacity-0"}`}
         />
         <span className="sr-only">{running ? ", running" : step.status === "failed" ? ", failed" : ", done"}</span>
       </button>
@@ -103,7 +103,7 @@ export function StepRow({ roomId, step, enter }: { roomId: string; step: Step; e
               </div>
             )}
             {!running && (
-              <pre className="mb-2 ml-10 mr-3 mt-0.5 whitespace-pre-wrap break-words rounded-[10px] border border-[#1a1f22] bg-[#0f1213] px-3 py-2.5 font-mono text-[11.5px] leading-[1.6] text-[#b7c2c1]">
+              <pre className="mb-2 ml-10 mr-3 mt-0.5 whitespace-pre-wrap break-words rounded-[10px] border border-line bg-surface-2 px-3 py-2.5 font-mono text-[11.5px] leading-[1.6] text-text-body">
                 {output || "No output."}
               </pre>
             )}

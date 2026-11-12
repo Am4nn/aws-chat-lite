@@ -141,7 +141,7 @@ export function ThreadView({ roomId, initialThread, me, members, archived, initi
 function ThreadIntro({ thread }: { thread: ThreadSummary }) {
   return (
     <div className="flex items-center gap-3 pb-1">
-      <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#172014] text-lime">
+      <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-lime-wash text-lime">
         <Bot aria-hidden="true" size={19} />
       </span>
       <div className="min-w-0">

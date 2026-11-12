@@ -82,7 +82,7 @@ export function SearchPanel({ roomId, chats, serverTimeZone, focusSignal, onPick
 
   return (
     <div className="flex flex-col gap-3">
-      <label className="flex h-[38px] items-center gap-2 rounded-[10px] border border-line-strong bg-surface-2 px-3 transition-colors focus-within:border-lime/60 hover:border-[#2c3437]">
+      <label className="flex h-[38px] items-center gap-2 rounded-[10px] border border-line-strong bg-surface-2 px-3 transition-colors focus-within:border-lime/60 hover:border-line-hover">
         <Search aria-hidden="true" size={15} className="shrink-0 text-text-3" />
         <input
           ref={input}
@@ -147,7 +147,7 @@ export function SearchPanel({ roomId, chats, serverTimeZone, focusSignal, onPick
                               <time dateTime={m.createdAt} className="ml-auto shrink-0 font-mono text-[11px] text-text-3">{shortWhen(m.createdAt, Date.now(), timeZone)}</time>
                             </span>
                             <span className="mt-0.5 line-clamp-2 block break-words text-[13px] leading-snug text-text-2">
-                              {s.before}{s.match && <mark className="rounded-[3px] bg-[#1d2a12] px-0.5 text-lime">{s.match}</mark>}{s.after}
+                              {s.before}{s.match && <mark className="rounded-[3px] bg-lime-flash px-0.5 text-lime">{s.match}</mark>}{s.after}
                             </span>
                           </button>
                         </li>

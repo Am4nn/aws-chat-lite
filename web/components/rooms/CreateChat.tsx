@@ -39,7 +39,7 @@ export function CreateChat({ roomId, onDone }: { roomId: string; onDone: () => v
     <form onSubmit={submit} className="flex flex-col gap-4">
       <Field id="chat-name" label="Name" placeholder="deploys" value={name} onChange={(e) => setName(e.target.value)} maxLength={32} required autoFocus />
       <p className="-mt-2 h-4 font-mono text-xs text-text-3">{name && `#${preview(name)}`}</p>
-      {error && <p role="alert" className="text-[13px] text-[#ff9b8f]">{error}</p>}
+      {error && <p role="alert" className="text-[13px] text-danger">{error}</p>}
       <div className="flex justify-end gap-2">
         <Button type="button" onClick={onDone}>Cancel</Button>
         <Button type="submit" variant="primary" disabled={busy || !name.trim()}>{busy && <Spinner />}Create chat</Button>

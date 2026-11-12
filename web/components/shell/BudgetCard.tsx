@@ -65,7 +65,7 @@ export function BudgetCard({ roomId, isOwner }: { roomId: string; isOwner: boole
                 onChange={(e) => setDraft(e.target.value.replace(/[^\d.]/g, ""))}
                 onKeyDown={onKeyDown}
                 onBlur={() => !saving && setDraft(null)}
-                className="h-6 w-12 rounded-md border border-[#36403f] bg-ink px-1 text-right text-xs tabular-nums outline-none disabled:opacity-60"
+                className="h-6 w-12 rounded-md border border-line-hover bg-ink px-1 text-right text-xs tabular-nums outline-none disabled:opacity-60"
               />
             </span>
           )}
@@ -80,7 +80,7 @@ export function BudgetCard({ roomId, isOwner }: { roomId: string; isOwner: boole
           </button>
         )}
       </div>
-      <span className="block h-1 overflow-hidden rounded-full bg-[#1c2225]">
+      <span className="block h-1 overflow-hidden rounded-full bg-surface-4">
         <span
           className={`block h-1 rounded-full transition-[width,background-color] duration-500 ease-[cubic-bezier(.2,.9,.2,1)] motion-reduce:transition-none ${fill >= 100 ? "bg-amber" : "bg-lime"}`}
           style={{ width: `${fill}%` }}

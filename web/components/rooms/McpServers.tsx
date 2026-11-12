@@ -122,7 +122,7 @@ function ServerRow({ server, fresh, manage, busy, onReconnect, onRefresh, onRemo
         <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-text-3">{new URL(server.url).host}</span>
         {server.status === "connected"
           ? <span className="shrink-0 rounded-md bg-surface-3 px-1.5 py-0.5 text-[11px] text-text-2">connected</span>
-          : <span className="shrink-0 rounded-md bg-[#2a2010] px-1.5 py-0.5 text-[11px] text-amber">needs reconnecting</span>}
+          : <span className="shrink-0 rounded-md bg-amber/10 px-1.5 py-0.5 text-[11px] text-amber">needs reconnecting</span>}
       </p>
       <p className="mt-2 flex items-center gap-2 text-[12px] text-text-3">
         <button
@@ -153,8 +153,8 @@ function ServerRow({ server, fresh, manage, busy, onReconnect, onRefresh, onRemo
         )}
       </AnimatePresence>
       {manage && (confirming ? (
-        <div className="mt-3 flex flex-col gap-2 rounded-xl border border-[#4a2a26] bg-[#150f0e] p-3">
-          <p className="text-[12.5px] text-[#ffb4aa]">Remove {server.name}? Agents lose its tools at once.</p>
+        <div className="mt-3 flex flex-col gap-2 rounded-xl border border-danger-line bg-danger-wash p-3">
+          <p className="text-[12.5px] text-danger">Remove {server.name}? Agents lose its tools at once.</p>
           <div className="flex justify-end gap-2">
             <Button autoFocus onClick={() => setConfirming(false)}>Cancel</Button>
             <Button variant="danger" onClick={onRemove} disabled={busy !== null}>{working("remove")}Remove</Button>

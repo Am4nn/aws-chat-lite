@@ -168,13 +168,13 @@ function GitHubSection({ roomId, data, manage, pick, onPickStarted, onChange }: 
             <p className="flex items-center gap-2 text-[13px] font-medium"><FolderGit2 aria-hidden="true" size={14} className="text-text-3" />{github.account}</p>
             <ul aria-label="Repos" className="mt-2.5 flex flex-wrap gap-1.5">
               {github.repos.map((r) => (
-                <li key={r} className="max-w-full truncate rounded-md bg-[#1a2023] px-1.5 py-0.5 font-mono text-[11.5px] text-text-2">{r}</li>
+                <li key={r} className="max-w-full truncate rounded-md bg-surface-4 px-1.5 py-0.5 font-mono text-[11.5px] text-text-2">{r}</li>
               ))}
             </ul>
           </div>
           {manage && (mode.kind === "confirmDisconnect" ? (
-            <div className="flex flex-col gap-2 rounded-xl border border-[#4a2a26] bg-[#150f0e] p-3">
-              <p className="text-[12.5px] text-[#ffb4aa]">Disconnect GitHub? The room&apos;s agent loses these repos.</p>
+            <div className="flex flex-col gap-2 rounded-xl border border-danger-line bg-danger-wash p-3">
+              <p className="text-[12.5px] text-danger">Disconnect GitHub? The room&apos;s agent loses these repos.</p>
               <div className="flex justify-end gap-2">
                 <Button autoFocus onClick={() => setMode({ kind: "view" })}>Cancel</Button>
                 <Button variant="danger" onClick={disconnect} disabled={busy}>{busy && <Spinner />}Disconnect</Button>
@@ -255,7 +255,7 @@ function ApprovalTimeout({ roomId, minutes, manage, onChange }: { roomId: string
               onChange={(e) => setDraft(e.target.value.replace(/\D/g, ""))}
               onKeyDown={onKeyDown}
               onBlur={() => void save()}
-              className="h-6 w-12 rounded-md border border-[#36403f] bg-ink px-1 text-right font-mono text-xs text-text tabular-nums outline-none disabled:opacity-60"
+              className="h-6 w-12 rounded-md border border-line-hover bg-ink px-1 text-right font-mono text-xs text-text tabular-nums outline-none disabled:opacity-60"
             />
             min
           </span>

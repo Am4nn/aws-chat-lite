@@ -78,7 +78,7 @@ function FileCard({ attachment: a }: { attachment: Attachment }) {
       {a.url && <Download aria-hidden="true" size={15} className="shrink-0 text-text-3 transition-colors group-hover/file:text-text" />}
     </>
   );
-  const className = "group/file flex w-[300px] max-w-full items-center gap-3 rounded-xl border border-[#1a1f22] bg-surface-2 px-3 py-2.5";
+  const className = "group/file flex w-[300px] max-w-full items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2.5";
   return a.url
     ? <a href={a.url} download={a.name} className={`${className} transition-[border-color] hover:border-line-strong`}>{body}</a>
     : <div className={className}>{body}</div>;
@@ -94,11 +94,11 @@ export function UploadChip({ upload, onRemove }: { upload: Upload; onRemove: () 
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.96 }}
       transition={reduced ? instant : { duration: dur.fast, ease: easeOut }}
-      className="flex h-12 w-[208px] items-center gap-2.5 rounded-xl border border-[#1a1f22] bg-surface-3 pl-2 pr-1.5"
+      className="flex h-12 w-[208px] items-center gap-2.5 rounded-xl border border-line bg-surface-3 pl-2 pr-1.5"
     >
       {upload.previewUrl
         ? <img src={upload.previewUrl} alt="" width={32} height={32} className="size-8 shrink-0 rounded-md object-cover" />
-        : <span className="grid size-8 shrink-0 place-items-center rounded-md bg-[#1c2225] text-text-2"><FileText aria-hidden="true" size={14} /></span>}
+        : <span className="grid size-8 shrink-0 place-items-center rounded-md bg-surface-4 text-text-2"><FileText aria-hidden="true" size={14} /></span>}
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[12.5px]">{upload.file.name}</span>
         <span className="flex items-center gap-1.5 font-mono text-[11px] text-text-3">
@@ -109,7 +109,7 @@ export function UploadChip({ upload, onRemove }: { upload: Upload; onRemove: () 
       <button
         onClick={onRemove}
         aria-label={`Remove ${upload.file.name}`}
-        className="grid size-6 shrink-0 place-items-center rounded-md text-text-3 transition-colors hover:bg-[#1c2225] hover:text-text"
+        className="grid size-6 shrink-0 place-items-center rounded-md text-text-3 transition-colors hover:bg-surface-4 hover:text-text"
       >
         <X aria-hidden="true" size={13} />
       </button>

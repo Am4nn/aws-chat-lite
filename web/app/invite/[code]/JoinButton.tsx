@@ -24,7 +24,7 @@ export function JoinButton({ code }: { code: string }) {
   return (
     <>
       <Button variant="primary" onClick={join} disabled={busy} className="h-11 w-full">{busy && <Spinner />}Join room</Button>
-      {error && <p role="alert" className="mt-3 text-[13px] text-[#ff9b8f]">{error}</p>}
+      {error && <p role="alert" className="mt-3 text-[13px] text-danger">{error}</p>}
     </>
   );
 }

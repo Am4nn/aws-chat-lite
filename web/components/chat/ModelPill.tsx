@@ -102,7 +102,7 @@ export function ModelPill({ value, onChange, taint, locked = false }: {
         aria-disabled={locked || undefined}
         aria-label={`Model: ${label}`}
         title={locked ? LOCKED_HINT : undefined}
-        className={`flex h-[30px] items-center gap-[7px] rounded-[10px] border border-transparent bg-[#161B1D] px-3 text-[12.5px] text-[#C9D3D2] transition-[color,transform] ${locked ? "cursor-default opacity-60" : "hover:text-[#ECF1F0] active:scale-[0.96]"}`}
+        className={`flex h-[30px] items-center gap-[7px] rounded-[10px] border border-transparent bg-surface-3 px-3 text-[12.5px] text-text-body transition-[color,transform] ${locked ? "cursor-default opacity-60" : "hover:text-text active:scale-[0.96]"}`}
       >
         {label}
         <ChevronDown aria-hidden="true" size={11} strokeWidth={2.4} />
@@ -118,7 +118,7 @@ export function ModelPill({ value, onChange, taint, locked = false }: {
             exit={{ opacity: 0, transition: reduced ? instant : { duration: 0.15 } }}
             transition={reduced ? instant : { duration: 0.18, ease: easeOut }}
             style={{ transformOrigin: "bottom right" }}
-            className="absolute bottom-full right-0 z-30 mb-2 w-[min(280px,calc(100vw-32px))] rounded-xl border border-[#22282B] bg-[#111416] p-1 shadow-[0_16px_40px_rgba(0,0,0,.5)]"
+            className="absolute bottom-full right-0 z-30 mb-2 w-[min(280px,calc(100vw-32px))] rounded-xl border border-line-strong bg-surface-2 p-1 shadow-menu"
           >
             {menu.privateNote && (
               <p className="flex h-8 items-center gap-2 px-2.5 text-[12px] text-text-3">

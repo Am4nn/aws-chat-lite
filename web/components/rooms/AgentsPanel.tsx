@@ -95,7 +95,7 @@ export function AgentsPanel({ roomId, me, rooms, models, archived }: {
                   )
                   : (
                     <motion.div key="row" {...swap} className="flex min-h-12 items-center gap-2.5 rounded-[10px] px-2 py-1.5 hover:bg-surface-2">
-                      <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-[#172014] text-lime"><Bot aria-hidden="true" size={14} /></span>
+                      <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-lime-wash text-lime"><Bot aria-hidden="true" size={14} /></span>
                       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <span className="flex items-center gap-1.5">
                           <span className="truncate font-mono text-[13px] font-medium">@{a.name}</span>

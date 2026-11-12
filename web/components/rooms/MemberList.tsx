@@ -25,7 +25,7 @@ function RoleBadge({ role }: { role: Role }) {
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.8 }}
           transition={spring.pop}
-          className={`rounded-md px-1.5 py-0.5 text-[11px] font-medium ${role === "owner" ? "bg-[#172014] text-lime" : "bg-[#1a2023] text-text-2"}`}
+          className={`rounded-md px-1.5 py-0.5 text-[11px] font-medium ${role === "owner" ? "bg-lime-wash text-lime" : "bg-surface-4 text-text-2"}`}
         >
           {role}
         </motion.span>

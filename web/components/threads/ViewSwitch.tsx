@@ -15,7 +15,7 @@ export function ViewSwitch({ map }: { map: boolean }) {
   ];
 
   return (
-    <nav aria-label="Thread view" className="flex shrink-0 rounded-[11px] border border-[#1a1f22] bg-surface-2 p-[3px]">
+    <nav aria-label="Thread view" className="flex shrink-0 rounded-[11px] border border-line bg-surface-2 p-[3px]">
       {views.map(({ label, href, icon: Icon, active }) => (
         <Link
           key={label}
@@ -24,7 +24,7 @@ export function ViewSwitch({ map }: { map: boolean }) {
           aria-current={active ? "page" : undefined}
           className={`relative isolate flex h-[26px] items-center gap-1.5 rounded-lg px-2.5 text-[12.5px] transition-[color,transform] active:scale-[0.96] ${active ? "text-text" : "text-text-2 hover:text-text"}`}
         >
-          {active && <motion.span layoutId="thread-view" transition={spring.glide} className="absolute inset-0 -z-10 rounded-lg bg-[#1c2225]" />}
+          {active && <motion.span layoutId="thread-view" transition={spring.glide} className="absolute inset-0 -z-10 rounded-lg bg-surface-4" />}
           <Icon aria-hidden="true" size={13} className="sm:hidden" />
           <span className="max-sm:sr-only">{label}</span>
         </Link>

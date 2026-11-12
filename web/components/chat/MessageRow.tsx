@@ -60,7 +60,7 @@ export const MessageRow = memo(function MessageRow({ rowKey, message: m, status,
       transition={reduced ? instant : { duration: 0.2, ease: easeOut }}
       onPointerUp={(e) => e.pointerType === "touch" && onActivate(rowKey)}
       className={`group relative rounded-[10px] px-3 transition-colors ${groupStart ? "mt-3 pb-px pt-1" : "py-px"} ${
-        editing ? "bg-surface-2" : mentionsMe ? "bg-[#13120d] shadow-[inset_2px_0_0_#ffc46b]" : "hover:bg-[#0f1214]"
+        editing ? "bg-surface-2" : mentionsMe ? "bg-amber-wash shadow-[inset_2px_0_0_var(--color-amber)]" : "hover:bg-surface-2"
       }`}
     >
       {flash !== undefined && (
@@ -70,7 +70,7 @@ export const MessageRow = memo(function MessageRow({ rowKey, message: m, status,
           initial={{ opacity: 1 }}
           animate={{ opacity: 0 }}
           transition={reduced ? { duration: 0, delay: 1 } : { duration: 1, ease: easeOut }}
-          className="pointer-events-none absolute inset-0 rounded-[10px] bg-[#1d2a12]"
+          className="pointer-events-none absolute inset-0 rounded-[10px] bg-lime-flash"
         />
       )}
       <div className="relative flex gap-3">
@@ -89,7 +89,7 @@ export const MessageRow = memo(function MessageRow({ rowKey, message: m, status,
           {m.replyTo && !m.deleted && (
             <button
               onClick={() => actions.jump(m.replyTo!.seq)}
-              className="mb-0.5 mt-1 flex max-w-full items-center gap-1.5 border-l-2 border-[#2b3336] pl-2 text-left text-[12.5px] text-text-3 transition-colors hover:border-[#3e4749] hover:text-text-2"
+              className="mb-0.5 mt-1 flex max-w-full items-center gap-1.5 border-l-2 border-line-strong pl-2 text-left text-[12.5px] text-text-3 transition-colors hover:border-line-hover hover:text-text-2"
             >
               <CornerUpLeft aria-hidden="true" size={12} className="shrink-0" />
               <span className="shrink-0 font-medium text-text-2">{m.replyTo.authorName}</span>
@@ -124,7 +124,7 @@ function Body({ message: m, members }: { message: Message; members: Mentionable[
   if (!m.text) return null;
   // "(edited)" sits inline after the last paragraph, the way it would read in a sentence.
   return (
-    <div className={`break-words text-[14.5px] leading-[1.55] text-[#d3dcdb] [&_p+p]:mt-1.5 [&_pre]:my-1.5 ${m.editedAt ? "[&>p:nth-last-child(2)]:inline" : ""}`}>
+    <div className={`break-words text-[14.5px] leading-[1.55] text-text-body [&_p+p]:mt-1.5 [&_pre]:my-1.5 ${m.editedAt ? "[&>p:nth-last-child(2)]:inline" : ""}`}>
       <MessageText text={m.text} members={members} />
       {m.editedAt && <span className="ml-1.5 text-[11.5px] text-text-3">(edited)</span>}
     </div>
@@ -157,7 +157,7 @@ function Reactions({ message: m, meId, members, readOnly, onReact }: {
               aria-label={reactionLabel(r, users.length, mine)}
               title={users.map(nameOf).join(", ")}
               className={`inline-flex h-7 items-center gap-1.5 rounded-full border px-2 text-[13px] transition-colors active:scale-95 disabled:pointer-events-none ${
-                mine ? "border-[#2f4a1e] bg-[#172014]" : "border-line-strong bg-surface-2 hover:border-[#36403f]"
+                mine ? "border-lime-line bg-lime-wash" : "border-line-strong bg-surface-2 hover:border-line-hover"
               }`}
             >
               <span aria-hidden="true">{EMOJI[r]}</span>
@@ -215,7 +215,7 @@ function Toolbar({ message: m, ctx, actions, pinned }: { message: Message; ctx: 
       data-group
       onMouseLeave={() => setConfirming(false)}
       onKeyDown={onKeyDown}
-      className={`absolute -top-4 right-3 z-10 flex items-center gap-0.5 rounded-[10px] border border-line-strong bg-surface-2 p-0.5 shadow-[0_8px_24px_rgba(0,0,0,.4)] transition-opacity duration-150 ${
+      className={`absolute -top-4 right-3 z-10 flex items-center gap-0.5 rounded-[10px] border border-line-strong bg-surface-2 p-0.5 shadow-pop transition-opacity duration-150 ${
         open ? "opacity-100" : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
       }`}
     >
@@ -230,7 +230,7 @@ function Toolbar({ message: m, ctx, actions, pinned }: { message: Message; ctx: 
             exit={{ opacity: 0, transition: reduced ? instant : { duration: dur.fast } }}
             transition={reduced ? instant : { duration: dur.fast, ease: easeOut }}
             style={{ transformOrigin: "bottom right" }}
-            className="absolute bottom-full right-0 mb-1.5 flex gap-0.5 rounded-xl border border-line-strong bg-surface-2 p-1 shadow-[0_12px_32px_rgba(0,0,0,.45)]"
+            className="absolute bottom-full right-0 mb-1.5 flex gap-0.5 rounded-xl border border-line-strong bg-surface-2 p-1 shadow-menu"
           >
             {REACTIONS.map((r, i) => {
               const mine = !!m.reactions[r]?.includes(ctx.meId);
@@ -242,7 +242,7 @@ function Toolbar({ message: m, ctx, actions, pinned }: { message: Message; ctx: 
                   aria-label={`React ${REACTION_NAMES[r]}`}
                   aria-pressed={mine}
                   onClick={() => { close(); smile.current?.focus(); actions.react(m, r, !mine); }}
-                  className={`grid size-8 place-items-center rounded-lg text-[17px] transition-[background,transform] hover:bg-surface-3 focus-visible:bg-surface-3 active:scale-90 ${mine ? "bg-[#172014]" : ""}`}
+                  className={`grid size-8 place-items-center rounded-lg text-[17px] transition-[background,transform] hover:bg-surface-3 focus-visible:bg-surface-3 active:scale-90 ${mine ? "bg-lime-wash" : ""}`}
                 >
                   {EMOJI[r]}
                 </button>
@@ -260,7 +260,7 @@ function Toolbar({ message: m, ctx, actions, pinned }: { message: Message; ctx: 
             autoFocus
             tabIndex={-1}
             onClick={() => { close(); actions.remove(m); }}
-            className="h-7 rounded-lg px-2 text-[12.5px] font-medium text-[#ff9b8f] transition-colors hover:bg-[#1a1110] focus-visible:bg-[#1a1110]"
+            className="h-7 rounded-lg px-2 text-[12.5px] font-medium text-danger transition-colors hover:bg-danger-wash focus-visible:bg-danger-wash"
           >
             Delete?
           </button>
