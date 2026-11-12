@@ -6,7 +6,6 @@ import { Template } from "aws-cdk-lib/assertions";
 import { expect } from "vitest";
 import { loadConfig, type Stage } from "./config.js";
 import { CoreStack, type CoreStackProps } from "./core-stack.js";
-import { SpikeStack } from "./spike-stack.js";
 import type { WebBuild } from "./web.js";
 
 /**
@@ -56,13 +55,6 @@ export function template(stage: Stage = "local", env: NodeJS.ProcessEnv = {}): T
     cache.set(key, t);
   }
   return t;
-}
-
-let spike: Template | undefined;
-
-export function spikeTemplate(): Template {
-  const config = configFor("local");
-  return (spike ??= Template.fromStack(new SpikeStack(app(), "cl-local-spike", { config, env: { account: "000000000000", region: config.region } })));
 }
 
 /** The ops dashboard's widgets, with each reference in its body replaced by the logical ID it points at. */

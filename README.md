@@ -22,17 +22,15 @@ npm run grant -- <username> creators   # let that user create rooms (sign out an
 npm test                  # unit + template tests
 npm -w services run test:int   # DynamoDB integration tests on Floci
 npm run smoke             # end-to-end in Chrome (needs npm run dev)
-npm run spike             # probes on Floci → docs/learn/floci-compat.md
-npm run spike:aws         # same on real AWS (Sydney) + AgentCore sandbox; deploys and destroys a throwaway stack
 ```
 
 ## Deploy to real AWS
 Follow [docs/runbook-aws.md](docs/runbook-aws.md) step by step: certificate, context file, deploy, keys, alarm email, DNS and the checks that only real AWS can pass. Nothing in the repo calls AWS by itself.
 
 ## Layout
-- `infra/`: CDK app (`lib/core-stack.ts`; on AWS only `lib/web.ts` for the CloudFront site, `lib/ops.ts` for alarms and the dashboard, `lib/compliance.ts` for the AwsSolutions checks; `lib/spike-stack.ts`)
+- `infra/`: CDK app (`lib/core-stack.ts`; on AWS only `lib/web.ts` for the CloudFront site, `lib/ops.ts` for alarms and the dashboard, `lib/compliance.ts` for the AwsSolutions checks)
 - `services/`: Lambda handlers
 - `web/`: Next.js app (G2 UI, cookie BFF under app/bff)
-- `scripts/`: Floci, deploy, grant, spike and smoke tools
+- `scripts/`: Floci, deploy, grant and smoke tools
 - `docs/learn/`: one doc per step + the Floci compatibility report
 - `docs/runbook-aws.md`: the real-AWS deploy, by hand
