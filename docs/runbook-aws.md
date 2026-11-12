@@ -43,7 +43,8 @@ Make these before step 2. Each line gives the recommendation first.
    aws service-quotas request-service-quota-increase --service-code lambda --quota-code L-B99A9384 --desired-value 1000 --profile ig --region ap-southeast-2
    aws service-quotas list-requested-service-quota-change-history --service-code lambda --query "RequestedQuotas[].[QuotaCode,DesiredValue,Status]" --output text --profile ig --region ap-southeast-2
    ```
-4. Make sure no log group from an earlier attempt is in the way. The stack creates `/aws/lambda/<function>` and `/aws/apigateway/cl-aws-api` itself, so a deploy fails if any of them already exists. CDK's own helper Lambdas (the asset copy and the bucket auto-delete) are named after the stack, `cl-aws-core` plus a generated suffix, and Lambda makes their groups itself. Those never collide, so the first command leaves them out:
+4. Cap what the Anthropic key can spend. In the Claude Console (`console.anthropic.com`), set a spend limit of $10 a month (Settings → Limits, or the limits of the workspace the key belongs to). It is the outer guard: a room's own cap only counts what chat-lite meters, and the Console stops the key whatever happens in the app.
+5. Make sure no log group from an earlier attempt is in the way. The stack creates `/aws/lambda/<function>` and `/aws/apigateway/cl-aws-api` itself, so a deploy fails if any of them already exists. CDK's own helper Lambdas (the asset copy and the bucket auto-delete) are named after the stack, `cl-aws-core` plus a generated suffix, and Lambda makes their groups itself. Those never collide, so the first command leaves them out:
    ```powershell
    aws logs describe-log-groups --log-group-name-prefix /aws/lambda/cl-aws- --query "logGroups[?!starts_with(logGroupName, '/aws/lambda/cl-aws-core')].logGroupName" --profile ig --region ap-southeast-2
    aws logs describe-log-groups --log-group-name-prefix /aws/apigateway/cl-aws- --query "logGroups[].logGroupName" --profile ig --region ap-southeast-2
@@ -51,6 +52,7 @@ Make these before step 2. Each line gives the recommendation first.
 
 **Check:**
 - `aws sts get-caller-identity --query Account --output text --profile ig --region ap-southeast-2` prints the account instagram-lite deploys to;
+- the Console's limits page shows the $10 monthly limit;
 - `aws cloudformation describe-stacks --stack-name CDKToolkit --query "Stacks[0].StackStatus" --output text --profile ig --region ap-southeast-2` prints `CREATE_COMPLETE` or `UPDATE_COMPLETE`;
 - both log-group lists are `[]`. Leftovers from the throwaway spike stack (names with `spike` in them) don't collide, but you can delete them with `aws logs delete-log-group --log-group-name <name> --profile ig --region ap-southeast-2`.
 
@@ -281,12 +283,15 @@ Open `$out.OpsDashboardUrl`.
 
 **Check:**
 - every alarm is OK (23 of them: one errors alarm for each of the 20 functions, `cl-aws-api-5xx`, `cl-aws-ws-execution-errors` and `cl-aws-lambda-throttles`);
-- every function has lines on the Lambda graphs.
+- every function has a line on the "Lambda errors" graph. Per function the dashboard shows only errors, so it stays free; a function's duration and throttles are on its own Monitor tab in the Lambda console.
 
-**The expected idle floor per month:**
+**The expected idle floor per month,** with nobody using the site:
 - Secrets Manager: $0.40 per secret, 5 of them ($2);
-- CloudWatch alarms: $0.10 each beyond the account's free 10, which instagram-lite's alarms share;
+- CloudWatch alarms: $0.10 per alarm, 23 of them, less the account's free 10, which instagram-lite's alarms share ($1.30 to $2.30);
+- the `cl-aws-ops` dashboard: it charts 37 metrics, under the 50 a free dashboard allows, so it is free while the account has no more than 3 dashboards; a fourth costs $3;
 - logs, the table and its point-in-time recovery, CloudFront and S3: cents.
+
+So expect about $3.30 to $4.30 a month before anyone signs in ($6.30 to $7.30 if the dashboard isn't one of the free three). Lambda, API Gateway, DynamoDB requests and the models cost only when used.
 
 The next day, check Billing.
 
@@ -343,7 +348,7 @@ Each alarm mail says what users feel and links here. When it clears, the `OK` ma
 | `cl-aws-presignup-errors` | Sign-ups are refused | Check the logs |
 | `cl-aws-health-errors` | Nothing (it's the runbook's test alarm) | Set it back: `aws cloudwatch set-alarm-state --alarm-name cl-aws-health-errors --state-value OK --state-reason "runbook test" --profile ig --region ap-southeast-2` |
 | `cl-aws-api-5xx` | Pages and actions fail across the app | Run the query below on the `/aws/apigateway/cl-aws-api` access logs: the route names the function, so read that function's logs next |
-| `cl-aws-lambda-throttles` | Errors everywhere: the account ran out of concurrency | The dashboard's account-wide concurrency graph shows who used it up; instagram-lite shares the same quota. Request the increase (step 1), and stop runs until it lands. `WebFunctionUrl` and the stream's Function URL are public with nothing throttling them, so a flood of direct calls shows as a spike on `cl-aws-web` or `cl-aws-stream` alone. Once the quota is raised, cap that function at once with `aws lambda put-function-concurrency --function-name cl-aws-web --reserved-concurrent-executions 20 --profile ig --region ap-southeast-2` (the stack doesn't set it, so a deploy keeps it; `delete-function-concurrency` lifts it), then ask for a fix |
+| `cl-aws-lambda-throttles` | Errors everywhere: the account ran out of concurrency | The dashboard's account-wide concurrency graph shows when; to see who, open CloudWatch → Metrics → Lambda → By Function Name and graph `ConcurrentExecutions`. instagram-lite shares the same quota. Request the increase (step 1), and stop runs until it lands. `WebFunctionUrl` and the stream's Function URL are public with nothing throttling them, so a flood of direct calls shows as a spike on `cl-aws-web` or `cl-aws-stream` alone. Once the quota is raised, cap that function at once with `aws lambda put-function-concurrency --function-name cl-aws-web --reserved-concurrent-executions 20 --profile ig --region ap-southeast-2` (the stack doesn't set it, so a deploy keeps it; `delete-function-concurrency` lifts it), then ask for a fix |
 
 The access log query for `cl-aws-api-5xx`:
 ```

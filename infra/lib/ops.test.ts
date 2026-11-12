@@ -6,7 +6,7 @@ import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
 import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
 import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
 import { addOps } from "./ops.js";
-import { TEST_CONTEXT, template } from "./test-templates.js";
+import { TEST_CONTEXT, template, dashboardWidgets as widgets, dashboardMetrics } from "./test-templates.js";
 
 const RUNBOOK = "Runbook: docs/runbook-aws.md#when-an-alarm-fires";
 
@@ -27,12 +27,6 @@ function bareStack() {
 const alarms = (t: Template) => Object.entries(t.findResources("AWS::CloudWatch::Alarm")) as [string, any][];
 const alarmNamed = (t: Template, name: string) => alarms(t).find(([, a]) => a.Properties.AlarmName === name)?.[1].Properties;
 
-/** The ops dashboard's widgets, with each reference in its body replaced by the logical ID it points at. */
-function widgets(t: Template): any[] {
-  const [dashboard] = Object.values(t.findResources("AWS::CloudWatch::Dashboard")) as any[];
-  const parts: any[] = dashboard.Properties.DashboardBody["Fn::Join"][1];
-  return JSON.parse(parts.map((p) => typeof p === "string" ? p : p.Ref ?? p["Fn::GetAtt"][0]).join("")).widgets;
-}
 const metricsOf = (t: Template, title: string): any[][] => widgets(t).find((w) => w.properties.title === title).properties.metrics;
 
 describe("ops", () => {
@@ -125,9 +119,8 @@ describe("ops", () => {
   // A dashboard is free only up to 50 metrics; past that it costs $3 a month. Each function adds one (its errors line).
   it("the dashboard charts at most 50 metrics: per function only errors, with throttles and concurrency account-wide", () => {
     const t = template("aws");
-    const graphs = widgets(t).filter((w) => w.type === "metric");
-    expect(graphs.flatMap((w) => w.properties.metrics).length).toBeLessThanOrEqual(50);
-    const lambdaMetrics = graphs.flatMap((w) => w.properties.metrics).filter((m) => m[0] === "AWS/Lambda");
+    expect(dashboardMetrics(t).length).toBeLessThanOrEqual(50);
+    const lambdaMetrics = dashboardMetrics(t).filter((m) => m[0] === "AWS/Lambda");
     expect(lambdaMetrics.filter((m) => m[1] !== "Errors").map((m) => [m[1], m.length])).toEqual([
       ["Invocations", 3], ["Throttles", 3], ["ConcurrentExecutions", 3],
     ]);
