@@ -24,7 +24,7 @@ The headline was good. No model call skips the budget check, no path sends priva
 
 **Cleanups**
 - **Services:** one `bestEffort` instead of ten hand-written try/catch wrappers; key builders in `lib/keys.ts`; the transaction-conflict retry and `withoutKeys` in `lib/db.ts`; `runs/steps.ts` (534 lines) split into routing, model turn and tool step; compat shims for data that no longer exists removed.
-- **Web:** one `useOutbox` for both composers, one `useRoomData` that shows "Couldn't load · Retry" on a failed panel load, a `RoomShell` split, colour and shadow tokens in place of 57 hand-written hex shades, two-letter avatars, and panel tabs with one Tab stop and arrow keys. `npm run check` now also runs the two React hooks lint rules.
+- **Web:** one `useOutbox` for both composers, one `useRoomData` that shows "Couldn't load · Retry" on a failed panel load (and, later, the invite panel too, which reads a 404 as "no link" and any other failure as a retry), a `RoomShell` split, colour and shadow tokens in place of 57 hand-written hex shades, two-letter avatars, and panel tabs with one Tab stop and arrow keys. `npm run check` now also runs the two React hooks lint rules.
 - **Infra and scripts:** shared CoreStack helpers, the web Lambda at 30 s, named ports, one frame sampler and one `confirmDialog` shared by the smoke files.
 
 ## How it was checked
@@ -37,10 +37,19 @@ That run found what the lanes' unit tests couldn't. Three integration cases stil
 |---|---|
 | The `LINK#` re-key has no migration: Floci data is disposable and AWS has none | An old local room loses its GitHub and MCP links until they are added again |
 | Sending or starting a thread is still not idempotent on the client id; the web client warns before a retry | A lost ack then a retry posts twice |
-| Archive stops runs from the run side, not by the rooms function calling stop | A run waiting on an approval in an archived room ends only when that approval expires |
+| Archive stops runs from the run side, and the rooms function now also cancels and wakes runs waiting on an approval, so they end at once (Aman's call, after the audit) | A wake the callback API drops leaves that run waiting until its approval expires |
 | Owners can still change roles and remove members in an archived room: archiving freezes content, not who may read it | An admin can still change roles in a closed room |
-| Rate-limit gaps left: a refused send still counts, and edits and reactions have no cap | Reaction spam is uncapped |
+| Rate-limit gap left: a refused send still counts. Edits and reactions now share their own cap of 60 a minute per member and room, apart from the 30 sends (Aman's call, after the audit) | A refused send still uses one of 30 |
 | The dashboard keeps per-function errors and drops duration and throttles | One more console click when diagnosing |
+
+## Settled after the audit
+Aman decided four of the open points:
+- **Edits and reactions are capped,** 60 a minute per member and room on a counter of their own, so reactions can't block sends (see 03).
+- **People chats can be renamed and archived** by admins, never deleted; an archived chat is read-only and out of the sidebar but readable by link and in search, and the room's first chat can't be archived (see 03).
+- **Archiving a room ends a run waiting on an approval at once,** by cancelling the approval and waking the run, as a stop does (see 07).
+- **The invite panel retries** a failed first load like the other panels.
+
+Still open: a refused send still uses one of the 30 a minute.
 
 ## How big companies do it
 - **Launch reviews** before a service takes real traffic: a checklist of security, operations and cost questions (AWS's Operational Readiness Reviews, Google's production readiness reviews), each answered with evidence.

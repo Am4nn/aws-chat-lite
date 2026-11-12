@@ -136,7 +136,7 @@ function ChatRow({ chat, roomId, active, fresh, actions }: { chat: Chat; roomId:
   );
 }
 
-/** Closed until opened, or until the chat I have open is one of them. */
+/** Starts closed, unless the chat I have open is one of them. */
 function ArchivedChats({ holdsActive, count, children }: { holdsActive: boolean; count: number; children: ReactNode }) {
   const reduced = useReducedMotion();
   const [open, setOpen] = useState(holdsActive);
