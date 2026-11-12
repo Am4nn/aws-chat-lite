@@ -59,6 +59,9 @@ describe("imageModel", () => {
     expect(await generate(answering({ promptFeedback: { blockReason: "PROHIBITED_CONTENT" } }))).toMatchObject({
       error: "Gemini declined to make that image (PROHIBITED_CONTENT).",
     });
+    expect(await generate(answering({ promptFeedback: { blockReason: "Denied for arn:aws:iam::123456789012:role/x" } }))).toMatchObject({
+      error: "Gemini declined to make that image.",
+    });
   });
 
   it("bills a reply without token counts as one 1K image", async () => {
