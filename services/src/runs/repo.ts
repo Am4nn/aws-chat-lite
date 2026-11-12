@@ -52,11 +52,17 @@ const MODEL_CONTEXT = 50;
 const FORCED_CLOSE_ATTEMPTS = 5;
 
 const callKey = (runId: string, call: string) => ({ pk: `RUN#${runId}`, sk: `CALL#${call}` });
+type Update = { UpdateExpression: string; ExpressionAttributeNames?: Record<string, string>; ExpressionAttributeValues?: Record<string, unknown> };
+
 /**
- * Every run write to its thread is conditioned on the run still being the thread's: a run that was replaced (it was
- * presumed dead) must not overwrite the run that took its place.
+ * A run's write to its thread. It bumps the thread's rev, and applies only while the run is still the thread's: a run
+ * that was replaced (it was presumed dead) must not overwrite the run that took its place.
  */
-const whileOwned = (run: Run) => ({ ConditionExpression: "activeRunId = :runId", values: { ":runId": run.runId } });
+const ownedThread = (run: Run, u: Update) => ({
+  TableName: tableName(), Key: threadKey(run.roomId, run.number), UpdateExpression: `${u.UpdateExpression} ADD #rev :one`,
+  ConditionExpression: "activeRunId = :runId", ExpressionAttributeNames: { ...u.ExpressionAttributeNames, "#rev": "rev" },
+  ExpressionAttributeValues: { ...u.ExpressionAttributeValues, ":runId": run.runId, ":one": 1 },
+});
 
 const withoutKeys = ({ pk: _pk, sk: _sk, ...rest }: Item) => rest;
 
@@ -198,25 +204,16 @@ export function runsRepo() {
       run: Run, fields: { steps?: number; currentStep?: string; costMicros?: number; model?: string },
     ): Promise<ThreadSummary | null> {
       const set = setFields(fields);
-      const owned = whileOwned(run);
       const [, thread] = await Promise.all([
         db.send(new UpdateCommand({ TableName, Key: runKey(run.runId), ...set })),
-        threadUpdate(new UpdateCommand({
-          TableName, Key: threadKey(run.roomId, run.number), ...set, UpdateExpression: `${set.UpdateExpression} ADD #rev :one`,
-          ConditionExpression: owned.ConditionExpression, ExpressionAttributeNames: { ...set.ExpressionAttributeNames, "#rev": "rev" },
-          ExpressionAttributeValues: { ...set.ExpressionAttributeValues, ...owned.values, ":one": 1 }, ReturnValues: "ALL_NEW",
-        })),
+        threadUpdate(new UpdateCommand({ ...ownedThread(run, set), ReturnValues: "ALL_NEW" })),
       ]);
       return thread;
     },
 
     /** A tool returned: the thread no longer names a current step until the next one starts. */
     async stepDone(run: Run): Promise<ThreadSummary | null> {
-      const owned = whileOwned(run);
-      return threadUpdate(new UpdateCommand({
-        TableName, Key: threadKey(run.roomId, run.number), UpdateExpression: "REMOVE currentStep ADD #rev :one", ConditionExpression: owned.ConditionExpression,
-        ExpressionAttributeNames: { "#rev": "rev" }, ExpressionAttributeValues: { ...owned.values, ":one": 1 }, ReturnValues: "ALL_NEW",
-      }));
+      return threadUpdate(new UpdateCommand({ ...ownedThread(run, { UpdateExpression: "REMOVE currentStep" }), ReturnValues: "ALL_NEW" }));
     },
 
     /** Asks a running run to stop. Returns the run as flagged, or undefined when it is no longer running. */
@@ -242,16 +239,11 @@ export function runsRepo() {
       run: Run, approval: { step: number; title: string; expiresAt: string }, deadAt: string,
     ): Promise<{ thread: ThreadSummary | null; stopRequestedBy?: string }> {
       const set = setFields({ status: "waiting", approval, deadAt });
-      const owned = whileOwned(run);
       const [{ Attributes: meta }, thread] = await Promise.all([
         db.send(new UpdateCommand({
           TableName, Key: runKey(run.runId), ...setFields({ waitingStep: approval.step, deadAt }), ReturnValues: "ALL_NEW",
         })),
-        threadUpdate(new UpdateCommand({
-          TableName, Key: threadKey(run.roomId, run.number), ...set, UpdateExpression: `${set.UpdateExpression} ADD #rev :one`,
-          ConditionExpression: owned.ConditionExpression, ExpressionAttributeNames: { ...set.ExpressionAttributeNames, "#rev": "rev" },
-          ExpressionAttributeValues: { ...set.ExpressionAttributeValues, ...owned.values, ":one": 1 }, ReturnValues: "ALL_NEW",
-        })),
+        threadUpdate(new UpdateCommand({ ...ownedThread(run, set), ReturnValues: "ALL_NEW" })),
       ]);
       return { thread, stopRequestedBy: meta!.stopRequestedBy as string | undefined };
     },
@@ -272,14 +264,13 @@ export function runsRepo() {
       }
       const pausedMs = (await getRun(run.runId))?.pausedMs ?? 0;
       const deadAt = new Date(Date.parse(run.startedAt) + pausedMs + DEAD_AFTER_MS).toISOString();
-      const owned = whileOwned(run);
+      const back = {
+        UpdateExpression: "SET #status = :running, #deadAt = :deadAt REMOVE approval",
+        ExpressionAttributeNames: { "#status": "status", "#deadAt": "deadAt" }, ExpressionAttributeValues: { ":running": "running", ":deadAt": deadAt },
+      };
       const [, thread] = await Promise.all([
         db.send(new UpdateCommand({ TableName, Key: runKey(run.runId), ...setFields({ deadAt }) })),
-        threadUpdate(new UpdateCommand({
-          TableName, Key: threadKey(run.roomId, run.number), UpdateExpression: "SET #status = :running, #deadAt = :deadAt REMOVE approval ADD #rev :one",
-          ConditionExpression: owned.ConditionExpression, ExpressionAttributeNames: { "#status": "status", "#deadAt": "deadAt", "#rev": "rev" },
-          ExpressionAttributeValues: { ":running": "running", ":deadAt": deadAt, ...owned.values, ":one": 1 }, ReturnValues: "ALL_NEW",
-        })),
+        threadUpdate(new UpdateCommand({ ...ownedThread(run, back), ReturnValues: "ALL_NEW" })),
       ]);
       return thread;
     },
@@ -322,7 +313,6 @@ export function runsRepo() {
           costMicros: run.costMicros,
         });
         const closed = setFields({ status, reason, answerSeq: seq, seenSeq: seen, endedAt: now, steps: run.steps, costMicros: run.costMicros });
-        const ownership = whileOwned(run);
         try {
           await db.send(new TransactWriteCommand({
             TransactItems: [
@@ -340,13 +330,7 @@ export function runsRepo() {
                 },
               },
               ...(owns ? [{
-                Update: {
-                  TableName, Key: threadKey(run.roomId, run.number), ...thread,
-                  UpdateExpression: `${thread.UpdateExpression} REMOVE activeRunId, currentStep, approval ADD #rev :one`,
-                  ConditionExpression: ownership.ConditionExpression,
-                  ExpressionAttributeNames: { ...thread.ExpressionAttributeNames, "#rev": "rev" },
-                  ExpressionAttributeValues: { ...thread.ExpressionAttributeValues, ...ownership.values, ":one": 1 },
-                },
+                Update: ownedThread(run, { ...thread, UpdateExpression: `${thread.UpdateExpression} REMOVE activeRunId, currentStep, approval` }),
               }] : []),
             ],
           }));
