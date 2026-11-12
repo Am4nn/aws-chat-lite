@@ -4,7 +4,7 @@ import { useId, useRef, useState, type ReactNode, type Ref } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
-  AppWindow, Archive, ArchiveRestore, Bell, BellOff, ChevronRight, Hash, LogOut, MoreHorizontal, Pencil, Plus, Search, type LucideIcon,
+  AppWindow, Archive, ArchiveRestore, Bell, BellOff, ChevronRight, Hash, LogOut, MoreHorizontal, Pencil, Plus, PanelLeftClose, Search, type LucideIcon,
 } from "lucide-react";
 import { chatBadge } from "@/lib/client/badges";
 import { useClickOutside } from "@/lib/client/useClickOutside";
@@ -22,12 +22,12 @@ type MenuAction = { label: string; icon: LucideIcon; run: () => void };
  * search.
  */
 export function Sidebar({
-  chats, me, roomId, canManage, switcher, threads, budget, activeChatId, newChatIds, onPalette, onNewChat, onRename, onArchive, onMute, onSignOut,
+  chats, me, roomId, canManage, switcher, threads, budget, activeChatId, newChatIds, onPalette, onNewChat, onRename, onArchive, onMute, onSignOut, onCollapse,
 }: {
   chats: Chat[]; me: Me; roomId: string; canManage: boolean; switcher: ReactNode; threads: ReactNode; budget: ReactNode;
   activeChatId?: string; newChatIds: Set<string>;
   onPalette: () => void; onNewChat: () => void; onRename: (chat: Chat) => void; onArchive: (chat: Chat, archived: boolean) => void;
-  onMute: (chat: Chat, muted: boolean) => void; onSignOut: () => void;
+  onMute: (chat: Chat, muted: boolean) => void; onSignOut: () => void; onCollapse: () => void;
 }) {
   const headingId = useId();
   const open = chats.filter((c) => !c.archived);
@@ -52,7 +52,17 @@ export function Sidebar({
 
   return (
     <nav aria-label="Room" className="flex w-[272px] shrink-0 flex-col gap-5 overflow-y-auto border-r border-line bg-surface-1 px-3 py-4">
-      {switcher}
+      <div className="flex shrink-0 items-center gap-1">
+        <div className="min-w-0 flex-1">{switcher}</div>
+        <button
+          onClick={onCollapse}
+          aria-label="Hide sidebar"
+          title="Hide sidebar"
+          className="grid size-8 shrink-0 place-items-center rounded-lg text-text-3 transition-colors hover:bg-surface-2 hover:text-text max-md:hidden"
+        >
+          <PanelLeftClose aria-hidden="true" size={15} />
+        </button>
+      </div>
 
       <button
         onClick={onPalette}
