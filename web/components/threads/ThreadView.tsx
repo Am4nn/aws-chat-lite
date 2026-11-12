@@ -1,31 +1,29 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { ArrowDown, Bot } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { useReducedMotion } from "motion/react";
+import { Bot } from "lucide-react";
 import { errorText } from "@/lib/client/bff";
 import { useLive } from "@/lib/client/LiveProvider";
 import { useModelPick } from "@/lib/client/ModelsProvider";
 import { groupThread, isLive } from "@/lib/client/threads";
 import { useThreads } from "@/lib/client/ThreadsProvider";
-import { addPending, dropPending, failPending, keyOf, type PendingMessage } from "@/lib/client/timeline";
-import { dur, easeOut, instant } from "@/lib/motion";
-import type { Attachment, Me, Member, Message, ThreadSummary } from "@/lib/types";
+import { keyOf } from "@/lib/client/timeline";
+import type { Me, Member, Message, ThreadSummary } from "@/lib/types";
 import { useToast } from "@/components/overlays/Toast";
 import { ArchivedNotice } from "@/components/chat/ArchivedNotice";
 import { Composer } from "@/components/chat/Composer";
+import { JumpPill } from "@/components/chat/JumpPill";
 import { ModelPill } from "@/components/chat/ModelPill";
 import { TypingLine } from "@/components/chat/TypingLine";
 import { useChatTimeline } from "@/components/chat/useChatTimeline";
+import { useOutbox } from "@/components/chat/useOutbox";
 import { useUploads } from "@/components/chat/useUploads";
 import { RunBlock } from "./RunBlock";
 import { UserBubble } from "./UserBubble";
+import { useStickToBottom } from "./useStickToBottom";
 
-const PINNED_PX = 40;
 const PREFETCH_PX = 400;
-
-const revokePreviews = (attachments: Attachment[]) =>
-  attachments.forEach((a) => a.url?.startsWith("blob:") && URL.revokeObjectURL(a.url));
 
 type Props = { roomId: string; initialThread: ThreadSummary; me: Me; members: Member[]; archived: boolean; initial: Message[] };
 
@@ -43,50 +41,12 @@ export function ThreadView({ roomId, initialThread, me, members, archived, initi
   // Waiting on an approval is still live: a message steers the run, and Stop ends it.
   const running = isLive(thread.status);
   const chat = useChatTimeline({ roomId, chatId: threadId, meId: me.userId, initial });
-  const { timeline, setTimeline, latest, apply, markFresh } = chat;
+  const { timeline } = chat;
   const scroll = useStickToBottom();
-  const { toBottom } = scroll;
+  const { queue, retry, discard } = useOutbox({ roomId, chatId: threadId, chat, toBottom: scroll.toBottom });
   const [stopping, setStopping] = useState(false);
   const [pick, setPick] = useModelPick(threadId);
   if (stopping && !running) setStopping(false);
-
-  useEffect(() => () => latest.current.pending.forEach((p) => revokePreviews(p.attachments)), [latest]);
-
-  const deliver = useCallback(async (p: PendingMessage) => {
-    try {
-      const message = await live.request("send", {
-        roomId, chatId: threadId, clientId: p.clientId, text: p.text, model: p.model,
-        attachments: p.attachments.map(({ key, name, size, type }) => ({ key, name, size, type })),
-      }) as Message;
-      apply([message]);
-      revokePreviews(p.attachments);
-    } catch (e) {
-      // Sends aren't idempotent, so a failure is left to the user: an automatic resend could post twice.
-      setTimeline((t) => failPending(t, p.clientId));
-      toast(errorText(e), "error");
-    }
-  }, [live, roomId, threadId, apply, setTimeline, toast]);
-
-  const queue = useCallback((p: Pick<PendingMessage, "text" | "attachments" | "model">) => {
-    const pending = { ...p, clientId: crypto.randomUUID(), createdAt: new Date().toISOString() };
-    markFresh([keyOf(pending)]);
-    setTimeline((t) => addPending(t, pending));
-    toBottom();
-    void deliver(pending);
-  }, [deliver, markFresh, setTimeline, toBottom]);
-
-  const retry = useCallback((clientId: string) => {
-    const failed = latest.current.pending.find((p) => p.clientId === clientId);
-    if (!failed) return;
-    setTimeline((t) => dropPending(t, clientId));
-    queue({ text: failed.text, attachments: failed.attachments, model: failed.model });
-  }, [latest, setTimeline, queue]);
-
-  const discard = useCallback((clientId: string) => {
-    const failed = latest.current.pending.find((p) => p.clientId === clientId);
-    if (failed) revokePreviews(failed.attachments);
-    setTimeline((t) => dropPending(t, clientId));
-  }, [latest, setTimeline]);
 
   async function stop() {
     setStopping(true);
@@ -154,23 +114,7 @@ export function ThreadView({ roomId, initialThread, me, members, archived, initi
             ))}
           </div>
         </div>
-        <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
-          <AnimatePresence>
-            {!scroll.atBottom && (
-              <motion.button
-                initial={{ opacity: 0, y: reduced ? 0 : 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: reduced ? 0 : 8 }}
-                transition={reduced ? instant : { duration: dur.fast, ease: easeOut }}
-                onClick={() => scroll.toBottom(!reduced)}
-                className="pointer-events-auto flex h-8 items-center gap-1.5 rounded-full border border-line-strong bg-[#1c2225] px-3.5 text-[12.5px] font-medium shadow-[0_8px_24px_rgba(0,0,0,.45)] transition-[border-color,transform] hover:border-[#36403f] active:scale-[0.97]"
-              >
-                Latest
-                <ArrowDown aria-hidden="true" size={13} className="text-lime" />
-              </motion.button>
-            )}
-          </AnimatePresence>
-        </div>
+        <JumpPill show={!scroll.atBottom} onClick={() => scroll.toBottom(!reduced)}>Latest</JumpPill>
       </div>
       <TypingLine roomId={roomId} chatId={threadId} meId={me.userId} />
       {archived
@@ -209,43 +153,4 @@ function ThreadIntro({ thread }: { thread: ThreadSummary }) {
       </div>
     </div>
   );
-}
-
-/**
- * Keeps the newest content in view while I'm at the bottom, as steps and words arrive. Scrolled up, the browser's own
- * scroll anchoring holds what I'm reading in place when content above it changes size.
- */
-function useStickToBottom() {
-  const ref = useRef<HTMLDivElement>(null);
-  const content = useRef<HTMLDivElement>(null);
-  const pinned = useRef(true);
-  const lastTop = useRef(0);
-  const [atBottom, setAtBottom] = useState(true);
-
-  useLayoutEffect(() => {
-    const el = ref.current!;
-    el.scrollTop = el.scrollHeight;
-    const follow = () => { if (pinned.current) el.scrollTop = el.scrollHeight; };
-    const observer = new ResizeObserver(follow);
-    observer.observe(el);
-    observer.observe(content.current!);
-    return () => observer.disconnect();
-  }, []);
-
-  // Only my own move upwards lets go of the bottom, so a smooth scroll down to it never flickers "unpinned" on the way.
-  const onScroll = useCallback(() => {
-    const el = ref.current!;
-    if (el.scrollHeight - el.scrollTop - el.clientHeight < PINNED_PX) pinned.current = true;
-    else if (el.scrollTop < lastTop.current) pinned.current = false;
-    lastTop.current = el.scrollTop;
-    setAtBottom(pinned.current);
-  }, []);
-
-  const toBottom = useCallback((smooth = false) => {
-    pinned.current = true;
-    setAtBottom(true);
-    ref.current?.scrollTo({ top: ref.current.scrollHeight, behavior: smooth ? "smooth" : "instant" });
-  }, []);
-
-  return { ref, content, atBottom, onScroll, toBottom };
 }

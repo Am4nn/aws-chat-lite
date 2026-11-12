@@ -1,27 +1,15 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ChevronRight } from "lucide-react";
 import { formatElapsed, formatStepTime } from "@/lib/client/format";
 import { splitSyncLines, type RunItem } from "@/lib/client/run";
+import { useNow } from "@/lib/client/useNow";
 import { dur, easeOut, instant, spring } from "@/lib/motion";
 import { GeneratedImage } from "./GeneratedImage";
 
 type Step = Extract<RunItem, { kind: "step" }>;
-
-const TICK_MS = 1000;
-
-/** Seconds since the step started, ticking while it runs. */
-function useElapsed(startedAt: string, running: boolean) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!running) return;
-    const timer = setInterval(() => setNow(Date.now()), TICK_MS);
-    return () => clearInterval(timer);
-  }, [running]);
-  return formatElapsed(now - Date.parse(startedAt));
-}
 
 /** Agent work in progress: an arc turning once every 0.8 s (static under reduced motion). */
 export function RunningArc({ size = 15 }: { size?: number }) {
@@ -48,7 +36,7 @@ export function StepRow({ roomId, step, enter }: { roomId: string; step: Step; e
   // Only a step seen running finishes in front of you; one that arrives finished gets no pop or flash.
   const [seenRunning] = useState(running);
   const [open, setOpen] = useState(false);
-  const elapsed = useElapsed(step.startedAt, running);
+  const now = useNow(running);
   const ended = !running && seenRunning;
   const { output, lines } = step.files ? splitSyncLines(step.output ?? "", step.files) : { output: step.output, lines: [] };
 
@@ -92,7 +80,7 @@ export function StepRow({ roomId, step, enter }: { roomId: string; step: Step; e
         <span className={`shrink-0 font-mono text-[12.5px] ${running ? "shimmer" : ""}`}>{helper?.agentName ?? step.name}</span>
         <span className="min-w-0 truncate text-[12.5px] text-text-2">{helper ? helper.summary ?? helper.task : step.detail}</span>
         <span className={`ml-auto shrink-0 font-mono text-[11.5px] tabular-nums ${running ? "text-lime" : step.status === "failed" ? "text-amber" : "text-text-3"}`}>
-          {running ? elapsed : step.status === "failed" ? "failed" : formatStepTime(step.ms ?? 0)}
+          {running ? formatElapsed(now - Date.parse(step.startedAt)) : step.status === "failed" ? "failed" : formatStepTime(step.ms ?? 0)}
         </span>
         <ChevronRight
           aria-hidden="true" size={13}

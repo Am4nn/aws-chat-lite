@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { bff, errorText } from "@/lib/client/bff";
 import { timeAgo } from "@/lib/client/format";
+import { useNow } from "@/lib/client/useNow";
 import { dur, easeOut, spring } from "@/lib/motion";
 import type { Member, Role } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
@@ -46,13 +47,8 @@ export function MemberList({ roomId, members, myRole, myUserId }: { roomId: stri
   const router = useRouter();
   const toast = useToast();
   const [openFor, setOpenFor] = useState<string | null>(null);
-  const [now, setNow] = useState(() => Date.now());
   // The server rendered "last seen" with its own clock, so the browser's takes over at once, then every minute.
-  useEffect(() => {
-    setNow(Date.now());
-    const timer = setInterval(() => setNow(Date.now()), CLOCK_TICK_MS);
-    return () => clearInterval(timer);
-  }, []);
+  const now = useNow(true, CLOCK_TICK_MS);
   const sorted = [...members].sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || a.username.localeCompare(b.username));
 
   async function change(m: Member, action: "promote" | "demote" | "remove") {

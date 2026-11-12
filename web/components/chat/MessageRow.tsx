@@ -7,6 +7,7 @@ import { clockTime } from "@/lib/client/format";
 import type { Mentionable } from "@/lib/client/mentions";
 import { canDelete, canEdit, REACTION_NAMES, reactionLabel } from "@/lib/client/messageRules";
 import { useClickOutside } from "@/lib/client/useClickOutside";
+import { useNow } from "@/lib/client/useNow";
 import { dur, easeOut, instant, spring } from "@/lib/motion";
 import type { Message, Reaction, Role } from "@/lib/types";
 import { ThreadRef } from "@/components/threads/ThreadCard";
@@ -16,10 +17,12 @@ import { MessageText } from "./MessageText";
 
 const EMOJI: Record<Reaction, string> = { thumbs: "👍", heart: "❤️", joy: "😂", tada: "🎉", eyes: "👀", check: "✅" };
 const REACTIONS = Object.keys(EMOJI) as Reaction[];
+/** How often the toolbar re-reads the clock, so Edit and Delete go once their window closes. */
+const WINDOW_TICK_MS = 30_000;
 
 export type Row = { key: string; message: Message; status?: "pending" | "failed" };
 /** `readOnly`: the room is archived, so nothing in it can change. */
-export type RowContext = { meId: string; role: Role; members: Mentionable[]; now: number; timeZone: string; readOnly: boolean };
+export type RowContext = { meId: string; role: Role; members: Mentionable[]; timeZone: string; readOnly: boolean };
 export type RowActions = {
   react: (m: Message, reaction: Reaction, on: boolean) => void;
   reply: (m: Message) => void;
@@ -185,6 +188,7 @@ function moveFocus(e: KeyboardEvent<HTMLElement>) {
 /** Shown on hover or keyboard focus (or a tap on touch screens), offering only what the server would allow. */
 function Toolbar({ message: m, ctx, actions, pinned }: { message: Message; ctx: RowContext; actions: RowActions; pinned: boolean }) {
   const reduced = useReducedMotion();
+  const now = useNow(true, WINDOW_TICK_MS);
   const [picking, setPicking] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -249,8 +253,8 @@ function Toolbar({ message: m, ctx, actions, pinned }: { message: Message; ctx: 
       </AnimatePresence>
       <ToolButton ref={smile} first label="Add reaction" onClick={() => setPicking((p) => !p)} pressed={picking}><SmilePlus aria-hidden="true" size={15} /></ToolButton>
       <ToolButton label="Reply" onClick={() => actions.reply(m)}><Reply aria-hidden="true" size={15} /></ToolButton>
-      {canEdit(m, ctx.meId, ctx.now) && <ToolButton label="Edit" onClick={() => actions.edit(m)}><Pencil aria-hidden="true" size={14} /></ToolButton>}
-      {canDelete(m, ctx.meId, ctx.role, ctx.now) && (confirming
+      {canEdit(m, ctx.meId, now) && <ToolButton label="Edit" onClick={() => actions.edit(m)}><Pencil aria-hidden="true" size={14} /></ToolButton>}
+      {canDelete(m, ctx.meId, ctx.role, now) && (confirming
         ? (
           <button
             autoFocus

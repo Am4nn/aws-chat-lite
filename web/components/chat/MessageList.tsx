@@ -1,17 +1,19 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { ArrowDown } from "lucide-react";
+import { useReducedMotion } from "motion/react";
 import { dayKey, dayLabel } from "@/lib/client/format";
 import { startsGroup } from "@/lib/client/messageRules";
 import { pickAnchor } from "@/lib/client/scrollAnchor";
-import { dur, easeOut, instant } from "@/lib/motion";
+import { useNow } from "@/lib/client/useNow";
 import { Spinner } from "@/components/ui/Spinner";
+import { JumpPill } from "./JumpPill";
 import { MessageRow, type Row, type RowActions, type RowContext } from "./MessageRow";
 
 const PINNED_PX = 40;
 const PREFETCH_PX = 600;
+/** "Today" and "Yesterday" move at midnight; only the dividers read the clock, so the memoised rows never re-render for it. */
+const DAY_TICK_MS = 60_000;
 
 export type Jump = { to: number | "bottom"; n: number };
 
@@ -41,6 +43,7 @@ type Props = {
  */
 export function MessageList(p: Props) {
   const reduced = useReducedMotion();
+  const now = useNow(true, DAY_TICK_MS);
   const scroller = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
@@ -123,7 +126,7 @@ export function MessageList(p: Props) {
             const newDay = !prev || dayKey(prev.createdAt, p.ctx.timeZone) !== dayKey(m.createdAt, p.ctx.timeZone);
             return (
               <Fragment key={row.key}>
-                {newDay && <DayDivider label={dayLabel(m.createdAt, p.ctx.now, p.ctx.timeZone)} />}
+                {newDay && <DayDivider label={dayLabel(m.createdAt, now, p.ctx.timeZone)} />}
                 <MessageRow
                   rowKey={row.key}
                   message={m}
@@ -142,23 +145,7 @@ export function MessageList(p: Props) {
           })}
         </div>
       </div>
-      <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
-        <AnimatePresence>
-          {p.unseen > 0 && (
-            <motion.button
-              initial={{ opacity: 0, y: reduced ? 0 : 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: reduced ? 0 : 8 }}
-              transition={reduced ? instant : { duration: dur.fast, ease: easeOut }}
-              onClick={p.onShowLatest}
-              className="pointer-events-auto flex h-8 items-center gap-1.5 rounded-full border border-line-strong bg-[#1c2225] px-3.5 text-[12.5px] font-medium shadow-[0_8px_24px_rgba(0,0,0,.45)] transition-[border-color,transform] hover:border-[#36403f] active:scale-[0.97]"
-            >
-              {p.unseen} new {p.unseen === 1 ? "message" : "messages"}
-              <ArrowDown aria-hidden="true" size={13} className="text-lime" />
-            </motion.button>
-          )}
-        </AnimatePresence>
-      </div>
+      <JumpPill show={p.unseen > 0} onClick={p.onShowLatest}>{p.unseen} new {p.unseen === 1 ? "message" : "messages"}</JumpPill>
     </div>
   );
 }
