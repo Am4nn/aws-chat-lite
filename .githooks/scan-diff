@@ -11,7 +11,8 @@ BEGIN {
   rule["GitHub App token"] = "gh[s]_"
   rule["Tavily key"] = "tvl[y]-"
   rule["private key"] = "BEGIN [A-Z ]*PRIVATE"
-  email = "[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+([.][A-Za-z0-9-]+)*[.][A-Za-z]{2,}"
+  # [A-Za-z][A-Za-z]+ rather than [A-Za-z]{2,}: mawk, the awk on Debian and Ubuntu CI machines, reads {2,} as exactly 2.
+  email = "[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+([.][A-Za-z0-9-]+)*[.][A-Za-z][A-Za-z]+"
 
   # The allow-list. Fake values the tests use on purpose are cut out of a line before it is matched, so a real
   # secret on the same line still blocks. Exact literals only: a pattern here would let real values through.
