@@ -125,7 +125,6 @@ export function threadsRepo() {
           if (!failedAt(e, 2)) throw e;
         }
       }
-      // Only older data can hold a numbered name's guard (new chats can't take thread-<N> names); a retry gets the next number.
       if (!item) throw new Conflict(`#${numbered} is already a chat's name; try again.`);
       const message = await chat.send(
         user, { roomId, chatId: threadId, clientId: input.clientId, text: input.text }, admitted, { copy: !!input.from, system: input.system },

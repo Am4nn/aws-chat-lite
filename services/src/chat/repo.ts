@@ -120,8 +120,9 @@ export function chatRepo() {
 
   /**
    * The checks that can refuse any send: valid content, a member of a room that isn't archived, within the rate limit,
-   * and attachments that S3 really holds (their size and type come from S3, not the client). A caller that must write something before the message exists (a new thread) runs this first and hands the
-   * result to `send`, so a refusal never leaves that write behind.
+   * and attachments that S3 really holds (their size and type come from S3, not the client). A caller that must write
+   * something before the message exists (a new thread) runs this first and hands the result to `send`, so a refusal
+   * never leaves that write behind.
    */
   async function admit(user: User, input: { roomId: string; text: unknown; attachments?: unknown }): Promise<Admitted> {
     const text = messageText(input.text);
@@ -297,8 +298,8 @@ export function chatRepo() {
      * Moves the read marker forward, clears the chat's mentions and takes the same number off the member's room total,
      * in one transaction. Optimistic: the write only applies if the mentions are still the count we read, so a mention
      * arriving meanwhile is never wiped without being subtracted; on a clash (that, or another transaction writing the
-   * same items at the same moment, which DynamoDB cancels as a TransactionConflict) it reads again and retries. The chat's
-     * counter, checked in the same transaction, proves the chat is in this room and the seq has been sent.
+     * same items at the same moment, which DynamoDB cancels as a TransactionConflict) it reads again and retries. The
+     * chat's counter, checked in the same transaction, proves the chat is in this room and the seq has been sent.
      */
     async markRead(user: User, input: ChatRef & { seq: number }): Promise<{ lastReadSeq: number }> {
       const at = { roomId: input.roomId, chatId: input.chatId };
@@ -343,8 +344,9 @@ export function chatRepo() {
     },
 
     /**
-     * Oldest to newest, at most a page (`limit`, 50 by default): the newest messages, or those before or after a seq, or half a page either
-     * side of one (for jumping to a quoted message). The chat's counter item proves the chat is in this room.
+     * Oldest to newest, at most a page (`limit`, 50 by default): the newest messages, or those before or after a seq,
+     * or half a page either side of one (for jumping to a quoted message). The chat's counter item proves the chat is
+     * in this room.
      */
     async history(user: User, roomId: string, chatId: string, cursor: Cursor): Promise<{ messages: Message[] }> {
       await requireMember(roomId, user.userId);

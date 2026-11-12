@@ -21,7 +21,7 @@ export type ThreadSummary = {
   runFirstSeq?: number;
   startedAt?: string;
   endedAt?: string;
-  /** Past this a run still marked running is dead; unset on threads from before runs had one. */
+  /** Past this a run still marked running is dead; unset until the thread's first run. */
   deadAt?: string;
   steps: number;
   currentStep?: string;

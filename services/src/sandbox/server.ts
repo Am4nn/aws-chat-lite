@@ -56,7 +56,7 @@ function parse(text: string): Body | undefined {
     const body: unknown = JSON.parse(text);
     if (body && typeof body === "object" && !Array.isArray(body)) return body as Body;
   } catch {
-    // Falls through: not JSON.
+    // Not JSON, which reads as no body.
   }
   return undefined;
 }
