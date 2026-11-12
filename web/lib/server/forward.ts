@@ -19,6 +19,7 @@ const ROUTES: [method: string, pattern: string][] = [
   ["GET", "/rooms/:x/chats/:x/messages"],
   ["POST", "/rooms/:x/attachments"],
   ["GET", "/rooms/:x/search"],
+  ["PATCH", "/rooms/:x/chats/:x"],
   ["PATCH", "/rooms/:x/chats/:x/prefs"],
   ["POST", "/rooms/:x/leave"],
   ["POST", "/rooms/:x/archive"],

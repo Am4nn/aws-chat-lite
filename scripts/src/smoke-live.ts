@@ -195,15 +195,19 @@ export async function liveChecks(stamp: number, owner: Person, guest: Person, th
   await sleep(1000);
   check(mutedBadge && await badgeIs(B, "random", "@1"), "B mutes #random: the unread count hides, but a new mention still shows its badge");
 
-  // Renaming and archiving a chat: A manages, B only sees the result, live.
+  // Renaming and archiving a chat: A manages, B only sees the result, live. The form opens holding the current name.
+  await A.bringToFront();
   await chatMenu(A, "random", "Rename");
   await A.waitForSelector("#chat-name");
-  await A.click("#chat-name", { count: 3 });
+  await A.focus("#chat-name");
+  await A.keyboard.down("Control"); await A.keyboard.press("a"); await A.keyboard.up("Control");
   await A.keyboard.type("off-topic");
   await confirmDialog(A, "Rename");
   const renamed = await toastSays(A, "Renamed to #off-topic");
+  const refusal = await A.evaluate(() => document.querySelector("[role=dialog] [role=alert]")?.textContent ?? "");
   check(renamed && await until(B, () => [...document.querySelectorAll('nav[aria-label="Room"] a span.truncate')].some((s) => s.textContent === "off-topic")),
-    "A renames #random to #off-topic, and B's sidebar follows");
+    `A renames #random to #off-topic, and B's sidebar follows${refusal ? ` (refused: ${refusal})` : ""}`);
+  if (!renamed) await A.keyboard.press("Escape");
   await chatMenu(A, "general");
   const generalItems = await A.evaluate(() => [...document.querySelectorAll("[role=menuitem]")].map((x) => x.textContent));
   await A.keyboard.press("Escape");
