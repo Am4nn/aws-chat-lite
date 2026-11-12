@@ -29,7 +29,6 @@ import { useRoomFiles } from "@/components/files/useRoomFiles";
 import { SearchPanel } from "@/components/chat/SearchPanel";
 import { StepDetails } from "@/components/threads/map/StepDetails";
 import { StepPick, type PickedStep } from "@/components/threads/map/stepPick";
-import { RunCapsule } from "@/components/threads/RunCapsule";
 import { RunPanel } from "@/components/threads/RunPanel";
 import { ThreadList } from "@/components/threads/ThreadList";
 import { ThreadTitle } from "@/components/threads/ThreadTitle";
@@ -227,7 +226,6 @@ export function RoomShell({ view, rooms, me, serverTimeZone, navHidden, children
             thread={activeThread && (
               <>
                 <ThreadTitle thread={activeThread} />
-                {activeThread.runId && <RunCapsule key={activeThread.threadId} thread={activeThread} />}
                 <ViewSwitch map={onMap} />
               </>
             )}

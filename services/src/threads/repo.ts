@@ -9,7 +9,7 @@ import { requireMember } from "../rooms/membership.js";
 import type { Message } from "../chat/model.js";
 import { chatRepo, type Admitted } from "../chat/repo.js";
 import { broadcastToRoom } from "../live/broadcast.js";
-import { provisionalName, isNumberedName, summary, threadName, uniqueCandidates } from "./model.js";
+import { provisionalName, isNumberedName, summary, slugName, threadName, uniqueCandidates } from "./model.js";
 import type { TaintSource } from "../models/privacy.js";
 import type { ThreadSummary } from "./types.js";
 import { counterKey, roomKey, roomMetaKey, threadKey } from "../lib/keys.js";
@@ -162,7 +162,7 @@ export function threadsRepo() {
       if (!thread || thread.named) return null;
       let base: string;
       try {
-        base = threadName(suggestion);
+        base = threadName(slugName(suggestion));
       } catch {
         return null;
       }

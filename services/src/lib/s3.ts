@@ -24,5 +24,9 @@ export function objects() {
 
 export const filesBucket = () => requiredEnv("FILES_BUCKET");
 
-/** S3 answers a missing key with 403, not 404, to a caller without ListBucket (as these Lambdas are on AWS). */
-export const missingObject = (e: unknown) => ["NotFound", "Forbidden"].includes((e as Error).name);
+/**
+ * S3 answers a missing key with 403, not 404, to a caller without ListBucket (as these Lambdas are on AWS). A HEAD has
+ * no body, so the status is all there is: the error's name varies by SDK version ("Forbidden", or "Unknown" in the
+ * Lambda runtime's own SDK).
+ */
+export const missingObject = (e: unknown) => [403, 404].includes((e as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode ?? 0);

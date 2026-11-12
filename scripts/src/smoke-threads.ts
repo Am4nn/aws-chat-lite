@@ -253,8 +253,7 @@ export async function threadChecks(stamp: number, owner: Person, guest: Person) 
   await setCap("0");
   const capped = await start("budget test tools:0");
   await open(A, capped.number);
-  const budgetEnd = await until(A, () => document.querySelector("main header [role=status]")?.textContent?.includes("Budget reached")
-    && document.querySelector("main")?.innerText.includes("This room has used its $0.00 budget")
+  const budgetEnd = await until(A, () => document.querySelector("main")?.innerText.includes("This room has used its $0.00 budget")
     && (document.querySelector("span.bg-amber") as HTMLElement | null)?.style.width === "100%", undefined, 30_000);
   check(budgetEnd, "with the cap at $0 the next run ends \"Budget reached\" with the budget text and a full amber bar");
   await setCap("3");
@@ -293,12 +292,12 @@ export async function threadChecks(stamp: number, owner: Person, guest: Person) 
   await P.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true });
   await open(P, phoneThread.number);
   const fits = await until(P, () => document.scrollingElement!.scrollWidth <= innerWidth
-    && [document.querySelector("main header [role=status]"), document.querySelector('button[aria-label="Stop the run"]')].every((el) => {
+    && [document.querySelector('button[aria-label="Stop the run"]')].every((el) => {
       const r = el?.getBoundingClientRect();
       return !!r && r.width > 0 && r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight;
     }), undefined, 20_000);
   const width = await P.evaluate(() => document.scrollingElement!.scrollWidth);
-  check(fits, `at 390×844 during a run: no horizontal scroll (${width}px), and the run capsule and Stop are on screen`);
+  check(fits, `at 390×844 during a run: no horizontal scroll (${width}px), and Stop is on screen`);
   await P.click('button[aria-label="Stop the run"]');
   await settled(phoneThread.number);
   await P.close();

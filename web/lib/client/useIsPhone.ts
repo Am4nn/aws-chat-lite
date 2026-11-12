@@ -1,12 +1,12 @@
 import { useSyncExternalStore } from "react";
 
-/** Tailwind's `md` breakpoint: below it the sidebar becomes a drawer too. */
-const PHONE_QUERY = "(max-width: 767px)";
+/** Tailwind's `md` breakpoint, written as its `max-md` asks it, so a fractional (zoomed) width gets one answer. */
+export const PHONE_QUERY = "(width < 48rem)";
 /**
  * Below this the sidebar (272 px), the room panel (320 px) and a readable chat (560 px) no longer fit side by side, so
  * the panel slides over the chat instead of squeezing it.
  */
-export const NARROW_QUERY = "(max-width: 1151px)";
+export const NARROW_QUERY = "(width < 1152px)";
 
 function useMatches(query: string): boolean {
   return useSyncExternalStore(

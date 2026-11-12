@@ -21,9 +21,20 @@ export function claimableName(name: string): string {
 
 export const threadSk = (n: number) => `THREAD#${String(n).padStart(10, "0")}`;
 
-const NAME = /^(?=.*[a-z])[a-z0-9-]{1,32}$/;
+const NAME = /^(?=.*[a-z])[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/;
 
-/** Thread name: lowercase a-z, 0-9 and dashes, 1–32 characters, with a letter so it can't be mistaken for a number. */
+/**
+ * A model's suggested name as a slug: anything but a-z and 0-9 becomes one dash, with none at either end, cut to fit.
+ * Models wrap names in quotes, bullets or sentence punctuation however they're asked.
+ */
+export function slugName(raw: string): string {
+  return raw.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+/, "").slice(0, 32).replace(/-+$/, "");
+}
+
+/**
+ * Thread name: lowercase a-z, 0-9 and dashes, 1–32 characters, starting and ending with a letter or digit, with a
+ * letter so it can't be mistaken for a number.
+ */
 export function threadName(raw: unknown): string {
   const name = typeof raw === "string" ? raw.trim().toLowerCase() : "";
   if (!NAME.test(name)) {
@@ -37,7 +48,7 @@ export function threadName(raw: unknown): string {
  * candidate that lost the name's only letter is left out.
  */
 export function uniqueCandidates(name: string): string[] {
-  const rest = Array.from({ length: 8 }, (_, i) => `${name.slice(0, 30)}-${i + 2}`);
+  const rest = Array.from({ length: 8 }, (_, i) => `${name.slice(0, 30).replace(/-+$/, "")}-${i + 2}`);
   return [name, ...rest].filter((n) => NAME.test(n));
 }
 

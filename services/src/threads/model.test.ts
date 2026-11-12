@@ -1,8 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { ARCHIVE_AFTER_SEC, provisionalName, claimableName, isArchived, isNumberedName, summary, leadingTag, summaryLine, threadName, threadSk, uniqueCandidates } from "./model.js";
+import { ARCHIVE_AFTER_SEC, provisionalName, claimableName, isArchived, isNumberedName, summary, leadingTag, slugName, summaryLine, threadName, threadSk, uniqueCandidates } from "./model.js";
 
 describe("threadName", () => {
   it("trims and lowercases", () => expect(threadName(" PR-Check ")).toBe("pr-check"));
+  it.each(["-help", "help-", "-"])("refuses %j, which starts or ends with a dash", (raw) => expect(() => threadName(raw)).toThrow(/letter/));
+});
+
+describe("slugName", () => {
+  it.each([
+    ["-help-clarify-request", "help-clarify-request"],
+    ["- Help: clarify the request!", "help-clarify-the-request"],
+    ["`deploy notes`\n", "deploy-notes"],
+    ["a".repeat(40), "a".repeat(32)],
+    [`${"x".repeat(31)}-tail`, "x".repeat(31)],
+  ])("turns a model's %j into %j", (raw, name) => expect(slugName(raw)).toBe(name));
   it.each(["12", "a".repeat(33), "", 5])("rejects %j", (raw) => expect(() => threadName(raw)).toThrow(/at least one letter/));
 });
 

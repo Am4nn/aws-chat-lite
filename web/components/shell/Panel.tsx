@@ -43,9 +43,9 @@ export function Panel({ open, overlayOpen, active, onActiveChange, tabs }: {
       initial={false}
       animate={{ width: open ? 320 : 0 }}
       transition={spring.panel}
-      className={`shrink-0 overflow-hidden border-l border-line bg-surface-1 max-[1151px]:fixed max-[1151px]:inset-y-0 max-[1151px]:right-0 max-[1151px]:z-40 max-[1151px]:w-[min(320px,calc(100vw-48px))]! max-[1151px]:transition-transform max-[1151px]:duration-300 max-[1151px]:ease-[cubic-bezier(.2,.9,.2,1)] ${overlayOpen ? "max-[1151px]:shadow-drawer" : "max-[1151px]:translate-x-full"}`}
+      className={`shrink-0 overflow-hidden border-l border-line bg-surface-1 max-[1152px]:fixed max-[1152px]:inset-y-0 max-[1152px]:right-0 max-[1152px]:z-40 max-[1152px]:w-[min(320px,calc(100vw-48px))]! max-[1152px]:transition-transform max-[1152px]:duration-300 max-[1152px]:ease-[cubic-bezier(.2,.9,.2,1)] ${overlayOpen ? "max-[1152px]:shadow-drawer" : "max-[1152px]:translate-x-full"}`}
     >
-      <div className="flex h-full w-[320px] flex-col gap-4 p-4 max-[1151px]:w-full">
+      <div className="flex h-full w-[320px] flex-col gap-4 p-4 max-[1152px]:w-full">
         <div role="tablist" aria-label="Room panel tabs" onKeyDown={onKeyDown} className="flex shrink-0 rounded-[11px] border border-line bg-surface-2 p-[3px]">
           {tabs.map((t, i) => {
             const selected = t.id === current.id;

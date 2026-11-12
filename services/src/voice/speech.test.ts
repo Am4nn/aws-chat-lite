@@ -47,7 +47,7 @@ function fakes(opts: { message?: Record<string, unknown>; spent?: number; stored
   vi.spyOn(objects(), "send").mockImplementation((async (c: unknown) => {
     if (c instanceof HeadObjectCommand) {
       if (opts.stored) return {};
-      throw Object.assign(new Error("missing"), { name: "NotFound" });
+      throw Object.assign(new Error("missing"), { name: "NotFound", $metadata: { httpStatusCode: 404 } });
     }
     if (c instanceof PutObjectCommand) return puts.push(c), {};
     throw new Error(`unexpected ${(c as object).constructor.name}`);

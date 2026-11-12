@@ -27,7 +27,7 @@ export function Header({ roomName, chatName, thread, taint = [], members, panelO
       <span className="truncate text-[13px] text-text-3 max-md:hidden">{roomName}</span>
       {(chatName || thread) && <ChevronRight aria-hidden="true" size={13} className="shrink-0 text-line-hover max-md:hidden" />}
       {chatName && (
-        <h1 className="flex min-w-0 items-center gap-1 font-display text-lg font-bold">
+        <h1 className="flex min-w-0 items-center gap-1 text-[15px] font-semibold">
           <Hash aria-hidden="true" size={16} className="shrink-0 text-text-3" />
           <span className="truncate">{chatName}</span>
         </h1>

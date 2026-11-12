@@ -42,7 +42,7 @@ export function ThreadTitle({ thread: t }: { thread: ThreadSummary }) {
   }
 
   return (
-    <h1 className="flex min-w-0 items-baseline gap-1.5 font-display text-lg font-bold">
+    <h1 className="flex min-w-0 items-baseline gap-1.5 text-[15px] font-semibold">
       <span className="shrink-0 font-mono text-[13px] font-normal text-text-3">#{t.number}</span>
       {draft === null
         ? (
