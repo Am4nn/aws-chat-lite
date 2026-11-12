@@ -109,6 +109,21 @@ describe("room MCP connections on Floci", () => {
     );
   });
 
+  it("two admins adding the fifth and sixth server at once get one of them; removing one frees its place", async () => {
+    const { owner, admin, roomId } = await room();
+    for (const name of ["a", "b", "c", "d"]) await connectTestServer(roomId, owner, { serverUrl: open.url, localHosts: HOSTS, name });
+    const repo = repoWith();
+    const adds = await Promise.allSettled([
+      repo.connect(owner, roomId, { name: "e", url: open.url, redirectUri: REDIRECT }),
+      repo.connect(admin, roomId, { name: "f", url: open.url, redirectUri: REDIRECT }),
+    ]);
+    expect(adds.filter((a) => a.status === "fulfilled")).toHaveLength(1);
+    expect((await connectionsRepo().get(roomId)).mcp).toHaveLength(5);
+    expect((await rawItem(roomId, "META"))?.mcpCount).toBe(5);
+    await repo.remove(owner, roomId, "a");
+    expect((await rawItem(roomId, "META"))?.mcpCount).toBe(4);
+  });
+
   it("removing deletes the connection and its tokens, revokes them on the server, and is logged", async () => {
     const { owner, roomId } = await room();
     await connectTestServer(roomId, owner, { serverUrl: oauth.url, localHosts: HOSTS });

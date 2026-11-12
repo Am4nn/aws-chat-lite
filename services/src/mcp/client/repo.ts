@@ -40,6 +40,7 @@ const authAad = (roomId: string, name: string) => `${roomId}#${name}`;
 const unknownServer = (name: string) => new NotFound(noSuchServer(name));
 const nameTaken = (name: string) => new Conflict(`This room already has an MCP server called ${name}.`);
 const needsReconnect = (name: string) => new Conflict(needsReconnecting(name));
+const roomFull = () => new Conflict(`A room can connect up to ${MAX_MCP_SERVERS} MCP servers.`);
 
 /** Remote servers fail in many shapes; the admin gets one line naming the host, and a URL we refused stays a 400. */
 async function fromRemote<T>(host: string, name: string, work: () => Promise<T>): Promise<T> {
@@ -87,8 +88,22 @@ export function mcpRepo(deps: Deps = liveDeps()) {
   async function requireRoomFor(roomId: string, name: string) {
     const all = await mcpConnections(roomId);
     if (all.some((c) => c.name === name)) throw nameTaken(name);
-    if (all.length >= MAX_MCP_SERVERS) throw new Conflict(`A room can connect up to ${MAX_MCP_SERVERS} MCP servers.`);
+    if (all.length >= MAX_MCP_SERVERS) throw roomFull();
   }
+
+  /**
+   * The room's server count on its META, moved in the same transaction as the connection. Counting rows first can't
+   * stop two admins adding different servers at once from passing the limit together; this condition can.
+   */
+  const serverAdded = (roomId: string) => ({
+    Update: {
+      TableName, Key: { pk: roomKey(roomId), sk: "META" }, UpdateExpression: "ADD mcpCount :one",
+      ConditionExpression: "attribute_not_exists(mcpCount) OR mcpCount < :max", ExpressionAttributeValues: { ":one": 1, ":max": MAX_MCP_SERVERS },
+    },
+  });
+  const serverRemoved = (roomId: string) => ({
+    Update: { TableName, Key: { pk: roomKey(roomId), sk: "META" }, UpdateExpression: "ADD mcpCount :minus", ExpressionAttributeValues: { ":minus": -1 } },
+  });
 
   function tokenStore(roomId: string, name: string): TokenStore {
     const aad = authAad(roomId, name);
@@ -159,10 +174,12 @@ export function mcpRepo(deps: Deps = liveDeps()) {
             },
           }] : []),
           audited(user, roomId, "connected", `MCP ${name} (${new URL(server.url).hostname})`),
+          ...(opts.reconnect ? [] : [serverAdded(roomId)]),
         ],
       }));
     } catch (e) {
       if (failedAt(e, 0)) throw opts.reconnect ? unknownServer(name) : nameTaken(name);
+      if (!opts.reconnect && failedAt(e, sealed ? 3 : 2)) throw roomFull();
       throw e;
     }
     return connection;
@@ -273,6 +290,7 @@ export function mcpRepo(deps: Deps = liveDeps()) {
             { Delete: { TableName, Key: mcpConnKey(roomId, name), ConditionExpression: "attribute_exists(sk)" } },
             { Delete: { TableName, Key: authKey(roomId, name) } },
             audited(user, roomId, "disconnected", `MCP ${name}`),
+            serverRemoved(roomId),
           ],
         }));
       } catch (e) {
