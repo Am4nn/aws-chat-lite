@@ -24,8 +24,8 @@ export function PromptBlock({ prompt, stats, onReplay }: { prompt: string; stats
   const folded = clamped && !open;
 
   return (
-    <div className="relative z-[1] flex min-h-24 w-48 shrink-0 flex-col justify-between gap-1 self-start rounded-xl border border-line-strong bg-surface-3 px-3 pb-1.5 pt-2.5">
-      <div className="relative flex flex-col">
+    <div className="relative z-[1] flex min-h-24 w-52 shrink-0 flex-col justify-between gap-1 self-start rounded-xl border border-line-strong bg-surface-3 px-3 pb-1.5 pt-2.5">
+      <div className="flex flex-col">
         <p
           ref={text}
           onClick={clamped ? toggle : undefined}
@@ -38,7 +38,7 @@ export function PromptBlock({ prompt, stats, onReplay }: { prompt: string; stats
           <button
             onClick={toggle}
             aria-expanded={open}
-            className={`rounded-sm text-[11.5px] text-text-3 transition-colors hover:text-text ${open ? "mt-1 self-end" : "absolute bottom-0 right-0 bg-linear-to-r from-transparent via-surface-3 via-40% to-surface-3 pl-4"}`}
+            className="mt-0.5 self-end rounded-sm text-[11.5px] text-text-3 transition-colors hover:text-text"
           >
             {open ? "less" : "more"}
           </button>

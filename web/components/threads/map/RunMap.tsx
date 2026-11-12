@@ -93,7 +93,7 @@ function TurnRow({ turn, number, last, live, onSummary }: {
   return (
     <section id={`run-${turn.runId}`} aria-label={`Turn ${number}`} className="relative flex scroll-mt-6 pb-9 last:pb-6">
       {!last && (
-        <span aria-hidden="true" className="absolute bottom-0 left-24 top-12 w-[1.5px] -translate-x-1/2 bg-line-hover">
+        <span aria-hidden="true" className="absolute bottom-0 left-26 top-12 w-[1.5px] -translate-x-1/2 bg-line-hover">
           <span className="absolute -bottom-[2.5px] left-1/2 size-[5px] -translate-x-1/2 rounded-full bg-line-hover" />
         </span>
       )}
