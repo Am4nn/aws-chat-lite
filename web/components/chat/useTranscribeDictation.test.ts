@@ -3,10 +3,14 @@ import { EventStreamCodec } from "@smithy/eventstream-codec";
 import { fromUtf8, toUtf8 } from "@smithy/util-utf8";
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { bff } from "@/lib/client/bff";
-import { useDictation } from "./useDictation";
+import { bff, BffError } from "@/lib/client/bff";
+import { useTranscribeDictation } from "./useTranscribeDictation";
 
-vi.mock("@/lib/client/bff", () => ({ bff: vi.fn(), errorText: (e: Error) => e.message }));
+vi.mock("@/lib/client/bff", () => ({
+  bff: vi.fn(),
+  errorText: (e: Error) => e.message,
+  BffError: class extends Error { constructor(public status: number, message: string) { super(message); } },
+}));
 
 const codec = new EventStreamCodec(toUtf8, fromUtf8);
 const serverFrame = (type: "event" | "exception", body: unknown) => codec.encode({
@@ -28,10 +32,10 @@ class FakeSocket extends EventTarget {
     queueMicrotask(() => { this.readyState = 1; this.dispatchEvent(new Event("open")); });
   }
   send(bytes: Uint8Array) { this.sent.push(bytes); }
-  close() {
+  close(reason = "") {
     if (this.readyState === 3) return;
     this.readyState = 3;
-    this.dispatchEvent(new Event("close"));
+    this.dispatchEvent(Object.assign(new Event("close"), { reason }));
   }
   receive(bytes: Uint8Array) {
     act(() => { this.dispatchEvent(new MessageEvent("message", { data: bytes.slice().buffer })); });
@@ -76,11 +80,12 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
+  vi.restoreAllMocks();
   contexts.length = 0;
 });
 
 async function recording(onText = vi.fn()) {
-  const hook = renderHook(() => useDictation({ roomId: "r1", onText }));
+  const hook = renderHook(() => useTranscribeDictation({ roomId: "r1", onText }));
   await act(() => hook.result.current.start());
   expect(hook.result.current.state).toBe("recording");
   return { ...hook, onText, socket: FakeSocket.last };
@@ -88,7 +93,7 @@ async function recording(onText = vi.fn()) {
 
 const doneCalls = () => vi.mocked(bff).mock.calls.filter(([path]) => path.endsWith("/done"));
 
-describe("useDictation", () => {
+describe("useTranscribeDictation", () => {
   it("streams the mic as 100 ms audio events and lands the final words", async () => {
     const { result, onText, socket } = await recording();
     expect(bff).toHaveBeenCalledWith("/bff/api/rooms/r1/voice/sessions", { body: {} });
@@ -140,29 +145,64 @@ describe("useDictation", () => {
 
   it("explains a blocked mic and never mints a session", async () => {
     getUserMedia.mockRejectedValue(new DOMException("Permission denied", "NotAllowedError"));
-    const { result } = renderHook(() => useDictation({ roomId: "r1", onText: vi.fn() }));
+    const { result } = renderHook(() => useTranscribeDictation({ roomId: "r1", onText: vi.fn() }));
     await act(() => result.current.start());
-    expect(result.current).toMatchObject({ state: "error", error: "Microphone access is blocked. Allow it in the site settings to dictate." });
+    expect(result.current).toMatchObject({ state: "error", error: "Allow the microphone to dictate." });
     expect(bff).not.toHaveBeenCalled();
     expect(contexts[0].close).toHaveBeenCalled();
     act(() => result.current.cancel());
     expect(result.current.state).toBe("idle");
   });
 
-  it("stops on a transcriber error, keeping the words so far", async () => {
+  it("stops on a transcriber error, keeping the words so far, and shows only an approved message", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const { result, onText, socket } = await recording();
     socket.receive(words("this", true));
-    socket.receive(serverFrame("exception", { Message: "Your request timed out." }));
+    const denied = "User: arn:aws:sts::123456789012:assumed-role/cl-aws-voice/x is not authorized to perform: transcribe:StartStreamTranscriptionWebSocket";
+    socket.receive(serverFrame("exception", { Message: denied }));
     await flush();
-    expect(result.current).toMatchObject({ state: "error", error: "Dictation stopped: Your request timed out." });
+    expect(result.current).toMatchObject({ state: "error", error: "Dictation isn't available right now." });
+    expect(log).toHaveBeenCalledWith("Transcribe:", denied);
     expect(onText).toHaveBeenCalledWith("this");
     expect(doneCalls()).toHaveLength(1);
+  });
+
+  it("keeps a close reason out of the UI", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { result, socket } = await recording();
+    act(() => socket.close("User: arn:aws:sts::123456789012:assumed-role/cl-aws-voice/x is not authorized"));
+    await flush();
+    expect(result.current).toMatchObject({ state: "error", error: "Dictation isn't available right now." });
+    expect(log).toHaveBeenCalledWith("Transcribe:", expect.stringContaining("arn:aws:sts::"));
   });
 
   it("stops when the connection drops", async () => {
     const { result, socket } = await recording();
     act(() => socket.close());
     await flush();
-    expect(result.current).toMatchObject({ state: "error", error: "Dictation stopped: the connection closed." });
+    expect(result.current).toMatchObject({ state: "error", error: "Dictation stopped. Try again." });
+  });
+
+  it("says it isn't available when the socket can't open, never the browser's own words", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("WebSocket", class extends EventTarget {
+      constructor() { super(); queueMicrotask(() => this.dispatchEvent(new Event("close"))); }
+    });
+    const { result } = renderHook(() => useTranscribeDictation({ roomId: "r1", onText: vi.fn() }));
+    await act(() => result.current.start());
+    expect(result.current).toMatchObject({ state: "error", error: "Dictation isn't available right now." });
+    expect(doneCalls()).toHaveLength(1);
+  });
+
+  it("passes on the server's own refusal, such as a used-up budget", async () => {
+    vi.mocked(bff).mockRejectedValue(new BffError(402, "The room's budget is used up."));
+    const { result } = renderHook(() => useTranscribeDictation({ roomId: "r1", onText: vi.fn() }));
+    await act(() => result.current.start());
+    expect(result.current).toMatchObject({ state: "error", error: "The room's budget is used up." });
+  });
+
+  it("is always offered, on the transcribe engine", () => {
+    const { result } = renderHook(() => useTranscribeDictation({ roomId: "r1", onText: vi.fn() }));
+    expect(result.current).toMatchObject({ engine: "transcribe", available: true, state: "idle" });
   });
 });

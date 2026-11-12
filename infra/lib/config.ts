@@ -55,6 +55,12 @@ export interface StageConfig {
    * Transcribe streaming, so local is always fake.
    */
   voiceMode: "fake" | "live";
+  /**
+   * Who turns the composer's speech into text: Amazon Transcribe through the voice Lambda, metered on the room's budget,
+   * or the browser's own speech recognition, which costs nothing. The AWS free plan's service control policy blocks
+   * Transcribe, so the aws stage dictates in the browser; local keeps Transcribe, which the fakes exercise.
+   */
+  dictation: "browser" | "transcribe";
   /** Local only: the fake Transcribe streaming server on the developer's machine, which the browser dictates to. */
   transcribeLocalUrl?: string;
   /** Local only: the run stream as a Node server on the developer's machine, because Floci's Function URLs stream no body. */
@@ -89,8 +95,8 @@ export function loadConfig(stage: string | undefined, env: NodeJS.ProcessEnv, co
       stage, prefix: "cl-local", isLocal: true, region: "us-east-1",
       siteOrigins: ["http://localhost:3000", "http://localhost:3100"], s3PublicEndpoint: `http://localhost:${FLOCI_PORT}`,
       modelGateway: env.MODEL_GATEWAY === "live" ? "live" : "fake", toolMode: env.TOOL_MODE === "live" ? "live" : "fake",
-      pushMode: env.PUSH_MODE === "live" ? "live" : "fake", voiceMode: "fake", transcribeLocalUrl: "ws://localhost:4601",
-      streamLocalUrl: "http://localhost:4600", sandboxLocalUrl: "http://host.docker.internal:4700",
+      pushMode: env.PUSH_MODE === "live" ? "live" : "fake", voiceMode: "fake", dictation: "transcribe",
+      transcribeLocalUrl: "ws://localhost:4601", streamLocalUrl: "http://localhost:4600", sandboxLocalUrl: "http://host.docker.internal:4700",
       ...(env.SANDBOX_TOKEN && { sandboxToken: env.SANDBOX_TOKEN }),
     };
   }
@@ -99,7 +105,7 @@ export function loadConfig(stage: string | undefined, env: NodeJS.ProcessEnv, co
     return {
       stage, prefix: "cl-aws", isLocal: false, region: "ap-southeast-2", siteOrigins: [`https://${DOMAIN_NAME}`],
       mcpBaseUrl: `https://${DOMAIN_NAME}`, modelGateway: "live", toolMode: "live", pushMode: "live", voiceMode: "live",
-      prod: prodSettings(context),
+      dictation: "browser", prod: prodSettings(context),
     };
   }
   throw new Error(`stage must be local or aws (got "${stage}"). Pass -c stage=local`);

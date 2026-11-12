@@ -6,10 +6,9 @@ import { Composer } from "./Composer";
 
 const dictation = vi.hoisted(() => ({
   state: "idle" as string, elapsedMs: 0, live: { final: "", partial: "" }, error: undefined as string | undefined,
-  start: vi.fn(async () => {}), stop: vi.fn(), cancel: vi.fn(), onText: null as unknown as (text: string) => void,
+  engine: "transcribe" as string, available: true, start: vi.fn(async () => {}), stop: vi.fn(), cancel: vi.fn(), onText: null as unknown as (text: string) => void,
 }));
 vi.mock("./useDictation", () => ({
-  MAX_DICTATION_MS: 60_000,
   useDictation: ({ onText }: { onText: (text: string) => void }) => { dictation.onText = onText; return dictation; },
 }));
 vi.mock("next/navigation", () => ({ useParams: () => ({ roomId: "r1" }) }));
@@ -17,7 +16,7 @@ vi.mock("@/lib/client/ThreadsProvider", () => ({ useThreads: () => ({ byId: () =
 
 afterEach(() => {
   cleanup();
-  Object.assign(dictation, { state: "idle", elapsedMs: 0, live: { final: "", partial: "" }, error: undefined });
+  Object.assign(dictation, { state: "idle", elapsedMs: 0, live: { final: "", partial: "" }, error: undefined, engine: "transcribe", available: true });
   vi.clearAllMocks();
 });
 
@@ -37,6 +36,21 @@ describe("Composer dictation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Dictate" }));
     expect(screen.getByRole("button", { name: "Dictate" }).title).toBe("Dictation · up to 1 minute");
     expect(dictation.start).toHaveBeenCalled();
+  });
+
+  it("hides the mic where the browser can't dictate", () => {
+    Object.assign(dictation, { engine: "browser", available: false });
+    composer();
+    expect(screen.queryByRole("button", { name: "Dictate" })).toBeNull();
+  });
+
+  it("says who recognises the speech when the browser does", () => {
+    composer();
+    expect(screen.queryByRole("button", { name: /recognised by your browser/ })).toBeNull();
+    cleanup();
+    Object.assign(dictation, { engine: "browser" });
+    composer();
+    expect(screen.getByRole("button", { name: "Speech is recognised by your browser (in Chrome, by Google)." })).toBeTruthy();
   });
 
   it("puts the words in at the caret, spaced from the text around them", () => {
@@ -68,9 +82,9 @@ describe("Composer dictation", () => {
   });
 
   it("shows why it stopped", () => {
-    Object.assign(dictation, { state: "error", error: "Microphone access is blocked. Allow it in the site settings to dictate." });
+    Object.assign(dictation, { state: "error", error: "Allow the microphone to dictate." });
     composer();
-    expect(screen.getByRole("alert").textContent).toBe("Microphone access is blocked. Allow it in the site settings to dictate.");
+    expect(screen.getByRole("alert").textContent).toBe("Allow the microphone to dictate.");
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(dictation.cancel).toHaveBeenCalled();
   });

@@ -12,6 +12,8 @@ export function serverEnv() {
     /** On AWS, sign-up needs an email and a confirmation code; locally accounts are confirmed at once. */
     emailSignup: e.SIGNUP_EMAIL === "required",
     secureCookies: e.SECURE_COOKIES === "true",
+    /** Who turns speech into text in the composer: the browser on AWS, whose free plan blocks Transcribe; else Transcribe. */
+    dictation: e.DICTATION === "browser" ? "browser" as const : "transcribe" as const,
     /**
      * The site's public origins, allowed to write through /bff/*. They must be set whenever the app sits behind a proxy:
      * CloudFront doesn't forward the browser's Host, so the request's own host is the Function URL's and can't match.

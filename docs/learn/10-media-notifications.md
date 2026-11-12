@@ -63,6 +63,17 @@ A retry that finds the staged object bills from its metadata without calling Gem
 
 **Reserve, then refund.** The server can't see a stream it isn't in, so it can't meter it. Instead it reserves the most a dictation may cost (60 s × 167 µ$ = 10,020 µ$) in the same transaction that creates the session, refusing when the room has less left, and `done {seconds}` refunds the difference: `billed = min(ceil(seconds), 60, ceil(seconds since the URL was signed))`. The refund lands in the month of the reservation, and a second `done` is refused by a conditional write. The cost of trusting the client is bounded and written down (see Rulings).
 
+**Two dictation engines behind one hook, chosen per stage.** The AWS account is on the free plan, whose service control policy denies `transcribe:StartStreamTranscriptionWebSocket` with an explicit deny that no IAM policy can override, so the aws stage dictates with the browser's Web Speech API (`webkitSpeechRecognition`, continuous, with interim results, in the browser's language) and local keeps Transcribe, which the fakes and the smoke exercise. `dictation: "browser" | "transcribe"` in `infra/lib/config.ts` reaches the Next.js server as `DICTATION`, the room layout hands it to every composer through a context, and the composer calls one `useDictation` that returns the same shape from either engine. The voice Lambda, its routes and the Transcribe path all still deploy, so flipping the setting back is the whole change once the account is on a paid plan.
+
+| | Browser | Transcribe |
+|---|---|---|
+| Cost | Nothing, so no reservation, no refund, no voice API call | 167 µ$ a second, reserved and refunded on the room's budget |
+| Who hears the audio | The browser's vendor: in Chrome, Google's servers (the `?` beside the mic says so) | AWS only, in the stack's region |
+| Where it works | Chrome, Edge and Safari; Firefox has none, so the mic is hidden there | Any browser with an `AudioWorklet` |
+| Metering | None to trust or abuse | Client-reported seconds (see Rulings) |
+
+Either way, a user only ever reads one of a few fixed messages (`Allow the microphone to dictate.`, `Didn't catch anything. Try again.`, `Dictation stopped. Try again.`, `Dictation isn't available right now.`). The real cause goes to the console: Transcribe's refusal under the free plan names the voice role's ARN, which once showed in the strip.
+
 **Text to speech in chunks, cached per answer.** Markdown becomes speech text (a code block becomes " (code block skipped) ", a link its text, a bare URL "a link"), cut at 10,000 characters on a sentence boundary, then split into chunks of at most 2,800 characters (Polly takes 3,000 a request) at sentence ends, synthesized 4 at a time and joined: MP3 frames simply concatenate. The cost is recorded before the S3 put, and the result is stored at `speech/<room>/<chat>/<seq>.mp3`; a play checks for it first with HeadObject, which answers 403, not 404, for a missing key when the caller may not list the bucket. Agent answers are never edited, and a removed one answers 410, so the cache can't go stale.
 
 **Web Push: three RFCs and a service worker.** RFC 8030 is delivery: the browser's push service (FCM for Chrome, Mozilla's for Firefox, Apple's for Safari, WNS for Edge on Windows) gives each subscription an endpoint URL; the server POSTs to it with `TTL`, `Urgency` and a `Topic` (a newer message with the same topic replaces an undelivered older one). RFC 8291 encrypts the payload end to end with the subscription's P-256 key and auth secret, so the push service carries ciphertext. RFC 8292 (VAPID) signs a JWT with the server's key pair, so only our server can push to subscriptions made with our public key. The service worker receives the event even with every tab closed; Chrome requires each push to show something (`userVisibleOnly`), and Safari quietly revokes a subscription that doesn't. On iPhone, web push exists only for a site added to the home screen (iOS 16.4+), and the permission prompt must come from a tap.
@@ -131,7 +142,7 @@ One Haiku thread on Floci (`deploy:local -- --live-models --live-push`, 2026-11-
 
 ## Known limits
 - **Voice metering trusts the client** (see Rulings): exact only for our own browser code.
-- **`en-US` only** for dictation, and Matthew only for reading; another language needs a picker (one query parameter each).
+- **`en-US` only** for Transcribe dictation (the browser engine uses the browser's language), and Matthew only for reading; another language needs a picker (one query parameter each).
 - **No image editing:** the tool is text to image. Editing an attachment would send its bytes to Gemini, a separate privacy decision.
 - **A push can be lost** (no retries) and a lock screen shows the message excerpt or run summary, even for a private thread.
 - **Old runs send no end push:** runs from before this step have no `startedById`.

@@ -2,25 +2,33 @@
 
 import { Mic, MicOff, Square, X } from "lucide-react";
 import { formatElapsed } from "@/lib/client/format";
+import { Hint } from "@/components/ui/Hint";
 import { Spinner } from "@/components/ui/Spinner";
-import { MAX_DICTATION_MS, type useDictation } from "./useDictation";
-
-type Dictation = ReturnType<typeof useDictation>;
+import { MAX_DICTATION_MS, type Dictation } from "./dictation";
 
 export const isDictating = (d: Dictation) => d.state === "starting" || d.state === "recording" || d.state === "finishing";
 
+/** Nothing where the browser can't dictate. On the browser engine, a "?" says who hears the audio. */
 export function MicButton({ dictation }: { dictation: Dictation }) {
+  if (!dictation.available) return null;
   const on = isDictating(dictation);
   const busy = dictation.state === "starting" || dictation.state === "finishing";
   return (
-    <button
-      onClick={on ? dictation.stop : () => void dictation.start()}
-      aria-label={on ? "Stop dictating" : "Dictate"}
-      title={on ? "Stop dictating" : "Dictation · up to 1 minute"}
-      className={`grid size-[38px] shrink-0 place-items-center rounded-[11px] transition-[background,color,transform] hover:bg-surface-3 hover:text-text active:scale-95 ${on ? "bg-surface-3 text-lime" : "text-text-3"}`}
-    >
-      {busy ? <Spinner /> : <Mic aria-hidden="true" size={17} />}
-    </button>
+    <>
+      <button
+        onClick={on ? dictation.stop : () => void dictation.start()}
+        aria-label={on ? "Stop dictating" : "Dictate"}
+        title={on ? "Stop dictating" : "Dictation · up to 1 minute"}
+        className={`grid size-[38px] shrink-0 place-items-center rounded-[11px] transition-[background,color,transform] hover:bg-surface-3 hover:text-text active:scale-95 ${on ? "bg-surface-3 text-lime" : "text-text-3"}`}
+      >
+        {busy ? <Spinner /> : <Mic aria-hidden="true" size={17} />}
+      </button>
+      {dictation.engine === "browser" && (
+        <span className="flex h-[38px] shrink-0 items-center">
+          <Hint text="Speech is recognised by your browser (in Chrome, by Google)." start />
+        </span>
+      )}
+    </>
   );
 }
 
