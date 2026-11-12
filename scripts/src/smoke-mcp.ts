@@ -17,33 +17,29 @@ import type { OAuthClientInformationMixed, OAuthTokens } from "@modelcontextprot
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { BatchWriteCommand, DynamoDBDocumentClient, ScanCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
-import { readOutputs } from "./deploy-local.js";
-import { PANEL, PASSWORD, WEB, bff, check, clickButton, eventually, openTab, panelShows, socketOpen, toastSays, until } from "./smoke-page.js";
+import { readOutputs } from "./cdk.js";
+import {
+  PANEL, PASSWORD, WEB, bff, check, clickButton, eventually, noSideScroll, openTab, panelShows, sampleFrames, socketOpen, toastSays, until,
+} from "./smoke-page.js";
+import { MCP_TEST_PORT } from "./ports.js";
 
 type Person = { page: Page; name: string };
 type Thread = { threadId: string; number: number; status: string; steps: number; taint: string[] };
 
-const SERVER_URL = "http://host.docker.internal:4710/mcp";
+const SERVER_URL = `http://host.docker.internal:${MCP_TEST_PORT}/mcp`;
 const RUN_MS = 60_000;
 const PHONE = { width: 390, height: 844, isMobile: true, hasTouch: true };
 
-/**
- * Counts the frames in which the element matching `selector` is part-way through a fade (neither hidden nor fully
- * shown), from the moment `action` runs until 800 ms later. Sent as text because the TypeScript runner wraps named
- * functions in a helper that doesn't exist inside the browser.
- */
-const fadeFrames = (selector: string, action: string) => `new Promise((resolve) => {
-  let moving = 0;
-  const start = performance.now();
-  const sample = (now) => {
-    const el = document.querySelector(${JSON.stringify(selector)});
+/** Counts the frames in which `selector` is part-way through a fade (neither hidden nor fully shown), for 800 ms from `action`. */
+const fadeFrames = (selector: string, action: string) => sampleFrames({
+  vars: "let moving = 0;",
+  perFrame: `const el = document.querySelector(${JSON.stringify(selector)});
     const opacity = el ? Number(getComputedStyle(el).opacity) : 1;
-    if (opacity > 0 && opacity < 1) moving++;
-    if (now - start < 800) requestAnimationFrame(sample); else resolve(moving);
-  };
-  requestAnimationFrame(sample);
-  ${action}
-})`;
+    if (opacity > 0 && opacity < 1) moving++;`,
+  done: "now - start >= 800",
+  result: "moving",
+  begin: action,
+});
 const clickText = (text: string) =>
   `[...document.querySelectorAll("button")].find((b) => b.textContent.trim() === ${JSON.stringify(text)}).click();`;
 
@@ -112,8 +108,6 @@ async function resetOAuthRates() {
 const mcpSection = (page: Page) => page.evaluate((panel) => [...document.querySelectorAll(`${panel} section`)]
   .find((s) => s.querySelector("h2")?.textContent === "MCP servers")?.textContent ?? "", PANEL);
 
-const noSideScroll = (page: Page) => page.evaluate(() => document.scrollingElement!.scrollWidth <= innerWidth);
-
 export async function mcpChecks(stamp: number, owner: Person, guest: Person) {
   const A = owner.page;
   const B = guest.page;
@@ -167,7 +161,7 @@ export async function mcpChecks(stamp: number, owner: Person, guest: Person) {
     `B sees "None yet." and no Add MCP server; A adds test = ${SERVER_URL}, passes the server's sign-in and lands back on #general with "Connected test"`);
   await socketOpen(A);
   const labelled = await toolLabels(A);
-  const seen = await panelShows(B, ["test", "host.docker.internal:4710", "connected"], 15_000) && await toolLabels(B);
+  const seen = await panelShows(B, ["test", `host.docker.internal:${MCP_TEST_PORT}`, "connected"], 15_000) && await toolLabels(B);
   const stillNoAdd = await B.evaluate(() => ![...document.querySelectorAll("button")].some((b) => ["Add MCP server", "Reconnect", "Refresh tools", "Remove"].includes(b.textContent?.trim() ?? "")));
   check(labelled && seen && stillNoAdd, "both see test connected with echo, whoami and fail read-only and add_note asks first; B has no Add, Reconnect, Refresh or Remove");
 

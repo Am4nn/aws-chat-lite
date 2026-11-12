@@ -1,4 +1,4 @@
-import { Duration, RemovalPolicy } from "aws-cdk-lib";
+import { Duration } from "aws-cdk-lib";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import type { CoreStack } from "./core-stack.js";
@@ -12,7 +12,7 @@ export function addRuns(stack: CoreStack) {
   const { prefix, isLocal, modelGateway, toolMode, sandboxToken } = stack.stageConfig;
   // The keys are set by hand, so AWS keeps them past a stack delete. Leave the generated value as is: changing the
   // generator makes CloudFormation write a new value over the hand-set keys.
-  const removalPolicy = isLocal ? RemovalPolicy.DESTROY : RemovalPolicy.RETAIN;
+  const removalPolicy = stack.userDataRemoval;
   // The provider keys live only in this secret, as JSON {ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL,
   // GEMINI_API_KEY}. Its value is set outside CloudFormation, so no key ever appears in a template or a Lambda
   // environment variable.
@@ -46,7 +46,8 @@ export function addRuns(stack: CoreStack) {
   // Locally, MCP servers on the developer's machine are reached over http at private addresses. On AWS those hosts
   // would let an admin point a Lambda into AWS's own network, so the variable is never set there.
   const mcpEnvironment = { TOKEN_KEY_SECRET: tokenKeyName, ...(isLocal && { MCP_LOCAL_HOSTS: "host.docker.internal,localhost,127.0.0.1" }) };
-  const runFn = stack.addFunction("run", "runs/loop.ts", { tableAccess: true }, {
+  const runFn = stack.addFunction("run", "runs/loop.ts", {
+    tableAccess: true,
     timeout: Duration.minutes(15),
     // Room files pass through on their way in and out of the sandbox: a batch of up to 8 MB in, a 25 MB file out.
     memorySize: 1024,

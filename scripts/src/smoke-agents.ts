@@ -6,7 +6,9 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import type { Page } from "puppeteer-core";
-import { PANEL, WEB, bff, check, clickButton, eventually, openTab, panelShows, say, socketOpen, toastSays, until } from "./smoke-page.js";
+import {
+  PANEL, WEB, bff, check, clickButton, eventually, openTab, panelShows, sampleFrames, say, socketOpen, toastSays, until,
+} from "./smoke-page.js";
 
 type Person = { page: Page; name: string };
 type Thread = { threadId: string; number: number; name: string; status: string; agentId: string };
@@ -19,38 +21,26 @@ const PHONE = { width: 390, height: 844, isMobile: true, hasTouch: true };
 const CARD = "main div[style*=left] > button";
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 
-/**
- * Presses the Map's Replay and counts, for 2 s, the frames in which a card was still dropping in (its wrapper not yet
- * opaque and in place). Sent as text because the TypeScript runner wraps named functions in a helper that doesn't
- * exist inside the browser.
- */
-const REPLAY_FRAMES = `new Promise((resolve) => {
-  let moving = 0;
-  const start = performance.now();
-  const sample = (now) => {
-    const cards = [...document.querySelectorAll(${JSON.stringify(CARD)})].map((b) => b.parentElement);
-    if (cards.some((c) => { const s = getComputedStyle(c); return Number(s.opacity) < 1 || !/^(none|matrix\\(1, 0, 0, 1, 0, 0\\))$/.test(s.transform); })) moving++;
-    if (now - start < 2000) requestAnimationFrame(sample); else resolve(moving);
-  };
-  [...document.querySelectorAll("main button")].find((b) => b.textContent.trim() === "Replay").click();
-  requestAnimationFrame(sample);
-})`;
+/** Presses the Map's Replay and counts, for 2 s, the frames in which a card's wrapper was not yet opaque and in place. */
+const REPLAY_FRAMES = sampleFrames({
+  vars: "let moving = 0;",
+  perFrame: `if ([...document.querySelectorAll(${JSON.stringify(CARD)})].some((b) => !placed(b.parentElement))) moving++;`,
+  done: "now - start >= 2000",
+  result: "moving",
+  begin: `[...document.querySelectorAll("main button")].find((b) => b.textContent.trim() === "Replay").click();`,
+});
 
 /** Counts the frames, until `text`'s memory row has shown for a second, in which that row was still sliding in. */
-const memoryFrames = (text: string) => `new Promise((resolve) => {
-  let moving = 0, firstSeen = 0;
-  const start = performance.now();
-  const sample = (now) => {
-    const row = document.querySelector(${JSON.stringify(`li[aria-label="${text}"]`)});
+const memoryFrames = (text: string) => sampleFrames({
+  vars: "let moving = 0, firstSeen = 0;",
+  perFrame: `const row = document.querySelector(${JSON.stringify(`li[aria-label="${text}"]`)});
     if (row) {
       firstSeen ||= now;
-      const s = getComputedStyle(row);
-      if (Number(s.opacity) < 1 || !/^(none|matrix\\(1, 0, 0, 1, 0, 0\\))$/.test(s.transform)) moving++;
-    }
-    if ((firstSeen && now - firstSeen > 1000) || now - start > 60000) resolve(moving); else requestAnimationFrame(sample);
-  };
-  requestAnimationFrame(sample);
-})`;
+      if (!placed(row)) moving++;
+    }`,
+  done: "(firstSeen && now - firstSeen > 1000) || now - start > 60000",
+  result: "moving",
+});
 
 export async function agentChecks(stamp: number, owner: Person, guest: Person) {
   const A = owner.page;

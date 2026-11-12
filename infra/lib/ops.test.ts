@@ -6,7 +6,7 @@ import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
 import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
 import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
 import { addOps } from "./ops.js";
-import { TEST_CONTEXT, template } from "./test-templates.js";
+import { TEST_CONTEXT, template, dashboardWidgets as widgets, dashboardMetrics } from "./test-templates.js";
 
 const RUNBOOK = "Runbook: docs/runbook-aws.md#when-an-alarm-fires";
 
@@ -20,23 +20,17 @@ function bareStack() {
   fn("Unnamed");
   new apigwv2.HttpApi(stack, "Api", { apiName: "t-api" });
   new cloudfront.Distribution(stack, "Cdn", { defaultBehavior: { origin: new origins.HttpOrigin("example.com") } });
-  addOps(stack, TEST_CONTEXT.alertEmail);
+  addOps(stack, "t", TEST_CONTEXT.alertEmail);
   return Template.fromStack(stack);
 }
 
 const alarms = (t: Template) => Object.entries(t.findResources("AWS::CloudWatch::Alarm")) as [string, any][];
 const alarmNamed = (t: Template, name: string) => alarms(t).find(([, a]) => a.Properties.AlarmName === name)?.[1].Properties;
 
-/** The ops dashboard's widgets, with each reference in its body replaced by the logical ID it points at. */
-function widgets(t: Template): any[] {
-  const [dashboard] = Object.values(t.findResources("AWS::CloudWatch::Dashboard", { Properties: { DashboardName: "cl-aws-ops" } })) as any[];
-  const parts: any[] = dashboard.Properties.DashboardBody["Fn::Join"][1];
-  return JSON.parse(parts.map((p) => typeof p === "string" ? p : p.Ref ?? p["Fn::GetAtt"][0]).join("")).widgets;
-}
 const metricsOf = (t: Template, title: string): any[][] => widgets(t).find((w) => w.properties.title === title).properties.metrics;
 
 describe("ops", () => {
-  it("alarms every function we named, not CDK's own", () => {
+  it("alarms every function we named, not CDK's own, and names its own alarms after the stage", () => {
     const t = bareStack();
     const [named] = Object.keys(t.findResources("AWS::Lambda::Function", { Properties: { FunctionName: "t-named" } }));
     const errors = alarms(t).filter(([, a]) => a.Properties.MetricName === "Errors");
@@ -46,9 +40,11 @@ describe("ops", () => {
       Statistic: "Sum", Period: 300, Threshold: 3, ComparisonOperator: "GreaterThanOrEqualToThreshold",
       EvaluationPeriods: 1, TreatMissingData: "notBreaching",
     });
-    expect(alarms(t).map(([, a]) => a.Properties.AlarmName).sort()).toEqual(["cl-aws-lambda-throttles", "t-api-5xx", "t-named-errors"]);
-    expect(alarmNamed(t, "cl-aws-lambda-throttles")).toMatchObject({ Namespace: "AWS/Lambda", MetricName: "Throttles", Threshold: 5 });
-    expect(alarmNamed(t, "cl-aws-lambda-throttles").Dimensions).toBeUndefined();
+    expect(alarms(t).map(([, a]) => a.Properties.AlarmName).sort()).toEqual(["t-api-5xx", "t-lambda-throttles", "t-named-errors"]);
+    expect(alarmNamed(t, "t-lambda-throttles")).toMatchObject({ Namespace: "AWS/Lambda", MetricName: "Throttles", Threshold: 5 });
+    expect(alarmNamed(t, "t-lambda-throttles").Dimensions).toBeUndefined();
+    t.hasResourceProperties("AWS::CloudWatch::Dashboard", { DashboardName: "t-ops" });
+    t.hasResourceProperties("AWS::SNS::Topic", { TopicName: "t-ops" });
   });
 
   it("every function in the aws stack has its errors alarm", () => {
@@ -118,6 +114,16 @@ describe("ops", () => {
     expect(Object.values(t.findOutputs("OpsDashboardUrl"))).toEqual([expect.objectContaining({
       Value: "https://ap-southeast-2.console.aws.amazon.com/cloudwatch/home?region=ap-southeast-2#dashboards/dashboard/cl-aws-ops",
     })]);
+  });
+
+  // A dashboard is free only up to 50 metrics; past that it costs $3 a month. Each function adds one (its errors line).
+  it("the dashboard charts at most 50 metrics: per function only errors, with throttles and concurrency account-wide", () => {
+    const t = template("aws");
+    expect(dashboardMetrics(t).length).toBeLessThanOrEqual(50);
+    const lambdaMetrics = dashboardMetrics(t).filter((m) => m[0] === "AWS/Lambda");
+    expect(lambdaMetrics.filter((m) => m[1] !== "Errors").map((m) => [m[1], m.length])).toEqual([
+      ["Invocations", 3], ["Throttles", 3], ["ConcurrentExecutions", 3],
+    ]);
   });
 
   it("charts CloudFront from us-east-1, where its metrics live, and gives it no alarm", () => {

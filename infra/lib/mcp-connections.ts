@@ -8,10 +8,10 @@ import type { CoreStack } from "./core-stack.js";
  */
 export function addMcpConnections(stack: CoreStack) {
   const { tokenKey, mcpEnvironment } = stack.runs;
-  const fn = stack.addFunction("mcp-connections", "mcp/client/handler.ts", { tableAccess: true }, {
+  const fn = stack.addFunction("mcp-connections", "mcp/client/handler.ts", {
+    tableAccess: true,
     timeout: Duration.seconds(30),
-    // The OAuth return address must be one of the site's own, so a sign-in can't hand its code to another site.
-    environment: { ...mcpEnvironment, SITE_ORIGINS: stack.stageConfig.siteOrigins.join(",") },
+    environment: { ...mcpEnvironment, ...stack.siteOriginsEnvironment() },
   });
   tokenKey.grantRead(fn);
   stack.allowBroadcast(fn);

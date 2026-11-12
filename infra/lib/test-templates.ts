@@ -65,6 +65,17 @@ export function spikeTemplate(): Template {
   return (spike ??= Template.fromStack(new SpikeStack(app(), "cl-local-spike", { config, env: { account: "000000000000", region: config.region } })));
 }
 
+/** The ops dashboard's widgets, with each reference in its body replaced by the logical ID it points at. */
+export function dashboardWidgets(t: Template): any[] {
+  const [dashboard] = Object.values(t.findResources("AWS::CloudWatch::Dashboard")) as any[];
+  const parts: any[] = dashboard.Properties.DashboardBody["Fn::Join"][1];
+  return JSON.parse(parts.map((p) => typeof p === "string" ? p : p.Ref ?? p["Fn::GetAtt"][0]).join("")).widgets;
+}
+
+/** Every metric the dashboard's graphs chart, which is what CloudWatch counts against a dashboard's free 50. */
+export const dashboardMetrics = (t: Template): any[][] =>
+  dashboardWidgets(t).filter((w) => w.type === "metric").flatMap((w) => w.properties.metrics);
+
 /** The one Lambda function with this name, with its logical id. */
 export function fnNamed(name: string, stage: Stage = "local", env: NodeJS.ProcessEnv = {}) {
   const fns = Object.entries(template(stage, env).findResources("AWS::Lambda::Function", { Properties: { FunctionName: name } }));

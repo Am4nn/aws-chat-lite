@@ -88,9 +88,9 @@ describe("the site behind CloudFront", () => {
     expect(fnNamed("cl-aws-threads", "aws").props.Environment.Variables.STREAM_URL).toBe("https://chat.amanarya.com");
   });
 
-  it("the web Lambda runs the Next.js server with the production settings and a month of logs", () => {
+  it("the web Lambda runs the Next.js server with the production settings, outlasts an API call, and logs for a month", () => {
     const web = fnNamed("cl-aws-web", "aws").props;
-    expect(web).toMatchObject({ MemorySize: 1024, Timeout: 15, Handler: "index.handler", Runtime: "nodejs22.x" });
+    expect(web).toMatchObject({ MemorySize: 1024, Timeout: 30, Handler: "index.handler", Runtime: "nodejs22.x" });
     expect(Object.keys(web.Environment.Variables).sort()).toEqual(
       ["API_URL", "COGNITO_REGION", "ORIGIN_VERIFY_SECRET", "SECURE_COOKIES", "SIGNUP_EMAIL", "SITE_ORIGINS", "USER_POOL_CLIENT_ID"],
     );

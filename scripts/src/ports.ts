@@ -1,5 +1,12 @@
 import { spawnSync } from "node:child_process";
 
+/** The local stage's ports on this machine: Floci's, and those of the helpers `npm run dev` starts beside the web app. */
+export const FLOCI_PORT = 4566;
+export const STREAM_PORT = 4600;
+export const TRANSCRIBE_PORT = 4601;
+export const SANDBOX_PORT = 4700;
+export const MCP_TEST_PORT = 4710;
+
 /** Name of the container publishing `port` on the host, from `docker ps --format "{{.Names}}\t{{.Ports}}"`. */
 export function portOwner(dockerPs: string, port: number): string | undefined {
   const published = new RegExp(`(0\.0\.0\.0|\[::\]):${port}->`);

@@ -3,8 +3,9 @@
  * The user signs out and in again to get a token with the new group. `--stage=aws` uses your `ig` profile.
  */
 import { CognitoIdentityProviderClient, AdminAddUserToGroupCommand } from "@aws-sdk/client-cognito-identity-provider";
+import { run } from "./cli.js";
 import { useAwsEnv, useLocalEnv } from "./env.js";
-import { readOutputs } from "./deploy-local.js";
+import { readOutputs } from "./cdk.js";
 import { grantArgs } from "./grant-args.js";
 
 async function main() {
@@ -18,4 +19,4 @@ async function main() {
   console.log(`✅ ${username} is now in "${group}" (${stage}). Sign out and in again to refresh the token.`);
 }
 
-main().catch((e) => { console.error(String(e.message ?? e)); process.exit(1); });
+run(main);

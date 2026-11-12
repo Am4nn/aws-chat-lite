@@ -9,7 +9,6 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as subs from "aws-cdk-lib/aws-sns-subscriptions";
 
-const NAME = "cl-aws-ops";
 const RUNBOOK = "Runbook: docs/runbook-aws.md#when-an-alarm-fires";
 const FIVE_MINUTES = Duration.minutes(5);
 
@@ -18,8 +17,13 @@ const FIVE_MINUTES = Duration.minutes(5);
  * every HTTP and WebSocket API, every table and distribution, found by sweeping the construct tree. It must run after
  * everything else is added. It is not an IAspect because the dashboard needs every alarm in one place, and aspects that
  * add constructs depend on the order they run in.
+ *
+ * The dashboard answers "is it broken, and is it costing money" and stays within CloudWatch's 50 free metrics, so each
+ * function gets one line (its errors). Durations and per-function throttles are causes, read in Lambda's own console
+ * once a symptom fires.
  */
-export function addOps(stack: Stack, alertEmail: string): void {
+export function addOps(stack: Stack, prefix: string, alertEmail: string): void {
+  const opsName = `${prefix}-ops`;
   const all = stack.node.findAll();
   // CDK's own helpers (an asset deployment's handler, say) have generated names; only functions we named are ours.
   const fns = all.filter((c): c is lambda.Function => c instanceof lambda.Function)
@@ -31,7 +35,7 @@ export function addOps(stack: Stack, alertEmail: string): void {
   const tables = all.filter((c): c is dynamodb.Table => c instanceof dynamodb.Table);
   const distributions = all.filter((c): c is cloudfront.Distribution => c instanceof cloudfront.Distribution);
 
-  const topic = new sns.Topic(stack, "OpsTopic", { topicName: NAME, enforceSSL: true });
+  const topic = new sns.Topic(stack, "OpsTopic", { topicName: opsName, enforceSSL: true });
   // A topic policy replaces SNS's default one, which is what let same-account services publish. Alarms publish as the
   // CloudWatch service, so it is let back in, for this account's alarms in this region only.
   topic.addToResourcePolicy(new iam.PolicyStatement({
@@ -68,11 +72,11 @@ export function addOps(stack: Stack, alertEmail: string): void {
     ...wsApis.map(({ api, name }) => alarm(`${name}-execution-errors`, api.metric("ExecutionError", sum), 5,
       `${name} couldn't call its Lambda 5+ times in 5 minutes: messages don't send and live updates stop.`)),
     // Throttles are counted per account: one function using up the concurrency quota throttles all the others.
-    alarm("cl-aws-lambda-throttles", lambda.Function.metricAllThrottles(sum), 5,
+    alarm(`${prefix}-lambda-throttles`, lambda.Function.metricAllThrottles(sum), 5,
       "Lambda turned away 5+ calls in 5 minutes because the account ran out of concurrency: users see errors everywhere."),
   ];
 
-  const dashboard = new cloudwatch.Dashboard(stack, "OpsDashboard", { dashboardName: NAME });
+  const dashboard = new cloudwatch.Dashboard(stack, "OpsDashboard", { dashboardName: opsName });
   dashboard.addWidgets(new cloudwatch.AlarmStatusWidget({ title: "Alarms", alarms, width: 24 }));
   const row = (graphs: [title: string, metrics: cloudwatch.IMetric[]][]) => {
     const shown = graphs.filter(([, metrics]) => metrics.length);
@@ -92,11 +96,12 @@ export function addOps(stack: Stack, alertEmail: string): void {
       api.metric("IntegrationError", { ...sum, label: `${name} 4xx/5xx from the Lambda` }),
       api.metric("ExecutionError", { ...sum, label: `${name} couldn't call the Lambda` })])],
   ]);
+  // Invocations drive the Lambda bill; throttles and concurrency count against the account's quota, which every
+  // function shares.
   row([
     ["Lambda errors", fns.map(({ fn, name }) => fn.metricErrors({ ...sum, label: name }))],
-    ["Lambda duration p90 (ms)", fns.map(({ fn, name }) => fn.metricDuration({ ...p90, label: name }))],
-    ["Lambda throttles", fns.map(({ fn, name }) => fn.metricThrottles({ ...sum, label: name }))],
-    // Against the account's concurrency quota, which every function shares.
+    ["Lambda invocations (account)", [lambda.Function.metricAllInvocations(sum)]],
+    ["Lambda throttles (account)", [lambda.Function.metricAllThrottles(sum)]],
     ["Lambda concurrent executions (account)", [lambda.Function.metricAllConcurrentExecutions({ period: FIVE_MINUTES, statistic: "Maximum" })]],
   ]);
   row([
@@ -120,6 +125,6 @@ export function addOps(stack: Stack, alertEmail: string): void {
 
   new CfnOutput(stack, "OpsTopicArn", { value: topic.topicArn });
   new CfnOutput(stack, "OpsDashboardUrl", {
-    value: `https://${stack.region}.console.aws.amazon.com/cloudwatch/home?region=${stack.region}#dashboards/dashboard/${NAME}`,
+    value: `https://${stack.region}.console.aws.amazon.com/cloudwatch/home?region=${stack.region}#dashboards/dashboard/${opsName}`,
   });
 }

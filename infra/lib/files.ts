@@ -10,10 +10,7 @@ const OBJECT_ACTIONS = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"];
  * room files directly, but never sees anyone's staged upload.
  */
 export function addFiles(stack: CoreStack, files: s3.Bucket) {
-  const { s3PublicEndpoint } = stack.stageConfig;
-  const fn = stack.addFunction("files", "workspace/handler.ts", { tableAccess: true }, {
-    environment: { FILES_BUCKET: files.bucketName, ...(s3PublicEndpoint && { S3_PUBLIC_ENDPOINT: s3PublicEndpoint }) },
-  });
+  const fn = stack.addFunction("files", "workspace/handler.ts", { tableAccess: true, environment: stack.filesEnvironment(files) });
   stack.allowBroadcast(fn);
   // Object-level actions only, without ListBucket: nothing here needs to browse the bucket.
   fn.addToRolePolicy(new iam.PolicyStatement({

@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import { EventStreamCodec } from "@smithy/eventstream-codec";
 import { fromUtf8, toUtf8 } from "@smithy/util-utf8";
 import { WebSocketServer, type WebSocket } from "ws";
+import { TRANSCRIBE_PORT } from "./ports.js";
 
 const WORDS = "this is a fake transcript of what you said".split(" ");
 /** Half a second of 16 kHz, 16-bit mono PCM. */
@@ -35,11 +36,11 @@ function refuse(ws: WebSocket, message: string) {
 }
 
 /**
- * Amazon Transcribe streaming for the local stage, on ws://localhost:4601: the same URL query and the same AWS
+ * Amazon Transcribe streaming for the local stage, on localhost: the same URL query and the same AWS
  * event-stream frames, so the browser's dictation code runs unchanged. It hears nothing; every half second of audio
  * adds the next word of a fixed sentence, and the empty audio event that ends a stream gets the final text.
  */
-export function startLocalTranscribeServer(port = 4601) {
+export function startLocalTranscribeServer(port = TRANSCRIBE_PORT) {
   const server = createServer((_req, res) => res.writeHead(426).end());
   new WebSocketServer({ server }).on("connection", (ws, req) => {
     const query = new URL(req.url ?? "/", "ws://localhost").searchParams;
