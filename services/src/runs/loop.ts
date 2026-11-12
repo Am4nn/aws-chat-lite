@@ -45,6 +45,8 @@ export async function runLoop({ runId }: { runId: string }, ctx: DurableContext)
   } catch (e) {
     // A step or an approval's request that failed every try.
     if (!(e instanceof DurableOperationError)) throw e;
+    // The thread only says the agent hit an error, so its cause is kept in the log.
+    console.error("run failed", runId, e);
     // The stored run carries what was recorded so far, even when the failing step was the first.
     await step("fail", () => failRun(runId));
   }
@@ -119,6 +121,7 @@ async function delegate(run: RoutedRun, call: ToolCall, i: number, taint: TaintS
     end = await ctx.runInChildContext(`helper-${i}-${call.id}`, (child) => agentLoop(helper, child, async () => "answered"));
   } catch (e) {
     if (!(e instanceof DurableOperationError)) throw e;
+    console.error("helper failed", run.runId, helper.agent.name, e);
   }
   return step(`delegate-end-${i}-${call.id}`, () => finishHelper(helper, end));
 }

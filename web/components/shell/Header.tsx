@@ -11,8 +11,10 @@ const STACK = 4;
  * `panelOpen`: whether the room panel shows. The sidebar button needs no such state: while the drawer is open, the
  * header is inert.
  */
-export function Header({ roomName, chatName, thread, taint = [], members, panelOpen, onMenu, onSearch, onTogglePanel }: {
+export function Header({ roomName, chatName, thread, taint = [], members, panelOpen, navCollapsed, onMenu, onSearch, onTogglePanel }: {
   roomName: string; chatName?: string; thread?: ReactNode; taint?: TaintSource[]; members: Member[]; panelOpen: boolean;
+  /** The reader hid the sidebar, so its button shows on a wide screen too. */
+  navCollapsed: boolean;
   onMenu: () => void; onSearch: () => void; onTogglePanel: () => void;
 }) {
   // Whoever is online leads the stack, so presence is visible even in a big room.
@@ -21,7 +23,7 @@ export function Header({ roomName, chatName, thread, taint = [], members, panelO
 
   return (
     <header className="flex h-16 shrink-0 items-center gap-3 border-b border-line px-3 md:px-5">
-      <HeaderButton label="Open sidebar" onClick={onMenu} className="md:hidden"><Menu aria-hidden="true" size={16} /></HeaderButton>
+      <HeaderButton label="Open sidebar" onClick={onMenu} className={navCollapsed ? "" : "md:hidden"}><Menu aria-hidden="true" size={16} /></HeaderButton>
       <span className="truncate text-[13px] text-text-3 max-md:hidden">{roomName}</span>
       {(chatName || thread) && <ChevronRight aria-hidden="true" size={13} className="shrink-0 text-line-hover max-md:hidden" />}
       {chatName && (

@@ -1,5 +1,10 @@
-/** An expected refusal whose message is written for the user; anything else is a bug and stays hidden. */
+/**
+ * An expected refusal whose message is written for the user. Its message must be ours: text from another system
+ * (an AWS SDK error, a remote server's answer) is logged and replaced by DEFAULT_ERROR or a line of our own.
+ */
 export class UserError extends Error {}
+/** What the user is told about any failure that isn't a UserError. */
+export const DEFAULT_ERROR = "Something went wrong.";
 /** Bad input from the caller → HTTP 400. */
 export class ValidationError extends UserError {}
 /** The caller's role doesn't allow this → 403. */

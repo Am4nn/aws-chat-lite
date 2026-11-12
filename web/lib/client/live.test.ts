@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { backoffMs, LiveSocket } from "./live";
+import { errorText } from "./bff";
 
 class FakeSocket {
   static all: FakeSocket[] = [];
@@ -48,7 +49,7 @@ describe("LiveSocket", () => {
     await expect(good).resolves.toBe(7);
     const bad = live.request("edit", { seq: 1 });
     ws.receive({ type: "ack", requestId: ws.sent[1].requestId, ok: false, error: "forbidden" });
-    await expect(bad).rejects.toThrow("forbidden");
+    expect(errorText(await bad.catch((e) => e))).toBe("forbidden");
   });
 
   it("drops a frame that isn't JSON and keeps handling the next one", async () => {
@@ -63,9 +64,9 @@ describe("LiveSocket", () => {
 
   it("rejects after 10 seconds without an ack", async () => {
     const live = await openSocket();
-    const assertion = expect(live.request("edit", {})).rejects.toThrow();
+    const failed = live.request("edit", {}).catch((e) => e);
     await vi.advanceTimersByTimeAsync(10_000);
-    await assertion;
+    expect(errorText(await failed)).toBe("The server didn't confirm it. Check before retrying.");
   });
 
   it("says connecting until the first open and reconnecting after a drop", async () => {
@@ -99,11 +100,15 @@ describe("LiveSocket", () => {
     expect(FakeSocket.all[0].sent).toEqual([{ action: "ping" }]);
   });
 
+  it("refuses a request before the socket opens, saying nothing was sent", async () => {
+    expect(errorText(await make().request("edit", {}).catch((e) => e))).toBe("Not connected, so nothing was sent.");
+  });
+
   it("rejects pending requests when the socket closes", async () => {
     const live = await openSocket();
     const p = live.request("edit", {});
     FakeSocket.all[0].close();
-    await expect(p).rejects.toThrow("connection closed");
+    expect(errorText(await p.catch((e) => e))).toBe("The server didn't confirm it. Check before retrying.");
   });
 });
 

@@ -42,4 +42,13 @@ describe("handleAction", () => {
     expect(acks()).toEqual([expect.objectContaining({ requestId: "q2", ok: false, error: expect.stringContaining("six reactions") })]);
     expect(repo.react).not.toHaveBeenCalled();
   });
+
+  it("any other failure is acked with the default line and logged, never in its own words", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const denied = Object.assign(new Error("User: arn:aws:sts::123456789012:assumed-role/cl-role/fn is not authorized"), { name: "AccessDeniedException" });
+    repo.remove.mockRejectedValue(denied);
+    await handleAction("c1", user, { action: "delete", requestId: "q4", roomId: "r1", chatId: "c", seq: 1 });
+    expect(acks()).toEqual([{ type: "ack", requestId: "q4", ok: false, error: "Something went wrong." }]);
+    expect(logged.mock.calls.flat()).toContain(denied);
+  });
 });

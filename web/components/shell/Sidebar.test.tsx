@@ -8,7 +8,7 @@ const chat = (chatId: string, name: string, archived = false): Chat => ({ chatId
 const CHATS = [chat("c1", "general"), chat("c2", "random"), chat("c3", "old", true)];
 
 function sidebar(opts: { canManage?: boolean; activeChatId?: string } = {}) {
-  const handlers = { onRename: vi.fn(), onArchive: vi.fn(), onMute: vi.fn() };
+  const handlers = { onRename: vi.fn(), onArchive: vi.fn(), onMute: vi.fn(), onCollapse: vi.fn() };
   render(
     <Sidebar
       chats={CHATS} me={{ userId: "u1", username: "aman", isCreator: true }} roomId="r1" canManage={opts.canManage ?? false}
@@ -27,6 +27,16 @@ const menuFor = (name: string) => {
 };
 
 afterEach(cleanup);
+
+describe("Sidebar", () => {
+  it("hides itself from a button that only wide screens show (a phone closes the drawer instead)", () => {
+    const { onCollapse } = sidebar();
+    const hide = screen.getByRole("button", { name: "Hide sidebar" });
+    expect(hide.className).toContain("max-md:hidden");
+    fireEvent.click(hide);
+    expect(onCollapse).toHaveBeenCalledOnce();
+  });
+});
 
 describe("Sidebar chats", () => {
   it("leaves archived chats out of the list, and a member gets no way to them but a link or search", () => {

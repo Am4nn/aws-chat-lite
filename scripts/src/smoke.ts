@@ -9,7 +9,7 @@ import puppeteer, { type Page } from "puppeteer-core";
 import { run } from "./cli.js";
 import { useLocalEnv } from "./env.js";
 import { clsFrom } from "./smoke-helpers.js";
-import { WEB, bff, check, grantCreator, person, results, sampleFrames, signUp, toastSays } from "./smoke-page.js";
+import { PANEL, WEB, bff, check, grantCreator, person, results, sampleFrames, signUp, toastSays, until } from "./smoke-page.js";
 import { emptyHomeCheck, liveChecks } from "./smoke-live.js";
 import { modelChecks } from "./smoke-models.js";
 import { threadChecks } from "./smoke-threads.js";
@@ -34,6 +34,32 @@ const SWITCH_AND_SAMPLE = sampleFrames({
 async function offsetFrames(page: Page, roomUrl: string): Promise<number> {
   await page.goto(roomUrl, { waitUntil: "networkidle0" });
   return (await page.evaluate(SWITCH_AND_SAMPLE)) as number;
+}
+
+/**
+ * Below 1152 px the room panel slides over the chat rather than squeezing it; on a wide screen the sidebar can be
+ * hidden, and the server renders it hidden after a reload. Leaves the page wide, with the sidebar shown.
+ */
+async function layoutChecks(page: Page, roomUrl: string) {
+  await page.setViewport({ width: 1000, height: 800 });
+  await page.goto(roomUrl, { waitUntil: "networkidle0" });
+  // The page keeps a scrollbar gutter, so the closed panel rests at the chat's right edge, a few pixels short of the
+  // window's.
+  const closed = await page.evaluate((p) => document.querySelector(p)!.getBoundingClientRect().x >= document.querySelector("main")!.getBoundingClientRect().right, PANEL);
+  await page.click('button[aria-label="Toggle room panel"]');
+  const over = await until(page, (p) => document.querySelector(p)!.getBoundingClientRect().x < window.innerWidth - 300, PANEL);
+  const mainWidth = await page.evaluate(() => document.querySelector("main")!.getBoundingClientRect().width);
+  check(closed && over && mainWidth >= 600, `at 1000 px the room panel starts closed and slides over the chat (chat ${Math.round(mainWidth)} px wide)`);
+
+  await page.setViewport({ width: 1440, height: 900 });
+  await page.goto(roomUrl, { waitUntil: "networkidle0" });
+  await page.click('button[aria-label="Hide sidebar"]');
+  const hidden = await until(page, () => document.querySelector("nav[aria-label=Room]")!.parentElement!.getBoundingClientRect().width === 0);
+  await page.reload({ waitUntil: "networkidle0" });
+  const stillHidden = await page.evaluate(() => document.querySelector("nav[aria-label=Room]")!.parentElement!.getBoundingClientRect().width === 0);
+  await page.click('button[aria-label="Open sidebar"]');
+  const back = await until(page, () => document.querySelector("nav[aria-label=Room]")!.parentElement!.getBoundingClientRect().width === 272);
+  check(hidden && stillHidden && back, `"Hide sidebar" hides it, it stays hidden after a reload, and "Open sidebar" brings it back (${hidden}/${stillHidden}/${back})`);
 }
 
 async function main() {
@@ -111,6 +137,7 @@ async function main() {
       .some((el) => { (el as HTMLElement).focus(); return document.activeElement === el; }));
     check(!focusable, "the closed room panel can't take keyboard focus");
     await ownerPage.click('button[aria-label="Toggle room panel"]');
+    await layoutChecks(ownerPage, roomUrl);
 
     // The guest is removed behind the owner's back, so the owner's next action on them fails and must say so.
     await bff(ownerPage, `/bff/api/rooms/${roomId}/members/${guestId}`, "DELETE", {});

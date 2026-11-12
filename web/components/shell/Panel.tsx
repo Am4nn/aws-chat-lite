@@ -3,7 +3,7 @@
 import { useId, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { motion } from "motion/react";
 import type { LucideIcon } from "lucide-react";
-import { useIsPhone } from "@/lib/client/useIsPhone";
+import { useIsNarrow } from "@/lib/client/useIsPhone";
 import { spring } from "@/lib/motion";
 
 type PanelTab = { id: string; label: string; icon: LucideIcon; content: ReactNode };
@@ -20,7 +20,7 @@ type PanelTab = { id: string; label: string; icon: LucideIcon; content: ReactNod
 export function Panel({ open, overlayOpen, active, onActiveChange, tabs }: {
   open: boolean; overlayOpen: boolean; active: string; onActiveChange: (id: string) => void; tabs: PanelTab[];
 }) {
-  const phone = useIsPhone();
+  const narrow = useIsNarrow();
   const current = tabs.find((t) => t.id === active) ?? tabs[0];
   const headingId = useId();
   const panelId = useId();
@@ -39,13 +39,13 @@ export function Panel({ open, overlayOpen, active, onActiveChange, tabs }: {
   return (
     <motion.aside
       aria-label="Room panel"
-      inert={phone ? !overlayOpen : !open}
+      inert={narrow ? !overlayOpen : !open}
       initial={false}
       animate={{ width: open ? 320 : 0 }}
       transition={spring.panel}
-      className={`shrink-0 overflow-hidden border-l border-line bg-surface-1 max-md:fixed max-md:inset-y-0 max-md:right-0 max-md:z-40 max-md:w-[min(320px,calc(100vw-48px))]! max-md:transition-transform max-md:duration-300 max-md:ease-[cubic-bezier(.2,.9,.2,1)] ${overlayOpen ? "max-md:shadow-drawer" : "max-md:translate-x-full"}`}
+      className={`shrink-0 overflow-hidden border-l border-line bg-surface-1 max-[1151px]:fixed max-[1151px]:inset-y-0 max-[1151px]:right-0 max-[1151px]:z-40 max-[1151px]:w-[min(320px,calc(100vw-48px))]! max-[1151px]:transition-transform max-[1151px]:duration-300 max-[1151px]:ease-[cubic-bezier(.2,.9,.2,1)] ${overlayOpen ? "max-[1151px]:shadow-drawer" : "max-[1151px]:translate-x-full"}`}
     >
-      <div className="flex h-full w-[320px] flex-col gap-4 p-4 max-md:w-full">
+      <div className="flex h-full w-[320px] flex-col gap-4 p-4 max-[1151px]:w-full">
         <div role="tablist" aria-label="Room panel tabs" onKeyDown={onKeyDown} className="flex shrink-0 rounded-[11px] border border-line bg-surface-2 p-[3px]">
           {tabs.map((t, i) => {
             const selected = t.id === current.id;

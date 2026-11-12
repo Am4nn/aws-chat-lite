@@ -24,8 +24,6 @@ type GitHubToolDef = {
 const READ_SET: Permissions = { metadata: "read", contents: "read", issues: "read", pull_requests: "read" };
 const MAX_PATCH = 3_000;
 const DEFAULT_BRANCH_REFUSED = "Push to a new branch, then open a PR.";
-// Installation tokens, personal tokens, JWTs and PEM blocks, in case GitHub echoes a credential back in an error.
-const SECRET = /gh[opsu]_\w+|github_pat_\w+|eyJ[\w-]+\.[\w-]+\.[\w-]+|-----BEGIN [A-Z ]+-----[\s\S]*?(?:-----END [A-Z ]+-----|$)/g;
 
 const inRepo = (input: Input) => (input.repo ? ` in ${input.repo}` : "");
 
@@ -87,8 +85,9 @@ function githubTool(def: GitHubToolDef): Tool {
         const gh: RepoCall = (method, path, body) => githubCall(env, token, method, `/repos/${repo}${path}`, body);
         return { ok: true, output: cut(await def.call(gh, input, repo)) };
       } catch (e) {
-        const message = e instanceof GitHubError ? e.message : `GitHub couldn't be reached (${(e as Error).message}).`;
-        return { ok: false, output: message.replace(SECRET, "[redacted]") };
+        if (e instanceof GitHubError) return { ok: false, output: e.message };
+        console.error("GitHub tool failed", name, env.room.roomId, env.room.threadNumber, e);
+        return { ok: false, output: "GitHub couldn't be reached." };
       }
     },
   };
@@ -140,7 +139,7 @@ async function pushBranch(gh: RepoCall, { branch, base, message, files }: Input)
   if (branch === main) throw new GitHubError(DEFAULT_BRANCH_REFUSED);
   const head = (name: string) => gh("GET", `/git/ref/heads/${encodePath(name)}`).then((ref) => ref.object.sha as string);
   const existing = await head(branch).catch((e) => {
-    if (e instanceof GitHubError && e.message.startsWith("GitHub said 404")) return undefined;
+    if (e instanceof GitHubError && e.status === 404) return undefined;
     throw e;
   });
   const parent = existing ?? (await head(base ?? main));
@@ -154,7 +153,7 @@ async function pushBranch(gh: RepoCall, { branch, base, message, files }: Input)
     // GitHub reads refs from replicas, so a branch made seconds ago can still look missing; the create then fails
     // and nothing has moved.
     await gh("POST", "/git/refs", { ref: `refs/heads/${branch}`, sha: commit.sha }).catch((e) => {
-      if (e instanceof GitHubError && e.message.startsWith("GitHub said 422")) {
+      if (e instanceof GitHubError && e.status === 422) {
         throw new GitHubError(`${branch} turned out to exist already, so nothing was pushed. Try again in a moment.`);
       }
       throw e;

@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { bff } from "@/lib/client/bff";
+import { bff, errorText } from "@/lib/client/bff";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 import { Spinner } from "@/components/ui/Spinner";
@@ -23,7 +23,7 @@ export function CreateRoom({ onDone }: { onDone?: () => void }) {
       router.push(`/r/${room.roomId}/c/${room.generalChatId}`);
       router.refresh();
     } catch (err) {
-      setError((err as Error).message);
+      setError(errorText(err));
       setBusy(false);
     }
   }
