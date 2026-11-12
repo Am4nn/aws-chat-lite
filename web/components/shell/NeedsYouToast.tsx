@@ -46,7 +46,7 @@ export function NeedsYouToast({ roomId, openThreadId, panelOpen }: { roomId: str
               setToast(null);
               navigate(`/r/${roomId}/t/${toast.number}`);
             }}
-            className="flex max-w-[min(360px,calc(100vw-32px))] items-center gap-3 rounded-[14px] border border-amber-line bg-amber-wash px-3.5 py-3 text-left shadow-menu transition-[border-color,transform] hover:border-amber/40 active:scale-[0.98]"
+            className="flex max-w-[min(360px,calc(100vw-32px))] items-center gap-3 rounded-[14px] border border-amber-line bg-amber-wash px-3.5 py-3 text-left shadow-menu transition-[border-color,scale] hover:border-amber/40 active:scale-[0.98]"
           >
             <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-amber" />
             <span className="min-w-0">

@@ -58,7 +58,7 @@ export function Sidebar({
           onClick={onCollapse}
           aria-label="Hide sidebar"
           title="Hide sidebar"
-          className="grid size-8 shrink-0 place-items-center rounded-lg text-text-3 transition-[background-color,color,transform] hover:bg-surface-2 hover:text-text active:scale-90 max-md:hidden"
+          className="grid size-8 shrink-0 place-items-center rounded-lg text-text-3 transition-[background-color,color,scale] hover:bg-surface-2 hover:text-text active:scale-90 max-md:hidden"
         >
           <PanelLeftClose aria-hidden="true" size={15} />
         </button>
@@ -79,7 +79,7 @@ export function Sidebar({
         <div className="flex h-[30px] items-center pb-1.5 pl-2.5">
           <h2 id={headingId} className="text-[11.5px] font-semibold text-text-3">Chats</h2>
           {canManage && (
-            <button onClick={onNewChat} aria-label="New chat" className="ml-auto grid size-6 place-items-center rounded-md text-text-3 transition-[background-color,color,transform] hover:bg-surface-3 hover:text-text active:scale-90">
+            <button onClick={onNewChat} aria-label="New chat" className="ml-auto grid size-6 place-items-center rounded-md text-text-3 transition-[background-color,color,scale] hover:bg-surface-3 hover:text-text active:scale-90">
               <Plus aria-hidden="true" size={14} />
             </button>
           )}
@@ -98,10 +98,10 @@ export function Sidebar({
         <div className="flex items-center gap-2.5 px-1.5">
           <Avatar name={me.username} />
           <span className="truncate text-[13px]">{me.username}</span>
-          <Link href="/apps" aria-label="Connected apps" className="ml-auto grid size-8 shrink-0 place-items-center rounded-lg text-text-3 transition-[background-color,color,transform] hover:bg-surface-3 hover:text-text active:scale-90">
+          <Link href="/apps" aria-label="Connected apps" className="ml-auto grid size-8 shrink-0 place-items-center rounded-lg text-text-3 transition-[background-color,color,scale] hover:bg-surface-3 hover:text-text active:scale-90">
             <AppWindow aria-hidden="true" size={15} />
           </Link>
-          <button onClick={onSignOut} aria-label="Sign out" className="grid shrink-0 size-8 place-items-center rounded-lg text-text-3 transition-[background-color,color,transform] hover:bg-surface-3 hover:text-text active:scale-90">
+          <button onClick={onSignOut} aria-label="Sign out" className="grid shrink-0 size-8 place-items-center rounded-lg text-text-3 transition-[background-color,color,scale] hover:bg-surface-3 hover:text-text active:scale-90">
             <LogOut aria-hidden="true" size={15} />
           </button>
         </div>
@@ -223,7 +223,7 @@ function RowMenu({ name, actions }: { name: string; actions: MenuAction[] }) {
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className="grid size-7 place-items-center rounded-md text-text-3 opacity-0 transition-[opacity,background-color,color,transform] hover:bg-surface-3 hover:text-text focus-visible:opacity-100 active:scale-90 aria-expanded:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
+        className="grid size-7 place-items-center rounded-md text-text-3 opacity-0 transition-[opacity,background-color,color,scale] hover:bg-surface-3 hover:text-text focus-visible:opacity-100 active:scale-90 aria-expanded:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
       >
         <MoreHorizontal aria-hidden="true" size={15} />
       </button>

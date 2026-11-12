@@ -140,7 +140,7 @@ export function SearchPanel({ roomId, chats, serverTimeZone, focusSignal, onPick
                         <li key={m.seq}>
                           <button
                             onClick={() => { onPick(); navigate(place(m).href); }}
-                            className="w-full rounded-[10px] px-2.5 py-2 text-left transition-[background-color,transform] hover:bg-surface-2 active:scale-[0.99]"
+                            className="w-full rounded-[10px] px-2.5 py-2 text-left transition-[background-color,scale] hover:bg-surface-2 active:scale-[0.99]"
                           >
                             <span className="flex items-baseline gap-2">
                               <span className="truncate text-[12.5px] font-semibold">{m.authorName}</span>

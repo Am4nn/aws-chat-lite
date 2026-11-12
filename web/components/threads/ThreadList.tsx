@@ -43,7 +43,7 @@ export function ThreadList({ roomId, activeThreadId, canCreate, timeZone }: {
             href={`/r/${roomId}/t/new`}
             aria-label="New thread"
             title="New thread"
-            className={`${threads.length ? "" : "ml-auto"} grid size-6 place-items-center rounded-md text-text-3 transition-[background-color,color,transform] hover:bg-surface-3 hover:text-text active:scale-90`}
+            className={`${threads.length ? "" : "ml-auto"} grid size-6 place-items-center rounded-md text-text-3 transition-[background-color,color,scale] hover:bg-surface-3 hover:text-text active:scale-90`}
           >
             <Plus aria-hidden="true" size={14} />
           </Link>
