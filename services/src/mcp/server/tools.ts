@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { User } from "../../lib/auth.js";
-import { UserError, ValidationError } from "../../lib/errors.js";
+import { DEFAULT_ERROR, UserError, ValidationError } from "../../lib/errors.js";
 import type { Message } from "../../chat/model.js";
 import type { ChatRepo } from "../../chat/repo.js";
 import type { broadcastToRoom } from "../../live/broadcast.js";
@@ -156,7 +156,7 @@ export const SERVER_TOOLS: ServerTool[] = TOOLS.map((tool) => ({
     } catch (e) {
       if (e instanceof UserError) throw e;
       console.error("MCP tool failed", tool.name, e);
-      throw new UserError("Something went wrong.");
+      throw new UserError(DEFAULT_ERROR);
     }
   },
 }));

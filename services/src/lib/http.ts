@@ -1,5 +1,5 @@
 import type { APIGatewayProxyStructuredResultV2 } from "aws-lambda";
-import { Conflict, FlowFailed, Forbidden, Gone, NotFound, Unavailable, Upstream, ValidationError } from "./errors.js";
+import { Conflict, DEFAULT_ERROR, FlowFailed, Forbidden, Gone, NotFound, Unavailable, Upstream, ValidationError } from "./errors.js";
 
 /** JSON response for API Gateway HTTP API (payload v2). */
 export function json(statusCode: number, body: unknown): APIGatewayProxyStructuredResultV2 {
@@ -36,8 +36,8 @@ export function errorResponse(e: unknown): APIGatewayProxyStructuredResultV2 {
   if (e instanceof Gone) return json(410, { error: msg });
   if (e instanceof Upstream) return json(502, { error: msg });
   if (e instanceof Unavailable) return json(503, { error: msg });
-  console.error(e);
-  return json(500, { error: "Something went wrong." });
+  console.error("request failed", e);
+  return json(500, { error: DEFAULT_ERROR });
 }
 
 /** A sign-in may return only to one of the site's own pages, so its code can't be handed to another site. */
