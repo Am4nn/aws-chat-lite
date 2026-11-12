@@ -136,7 +136,11 @@ export async function mcpChecks(stamp: number, owner: Person, guest: Person) {
   }
   const toolLabels = async (page: Page) => {
     await page.bringToFront();
-    if (!(await page.$("#mcp-tools-test"))) await page.evaluate(clickText("Show tools"));
+    // After the sign-in's redirect the panel loads again, so its Show tools can be a moment behind the page.
+    if (!(await page.$("#mcp-tools-test"))) {
+      await until(page, () => [...document.querySelectorAll("button")].some((b) => b.textContent?.trim() === "Show tools"));
+      await page.evaluate(clickText("Show tools"));
+    }
     return until(page, () => ["echo:read-only", "add_note:asks first", "whoami:read-only", "fail:read-only"].every((pair) => {
       const [tool, label] = pair.split(":");
       return document.querySelector(`#mcp-tools-test li[aria-label="${tool}"]`)?.textContent?.endsWith(label!);
