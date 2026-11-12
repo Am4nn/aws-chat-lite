@@ -19,8 +19,9 @@ export function Hint({ text, below = false, mark }: { text: string; below?: bool
           </span>
         )}
       </button>
+      {/* The button already carries the text as its name; the tip is for sighted users only, so it isn't read twice. */}
       <span
-        role="tooltip"
+        aria-hidden="true"
         className={`pointer-events-none absolute z-20 rounded-lg border border-line-strong bg-surface-3 px-2.5 py-1.5 text-[11.5px] leading-snug text-text-2 opacity-0 shadow-pop transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 ${
           below ? "inset-x-0 top-full mt-1" : "bottom-full left-1/2 mb-2 w-max max-w-[240px] -translate-x-1/2"
         }`}

@@ -6,9 +6,13 @@ import type { Member, TaintSource } from "@/lib/types";
 
 const STACK = 4;
 
-/** `thread`: on a thread page, its title and run status in place of a chat's name. `taint`: what made that thread private. */
-export function Header({ roomName, chatName, thread, taint = [], members, onMenu, onSearch, onTogglePanel }: {
-  roomName: string; chatName?: string; thread?: ReactNode; taint?: TaintSource[]; members: Member[];
+/**
+ * `thread`: on a thread page, its title and run status in place of a chat's name. `taint`: what made that thread private.
+ * `panelOpen`: whether the room panel shows. The sidebar button needs no such state: while the drawer is open, the
+ * header is inert.
+ */
+export function Header({ roomName, chatName, thread, taint = [], members, panelOpen, onMenu, onSearch, onTogglePanel }: {
+  roomName: string; chatName?: string; thread?: ReactNode; taint?: TaintSource[]; members: Member[]; panelOpen: boolean;
   onMenu: () => void; onSearch: () => void; onTogglePanel: () => void;
 }) {
   // Whoever is online leads the stack, so presence is visible even in a big room.
@@ -38,17 +42,20 @@ export function Header({ roomName, chatName, thread, taint = [], members, onMenu
           {stack.map((m, i) => <span key={m.userId} className="relative flex" style={{ zIndex: STACK - i }}><Avatar name={m.username} online={m.online} ring /></span>)}
         </span>
         <HeaderButton label="Search messages" onClick={onSearch}><Search aria-hidden="true" size={15} /></HeaderButton>
-        <HeaderButton label="Toggle room panel" onClick={onTogglePanel}><PanelRight aria-hidden="true" size={15} /></HeaderButton>
+        <HeaderButton label="Toggle room panel" pressed={panelOpen} onClick={onTogglePanel}><PanelRight aria-hidden="true" size={15} /></HeaderButton>
       </div>
     </header>
   );
 }
 
-function HeaderButton({ label, onClick, className = "", children }: { label: string; onClick: () => void; className?: string; children: ReactNode }) {
+function HeaderButton({ label, pressed, onClick, className = "", children }: {
+  label: string; pressed?: boolean; onClick: () => void; className?: string; children: ReactNode;
+}) {
   return (
     <button
       onClick={onClick}
       aria-label={label}
+      aria-pressed={pressed}
       title={label}
       className={`grid size-8 shrink-0 place-items-center rounded-[10px] border border-line-strong bg-surface-2 text-text-2 transition-[border-color,color,transform] hover:border-line-hover hover:text-text active:scale-[0.94] ${className}`}
     >

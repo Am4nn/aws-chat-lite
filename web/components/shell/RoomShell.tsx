@@ -209,7 +209,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, children }: {
                 <ViewSwitch map={onMap} />
               </>
             )}
-            taint={activeThread?.taint}
+            taint={activeThread?.taint} panelOpen={phone ? overlay === "panel" : panelOpen}
             onMenu={() => setOverlay("nav")} onSearch={openSearch} onTogglePanel={togglePanel}
           />
           <div className="relative min-h-0 flex-1 overflow-hidden">

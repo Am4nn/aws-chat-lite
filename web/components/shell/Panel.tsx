@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, type ReactNode } from "react";
+import { useId, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { motion } from "motion/react";
 import type { LucideIcon } from "lucide-react";
 import { useIsPhone } from "@/lib/client/useIsPhone";
@@ -11,8 +11,8 @@ type PanelTab = { id: string; label: string; icon: LucideIcon; content: ReactNod
 /**
  * The right-hand room panel. It slides its width rather than popping in and out, and the active tab is marked by a
  * pill that slides between tabs. The inner column keeps a fixed width so content never reflows while the panel moves.
- * Nine labelled tabs don't fit in 320 px, so every tab is an icon (named on hover and to screen readers) and the active
- * tab's name heads the panel instead.
+ * The tabs don't fit in 320 px as labels, so every tab is an icon (named on hover and to screen readers) and the active
+ * tab's name heads the panel instead. The tab bar is one Tab stop; arrow keys, Home and End move along it.
  * On a phone it is an overlay instead, sliding in from the right edge (`overlayOpen`), and CSS decides which form
  * shows, so the first paint is right before any script runs.
  * Closed, it is inert: hidden from screen readers and out of the tab order, so focus never lands on invisible buttons.
@@ -23,6 +23,18 @@ export function Panel({ open, overlayOpen, active, onActiveChange, tabs }: {
   const phone = useIsPhone();
   const current = tabs.find((t) => t.id === active) ?? tabs[0];
   const headingId = useId();
+  const panelId = useId();
+  const buttons = useRef<(HTMLButtonElement | null)[]>([]);
+
+  function onKeyDown(e: KeyboardEvent) {
+    const at = tabs.indexOf(current);
+    const next = { ArrowRight: at + 1, ArrowLeft: at - 1, Home: 0, End: tabs.length - 1 }[e.key];
+    if (next === undefined) return;
+    e.preventDefault();
+    const i = (next + tabs.length) % tabs.length;
+    onActiveChange(tabs[i].id);
+    buttons.current[i]?.focus();
+  }
 
   return (
     <motion.aside
@@ -34,15 +46,18 @@ export function Panel({ open, overlayOpen, active, onActiveChange, tabs }: {
       className={`shrink-0 overflow-hidden border-l border-line bg-surface-1 max-md:fixed max-md:inset-y-0 max-md:right-0 max-md:z-40 max-md:w-[min(320px,calc(100vw-48px))]! max-md:transition-transform max-md:duration-300 max-md:ease-[cubic-bezier(.2,.9,.2,1)] ${overlayOpen ? "max-md:shadow-drawer" : "max-md:translate-x-full"}`}
     >
       <div className="flex h-full w-[320px] flex-col gap-4 p-4 max-md:w-full">
-        <div role="tablist" aria-label="Room panel tabs" className="flex shrink-0 rounded-[11px] border border-line bg-surface-2 p-[3px]">
-          {tabs.map((t) => {
+        <div role="tablist" aria-label="Room panel tabs" onKeyDown={onKeyDown} className="flex shrink-0 rounded-[11px] border border-line bg-surface-2 p-[3px]">
+          {tabs.map((t, i) => {
             const selected = t.id === current.id;
             return (
               <motion.button
                 key={t.id}
+                ref={(el) => { buttons.current[i] = el; }}
                 whileTap={{ scale: 0.92 }}
                 role="tab"
                 aria-selected={selected}
+                aria-controls={panelId}
+                tabIndex={selected ? 0 : -1}
                 aria-label={t.label}
                 title={t.label}
                 onClick={() => onActiveChange(t.id)}
@@ -55,7 +70,7 @@ export function Panel({ open, overlayOpen, active, onActiveChange, tabs }: {
           })}
         </div>
         <h2 id={headingId} className="-mb-1 shrink-0 truncate font-display text-[15px] font-bold">{current.label}</h2>
-        <div role="tabpanel" aria-labelledby={headingId} className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1">{current.content}</div>
+        <div id={panelId} role="tabpanel" aria-labelledby={headingId} className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1">{current.content}</div>
       </div>
     </motion.aside>
   );

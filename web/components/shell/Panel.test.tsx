@@ -40,4 +40,18 @@ describe("Panel", () => {
     expect(screen.getByRole("tab", { name: "Schedules" }).getAttribute("aria-selected")).toBe("true");
     expect(screen.getByRole("tabpanel", { name: "Schedules" }).textContent).toBe("Schedules content");
   });
+
+  it("is one Tab stop: arrow keys, Home and End move between the tabs and open them", () => {
+    render(<Room />);
+    const tab = (name: string) => screen.getByRole("tab", { name });
+    expect(screen.getAllByRole("tab").filter((t) => t.tabIndex === 0)).toEqual([tab("Memory")]);
+    fireEvent.keyDown(tab("Memory"), { key: "ArrowRight" });
+    expect(document.activeElement).toBe(tab("Agents"));
+    expect(tab("Agents").getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(tab("Agents"), { key: "End" });
+    expect(document.activeElement).toBe(tab("Search"));
+    fireEvent.keyDown(tab("Search"), { key: "ArrowRight" });
+    expect(document.activeElement).toBe(tab("Context"));
+    expect(tab("Context").getAttribute("aria-controls")).toBe(screen.getByRole("tabpanel").id);
+  });
 });
