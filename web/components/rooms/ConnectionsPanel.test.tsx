@@ -86,7 +86,8 @@ describe("ConnectionsPanel", () => {
       if (path.endsWith("/connections")) return { github: null, mcp: [], approvalTimeoutMin: 120, canManage: false, installUrl: null };
       return { entries: [] };
     });
-    render(<ConnectionsPanel roomId="r1" archived={false} pickGitHub onPickStarted={() => {}} />);
+    // A room of its own: the panel cache still holds the admin's answer for r1 from the tests above.
+    render(<ConnectionsPanel roomId="r2" archived={false} pickGitHub onPickStarted={() => {}} />);
     expect(await screen.findByText("Not connected")).toBeTruthy();
     expect(mockedBff.mock.calls.some(([path]) => path.endsWith("/installations"))).toBe(false);
   });

@@ -58,3 +58,11 @@ export function updateMessage(t: Timeline, seq: number, change: (m: Message) => 
   if (index < 0) return t;
   return { ...t, messages: t.messages.with(index, change(t.messages[index])) };
 }
+
+/** Shows message `seq` as deleted before the server confirms it. */
+export const markDeleted = (t: Timeline, seq: number, by: "self" | "admin"): Timeline =>
+  updateMessage(t, seq, (m) => ({ ...m, deleted: by, text: "" }));
+
+/** Undoes `markDeleted` after a refusal, unless the server has changed the message since (its version moved on). */
+export const restoreDeleted = (t: Timeline, original: Message): Timeline =>
+  updateMessage(t, original.seq, (m) => ((m.v ?? 0) === (original.v ?? 0) ? original : m));

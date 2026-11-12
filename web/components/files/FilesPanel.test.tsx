@@ -9,7 +9,8 @@ const file = (path: string, size = 10): RoomFile => ({
   path, size, contentType: "text/plain", v: 1, updatedAt: "2026-11-11T10:00:00Z", updatedBy: { kind: "member", userId: "u1", name: "aman" },
 });
 const store = (o: Partial<RoomFiles> = {}): RoomFiles => ({
-  files: [], usedBytes: 0, fresh: new Set(), uploading: 0, upload: async () => {}, remove: async () => {}, download: async () => {}, ...o,
+  files: [], usedBytes: 0, fresh: new Set(), uploading: 0, state: "ready", reload: () => {},
+  upload: async () => {}, remove: () => {}, download: async () => {}, ...o,
 });
 const html = (props: Partial<Parameters<typeof FilesPanel>[0]> = {}) => renderToStaticMarkup(
   <FilesPanel roomId="r1" store={store()} threads={[]} internet={false} canSwitch={false} canWrite {...props} />,
@@ -22,6 +23,18 @@ describe("FilesPanel", () => {
 
   it("invites a first file when there are none", () => {
     expect(html()).toContain("No files yet. Upload one, or ask an agent to make one.");
+  });
+
+  it("shows rows loading, not an empty room, until the list arrives", () => {
+    const out = html({ store: store({ state: "loading" }) });
+    expect(out).toContain('aria-busy="true"');
+    expect(out).not.toContain("No files yet");
+  });
+
+  it("offers a retry, not an empty room, when the list didn't load", () => {
+    const out = html({ store: store({ state: "failed" }) });
+    expect(out).toContain("Couldn&#x27;t load");
+    expect(out).not.toContain("No files yet");
   });
 
   it("shows a member the internet setting as text, with no switch", () => {
