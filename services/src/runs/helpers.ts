@@ -11,8 +11,8 @@ import { answerOf, inLane } from "./context.js";
 import { notifyRun } from "./notify.js";
 import { runsRepo } from "./repo.js";
 import { roomDefaultModel } from "./start.js";
-import { chooseModel, costOf, laneName, limitsReached, type End, type RoutedRun, type StepResult } from "./steps.js";
-import { firstLine, type AgentCard } from "./tools.js";
+import { auditTool, chooseModel, costOf, laneName, limitsReached, type End, type RoutedRun, type StepResult } from "./steps.js";
+import { DELEGATE, firstLine, type AgentCard } from "./tools.js";
 
 /*
  * The two steps around a helper's work: the delegate step starts in the main lane, the helper works in a lane of its
@@ -71,6 +71,7 @@ export async function startHelper(
     return { result: { steps: step, costMicros: run.costMicros } };
   }
   const agent = agentOrDefault(stored);
+  await auditTool(run, started, DELEGATE, `@${name}: ${task}`);
 
   // Helpers work one at a time, each in the lane after the last one's.
   const helpers = events.filter((e) => e.type === "helper.started");

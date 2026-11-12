@@ -78,6 +78,14 @@ export const toolRoom = (run: RoutedRun, tainted: boolean): ToolEnv["room"] =>
   ({ roomId: run.roomId, threadNumber: run.number, agentName: run.agent.name, tainted });
 
 /**
+ * One audit row per tool step that runs, in the name of the agent that ran it. Its id and time are the step's start
+ * event's, so a retried step finds its row already there.
+ */
+export const auditTool = (run: RoutedRun, started: RunEvent, tool: string, detail: string) => auditRepo().record(run.roomId, {
+  id: `${run.runId}#${started.seq}`, at: started.at, actor: "agent", kind: "tool", threadNumber: run.number, tool, detail, agent: run.agent.name,
+});
+
+/**
  * Null when the run is already over (its start failed after the invoke was accepted). The agent is read once, here,
  * so an edit made while the run works applies from the next run on. One deleted since the run started is the built-in.
  */
@@ -457,10 +465,7 @@ async function runRoomTool(run: RoutedRun, tool: Tool, call: ToolCall, { room, s
   if (tool.write && rerun) return { ok: false, output: unsure(tool.kind === "mcp" ? mcpServerOf(call.name) : "GitHub") };
   if (tool.kind === "github") await threadsRepo().addTaint(run.roomId, run.number, ["github"]);
   if (tool.kind === "mcp") await threadsRepo().addTaint(run.roomId, run.number, [mcpTaint(mcpServerOf(call.name))]);
-  await auditRepo().record(run.roomId, {
-    id: `${run.runId}#${started.seq}`, at: started.at, actor: "agent", kind: "tool", threadNumber: run.number, tool: call.name,
-    detail: tool.detail(input), agent: run.agent.name,
-  });
+  await auditTool(run, started, call.name, tool.detail(input));
   return tool.run(input, env);
 }
 
@@ -516,7 +521,9 @@ export async function toolStep(
 
   if (sandboxed) await threadsRepo().addTaint(run.roomId, run.number, ["sandbox"]);
   const before = logged("step.started");
-  const started = before ?? await writer.append({ type: "step.started", step, call, detail: toolDetail(call, room) });
+  const detail = toolDetail(call, room);
+  const started = before ?? await writer.append({ type: "step.started", step, call, detail });
+  if (sandboxed || imaging) await auditTool(run, started, call.name, detail);
   const currentStep = run.helper ? `${run.agent.name} › ${call.name}` : call.name;
   await notifyRun(run.roomId, await runs.progress(run, { steps: step, currentStep }), started.seq);
   const t0 = Date.now();
