@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "../types";
-import { addPending, applyMessages, dropPending, failPending, newestSeq, skipsAhead, updateMessage, type Timeline } from "./timeline";
+import { addPending, applyMessages, dropPending, failPending, markDeleted, newestSeq, restoreDeleted, skipsAhead, updateMessage, type Timeline } from "./timeline";
 
 const msg = (seq: number, extra: Partial<Message> = {}): Message => ({
   roomId: "r", chatId: "c", seq, authorId: "u", authorName: "a", text: `m${seq}`, createdAt: "t",
@@ -54,5 +54,16 @@ describe("timeline", () => {
   it("reports the newest seq, 0 when empty", () => {
     expect(newestSeq(empty)).toBe(0);
     expect(newestSeq(applyMessages(empty, [msg(2), msg(5)]))).toBe(5);
+  });
+  it("shows a message deleted before the server confirms, and puts it back on a refusal", () => {
+    const t = applyMessages(empty, [msg(1), msg(2, { v: 1 })]);
+    const gone = markDeleted(t, 2, "self");
+    expect(gone.messages[1]).toMatchObject({ deleted: "self", text: "" });
+    expect(restoreDeleted(gone, t.messages[1]).messages[1]).toEqual(t.messages[1]);
+  });
+  it("keeps a newer copy the server sent after the delete was shown, rather than restoring the old one", () => {
+    const original = msg(2, { v: 1 });
+    const t = applyMessages(markDeleted(applyMessages(empty, [original]), 2, "self"), [msg(2, { deleted: "admin", text: "", v: 2 })]);
+    expect(restoreDeleted(t, original).messages[0].deleted).toBe("admin");
   });
 });
