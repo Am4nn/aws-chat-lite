@@ -1,13 +1,18 @@
 "use client";
 
-import { Children, useContext, useMemo, type ReactNode } from "react";
+import { Children, useContext, useMemo, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import Markdown, { type Components } from "react-markdown";
+import remarkBreaks from "remark-breaks";
+import remarkGfm from "remark-gfm";
 import { findAgentMentions, findMentions, type Mentionable } from "@/lib/client/mentions";
 import { findTags, RoomTagsContext, type RoomTags } from "@/lib/client/roomTags";
 
 const LEAD = "mention-lead rounded-full bg-lime/15 px-1.5 py-px font-medium text-lime";
 const ALLOWED = ["p", "strong", "em", "code", "pre", "a", "br", "del"];
+// An agent's answer can be a whole write-up; people's chat lines stay inline, so a "# " in chat never turns into a title.
+const RICH_ALLOWED = [...ALLOWED, "ul", "ol", "li", "blockquote", "h1", "h2", "h3", "h4", "hr", "table", "thead", "tbody", "tr", "th", "td"];
+const RICH_PLUGINS = [remarkGfm, remarkBreaks];
 const NO_AGENTS: string[] = [];
 const SAFE_URL = /^https?:/i;
 
@@ -59,24 +64,59 @@ const staticComponents: Components = {
   pre: ({ children }) => <pre className="overflow-x-auto rounded-md bg-surface-3 p-2">{children}</pre>,
 };
 
-/** `agents` are the room's agent names, highlighted like members; `lead` is the agent of the thread the message started. */
-export function MessageText({ text, members, agents = NO_AGENTS, lead }: {
-  text: string; members: Mentionable[]; agents?: string[]; lead?: string;
+const HEADING = "font-semibold leading-[1.4] text-text first:mt-0";
+// The classes of the rich elements whose text can hold mentions; the rest have none to decorate.
+const RICH_PROSE = {
+  li: "pl-1 [li+&]:mt-1",
+  h1: `mt-5 text-[19px] ${HEADING}`,
+  h2: `mt-5 text-[17px] ${HEADING}`,
+  h3: `mt-4 text-[15.5px] ${HEADING}`,
+  h4: `mt-4 text-[15.5px] ${HEADING}`,
+  blockquote: "space-y-2 border-l-2 border-line-strong pl-3 text-text-2",
+  th: "border border-line-strong px-2.5 py-1.5 text-left font-semibold text-text",
+  td: "border border-line-strong px-2.5 py-1.5 align-top",
+};
+
+const richComponents: Components = {
+  ...staticComponents,
+  ul: ({ children }) => <ul className="list-disc pl-5 marker:text-text-3 [li>&]:mt-1">{children}</ul>,
+  ol: ({ start, children }) => <ol start={start} className="list-decimal pl-5 marker:text-text-3 [li>&]:mt-1">{children}</ol>,
+  hr: () => <hr className="my-5 border-line-strong" />,
+  table: ({ children }) => (
+    <div className="overflow-x-auto"><table className="border-collapse text-[14px]">{children}</table></div>
+  ),
+  pre: ({ children }) => (
+    <pre className="overflow-x-auto rounded-lg bg-surface-3 p-3 leading-[1.55] [&>code]:p-0 [&>code]:text-[13px]">{children}</pre>
+  ),
+};
+
+type ProseTag = "p" | "strong" | "em" | "del" | keyof typeof RICH_PROSE;
+
+/**
+ * `agents` are the room's agent names, highlighted like members; `lead` is the agent of the thread the message started.
+ * `rich` is for an agent's answer: lists, headings, quotes, tables and line breaks as written.
+ */
+export function MessageText({ text, members, agents = NO_AGENTS, lead, rich = false }: {
+  text: string; members: Mentionable[]; agents?: string[]; lead?: string; rich?: boolean;
 }) {
   // A new component type each render would make React remount every paragraph, so they're rebuilt only when the
   // names the mentions match, or the lead, change.
   const components = useMemo<Components>(() => {
-    const prose = (Tag: "p" | "strong" | "em" | "del") =>
-      function Prose({ children }: { children?: ReactNode }) {
+    const prose = (Tag: ProseTag, className?: string) =>
+      function Prose({ children, style }: { children?: ReactNode; style?: CSSProperties }) {
         // Read here, not in MessageText, so a renamed thread re-renders the paragraphs without parsing the markdown again.
         const tags = useContext(RoomTagsContext);
-        return <Tag>{decorate(children, { members, agents, lead }, tags)}</Tag>;
+        return <Tag className={className} style={style}>{decorate(children, { members, agents, lead }, tags)}</Tag>;
       };
-    return { ...staticComponents, p: prose("p"), strong: prose("strong"), em: prose("em"), del: prose("del") };
-  }, [members, agents, lead]);
+    const inline = { p: prose("p"), strong: prose("strong"), em: prose("em"), del: prose("del") };
+    if (!rich) return { ...staticComponents, ...inline };
+    const blocks = Object.fromEntries(Object.entries(RICH_PROSE).map(([tag, className]) => [tag, prose(tag as ProseTag, className)]));
+    return { ...richComponents, ...inline, ...blocks };
+  }, [members, agents, lead, rich]);
   return (
     <Markdown
-      allowedElements={ALLOWED}
+      allowedElements={rich ? RICH_ALLOWED : ALLOWED}
+      remarkPlugins={rich ? RICH_PLUGINS : undefined}
       unwrapDisallowed
       skipHtml
       components={components}

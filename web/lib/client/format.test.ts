@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { answerParagraphs, budgetFill, clockTime, dayKey, dayLabel, excerpt, fileSize, formatElapsed, formatStepCost, formatStepTime, formatTokens, formatUsd, formatWait, matchSnippet, resetsOn, shortWhen, splitHeadline, streamWords, timeAgo, typingText } from "./format";
+import { budgetFill, clockTime, dayKey, dayLabel, excerpt, fileSize, formatElapsed, formatStepCost, formatStepTime, formatTokens, formatUsd, formatWait, matchSnippet, resetsOn, shortWhen, timeAgo, typingText } from "./format";
 
 describe("format", () => {
   it("formatElapsed", () => {
@@ -20,18 +20,7 @@ describe("format", () => {
     expect(budgetFill({ spentMicros: 4e6, capMicros: 3e6 })).toBe(100);
     expect(budgetFill({ spentMicros: 0, capMicros: 0 })).toBe(100);
   });
-  it("splitHeadline", () => {
-    expect(splitHeadline("Title\n\nbody")).toEqual({ headline: "Title", body: "body" });
-    expect(splitHeadline("one line only")).toEqual({ headline: null, body: "one line only" });
-    expect(splitHeadline(`${"x".repeat(121)}\n\nbody`).headline).toBeNull();
-  });
-  it("streamWords", () => {
-    expect(streamWords("hello wor", false)).toEqual(["hello"]);
-    expect(streamWords("hello wor", true)).toEqual(["hello", "wor"]);
-    expect(streamWords("hello wor ", false)).toEqual(["hello", "wor"]);
-  });
 });
-
 
 describe("typingText", () => {
   it("names up to two people, then counts", () => {
@@ -110,19 +99,6 @@ describe("formatStepTime", () => {
     [64_000, "1:04"],
   ])("%i ms → %s", (ms, text) => {
     expect(formatStepTime(ms)).toBe(text);
-  });
-});
-
-describe("answerParagraphs", () => {
-  it("splits paragraphs and holds back the trailing partial word while streaming", () => {
-    expect(answerParagraphs("one two\n\nthree fo", false)).toEqual([["one", "two"], ["three"]]);
-    expect(answerParagraphs("one two\n\nthree fo", true)).toEqual([["one", "two"], ["three", "fo"]]);
-  });
-
-  it("treats words before a paragraph break as complete and drops empty paragraphs", () => {
-    expect(answerParagraphs("one two\n\n", false)).toEqual([["one", "two"]]);
-    expect(answerParagraphs("a\n\n\n\nb", true)).toEqual([["a"], ["b"]]);
-    expect(answerParagraphs("", false)).toEqual([]);
   });
 });
 

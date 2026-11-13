@@ -34,27 +34,6 @@ export const resetsOn = (resetsAt: string) =>
 export const budgetFill = (b: Pick<Budget, "spentMicros" | "capMicros">) =>
   b.capMicros === 0 ? 100 : Math.min(100, (b.spentMicros / b.capMicros) * 100);
 
-export function splitHeadline(text: string): { headline: string | null; body: string } {
-  const i = text.indexOf("\n\n");
-  if (i > 0 && i <= 120 && !text.slice(0, i).includes("\n")) return { headline: text.slice(0, i), body: text.slice(i + 2) };
-  return { headline: null, body: text };
-}
-
-// A trailing partial word would flash and then change, so it waits for its space unless the text is final.
-export function streamWords(text: string, final: boolean): string[] {
-  const words = text.split(/\s+/).filter(Boolean);
-  if (!final && words.length && !/\s$/.test(text)) words.pop();
-  return words;
-}
-
-/** The streamed answer as paragraphs of words; only the last paragraph can still be mid-word. */
-export function answerParagraphs(text: string, final: boolean): string[][] {
-  const paragraphs = text.split(/\n\s*\n/);
-  return paragraphs
-    .map((p, i) => streamWords(p, final || i < paragraphs.length - 1))
-    .filter((words) => words.length > 0);
-}
-
 /** Mirrors the server's wait copy, so the room's setting, the card and the model's "skipped" result read the same. */
 export function formatWait(sec: number): string {
   if (sec < 60) return "under a minute";

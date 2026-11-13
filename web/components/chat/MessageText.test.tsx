@@ -68,3 +68,45 @@ describe("MessageText agent mentions", () => {
   it("takes no longer name for an agent's", () => expect(out("@scout-team, @critic go", "scout")).not.toContain("@scout</span>"));
   it("shows no lead for a message that started no thread", () => expect(out("@scout @critic")).not.toContain("mention-lead"));
 });
+
+describe("MessageText rich, for agent answers", () => {
+  const tags: RoomTags = { roomId: "r1", threads: [{ number: 4, name: "pr-check" }], chats: [] };
+  const rich = (text: string) => renderToStaticMarkup(
+    <RoomTagsContext value={tags}><MessageText rich text={text} members={members} agents={["scout"]} /></RoomTagsContext>,
+  ).replace(/\n/g, "");
+
+  it("renders lists, nested ones and an ordered list's start", () => {
+    const out = rich("- one\n  - inner\n- two\n\n3. third");
+    expect(out).toMatch(/<ul[^>]*><li[^>]*>one<ul[^>]*><li[^>]*>inner<\/li><\/ul><\/li><li[^>]*>two<\/li><\/ul>/);
+    expect(out).toMatch(/<ol start="3"[^>]*><li[^>]*>third<\/li><\/ol>/);
+  });
+  it("keeps a single line break", () => expect(rich("**Threads:** yes\n**Tools:** too")).toMatch(/yes<br\/><strong/));
+  it("renders headings as modest tags", () => {
+    const out = rich("# Big\n## Mid\n### Small");
+    expect(out).toMatch(/<h1 class="[^"]*text-\[19px\][^"]*">Big<\/h1>/);
+    expect(out).toMatch(/<h2 class="[^"]*text-\[17px\][^"]*">Mid<\/h2>/);
+    expect(out).toContain(">Small</h3>");
+  });
+  it("renders quotes, rules and code blocks", () => {
+    const out = rich("> quoted\n\n---\n\n```ts\nconst a = 1;\n```");
+    expect(out).toContain("<blockquote");
+    expect(out).toContain("<hr");
+    expect(out).toMatch(/<pre class="[^"]*overflow-x-auto[^"]*"><code/);
+  });
+  it("renders a GFM table that scrolls on its own when wide", () => {
+    const out = rich("| a | b |\n|---|--:|\n| 1 | 2 |");
+    expect(out).toMatch(/<div class="[^"]*overflow-x-auto[^"]*"><table/);
+    expect(out).toMatch(/<th[^>]*>a<\/th>/);
+    expect(out).toMatch(/<td [^>]*style="text-align:right">2<\/td>/);
+  });
+  it("decorates mentions and tags inside list items, headings, cells and bold", () => {
+    expect(rich("- hi @alice see #4")).toMatch(/<li[^>]*>hi <span class="mention[^"]*">@alice<\/span> see <a [^>]*>#pr-check<\/a><\/li>/);
+    expect(rich("## @scout")).toContain('<span class="mention text-lime">@scout</span></h2>');
+    expect(rich("| @alice |\n|---|\n| #4 |")).toMatch(/<td[^>]*><a [^>]*>#pr-check<\/a><\/td>/);
+    expect(rich("**@alice**")).toContain('<strong><span class="mention text-lime">@alice</span></strong>');
+  });
+  it("refuses javascript: links and raw html", () => {
+    expect(rich("[x](javascript:alert(1))")).not.toContain('href="javascript');
+    expect(rich("<script>x</script>")).not.toContain("<script");
+  });
+});

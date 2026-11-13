@@ -18,7 +18,7 @@ type Message = { seq: number; text: string; authorName: string; agent?: { status
 declare global {
   interface Window {
     __card?: Element; __rowLive?: string; __stopSampling?: boolean; __runStream: { drop(): void };
-    __cards(): Element[]; __doneSteps(): HTMLElement[]; __archived(): Element | undefined;
+    __cards(): Element[]; __doneSteps(): HTMLElement[]; __archived(): Element | undefined; __answer(): HTMLElement | undefined;
   }
 }
 
@@ -26,7 +26,7 @@ const RUN_MS = 60_000;
 
 /**
  * Lookups the checks share inside the page, installed as text on every page load for the same reason as `sampleFrames`.
- * A card is the box around an "Open" link to its thread.
+ * A card is the box around an "Open" link to its thread; the fake model's answer is the markdown around its first line.
  */
 const PAGE_HELPERS = `
 window.__cards = () => [...document.querySelectorAll("main a")].filter((a) => a.textContent.trim() === "Open")
@@ -34,26 +34,26 @@ window.__cards = () => [...document.querySelectorAll("main a")].filter((a) => a.
 window.__doneSteps = () => [...document.querySelectorAll("main button")].filter((b) => b.querySelector(".sr-only")?.textContent === ", done");
 window.__archived = () => [...document.querySelectorAll("[cmdk-group]")]
   .find((g) => g.querySelector("[cmdk-group-heading]")?.textContent === "Archived");
+window.__answer = () => [...document.querySelectorAll("main p")].find((p) => p.textContent.startsWith("Fake answer for"))?.parentElement;
 `;
 
 /**
- * Samples the streaming answer on every frame. It counts the frames where a word was still fading in, and the frames
+ * Samples the streaming answer on every frame. It counts the frames where the answer was still fading in, and the frames
  * where a `shimmer` text was animating. With `untilStopped` it also records each new version of the answer's text and
  * runs until the test sets `__stopSampling`; otherwise it ends 1.5 s after the first words show.
  */
 const answerFrames = (untilStopped: boolean) => sampleFrames({
   vars: "const texts = []; let seen = 0, moving = 0, shimmers = 0, shimmering = 0, firstSeen = 0;",
-  perFrame: `const words = [...document.querySelectorAll('main span[class*="animate-[word-in"]')];
-    if (words.length) {
+  perFrame: `const answer = window.__answer();
+    if (answer) {
       seen++;
       firstSeen ||= now;
-      if (words.some((w) => !placed(w) || getComputedStyle(w).filter !== "none")) moving++;
+      if (!placed(answer)) moving++;
     }
     const shimmer = [...document.querySelectorAll(".shimmer")];
     shimmers += shimmer.length;
     shimmering += shimmer.filter((el) => getComputedStyle(el).animationName !== "none").length;
-    const answer = [...document.querySelectorAll("main h2")].find((h) => h.textContent.startsWith("Fake answer for"));
-    const text = answer ? answer.parentElement.innerText : "";
+    const text = answer ? answer.innerText : "";
     if (text && text !== texts.at(-1)) texts.push(text);`,
   done: `(${untilStopped} ? window.__stopSampling : firstSeen && now - firstSeen > 1500) || now - start > 90000`,
   result: "{ texts, seen, moving, shimmers, shimmering }",
@@ -145,9 +145,9 @@ export async function threadChecks(stamp: number, owner: Person, guest: Person) 
   const expanded = await until(A, () => window.__doneSteps().length === 2);
   await A.evaluate(() => window.__doneSteps()[0].click());
   const output = await until(A, () => document.querySelector("main pre")?.textContent?.includes("Found 3 notes"));
-  const headline = await A.evaluate(() => [...document.querySelectorAll("main h2")].some((h) => h.textContent?.startsWith("Fake answer for")));
-  check(views === 1 && titled && folded && expanded && output && headline,
-    `the card opens #1 check-pr-41 as one view (at most ${views} on screen): its 2 steps fold into "▸ 2 steps", expanding shows "Found 3 notes", and the headline reads "Fake answer for…"`);
+  const answered = await A.evaluate(() => !!window.__answer());
+  check(views === 1 && titled && folded && expanded && output && answered,
+    `the card opens #1 check-pr-41 as one view (at most ${views} on screen): its 2 steps fold into "▸ 2 steps", expanding shows "Found 3 notes", and the answer opens with "Fake answer for…" as a paragraph, not a headline`);
 
   // Rename: A renames in the header while B watches #general.
   const rename = async (name: string) => {
@@ -208,7 +208,7 @@ export async function threadChecks(stamp: number, owner: Person, guest: Person) 
   await B.bringToFront();
   const still = (await B.evaluate(answerFrames(false))) as Frames;
   check(still.seen > 0 && still.moving === 0 && still.shimmers > 0 && still.shimmering === 0,
-    `with reduced motion the answer's words appear at once (${still.moving} of ${still.seen} frames in motion) and nothing shimmers (${still.shimmering} animating)`);
+    `with reduced motion the answer appears at once (${still.moving} of ${still.seen} frames in motion) and nothing shimmers (${still.shimmering} animating)`);
   await B.click('button[aria-label="Stop the run"]');
   const stopClicked = Date.now();
   const stoppedShown = await until(A, (text) => document.querySelector("main")?.innerText.includes(text), `Stopped by ${guest.name}.`, 10_000);
@@ -230,19 +230,20 @@ export async function threadChecks(stamp: number, owner: Person, guest: Person) 
   await open(A, resume.number);
   await A.bringToFront();
   const sampling = A.evaluate(answerFrames(true)) as Promise<Frames>;
-  await until(A, () => document.querySelectorAll('main span[class*="animate-[word-in"]').length >= 10, undefined, 30_000);
+  await until(A, () => (window.__answer()?.innerText.split(/\s+/).length ?? 0) >= 20, undefined, 30_000);
   cut = true;
   await A.evaluate(() => window.__runStream.drop());
   await settled(resume.number);
   const answer = (await eventually(() => history(resume.threadId), (ms) => ms.some((m) => m.agent), 10_000)).find((m) => m.agent)!;
   await until(A, () => [...document.querySelectorAll("main p")].some((p) => /^\S+ · \$\d+\.\d\d · \d+:\d\d$/.test(p.textContent ?? "")), undefined, 10_000);
-  await until(A, () => !document.querySelector('main span[class*="animate-[word-in"]'));
+  // One more frame, so the sampler records the stored answer's text before it stops.
+  await A.evaluate(() => new Promise(requestAnimationFrame));
   await A.evaluate(() => { window.__stopSampling = true; });
   const live = await sampling;
   A.off("request", onRequest);
   check(resumes.length > 0 && Number(resumes[0]) > 0, `after window.__runStream.drop() the next stream request carries Last-Event-ID (${resumes[0] || "none"})`);
   check(!!answer && streamedExactly(live.texts, answer.text), `the resumed answer on screen equals the stored one, word for word (${live.texts.length} samples)`);
-  check(live.moving >= 5, `the answer's words fade in as they arrive (${live.moving} frames in motion)`);
+  check(live.moving >= 5, `the answer fades in as it arrives (${live.moving} frames in motion)`);
 
   // Budget: only the owner sets it, and at $0 the next run stops before its first model call.
   check((await bff(B, `/bff/api/rooms/${roomId}/budget`, "PUT", { capUsd: 5 })).status === 403, "a member can't set the room budget (403)");
