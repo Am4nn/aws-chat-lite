@@ -118,7 +118,7 @@ describe("AgentsPanel", () => {
       agents: [agent("scout", { madeBy: { agentId: "boss", name: "boss" }, createdByName: "bea" })], kinds: [], brief: "",
     }));
     show([room("r1", "member")], "r-made");
-    expect(await screen.findByText("by @boss · approved by bea")).toBeTruthy();
+    expect(await screen.findByText("by @boss Â· approved by bea")).toBeTruthy();
   });
 
   it("shows, folded and read-only, the brief every agent gets before its own instructions", async () => {

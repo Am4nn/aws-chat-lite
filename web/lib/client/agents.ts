@@ -22,7 +22,7 @@ export const agentLabel = (agentId: string, agents: Agent[]) => `@${agents.find(
 export function madeByLine(a: Agent): string {
   if (a.builtIn) return "built in";
   if (!a.madeBy) return `by ${a.createdByName}`;
-  return `by @${a.madeBy.name}${a.createdByName ? ` · approved by ${a.createdByName}` : ""}`;
+  return `by @${a.madeBy.name}${a.createdByName ? ` Â· approved by ${a.createdByName}` : ""}`;
 }
 
 /** Mirrors the server's rule, which remains the real check: its creator or an admin, and only admins for @agent. */

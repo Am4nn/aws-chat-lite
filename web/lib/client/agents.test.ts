@@ -57,7 +57,7 @@ describe("madeByLine", () => {
   it("says who made an agent, and who approved one an agent made", () => {
     expect(madeByLine(builtIn)).toBe("built in");
     expect(madeByLine(agent())).toBe("by aman");
-    expect(madeByLine(agent({ madeBy: { agentId: "S", name: "scout" }, createdByName: "bea" }))).toBe("by @scout · approved by bea");
+    expect(madeByLine(agent({ madeBy: { agentId: "S", name: "scout" }, createdByName: "bea" }))).toBe("by @scout Â· approved by bea");
     expect(madeByLine(agent({ madeBy: { agentId: "S", name: "scout" }, createdByName: "" }))).toBe("by @scout");
   });
 });

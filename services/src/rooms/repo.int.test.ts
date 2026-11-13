@@ -386,7 +386,7 @@ describe("rooms repo on Floci", () => {
       { userId: owner.userId, username: "owner", role: "owner" }, { userId: member.userId, username: "member", role: "member" },
     ]));
     expect(directory.threads).toEqual([]);
-    expect(directory.agents).toEqual([]);
+    expect(directory.agents.map((a) => [a.agentId, a.builtIn])).toEqual([["agent", true]]);
     await expect(roomDirectory(randomUUID())).rejects.toBeInstanceOf(NotFound);
   });
 });
