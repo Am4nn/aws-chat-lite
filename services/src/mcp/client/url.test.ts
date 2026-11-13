@@ -38,6 +38,18 @@ describe("mcpServerUrl and chat-lite's own server", () => {
     }
   });
 
+  it("refuses path variants that reach the same endpoint", () => {
+    for (const raw of ["https://chat.amanarya.com//mcp", "https://chat.amanarya.com/MCP", "https://chat.amanarya.com/%6dcp", "https://chat.amanarya.com:443/mcp"]) {
+      expect(() => mcpServerUrl(raw, [], own), raw).toThrow("That's chat-lite's own MCP server.");
+    }
+  });
+
+  it("skips malformed entries, and refuses nothing when nothing is configured", () => {
+    expect(ownMcpUrls({ SITE_ORIGINS: "not a url,https://chat.amanarya.com", MCP_BASE_URL: "Token[TOKEN.1]" })).toEqual(["https://chat.amanarya.com/mcp"]);
+    expect(ownMcpUrls({})).toEqual([]);
+    expect(mcpServerUrl("https://chat.amanarya.com/mcp", [], ownMcpUrls({})).hostname).toBe("chat.amanarya.com");
+  });
+
   it("allows other paths on those hosts, and other servers", () => {
     expect(mcpServerUrl("https://chat.amanarya.com/other/mcp", [], own).href).toBe("https://chat.amanarya.com/other/mcp");
     expect(mcpServerUrl("https://mcp.linear.app/mcp", [], own).hostname).toBe("mcp.linear.app");

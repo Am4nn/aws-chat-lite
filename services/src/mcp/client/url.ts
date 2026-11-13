@@ -38,7 +38,19 @@ export function ownMcpUrls(env: Record<string, string | undefined> = process.env
   return [...(env.SITE_ORIGINS ?? "").split(","), env.MCP_BASE_URL ?? ""]
     .map((base) => base.trim().replace(/\/+$/, ""))
     .filter(Boolean)
-    .map((base) => `${base}/mcp`);
+    .map((base) => `${base}/mcp`)
+    .filter((url) => URL.canParse(url));
+}
+
+/** Where a request for this URL lands: case, repeated slashes, percent-escapes and a trailing slash don't change the endpoint. */
+function endpoint(url: URL): string {
+  let path = url.pathname;
+  try {
+    path = decodeURIComponent(path);
+  } catch {
+    // A malformed escape can't name our endpoint, so the raw path is compared.
+  }
+  return url.origin + path.toLowerCase().replace(/\/{2,}/g, "/").replace(/\/+$/, "");
 }
 
 /** A remote MCP server's URL as an admin typed it. */
@@ -50,7 +62,6 @@ export function mcpServerUrl(raw: unknown, localHosts: string[], own: string[] =
     throw new ValidationError("Don't put keys in the URL: chat-lite signs in with OAuth.");
   }
   // Connecting a room to its own server would loop its agents' calls back through chat-lite.
-  const target = (u: URL) => (u.origin + u.pathname).replace(/\/+$/, "");
-  if (own.some((candidate) => target(new URL(candidate)) === target(url))) throw new ValidationError("That's chat-lite's own MCP server.");
+  if (own.some((candidate) => endpoint(new URL(candidate)) === endpoint(url))) throw new ValidationError("That's chat-lite's own MCP server.");
   return url;
 }
