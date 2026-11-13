@@ -6,7 +6,7 @@ import { loadImages } from "../models/vision.js";
 import { mergeTaint, messageTaint, runRefusal, type TaintSource } from "../models/privacy.js";
 import { threadsRepo } from "../threads/repo.js";
 import type { RunEvent } from "../threads/types.js";
-import { answerOf, buildContext, inLane, threadMessages } from "./context.js";
+import { answerOf, buildContext, channelBackground, inLane, threadMessages } from "./context.js";
 import { stoppedBy } from "./model.js";
 import { systemPrompt } from "./prompt.js";
 import { runsRepo, type Run } from "./repo.js";
@@ -81,9 +81,9 @@ export async function modelTurn(run: RoutedRun, turn: number): Promise<Turn> {
   if (end) return { toolCalls: [], seenSeq: run.seenSeq, costMicros: costOf(events), end };
 
   const seenSeq = run.helper ? run.seenSeq : await readSteers(run, events, writer);
-  const [prior, steers, thread, room, memory] = await Promise.all([
+  const [prior, steers, thread, room, memory, background] = await Promise.all([
     runs.prior(run.threadId, run.firstSeq), runs.unread(run.threadId, run.firstSeq), threadsRepo().threadById(run.roomId, run.threadId),
-    roomConnections(run.roomId), memoryRepo().entries(run.roomId),
+    roomConnections(run.roomId), memoryRepo().entries(run.roomId), run.helper ? null : runs.background(run),
   ]);
   // The thread's taint is written after a send is acknowledged, so it can lag behind a file that just landed; the
   // messages this call would carry, the thread and every steer, are checked themselves.
@@ -106,7 +106,9 @@ export async function modelTurn(run: RoutedRun, turn: number): Promise<Turn> {
     agent: run.agent, others: run.others, memory, privateOk: modelInfo(run.model).privateOk && taint.length > 0,
     helperOf: run.helper?.parent,
   });
-  const opening = run.helper ? [{ role: "user" as const, author: run.helper.parent, text: run.helper.task }] : threadMessages(prior);
+  const opening = run.helper
+    ? [{ role: "user" as const, author: run.helper.parent, text: run.helper.task }]
+    : [...channelBackground(background), ...threadMessages(prior)];
   const messages = await loadImages(buildContext(opening, events, lane), run.model);
   return stream(run, writer, messages, events, { turn, seenSeq, system, tools, taint });
 }

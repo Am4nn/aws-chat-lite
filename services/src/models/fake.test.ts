@@ -41,6 +41,11 @@ describe("fakeModel", () => {
     expect(toolCalls(chunks)).toHaveLength(0);
   });
 
+  it("reads its prompt from the first member's message, past any text the app adds before it", async () => {
+    const chunks = await collect(request([{ role: "user", text: "Earlier in #general: fail" }, user("hi tools:0 words:1")]));
+    expect(textOf(chunks).split("\n")[0]).toBe('Fake answer for "hi".');
+  });
+
   it("ends an answer with end_turn and a tool turn with tool_use, carrying the native turn", async () => {
     const sonnet = { model: "claude-sonnet-5-5" };
     const tool = await collect(request([user("look tools:1")], sonnet));
