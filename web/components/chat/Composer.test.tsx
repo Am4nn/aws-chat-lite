@@ -204,6 +204,19 @@ describe("Composer # list", () => {
   });
 });
 
+describe("Composer @ list", () => {
+  it("offers the room's agents, the same ones the highlights know", () => {
+    render(
+      <RoomAgentsContext value={[{ name: "scout" }] as Agent[]}>
+        <Composer members={[]} meId="u1" onSend={() => {}} onTyping={() => {}} />
+      </RoomAgentsContext>,
+    );
+    const box = screen.getByRole("combobox") as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "@sc", selectionStart: 3 } });
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["scoutagent"]);
+  });
+});
+
 describe("Composer highlights", () => {
   const tags: RoomTags = { roomId: "r1", threads: [{ number: 12, name: "pr-check" }], chats: [{ chatId: "c1", name: "general" }] };
   const agents = [{ name: "agent" }, { name: "scout" }] as Agent[];

@@ -32,8 +32,8 @@ export function parseMentions(text: string, members: Mentionable[]) {
   return { mentions: [...ids], everyone: found.some((f) => f.name === "everyone") };
 }
 
-/** A row of the `@` or `#` list; a thread's carries its number. */
-export type MentionOption = { name: string; kind: "agent" | "everyone" | "member" | "thread" | "chat"; number?: number };
+/** A row of the `@` or `#` list; a thread's carries its number, and a `#` row the `tag` a pick puts in after the `#`. */
+export type MentionOption = { name: string; kind: "agent" | "everyone" | "member" | "thread" | "chat"; number?: number; tag?: string };
 
 const MENTION_OPTIONS = 6;
 

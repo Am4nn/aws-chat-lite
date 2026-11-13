@@ -20,9 +20,19 @@ describe("tagOptions", () => {
   });
   it("narrows by the start of a name, ignoring case, or of a thread's number", () => {
     expect(tagOptions("PR", room)).toEqual([
-      { name: "pr-review", kind: "thread", number: 14 }, { name: "pr-check", kind: "thread", number: 3 }, { name: "pr-chat", kind: "chat" },
+      { name: "pr-review", kind: "thread", number: 14, tag: "pr-review" },
+      { name: "pr-check", kind: "thread", number: 3, tag: "pr-check" },
+      { name: "pr-chat", kind: "chat", tag: "pr-chat" },
     ]);
-    expect(tagOptions("12", room)).toEqual([{ name: "deploy", kind: "thread", number: 12 }]);
+    expect(tagOptions("12", room)).toEqual([{ name: "deploy", kind: "thread", number: 12, tag: "deploy" }]);
+  });
+  it("tags a thread by number where its name wouldn't read as a name, and leaves out chats that can't be tagged", () => {
+    const odd: RoomTags = {
+      roomId: "r1",
+      threads: [{ number: 4, name: "Q3 plan" }, { number: 5, name: "12" }],
+      chats: [{ chatId: "c1", name: "my_chat" }, { chatId: "c2", name: "123" }, { chatId: "c3", name: "a".repeat(33) }],
+    };
+    expect(tagOptions("", odd).map((o) => [o.name, o.tag])).toEqual([["12", "5"], ["Q3 plan", "4"]]);
   });
 });
 

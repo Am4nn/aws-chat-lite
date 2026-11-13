@@ -4,7 +4,8 @@ import { useContext, useEffect, useId, useImperativeHandle, useLayoutEffect, use
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useParams } from "next/navigation";
 import { ArrowUp, Paperclip, Square } from "lucide-react";
-import { mentionOptions, mentionQuery, type Mentionable } from "@/lib/client/mentions";
+import { RoomAgentsContext } from "@/lib/client/agents";
+import { mentionOptions, mentionQuery, type Mentionable, type MentionOption } from "@/lib/client/mentions";
 import { onlyThreadTags, RoomTagsContext, tagOptions } from "@/lib/client/roomTags";
 import { useEscape } from "@/lib/client/useEscape";
 import { dur, easeOut, instant } from "@/lib/motion";
@@ -26,8 +27,11 @@ const MAX_TEXT = 4000;
 const COUNTER_FROM = 3600;
 const TYPING_EVERY_MS = 3000;
 const MAX_HEIGHT_PX = 200;
-/** Shared by the text box and the highlights behind it, which line up only while these match. */
-const TEXT_LAYOUT = "px-1 py-[8px] text-[14.5px] leading-[22px] whitespace-pre-wrap break-words";
+/**
+ * Shared by the text box and the highlights behind it, which line up only while these match. The gutter is kept on
+ * both, so the box's scrollbar, once it needs one, doesn't narrow its text alone.
+ */
+const TEXT_LAYOUT = "px-1 py-[8px] text-[14.5px] leading-[22px] whitespace-pre-wrap break-words [scrollbar-gutter:stable]";
 
 /** Spoken words go in at the caret, with a space on either side unless one is already there. */
 function withWords(text: string, caret: number, words: string) {
@@ -39,14 +43,13 @@ function withWords(text: string, caret: number, words: string) {
 }
 
 /**
- * `agents`: the room's agents, offered first in the @ list where naming one starts a thread with it (a people chat).
  * `mode`: reply or edit, where the view offers them (`onModeChange`); ArrowUp in an empty box edits
  * my last message when `onEditLast` finds one. `uploads`: absent where files can't be sent, which hides the paperclip.
  * `steering`: an agent is running here, so a message steers it, and Stop (`onStop`) sits beside Send. `pill`: the model
  * choice, left of Send.
  */
 type Props = {
-  ref?: Ref<ComposerHandle>; members: Mentionable[]; agents?: { name: string }[]; meId: string; mode?: ComposerMode;
+  ref?: Ref<ComposerHandle>; members: Mentionable[]; meId: string; mode?: ComposerMode;
   uploads?: ReturnType<typeof useUploads>; placeholder?: string; steering?: boolean; stopping?: boolean; pill?: ReactNode;
   /** In a people chat a `#tag` sends the message into that thread, so a message that is only a tag is held back. */
   routesTags?: boolean;
@@ -55,7 +58,7 @@ type Props = {
 };
 
 export function Composer({
-  ref, members, agents = [], meId, mode = null, uploads, placeholder = "Message", steering = false, stopping = false, pill, routesTags = false,
+  ref, members, meId, mode = null, uploads, placeholder = "Message", steering = false, stopping = false, pill, routesTags = false,
   onModeChange, onSend, onSaveEdit, onEditLast, onTyping, onStop,
 }: Props) {
   const reduced = useReducedMotion();
@@ -107,6 +110,7 @@ export function Composer({
   const shown = dictating ? withWords(text, caret, transcriptText(dictation.live)).value : text;
   useEscape(dictation.state !== "idle", dictation.cancel);
 
+  const agents = useContext(RoomAgentsContext);
   const tags = useContext(RoomTagsContext);
   const query = mentionQuery(text.slice(0, caret));
   const options = !query || query.start === dismissedAt ? []
@@ -129,9 +133,9 @@ export function Composer({
     }
   }
 
-  function insertOption(name: string) {
+  function insertOption(option: MentionOption) {
     if (!query) return;
-    const before = `${text.slice(0, query.start)}${query.trigger}${name} `;
+    const before = `${text.slice(0, query.start)}${query.trigger}${option.tag ?? option.name} `;
     nextCaret.current = before.length;
     change(before + text.slice(caret), before.length);
   }
@@ -181,7 +185,7 @@ export function Composer({
       }
       if (e.key === "Enter" || e.key === "Tab") {
         e.preventDefault();
-        return insertOption(options[highlight].name);
+        return insertOption(options[highlight]);
       }
       if (e.key === "Escape") {
         e.preventDefault();

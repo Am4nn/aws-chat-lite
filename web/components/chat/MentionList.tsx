@@ -12,7 +12,7 @@ import { Avatar } from "@/components/ui/Avatar";
  * option (`id`-`index`), so a press picks without stealing focus.
  */
 export function MentionList({ id, label, options, highlight, onPick, onHighlight }: {
-  id: string; label: string; options: MentionOption[]; highlight: number; onPick: (name: string) => void; onHighlight: (i: number) => void;
+  id: string; label: string; options: MentionOption[]; highlight: number; onPick: (option: MentionOption) => void; onHighlight: (i: number) => void;
 }) {
   const reduced = useReducedMotion();
   const fast = reduced ? instant : { duration: dur.fast, ease: easeOut };
@@ -35,7 +35,7 @@ export function MentionList({ id, label, options, highlight, onPick, onHighlight
               id={`${id}-${i}`}
               role="option"
               aria-selected={i === highlight}
-              onMouseDown={(e) => { e.preventDefault(); onPick(name); }}
+              onMouseDown={(e) => { e.preventDefault(); onPick(options[i]); }}
               onMouseEnter={() => onHighlight(i)}
               className={`flex h-9 cursor-pointer items-center gap-2.5 rounded-lg px-2 text-[13px] ${i === highlight ? "bg-surface-3 text-text" : "text-text-2"}`}
             >

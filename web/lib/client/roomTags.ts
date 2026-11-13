@@ -32,14 +32,23 @@ export function findDraftTags(text: string, tags: RoomTags) {
 
 const TAG_OPTIONS = 6;
 
-/** The `#` list for what was typed: the newest threads first, then the chats. */
+/** A whole tag, with a letter: anything else is cut short by TAG, or read as a thread number. */
+const isNameTag = (name: string) => /^[a-z0-9-]{1,32}$/i.test(name) && /[a-z]/i.test(name);
+
+/**
+ * The `#` list for what was typed: the newest threads first, then the chats, each with the `tag` a pick puts in. A
+ * thread whose name wouldn't read back as that name goes in by number, which shows as its name all the same; a chat
+ * has no number, so one like that is left out.
+ */
 export function tagOptions(query: string, tags: RoomTags): MentionOption[] {
   const q = query.toLowerCase();
   const threads = tags.threads
     .filter((t) => t.name.toLowerCase().startsWith(q) || String(t.number).startsWith(q))
     .sort((a, b) => b.number - a.number)
-    .map((t) => ({ name: t.name, kind: "thread" as const, number: t.number }));
-  const chats = tags.chats.filter((c) => c.name.toLowerCase().startsWith(q)).map((c) => ({ name: c.name, kind: "chat" as const }));
+    .map((t) => ({ name: t.name, kind: "thread" as const, number: t.number, tag: isNameTag(t.name) ? t.name : String(t.number) }));
+  const chats = tags.chats
+    .filter((c) => isNameTag(c.name) && c.name.toLowerCase().startsWith(q))
+    .map((c) => ({ name: c.name, kind: "chat" as const, tag: c.name }));
   return [...threads, ...chats].slice(0, TAG_OPTIONS);
 }
 
