@@ -22,7 +22,7 @@ const mockedBff = vi.mocked(bff);
 beforeEach(() => {
   mockedBff.mockImplementation(async (path) => {
     if (path.endsWith("/copy")) return { agent: agent("scout-2"), dropped: ["github"], schedules: { copied: 1, skipped: 0 } };
-    if (path.endsWith("/agents")) return { agents: AGENTS, kinds: ["images", "sandbox", "web"] };
+    if (path.endsWith("/agents")) return { agents: AGENTS, kinds: ["images", "sandbox", "web"], brief: "You work inside chat-lite." };
     return {};
   });
 });
@@ -92,6 +92,16 @@ describe("AgentsPanel", () => {
     await vi.waitFor(() => expect(mockedBff).toHaveBeenCalledWith("/bff/api/rooms/r1/agents", {
       body: { name: "reviewer", instructions: "", tools: ["web"], model: "haiku" },
     }));
+  });
+
+  it("shows, folded and read-only, the brief every agent gets before its own instructions", async () => {
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "New agent" }));
+    const form = screen.getByRole("button", { name: "Create agent" }).closest("form")!;
+    const note = within(form).getByText("Always included").closest("details")!;
+    expect(note.open).toBe(false);
+    expect(note.textContent).toContain("You work inside chat-lite.");
+    expect(note.querySelector("textarea, input")).toBeNull();
   });
 
   it("shows the saved agent as the server answered, without waiting for a refetch", async () => {

@@ -10,6 +10,7 @@ import { copyAgent } from "./copy.js";
 import { availableKinds, requireOffered } from "./kinds.js";
 import { agentModel, agentName, instructionsText, toolKinds } from "./model.js";
 import { agentsRepo } from "./repo.js";
+import { AGENT_BRIEF } from "../runs/prompt.js";
 
 type Event = APIGatewayProxyEventV2WithJWTAuthorizer;
 type Trigger = Pick<ReturnType<typeof scheduleTrigger>, "remove">;
@@ -33,7 +34,7 @@ export function makeHandler(trigger: Trigger) {
       switch (event.routeKey) {
         case "GET /rooms/{roomId}/agents":
           await requireMember(roomId, user.userId);
-          return json(200, { agents: await agents.list(roomId), kinds: await availableKinds(roomId) });
+          return json(200, { agents: await agents.list(roomId), kinds: await availableKinds(roomId), brief: AGENT_BRIEF });
         case "POST /rooms/{roomId}/agents": {
           const input = {
             name: agentName(body.name), instructions: instructionsText(body.instructions), tools: toolKinds(body.tools),

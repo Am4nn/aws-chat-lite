@@ -58,6 +58,7 @@ describe("agents routes", () => {
     expect(res.status).toBe(200);
     expect(res.body.agents.map((a: { name: string }) => a.name)).toEqual(["agent", "scout"]);
     expect(res.body.kinds).toEqual(["images", "sandbox", "web"]);
+    expect(res.body.brief).toMatch(/^You work inside chat-lite, a team chat room/);
     expect((await call("member", "GET /rooms/{roomId}/agents", undefined, {}, { github: true })).body.kinds).toEqual(["github", "images", "sandbox", "web"]);
   });
 

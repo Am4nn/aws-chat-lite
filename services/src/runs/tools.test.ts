@@ -167,7 +167,7 @@ describe("delegateSpec", () => {
     expect(spec.name).toBe("delegate");
     expect(spec.inputSchema).toMatchObject({ properties: { agent: { enum: ["agent", "researcher"] }, task: { type: "string" } }, required: ["agent", "task"] });
     const roster = spec.description.split("\n").slice(-2);
-    expect(roster).toEqual(["@agent", `@researcher: ${`Find sources.${"x".repeat(200)}`.slice(0, 120)}`]);
+    expect(roster).toEqual(["@agent: The room's generalist.", `@researcher: ${`Find sources.${"x".repeat(200)}`.slice(0, 120)}`]);
   });
 });
 

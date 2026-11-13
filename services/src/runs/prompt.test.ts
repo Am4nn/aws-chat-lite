@@ -36,7 +36,7 @@ describe("systemPrompt", () => {
   });
 
   it("leaves out the instructions block for an agent with none", () => {
-    expect(prompt({ agent: BUILT_IN })).not.toContain("Instructions from the room");
+    expect(prompt({ agent: { ...BUILT_IN, instructions: "" } })).not.toContain("Instructions from the room");
   });
 
   it("frames memory as notes, with each entry's id", () => {

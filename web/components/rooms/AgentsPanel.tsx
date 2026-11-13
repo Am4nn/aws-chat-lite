@@ -20,7 +20,7 @@ import { AgentForm, TOOL_KINDS, type AgentInput } from "./AgentForm";
 import { AgentAvatar } from "@/components/ui/AgentAvatar";
 import { useRoomData } from "./useRoomData";
 
-type Agents = { agents: Agent[]; kinds: ToolKind[] };
+type Agents = { agents: Agent[]; kinds: ToolKind[]; brief: string };
 type Me = { userId: string; role: Role };
 
 /**
@@ -96,7 +96,7 @@ export function AgentsPanel({ roomId, me, rooms, models, archived }: {
                   {editing === a.agentId
                     ? (
                       <motion.div key="form" {...swap}>
-                        <AgentForm initial={a} kinds={data.kinds} models={models} busy={busy} onCancel={() => setEditing(null)} onSubmit={(input) => save(a, input)} />
+                        <AgentForm initial={a} kinds={data.kinds} brief={data.brief} models={models} busy={busy} onCancel={() => setEditing(null)} onSubmit={(input) => save(a, input)} />
                       </motion.div>
                     )
                     : (
@@ -130,7 +130,7 @@ export function AgentsPanel({ roomId, me, rooms, models, archived }: {
         </ul>
       )}
       {data && editing === "new" && (
-        <AgentForm kinds={data.kinds} models={models} busy={busy} onCancel={() => setEditing(null)} onSubmit={(input) => save(undefined, input)} />
+        <AgentForm kinds={data.kinds} brief={data.brief} models={models} busy={busy} onCancel={() => setEditing(null)} onSubmit={(input) => save(undefined, input)} />
       )}
 
       <Modal open={!!deleting} onClose={() => setDeleting(null)} title={`Delete @${deleting?.name}?`}>

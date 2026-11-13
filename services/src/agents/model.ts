@@ -12,9 +12,16 @@ const NAME = /^[a-z][a-z0-9-]{1,31}$/;
 const RESERVED = new Set(["agent", "everyone", "schedule"]);
 const KINDS: ToolKind[] = ["github", "images", "mcp", "sandbox", "web"];
 
-/** Virtual until an admin edits it, so every room has it without a write at room creation. */
+/**
+ * Virtual until an admin edits it, so every room has it without a write at room creation. The first line of its role
+ * is what other agents read when they hand it work.
+ */
 export const BUILT_IN: Agent = {
-  agentId: "agent", name: "agent", instructions: "", tools: KINDS, model: "room",
+  agentId: "agent", name: "agent", model: "room", tools: KINDS,
+  instructions: "The room's generalist.\n"
+    + "Take any question or task: answer directly when you can, and research or run code when it needs checking. "
+    + "If another agent in the room is the specialist for part of it, hand that part to them. "
+    + "Keep answers short and lead with the result; ask one question when the request is unclear.",
   builtIn: true, createdBy: "", createdByName: "", createdAt: "", updatedAt: "",
 };
 

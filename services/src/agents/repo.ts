@@ -19,9 +19,14 @@ export const BUILT_IN_REFUSAL = "The built-in @agent can't be renamed, deleted o
 const taken = (name: string) => new Conflict(`@${name} is taken in this room.`);
 const agentChanged = (name: string) => new Conflict(`@${name} just changed; try again.`);
 
-/** The built-in is stored only once an admin edits it, and then only the fields they changed. */
+/**
+ * The built-in is stored only once an admin edits it, and then only the fields they changed. One saved before it had a
+ * default role, or saved blank, keeps the default: an @agent with no role gives other agents nothing to hand it by.
+ */
 function toAgent({ pk: _pk, sk: _sk, ...item }: Record<string, unknown>): StoredAgent {
-  return item.agentId === BUILT_IN.agentId ? { ...BUILT_IN, ...item } : item as StoredAgent;
+  return item.agentId === BUILT_IN.agentId
+    ? { ...BUILT_IN, ...item, instructions: (item.instructions as string | undefined) || BUILT_IN.instructions }
+    : item as StoredAgent;
 }
 
 
