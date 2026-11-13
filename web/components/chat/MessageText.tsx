@@ -34,7 +34,7 @@ function TagLink({ href, label, kind }: { href: string; label: string; kind: "th
     <Link
       href={href}
       className={kind === "thread"
-        ? "rounded-md border border-line-strong bg-surface-2 px-1.5 py-px font-mono text-[0.86em] text-text transition-colors hover:border-line-hover hover:bg-surface-3"
+        ? "rounded-full bg-sky/10 px-1.5 py-px text-[0.92em] text-sky transition-colors hover:bg-sky/20"
         : "text-sky underline-offset-2 hover:underline"}
     >
       {label}
