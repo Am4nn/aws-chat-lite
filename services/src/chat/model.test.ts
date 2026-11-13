@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  canEdit, deleteMode, excerpt, forReaders, messageText, seqKey, seqNumber, threadRefOf, validAttachment, versionKey,
-  type StoredMessage,
+  canEdit, deleteMode, excerpt, forReaders, messageText, seqKey, seqNumber, threadRefOf, transcriptLine, validAttachment, versionKey,
+  type Message, type StoredMessage,
 } from "./model.js";
 import { ValidationError } from "../lib/errors.js";
 
@@ -99,5 +99,23 @@ describe("threadRefOf", () => {
     const started = { kind: "started", threadId: "t3", seq: 1 } as const;
     expect(threadRefOf(started)).toBe(started);
     expect(threadRefOf(undefined)).toBeUndefined();
+  });
+});
+
+describe("transcriptLine", () => {
+  const message = (over: Partial<Message>): Message => ({
+    roomId: "r1", chatId: "c1", seq: 1, authorId: "u1", authorName: "bea", text: "hi", createdAt: "2026-11-13T00:00:00.000Z",
+    attachments: [], reactions: {}, mentions: [], everyone: false, ...over,
+  });
+
+  it("writes one line per message: deleted ones blank, agent posts marked", () => {
+    expect(transcriptLine(message({ seq: 3 }))).toBe("[3] bea · 2026-11-13T00:00:00.000Z: hi");
+    expect(transcriptLine(message({ deleted: "self", text: "" }))).toContain(": (deleted)");
+    expect(transcriptLine(message({ authorId: "agent", authorName: "scout", agentPost: { threadId: "T", number: 4 } }))).toContain("scout (agent) ·");
+  });
+
+  it("counts attachments, and leaves an agent's own answer unmarked", () => {
+    expect(transcriptLine(message({ attachments: [{}, {}] as never }))).toMatch(/: hi \[2 files\]$/);
+    expect(transcriptLine(message({ authorId: "agent", authorName: "scout" }))).not.toContain("(agent)");
   });
 });

@@ -36,6 +36,16 @@ interface RoomView {
   timeZone: string;
 }
 
+/** A room's chats, threads, agents and members, as a run reads them: no caller, so no read state or presence. */
+interface RoomDirectory {
+  room: { roomId: string; name: string };
+  chats: { chatId: string; name: string; lastSeq: number; archived: boolean }[];
+  threads: ThreadSummary[];
+  /** Whole agents, so the room view needs no second read; a run needs only their ids and names. */
+  agents: Agent[];
+  members: { userId: string; username: string; role: Role }[];
+}
+
 const nowSec = () => Math.floor(Date.now() / 1000);
 const nowIso = () => new Date().toISOString();
 const roomInviteKey = (roomId: string) => ({ pk: roomKey(roomId), sk: "INVITE" });
@@ -94,6 +104,38 @@ export async function defaultChatId(roomId: string): Promise<string | undefined>
     ExpressionAttributeValues: { ":p": roomKey(roomId), ":c": "CHAT#" },
   }));
   return Items[0]?.chatId as string | undefined;
+}
+
+/**
+ * The room's chats (archived ones flagged), threads, agents and members, by sort-key prefix within the room's
+ * partition, with no member check: the caller decides who may see it. The reads are consistent, so a chat or member
+ * made a moment ago is there. Each chat's message count and archived flag live on its counter, in a BatchGet.
+ */
+export async function roomDirectory(roomId: string): Promise<RoomDirectory> {
+  const [{ Item: meta }, chats, threads, members, agents] = await Promise.all([
+    docClient().send(new GetCommand({ TableName: tableName(), Key: roomMetaKey(roomId), ConsistentRead: true })),
+    roomChats(roomId),
+    queryAll({
+      KeyConditionExpression: "pk = :p AND begins_with(sk, :s)", ConsistentRead: true,
+      ExpressionAttributeValues: { ":p": roomKey(roomId), ":s": "THREAD#" },
+    }),
+    roomMembers(roomId, { consistent: true }),
+    agentsRepo().list(roomId),
+  ]);
+  if (!meta) throw new NotFound("Room not found.");
+  const counters = await batchGet(chats.map((c) => counterKey(String(c.chatId))), { consistent: true });
+  const counterOf = new Map(counters.map((c) => [lastPart(c.pk), c]));
+  const nowMs = Date.now();
+  return {
+    room: { roomId, name: String(meta.name) },
+    chats: chats.map((c) => {
+      const counter = counterOf.get(String(c.chatId));
+      return { chatId: String(c.chatId), name: String(c.name), lastSeq: Number(counter?.lastSeq ?? 0), archived: !!counter?.archived };
+    }),
+    threads: threads.map((t) => summary(t, nowMs)),
+    agents,
+    members: members.map((m) => ({ userId: String(m.userId), username: String(m.username), role: m.role as Role })),
+  };
 }
 
 /** DynamoDB access for rooms, chats, members and invites (single table). Every method checks the caller's role. */
@@ -202,54 +244,43 @@ export function roomsRepo() {
      * in theirs, so those come from two BatchGets.
      */
     async getRoomView(roomId: string, userId: string): Promise<RoomView> {
-      const inRoom = (prefix: string) => queryAll({
-        KeyConditionExpression: "pk = :p AND begins_with(sk, :s)", ConsistentRead: true,
-        ExpressionAttributeValues: { ":p": roomKey(roomId), ":s": prefix },
-      });
       const month = monthKey(new Date());
-      const [{ Item: meta }, chats, threads, members, myReads, [usage], agents] = await Promise.all([
+      const [directory, { Item: meta }, myReads, [usage]] = await Promise.all([
+        roomDirectory(roomId),
         db.send(new GetCommand({ TableName, Key: roomMetaKey(roomId), ConsistentRead: true })),
-        roomChats(roomId), inRoom("THREAD#"), roomMembers(roomId, { consistent: true }), inRoom(`READ#${userId}#`), inRoom(`USAGE#${month}`),
-        agentsRepo().list(roomId),
+        queryAll({
+          KeyConditionExpression: "pk = :p AND begins_with(sk, :s)", ConsistentRead: true,
+          ExpressionAttributeValues: { ":p": roomKey(roomId), ":s": `READ#${userId}#` },
+        }),
+        queryAll({
+          KeyConditionExpression: "pk = :p AND begins_with(sk, :s)", ConsistentRead: true,
+          ExpressionAttributeValues: { ":p": roomKey(roomId), ":s": `USAGE#${month}` },
+        }),
       ]);
-      const me = members.find((m) => m.userId === userId);
+      const me = directory.members.find((m) => m.userId === userId);
       if (!me || !meta) throw new NotFound("Room not found.");
       const reads = new Map(myReads.map((r) => [lastPart(r.sk), r]));
-      const [counters, presences] = await Promise.all([
-        batchGet(chats.map((c) => counterKey(String(c.chatId))), { consistent: true }),
-        batchGet(members.map((m) => presenceKey(String(m.userId)))),
-      ]);
-      const counterOf = new Map(counters.map((c) => [lastPart(c.pk), c]));
+      const presences = await batchGet(directory.members.map((m) => presenceKey(m.userId)));
       const presenceOf = new Map(presences.map((p) => [lastPart(p.pk), p as unknown as Presence]));
-      const nowMs = Date.now();
-      const now = Math.floor(nowMs / 1000);
+      const now = Math.floor(Date.now() / 1000);
       return {
-        room: { roomId, name: String(meta.name), ownerId: String(meta.ownerId), archived: !!meta.archived },
-        me: { role: me.role as Role },
-        chats: chats.map((c) => {
-          const chatId = String(c.chatId);
-          const read = reads.get(chatId);
-          const counter = counterOf.get(chatId);
-          const lastSeq = Number(counter?.lastSeq ?? 0);
-          return {
-            chatId, name: String(c.name), lastSeq, unread: Math.max(0, lastSeq - Number(read?.lastReadSeq ?? 0)),
-            mentions: Number(read?.mentions ?? 0), muted: !!read?.muted, archived: !!counter?.archived,
-          };
+        room: { ...directory.room, ownerId: String(meta.ownerId), archived: !!meta.archived },
+        me: { role: me.role },
+        chats: directory.chats.map((c) => {
+          const read = reads.get(c.chatId);
+          return { ...c, unread: Math.max(0, c.lastSeq - Number(read?.lastReadSeq ?? 0)), mentions: Number(read?.mentions ?? 0), muted: !!read?.muted };
         }),
-        members: members.map((m) => {
-          const presence = presenceOf.get(String(m.userId));
-          return {
-            userId: String(m.userId), username: String(m.username), role: m.role as Role,
-            online: isOnline(presence, now), ...(presence && { lastSeen: presence.lastSeen }),
-          };
+        members: directory.members.map((m) => {
+          const presence = presenceOf.get(m.userId);
+          return { ...m, online: isOnline(presence, now), ...(presence && { lastSeen: presence.lastSeen }) };
         }),
-        threads: threads.map((t) => summary(t, nowMs)),
+        threads: directory.threads,
         budget: budgetOf(month, meta, usage),
         defaultModel: (meta.defaultModel as ModelPick | undefined) ?? "auto",
         models: modelOptions(process.env.STAGE ?? ""),
         sandboxInternet: !!meta.sandboxInternet,
         approvalMode: (meta.approvalMode as ApprovalMode | undefined) ?? "ask",
-        agents,
+        agents: directory.agents,
         timeZone: (meta.timeZone as string | undefined) ?? DEFAULT_TIME_ZONE,
       };
     },

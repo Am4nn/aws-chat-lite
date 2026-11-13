@@ -1,8 +1,15 @@
 import { NotFound, ValidationError } from "../../lib/errors.js";
 import type { RoomsRepo } from "../../rooms/repo.js";
+import type { ThreadSummary } from "../../threads/types.js";
 
 type MyRoom = Awaited<ReturnType<RoomsRepo["listMyRooms"]>>[number];
-type RoomView = Awaited<ReturnType<RoomsRepo["getRoomView"]>>;
+
+/** What a chat ref is looked up in; both the member's room view and a room's directory fit. */
+interface ChatDirectory {
+  room: { name: string };
+  chats: { chatId: string; name: string }[];
+  threads: Pick<ThreadSummary, "threadId" | "name" | "number">[];
+}
 
 /** An MCP client names rooms the way a person would, so a ref is an id or a name in any case. */
 export function findRoom(rooms: MyRoom[], ref: string): MyRoom {
@@ -16,9 +23,10 @@ export function findRoom(rooms: MyRoom[], ref: string): MyRoom {
 
 /**
  * `#12` is always thread 12, as it is in the app's own messages. Any other ref is tried as a chat's name, then a
- * thread's, then an id, so `#general` finds the people chat even when a thread took the same name.
+ * thread's, then an id, so `#general` finds the people chat even when a thread took the same name. `listTool` is the
+ * caller's own tool that lists the room, named in the refusal.
  */
-export function findChat(view: Pick<RoomView, "room" | "chats" | "threads">, ref: string): { chatId: string; name: string } {
+export function findChat(view: ChatDirectory, ref: string, listTool: string): { chatId: string; name: string } {
   const chats = view.chats.map((c) => ({ chatId: c.chatId, name: c.name }));
   const threads = view.threads.map((t) => ({ chatId: t.threadId, name: t.name, number: t.number }));
   const number = /^#(\d+)$/.exec(ref)?.[1];
@@ -26,6 +34,6 @@ export function findChat(view: Pick<RoomView, "room" | "chats" | "threads">, ref
   const found = number
     ? threads.find((t) => t.number === Number(number))
     : chats.find((c) => c.name === name) ?? threads.find((t) => t.name === name) ?? [...chats, ...threads].find((c) => c.chatId === ref);
-  if (!found) throw new NotFound(`No chat or thread "${ref}" in ${view.room.name}. Try list_room.`);
+  if (!found) throw new NotFound(`No chat or thread "${ref}" in ${view.room.name}. Try ${listTool}.`);
   return { chatId: found.chatId, name: found.name };
 }

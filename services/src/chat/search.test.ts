@@ -1,8 +1,8 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { docClient } from "../lib/db.js";
-import { ValidationError } from "../lib/errors.js";
-import { normalizeQuery, searchRoom } from "./search.js";
+import { NotFound, ValidationError } from "../lib/errors.js";
+import { normalizeQuery, searchMessages, searchRoom } from "./search.js";
 
 Object.assign(process.env, { TABLE_NAME: "t", AWS_REGION: "us-east-1" });
 
@@ -38,5 +38,21 @@ describe("searchRoom", () => {
     const { results } = await searchRoom({ userId: "u1", username: "aman" }, "r", "hello");
     expect(results.map((m) => m.chatId)).toEqual(["t7"]);
     expect(most).toBe(8);
+  });
+});
+
+describe("searchMessages", () => {
+  const stored = { pk: "CHAT#c1", sk: "MSG#1", roomId: "r1", chatId: "c1", seq: 1, text: "deploy now", attachments: [], createdAt: "2026-11-13" };
+
+  it("searches a room for its own agents without a member check", async () => {
+    vi.spyOn(docClient(), "send").mockImplementation((async (c: unknown) => {
+      if (c instanceof GetCommand) return {};
+      const { ":s": prefix } = (c as QueryCommand).input.ExpressionAttributeValues!;
+      if (prefix === "CHAT#") return { Items: [{ chatId: "c1" }] };
+      if (prefix === "THREAD#") return { Items: [] };
+      return { Items: [stored] };
+    }) as never);
+    expect((await searchMessages("r1", "deploy")).results.map((m) => m.seq)).toEqual([1]);
+    await expect(searchRoom({ userId: "u1", username: "aman" }, "r1", "deploy")).rejects.toBeInstanceOf(NotFound);
   });
 });

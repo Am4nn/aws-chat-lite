@@ -40,6 +40,16 @@ export type Message = {
   /** How many times the message has changed (edit, delete, reaction); absent until the first change. */
   v?: number;
 };
+/**
+ * One line of a chat's transcript, as an MCP client or an agent reads it. An agent's post into a chat is marked, so it
+ * isn't taken for a person's message; a thread's own answers (also authored `agent`) are not posts and stay unmarked.
+ */
+export function transcriptLine(m: Message): string {
+  const files = m.attachments.length ? ` [${m.attachments.length} file${m.attachments.length === 1 ? "" : "s"}]` : "";
+  const author = m.agentPost ? `${m.authorName} (agent)` : m.authorName;
+  return `[${m.seq}] ${author} · ${m.createdAt}: ${m.deleted ? "(deleted)" : m.text}${files}`;
+}
+
 /** `textLower` backs search; it never leaves the server. */
 export type StoredMessage = Message & { textLower: string };
 

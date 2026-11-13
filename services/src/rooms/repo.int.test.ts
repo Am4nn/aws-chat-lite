@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { DeleteCommand, GetCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
-import { roomsRepo } from "./repo.js";
+import { roomDirectory, roomsRepo } from "./repo.js";
 import { threadsRepo } from "../threads/repo.js";
 import { chatRepo } from "../chat/repo.js";
 import { markConnected } from "../live/presence.js";
@@ -373,5 +373,20 @@ describe("rooms repo on Floci", () => {
     const ownerSeen = members.find((m) => m.userId === owner.userId);
     expect(ownerSeen).toMatchObject({ online: false });
     expect(ownerSeen).not.toHaveProperty("lastSeen");
+  });
+
+  it("the directory lists chats (archived flagged), threads and members with roles, for no caller", async () => {
+    const { owner, member, roomId } = await roomWithMember();
+    const { chatId } = await repo.createChat(roomId, owner.userId, "ops");
+    await repo.setChatArchived(roomId, owner.userId, chatId, true);
+    const directory = await roomDirectory(roomId);
+    expect(directory.room).toEqual({ roomId, name: "Pair" });
+    expect(directory.chats.map((c) => [c.name, c.archived])).toEqual([["general", false], ["ops", true]]);
+    expect(directory.members).toEqual(expect.arrayContaining([
+      { userId: owner.userId, username: "owner", role: "owner" }, { userId: member.userId, username: "member", role: "member" },
+    ]));
+    expect(directory.threads).toEqual([]);
+    expect(directory.agents).toEqual([]);
+    await expect(roomDirectory(randomUUID())).rejects.toBeInstanceOf(NotFound);
   });
 });
