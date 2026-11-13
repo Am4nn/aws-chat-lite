@@ -37,6 +37,9 @@ vi.mock("./steps.js", async (actual) => ({
 }));
 vi.mock("../push/enqueue.js", () => ({ enqueuePush: async (job: unknown) => void fake.pushed.push(job) }));
 vi.mock("../approvals/decide.js", () => ({ wakeRun: async (callbackId: string) => void fake.woken.push(callbackId) }));
+vi.mock("../rooms/repo.js", () => ({
+  roomDirectory: async () => ({ chats: [{ chatId: "C1", name: "general", lastSeq: 1, archived: false }], threads: [], agents: [] }),
+}));
 vi.mock("../budget/repo.js", () => ({ budgetRepo: () => ({ withArchived: async () => ({ archived: fake.archived }) }) }));
 
 const run = { runId: "RUN", roomId: "R", threadId: "T", number: 7 } as RoutedRun;
@@ -87,6 +90,19 @@ describe("gateOf", () => {
     fake.room = { sandboxInternet: true };
     expect(await gateOf(coding, code, [])).toEqual({
       asks: true, timeoutSec: 600, title: "Run python in the sandbox with internet access?", input: code.input,
+    });
+  });
+
+  it("asks before a post from a private thread in Bypass, its whole text on the card", async () => {
+    const posting = { ...run, model: "claude-sonnet-5-5", agent: { tools: ["room_post"] } } as RoutedRun;
+    const text = `Release notes: ${"x".repeat(200)}`;
+    const post = { id: "c6", name: "room_post", input: { chat: "general", text } };
+    fake.room = { approvalMode: "bypass" };
+    fake.taint = ["room"];
+    expect(await gateOf(posting, post, [])).toEqual({ asks: false });
+    fake.taint = ["github"];
+    expect(await gateOf(posting, post, [])).toEqual({
+      asks: true, timeoutSec: 600, title: `Post in #general: "${text.slice(0, 80)}"?`, input: { chat: "general", text },
     });
   });
 

@@ -231,6 +231,18 @@ describe("asksFirst", () => {
     expect(asksFirst(tool("web_fetch"), ["attachment"], auto)).toBe(true);
   });
 
+  it.each([["github"], ["attachment"], ["sandbox"], ["mcp:test"]] as const)(
+    "always asks before a post from a thread holding %s, since a channel's chat reaches any model a later thread runs", (source) => {
+      for (const rules of [ask, auto, bypass]) expect(asksFirst(roomTool("room_post", "room_post"), [source, "room"], rules)).toBe(true);
+    },
+  );
+
+  it("lets a post from a thread that holds only room chat run on its own in Auto and Bypass", () => {
+    expect(asksFirst(roomTool("room_post", "room_post"), ["room"], auto)).toBe(false);
+    expect(asksFirst(roomTool("room_post", "room_post"), ["room"], bypass)).toBe(false);
+    expect(asksFirst(roomTool("room_post", "room_post"), ["room"], ask)).toBe(true);
+  });
+
   it("runs everything in Bypass but the floor", () => {
     expect(asksFirst(tool("github_comment"), [], bypass)).toBe(false);
     expect(asksFirst(tool("web_fetch"), ["github"], bypass)).toBe(false);

@@ -2,7 +2,7 @@ import { mcpServerOf } from "../mcp/client/names.js";
 import { modelInfo, type Provider } from "../models/catalog.js";
 import { ASPECTS } from "../images/step.js";
 import type { ToolCall, ToolSpec } from "../models/gateway.js";
-import { mcpTaint, privateOf, type TaintSource } from "../models/privacy.js";
+import { isPrivate, mcpTaint, privateOf, type TaintSource } from "../models/privacy.js";
 import { LANGUAGES, MAX_TIMEOUT_SEC } from "../sandbox/sandbox.js";
 import type { Agent, ApprovalMode, ToolKind } from "../threads/types.js";
 import { findTool, roomTools, type RoomMcp } from "../tools/index.js";
@@ -132,9 +132,10 @@ export type Gated = Pick<Tool, "spec" | "write" | "destructive"> & { kind: Tool[
 const OUTBOUND = new Set<Gated["kind"]>(["web", "mcp", "images", "github"]);
 
 /**
- * Whether a call waits for a member's approval. The floor asks in every mode: before a call that deletes, and before
+ * Whether a call waits for a member's approval. The floor asks in every mode: before a call that deletes, before
  * one whose input leaves the room once the thread read room chat, since text injected into that chat could have the
- * model carry it out. Past the floor, Bypass asks nothing, and Auto lets posts and agent setup run. Otherwise a write
+ * model carry it out, and before a post from a thread holding private content, since a channel's messages are the
+ * background of any later thread there, whatever its model, and a member reads the whole post first. Past the floor, Bypass asks nothing, and Auto lets posts and agent setup run. Otherwise a write
  * asks, and so does a web, MCP or image call once the thread holds any private content but what this same MCP server
  * returned itself. A GitHub read sends its input only to the room's own repos, and memory stays in the room, so private
  * content alone never makes them ask. `taint` is the thread's, with whatever the model's turn saw that the stored taint
@@ -142,7 +143,7 @@ const OUTBOUND = new Set<Gated["kind"]>(["web", "mcp", "images", "github"]);
  */
 export function asksFirst(tool: Gated, taint: TaintSource[], { mode, sandboxInternet }: { mode: ApprovalMode; sandboxInternet: boolean }): boolean {
   const leaves = OUTBOUND.has(tool.kind) || (tool.kind === "sandbox" && sandboxInternet);
-  if (tool.destructive || (leaves && taint.includes("room"))) return true;
+  if (tool.destructive || (leaves && taint.includes("room")) || (tool.kind === "room_post" && isPrivate(taint))) return true;
   if (mode === "bypass") return false;
   if (mode === "auto" && (tool.kind === "room_post" || tool.kind === "room_agents")) return false;
   if (tool.write) return true;
