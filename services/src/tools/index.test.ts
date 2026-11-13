@@ -16,13 +16,14 @@ const noMcp = { roomId: "r1", mcp: [] };
 const names = (opts: { github: boolean; privateOk: boolean; mcp?: McpConnection[] }) =>
   roomTools({ roomId: "r1", mcp: [], ...opts }).map((t) => t.spec.name);
 const memory = ["memory_save", "memory_update", "memory_forget"];
-const roomNames = ["room_list", "room_read", "room_search", "room_members", "room_post"];
+const roomWrites = ["room_post", "agent_create", "agent_edit"];
+const roomNames = ["room_list", "room_read", "room_search", "room_members", ...roomWrites];
 const github = { installationId: 1, account: "fake-org", repos: ["fake-org/playground"], addedBy: "aman", addedAt: "2026-11-11T00:00:00Z" };
 
 describe("roomTools", () => {
   it("offers the web and memory tools always and GitHub's only with a connection and a model that may see private content", () => {
     expect(names({ github: false, privateOk: true })).toEqual(["web_search", "web_fetch", ...memory, ...roomNames]);
-    expect(names({ github: true, privateOk: false })).toEqual(["web_search", "web_fetch", ...memory, "room_post"]);
+    expect(names({ github: true, privateOk: false })).toEqual(["web_search", "web_fetch", ...memory, ...roomWrites]);
     const all = names({ github: true, privateOk: true });
     expect(all.filter((n) => n.startsWith("github_"))).toHaveLength(9);
   });
@@ -35,10 +36,10 @@ describe("roomTools", () => {
     expect(names({ github: false, privateOk: true, mcp: [conn("needs_auth")] }).some((n) => n.startsWith("mcp__"))).toBe(false);
   });
 
-  it("offers the read room tools only to a model that may see private content, and the post tool to every model", () => {
+  it("offers the read room tools only to a model that may see private content, and the room writes to every model", () => {
     expect(names({ github: false, privateOk: false })).not.toContain("room_read");
     expect(names({ github: false, privateOk: true })).toContain("room_read");
-    expect(names({ github: false, privateOk: false })).toContain("room_post");
+    expect(names({ github: false, privateOk: false })).toEqual(expect.arrayContaining(roomWrites));
   });
 
   it("finds a tool by name, the memory tools and a room's MCP tools included", () => {
@@ -46,6 +47,7 @@ describe("roomTools", () => {
     expect(findTool("memory_save", noMcp)).toMatchObject({ kind: "memory", write: false });
     expect(findTool("room_search", noMcp)).toMatchObject({ kind: "room_read", write: false });
     expect(findTool("room_post", noMcp)).toMatchObject({ kind: "room_post", write: true });
+    expect(findTool("agent_edit", noMcp)).toMatchObject({ kind: "room_agents", write: true });
     expect(findTool("sandbox_run", noMcp)).toBeUndefined();
     expect(findTool("mcp__test__echo", noMcp)).toBeUndefined();
     const room = { roomId: "r1", mcp: [conn("needs_auth")] };

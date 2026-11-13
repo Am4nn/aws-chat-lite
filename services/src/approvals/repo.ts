@@ -21,6 +21,8 @@ export type Approval = {
   requestedAt: string;
   status: ApprovalStatus;
   by?: string;
+  /** The deciding member's id, so what an approved call makes can be theirs. */
+  byId?: string;
 };
 
 const approvalKey = (runId: string, step: number) => ({ pk: `RUN#${runId}`, sk: `APPROVAL#${String(step).padStart(4, "0")}` });
@@ -59,7 +61,7 @@ export function approvalsRepo() {
 
   return {
     /** Idempotent per step: a retried request gets the item the first one stored, decided or not. */
-    async open(a: Omit<Approval, "status" | "by" | "requestedAt">): Promise<Approval> {
+    async open(a: Omit<Approval, "status" | "by" | "byId" | "requestedAt">): Promise<Approval> {
       const item: Approval = { ...a, requestedAt: new Date().toISOString(), status: "pending" };
       try {
         await db.send(new PutCommand({
@@ -83,10 +85,12 @@ export function approvalsRepo() {
       try {
         const { Attributes } = await db.send(new UpdateCommand({
           TableName, Key: approvalKey(runId, step),
-          UpdateExpression: "SET #status = :decision, #by = :by",
+          UpdateExpression: "SET #status = :decision, #by = :by, byId = :byId",
           ConditionExpression: "#status = :pending AND expiresAt > :now",
           ExpressionAttributeNames: { ...names, "#by": "by" },
-          ExpressionAttributeValues: { ":decision": status, ":by": user.username, ":pending": "pending", ":now": new Date().toISOString() },
+          ExpressionAttributeValues: {
+            ":decision": status, ":by": user.username, ":byId": user.userId, ":pending": "pending", ":now": new Date().toISOString(),
+          },
           ReturnValues: "ALL_NEW",
         }));
         return { status, by: user.username, callbackId: Attributes!.callbackId as string };

@@ -1,5 +1,6 @@
 import { deniedResult, expiredResult, unsure } from "../approvals/model.js";
 import type { Approval } from "../approvals/repo.js";
+import type { User } from "../lib/auth.js";
 import { generateImageStep, imageDeps } from "../images/step.js";
 import { sleep } from "../lib/sleep.js";
 import { mcpServerOf } from "../mcp/client/names.js";
@@ -72,8 +73,13 @@ function heldBack(tool: Gated, settled: Approval | undefined, seen: TaintSource[
 /** Where the model can see whether a write it made went through. */
 function writtenTo(tool: Tool, name: string): string {
   if (tool.kind === "mcp") return mcpServerOf(name);
+  if (tool.kind === "room_agents") return "the room's agents";
   return tool.kind === "room_post" ? "the chat" : "GitHub";
 }
+
+/** Who approved a call, from the approval that decided it; none when it ran without asking. */
+const approverOf = (settled?: Approval): User | undefined =>
+  settled?.status === "approved" && settled.byId && settled.by ? { userId: settled.byId, username: settled.by } : undefined;
 
 /** What a tool's output brings into the thread: GitHub data, a server's MCP output, or room chat. */
 function taintOf(tool: Tool, name: string): TaintSource[] {
@@ -90,7 +96,7 @@ function taintOf(tool: Tool, name: string): TaintSource[] {
  */
 async function runRoomTool(run: RoutedRun, tool: Tool, call: ToolCall, { room, settled, started, rerun, envOf, taint }: RoomCall): Promise<ToolResult> {
   const [transport, seen] = await Promise.all([envOf(process.env.TOOL_MODE, room.github ?? undefined), seenBy(run, taint)]);
-  const env = { ...transport, room: toolRoom(run, { tainted: isPrivate(seen), postCap: room.postCap }) };
+  const env = { ...transport, room: toolRoom(run, { tainted: isPrivate(seen), postCap: room.postCap }), approver: approverOf(settled) };
   const input = settled?.call.input ?? call.input;
   // Its own check comes first: a call it refuses never asked, so telling the model to call again would loop.
   const refused = (await tool.check?.(input, env)) ?? heldBack(tool, settled, seen, room);

@@ -8,10 +8,12 @@ import { requireMember, roomMembers } from "../rooms/membership.js";
 import { roomChanged } from "../live/broadcast.js";
 import { uniqueCandidates } from "../threads/model.js";
 import type { Agent } from "../threads/types.js";
-import { BUILT_IN, MAX_AGENTS, canChange } from "./model.js";
+import { BUILT_IN, MAX_AGENTS, canAgentEdit, canChange } from "./model.js";
 
 type StoredAgent = Agent & { deleted?: boolean };
-type AgentInput = Pick<Agent, "name" | "instructions" | "tools" | "model">;
+export type AgentInput = Pick<Agent, "name" | "instructions" | "tools" | "model" | "delegates">;
+/** Who an agent is from: the member who made or approved it ("" for none), and the agent that made it. */
+type Origin = Pick<Agent, "createdBy" | "createdByName" | "madeBy">;
 
 const agentKey = (roomId: string, agentId: string) => ({ pk: roomKey(roomId), sk: `AGENT#${agentId}` });
 const nameKey = (roomId: string, name: string) => ({ pk: roomKey(roomId), sk: `AGENTNAME#${name}` });
@@ -89,6 +91,74 @@ export function agentsRepo() {
     }
   }
 
+  /**
+   * `input` is already validated. A name may not be a member's username, so a mention never means two things the
+   * day it is made. With `unique` (a copy), a taken name moves on to name-2 … name-9.
+   */
+  async function add(roomId: string, input: AgentInput, origin: Origin, unique = false): Promise<Agent> {
+    const members = await usernames(roomId);
+    if (!unique && members.has(input.name)) throw new Conflict(`@${input.name} is someone's username in this room.`);
+    const now = new Date().toISOString();
+    const base = { ...input, ...origin, builtIn: false, createdAt: now, updatedAt: now };
+    const names = unique ? uniqueCandidates(input.name).filter((n) => !members.has(n)) : [input.name];
+    for (const name of names) {
+      const agent: Agent = { ...base, agentId: randomUUID(), name };
+      if (await claim(roomId, agent)) {
+        await roomChanged("agents.changed", roomId);
+        return agent;
+      }
+    }
+    throw taken(input.name);
+  }
+
+  /**
+   * `patch` is already validated, and `agent` is the live agent its caller may change. A rename moves the guard in the
+   * same transaction: the old guard goes (only while it is still this agent's), the new one is claimed (only if free),
+   * and the agent changes only if it still has the name we read, so of two renames at once only one wins.
+   */
+  async function change(roomId: string, agent: Agent, patch: Partial<AgentInput>): Promise<Agent> {
+    const { agentId } = agent;
+    const renaming = patch.name !== undefined && patch.name !== agent.name;
+    if (renaming && agent.builtIn) throw new ValidationError(BUILT_IN_REFUSAL);
+    if (renaming && (await usernames(roomId)).has(patch.name!)) throw new Conflict(`@${patch.name} is someone's username in this room.`);
+    // The built-in's first edit creates its item, and `toAgent` recognises it only by `agentId`.
+    const fields = { ...patch, updatedAt: new Date().toISOString(), ...(agent.builtIn && { agentId }) };
+    const set = setFields(fields);
+    // The built-in can't be deleted, and its item may not exist yet: the update writes it.
+    const write = {
+      TableName, Key: agentKey(roomId, agentId), ...set,
+      ...(!agent.builtIn && {
+        ConditionExpression: "attribute_exists(pk) AND attribute_not_exists(deleted) AND #name = :old",
+        ExpressionAttributeNames: { ...set.ExpressionAttributeNames, "#name": "name" },
+        ExpressionAttributeValues: { ...set.ExpressionAttributeValues, ":old": agent.name },
+      }),
+    };
+    try {
+      if (!renaming) {
+        await db.send(new UpdateCommand(write));
+      } else {
+        await db.send(new TransactWriteCommand({
+          TransactItems: [
+            {
+              Delete: {
+                TableName, Key: nameKey(roomId, agent.name), ConditionExpression: "agentId = :id",
+                ExpressionAttributeValues: { ":id": agentId },
+              },
+            },
+            { Put: { TableName, Item: { ...nameKey(roomId, patch.name!), agentId }, ConditionExpression: "attribute_not_exists(pk)" } },
+            { Update: write },
+          ],
+        }));
+      }
+    } catch (e) {
+      if (failedAt(e, 1)) throw taken(patch.name!);
+      if (conditionFailed(e) || transactionConflict(e)) throw agentChanged(agent.name);
+      throw e;
+    }
+    await roomChanged("agents.changed", roomId);
+    return toAgent({ ...agent, ...fields });
+  }
+
   return {
     byId,
 
@@ -104,73 +174,29 @@ export function agentsRepo() {
       return [builtIn, ...others];
     },
 
-    /**
-     * `input` is already validated. A name may not be a member's username, so a mention never means two things the
-     * day it is made. With `unique` (a copy), a taken name moves on to name-2 … name-9.
-     */
     async create(user: User, roomId: string, input: AgentInput, opts: { unique?: boolean } = {}): Promise<Agent> {
       await requireMember(roomId, user.userId, { writing: true });
-      const members = await usernames(roomId);
-      if (!opts.unique && members.has(input.name)) throw new Conflict(`@${input.name} is someone's username in this room.`);
-      const now = new Date().toISOString();
-      const base = { ...input, builtIn: false, createdBy: user.userId, createdByName: user.username, createdAt: now, updatedAt: now };
-      const names = opts.unique ? uniqueCandidates(input.name).filter((n) => !members.has(n)) : [input.name];
-      for (const name of names) {
-        const agent: Agent = { ...base, agentId: randomUUID(), name };
-        if (await claim(roomId, agent)) {
-          await roomChanged("agents.changed", roomId);
-          return agent;
-        }
-      }
-      throw taken(input.name);
+      return add(roomId, input, { createdBy: user.userId, createdByName: user.username }, opts.unique);
     },
 
     /**
-     * `patch` is already validated. A rename moves the guard in the same transaction: the old guard goes (only while it
-     * is still this agent's), the new one is claimed (only if free), and the agent changes only if it still has the name
-     * we read, so of two renames at once only one wins.
+     * An agent's own create, with the room its run belongs to. The member who approved it owns it as if they had made
+     * it; one the room's mode let through has no owner but admins and, through its edits, the agent that made it.
      */
+    async createByAgent(roomId: string, input: AgentInput, madeBy: { agentId: string; name: string }, approver?: User): Promise<Agent> {
+      return add(roomId, input, { createdBy: approver?.userId ?? "", createdByName: approver?.username ?? "", madeBy });
+    },
+
     async update(user: User, roomId: string, agentId: string, patch: Partial<AgentInput>): Promise<Agent> {
-      const agent = await changeable(user, roomId, agentId);
-      const renaming = patch.name !== undefined && patch.name !== agent.name;
-      if (renaming && agent.builtIn) throw new ValidationError(BUILT_IN_REFUSAL);
-      if (renaming && (await usernames(roomId)).has(patch.name!)) throw new Conflict(`@${patch.name} is someone's username in this room.`);
-      // The built-in's first edit creates its item, and `toAgent` recognises it only by `agentId`.
-      const fields = { ...patch, updatedAt: new Date().toISOString(), ...(agent.builtIn && { agentId }) };
-      const set = setFields(fields);
-      // The built-in can't be deleted, and its item may not exist yet: the update writes it.
-      const write = {
-        TableName, Key: agentKey(roomId, agentId), ...set,
-        ...(!agent.builtIn && {
-          ConditionExpression: "attribute_exists(pk) AND attribute_not_exists(deleted) AND #name = :old",
-          ExpressionAttributeNames: { ...set.ExpressionAttributeNames, "#name": "name" },
-          ExpressionAttributeValues: { ...set.ExpressionAttributeValues, ":old": agent.name },
-        }),
-      };
-      try {
-        if (!renaming) {
-          await db.send(new UpdateCommand(write));
-        } else {
-          await db.send(new TransactWriteCommand({
-            TransactItems: [
-              {
-                Delete: {
-                  TableName, Key: nameKey(roomId, agent.name), ConditionExpression: "agentId = :id",
-                  ExpressionAttributeValues: { ":id": agentId },
-                },
-              },
-              { Put: { TableName, Item: { ...nameKey(roomId, patch.name!), agentId }, ConditionExpression: "attribute_not_exists(pk)" } },
-              { Update: write },
-            ],
-          }));
-        }
-      } catch (e) {
-        if (failedAt(e, 1)) throw taken(patch.name!);
-        if (conditionFailed(e) || transactionConflict(e)) throw agentChanged(agent.name);
-        throw e;
-      }
-      await roomChanged("agents.changed", roomId);
-      return toAgent({ ...agent, ...fields });
+      return change(roomId, await changeable(user, roomId, agentId), patch);
+    },
+
+    /** An agent's own edit, of an agent it made. */
+    async updateByAgent(roomId: string, agentId: string, patch: Partial<AgentInput>, editorId: string): Promise<Agent> {
+      const agent = await byId(roomId, agentId);
+      if (!agent || agent.deleted) throw new NotFound("No such agent.");
+      if (!canAgentEdit(agent, editorId)) throw new Forbidden("An agent can edit only the agents it created, never itself.");
+      return change(roomId, agent, patch);
     },
 
     /** Soft: the item stays for the threads that name it, while the name and the slot under the cap are freed. */

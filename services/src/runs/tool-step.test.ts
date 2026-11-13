@@ -18,6 +18,7 @@ const audit = { record: vi.fn() };
 const fake = vi.hoisted(() => ({
   mcp: [] as unknown[], addTaint: vi.fn(async () => {}), runSandbox: vi.fn(async () => ({ ok: true, output: "4", ms: 5 })),
   mode: "ask", internet: false, taint: [] as string[], send: vi.fn(),
+  createByAgent: vi.fn(async (_roomId: string, input: { name: string }) => input),
 }));
 vi.mock("./repo.js", () => ({ runsRepo: () => runs }));
 vi.mock("./notify.js", () => ({ notifyRun: async () => {} }));
@@ -44,6 +45,7 @@ vi.mock("../rooms/repo.js", () => ({
   }),
 }));
 vi.mock("../chat/repo.js", () => ({ chatRepo: () => ({ send: fake.send }) }));
+vi.mock("../agents/repo.js", () => ({ agentsRepo: () => ({ list: async () => [BUILT_IN], createByAgent: fake.createByAgent }) }));
 
 process.env.MODEL_GATEWAY = "fake";
 
@@ -168,6 +170,33 @@ describe("toolStep", () => {
     expect(fake.send).not.toHaveBeenCalled();
     expect(appended.find((e) => e.type === "step.finished")).toMatchObject({
       ok: false, output: "This write may or may not have happened (the step was interrupted). Check the chat before trying again.",
+    });
+  });
+
+  describe("an agent call", () => {
+    const maker = { ...run, agent: { ...BUILT_IN, tools: ["room_agents" as const] } };
+    const call = { id: "c1", name: "agent_create", input: { name: "helper", tools: [] } };
+
+    it("carries its approver when approved, and none when the room's mode ran it without asking", async () => {
+      const approved = { ...deniedBy("bea", call), status: "approved" as const, byId: "u-bea" };
+      await toolStep(maker, call, approved);
+      expect(fake.createByAgent).toHaveBeenLastCalledWith("r1", expect.objectContaining({ name: "helper" }), { agentId: "agent", name: "agent" }, {
+        userId: "u-bea", username: "bea",
+      });
+      fake.mode = "auto";
+      await toolStep(maker, call);
+      expect(fake.createByAgent).toHaveBeenLastCalledWith("r1", expect.anything(), expect.anything(), undefined);
+    });
+
+    it("is never made twice: a step found already started tells the model to check the room's agents", async () => {
+      runs.allEvents.mockResolvedValueOnce([{ type: "step.started", step: 1, call, detail: "@helper", seq: 5, at: "2026-11-12T00:00:00.000Z" }]);
+      fake.mode = "auto";
+      const appended = logged();
+      await toolStep(maker, call);
+      expect(fake.createByAgent).not.toHaveBeenCalled();
+      expect(appended.find((e) => e.type === "step.finished")).toMatchObject({
+        ok: false, output: "This write may or may not have happened (the step was interrupted). Check the room's agents before trying again.",
+      });
     });
   });
 

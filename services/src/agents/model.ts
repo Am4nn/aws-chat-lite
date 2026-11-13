@@ -2,7 +2,7 @@ import { CODE } from "../chat/mentions.js";
 import { ValidationError } from "../lib/errors.js";
 import { parsePick } from "../models/picks.js";
 import { can, type Role } from "../rooms/access.js";
-import type { Agent, AgentModel, ToolKind } from "../threads/types.js";
+import type { Agent, AgentModel, Delegates, ToolKind } from "../threads/types.js";
 
 /** Besides the built-in `@agent`. */
 export const MAX_AGENTS = 20;
@@ -12,7 +12,7 @@ const NAME = /^[a-z][a-z0-9-]{1,31}$/;
 const RESERVED = new Set(["agent", "everyone", "schedule"]);
 const BASE_KINDS: ToolKind[] = ["github", "images", "mcp", "sandbox", "web"];
 export const ROOM_KINDS: ToolKind[] = ["room_agents", "room_post", "room_read"];
-const KINDS: ToolKind[] = [...BASE_KINDS, ...ROOM_KINDS].sort();
+export const KINDS: ToolKind[] = [...BASE_KINDS, ...ROOM_KINDS].sort();
 
 /**
  * Virtual until an admin edits it, so every room has it without a write at room creation. The first line of its role
@@ -52,6 +52,29 @@ export function agentModel(raw: unknown, stage: string): AgentModel {
 export function canChange(agent: Agent, actor: { userId: string; role: Role }): boolean {
   return can("manageAgents", actor.role) || (!agent.builtIn && agent.createdBy === actor.userId);
 }
+
+export const delegatesTo = (agent: Pick<Agent, "delegates">, agentId: string): boolean =>
+  agent.delegates === undefined || agent.delegates === "all" || agent.delegates.includes(agentId);
+
+/**
+ * Why an agent may not give an agent these kinds and delegates, or null. It gives only what it has itself, so nothing
+ * it makes or edits can do more than it can; `names` turns a delegate's id into the name the refusal shows.
+ */
+export function grantRefusal(
+  creator: { name: string; tools: ToolKind[]; delegates: Delegates }, asked: { tools: ToolKind[]; delegates: Delegates },
+  names: (agentId: string) => string,
+): string | null {
+  const kinds = asked.tools.filter((k) => !creator.tools.includes(k));
+  const delegates = asked.delegates === "all"
+    ? creator.delegates === "all" ? [] : ["any agent"]
+    : asked.delegates.filter((id) => !delegatesTo(creator, id)).map((id) => `@${names(id)}`);
+  const missing = [...kinds, ...delegates];
+  return missing.length ? `@${creator.name} can't give what it doesn't have: ${missing.join(", ")}. Ask a member to add it by hand.` : null;
+}
+
+/** An agent edits only the agents it made: never itself, a person's, another agent's or the built-in. */
+export const canAgentEdit = (target: Agent & { deleted?: boolean }, agentId: string): boolean =>
+  !target.builtIn && !target.deleted && target.madeBy?.agentId === agentId && target.agentId !== agentId;
 
 /** An agent copied into another room keeps only the kinds that room offers. */
 export function mapKinds(kinds: ToolKind[], available: ToolKind[]): { kept: ToolKind[]; dropped: ToolKind[] } {

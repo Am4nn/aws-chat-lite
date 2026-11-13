@@ -37,6 +37,18 @@ describe("decide", () => {
     });
   });
 
+  it("stores who approved by id as well as name, so what the call makes can be theirs", async () => {
+    const send = fakeTable((c) => {
+      if (isMember(c)) return { Item: { role: "member" } };
+      if (c instanceof GetCommand) return { Item: { ...stored, status: "pending" } };
+      return { Attributes: { ...stored, by: "bea", byId: "u2" } };
+    });
+    await approvalsRepo().decide(bea, "run1", 3, "approve");
+    const [update] = updates(send);
+    expect(update.input.UpdateExpression).toBe("SET #status = :decision, #by = :by, byId = :byId");
+    expect(update.input.ExpressionAttributeValues).toMatchObject({ ":decision": "approved", ":by": "bea", ":byId": "u2" });
+  });
+
   it("names the winner when someone decided first", async () => {
     fakeTable((c) => {
       if (isMember(c)) return { Item: { role: "member" } };
