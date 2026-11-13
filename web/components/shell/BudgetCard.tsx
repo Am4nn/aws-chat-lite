@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type KeyboardEvent } from "react";
+import { useRef, useState, type KeyboardEvent } from "react";
 import { Pencil } from "lucide-react";
 import { bff, errorText } from "@/lib/client/bff";
 import { budgetFill, formatUsd, resetsOn } from "@/lib/client/format";
@@ -11,18 +11,19 @@ import { Hint } from "@/components/ui/Hint";
 
 /**
  * What the room's agents have spent this month against its cap. This is the app's only progress bar: money is the
- * one thing with a known total. The owner edits the cap in place.
+ * one thing with a known total. The owner edits the cap in place; Escape puts it back.
  */
 export function BudgetCard({ roomId, isOwner }: { roomId: string; isOwner: boolean }) {
   const toast = useToast();
   const { budget, setBudget } = useThreads();
   const [draft, setDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const cancelled = useRef(false);
   const fill = budgetFill(budget);
 
   async function save() {
     const capUsd = Number(draft);
-    if (!draft?.trim() || Number.isNaN(capUsd)) return setDraft(null);
+    if (!draft?.trim() || Number.isNaN(capUsd) || Math.round(capUsd * 1_000_000) === budget.capMicros) return setDraft(null);
     setSaving(true);
     try {
       setBudget((await bff<{ budget: Budget }>(`/bff/api/rooms/${roomId}/budget`, { method: "PUT", body: { capUsd } })).budget);
@@ -35,12 +36,23 @@ export function BudgetCard({ roomId, isOwner }: { roomId: string; isOwner: boole
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") void save();
+    // Leaving the field saves, so a click elsewhere or a phone keyboard's Done keeps what was typed too.
+    if (e.key === "Enter") e.currentTarget.blur();
     if (e.key === "Escape") {
       // Handled here, so the phone drawer around the sidebar stays open.
       e.preventDefault();
-      setDraft(null);
+      cancelled.current = true;
+      e.currentTarget.blur();
     }
+  }
+
+  function onBlur() {
+    if (saving) return;
+    if (cancelled.current) {
+      cancelled.current = false;
+      return setDraft(null);
+    }
+    void save();
   }
 
   return (
@@ -64,7 +76,7 @@ export function BudgetCard({ roomId, isOwner }: { roomId: string; isOwner: boole
                 disabled={saving}
                 onChange={(e) => setDraft(e.target.value.replace(/[^\d.]/g, ""))}
                 onKeyDown={onKeyDown}
-                onBlur={() => !saving && setDraft(null)}
+                onBlur={onBlur}
                 className="h-6 w-12 rounded-md border border-line-hover bg-ink px-1 text-right text-xs tabular-nums outline-none disabled:opacity-60"
               />
             </span>
