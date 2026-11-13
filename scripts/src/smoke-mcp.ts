@@ -349,10 +349,11 @@ export async function mcpChecks(stamp: number, owner: Person, guest: Person) {
     await A.click('a[aria-label="Connected apps"]');
     const inShell = await until(A, (path) => location.pathname === path && !!document.querySelector('nav[aria-label="Room"]')
       && document.querySelector("main h1")?.textContent === "Connected apps", appsPath, 15_000);
-    const listed = await until(A, () => {
+    // Locally the emulator, not the web app, serves /mcp, so the command names its address.
+    const listed = await until(A, (url) => {
       const text = document.querySelector("main")!.innerText;
-      return text.includes("smoke-client") && text.includes(`claude mcp add --transport http chat-lite ${location.origin}/mcp`);
-    });
+      return text.includes("smoke-client") && text.includes(`claude mcp add --transport http chat-lite ${url}`);
+    }, mcpUrl.href);
     const appsPhone = await A.browserContext().newPage();
     await appsPhone.setViewport(PHONE);
     await appsPhone.goto(`${WEB}${appsPath}`, { waitUntil: "networkidle0" });

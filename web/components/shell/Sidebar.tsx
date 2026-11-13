@@ -170,11 +170,12 @@ function ArchivedChats({ holdsActive, count, children }: { holdsActive: boolean;
           <motion.ul
             id={listId}
             aria-label="Archived chats"
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
+            // Clipped only while it grows or shrinks: once open, a row's menu has to reach past it.
+            initial={{ height: 0, opacity: 0, overflow: "hidden" }}
+            animate={{ height: "auto", opacity: 1, transitionEnd: { overflow: "visible" } }}
+            exit={{ height: 0, opacity: 0, overflow: "hidden" }}
             transition={reduced ? instant : { duration: dur.fast, ease: easeOut }}
-            className="flex flex-col gap-1 overflow-hidden"
+            className="flex flex-col gap-1"
           >
             {children}
           </motion.ul>
@@ -204,11 +205,24 @@ function CountBadge({ mention = false, ref, children }: { mention?: boolean; ref
   );
 }
 
+/** A menu row's height and the menu's padding and border, to tell whether it fits below its row. */
+const MENU_ITEM = 32;
+const MENU_GAP = 44;
+
 function RowMenu({ name, actions }: { name: string; actions: MenuAction[] }) {
   const reduced = useReducedMotion();
   const [open, setOpen] = useState(false);
+  const [up, setUp] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
+
+  // The sidebar scrolls, so a menu that doesn't fit below its row would be cut off; it opens upward instead.
+  function toggle() {
+    const nav = button.current?.closest("nav")?.getBoundingClientRect();
+    const row = button.current?.getBoundingClientRect();
+    if (nav && row) setUp(nav.bottom - row.bottom < actions.length * MENU_ITEM + MENU_GAP);
+    setOpen(!open);
+  }
   useClickOutside(ref, open, () => setOpen(false));
   useEscape(open, () => {
     setOpen(false);
@@ -222,7 +236,7 @@ function RowMenu({ name, actions }: { name: string; actions: MenuAction[] }) {
         aria-label={`Options for #${name}`}
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => setOpen(!open)}
+        onClick={toggle}
         className="grid size-7 place-items-center rounded-md text-text-3 opacity-0 transition-[opacity,background-color,color,scale] hover:bg-surface-3 hover:text-text focus-visible:opacity-100 active:scale-90 aria-expanded:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
       >
         <MoreHorizontal aria-hidden="true" size={15} />
@@ -231,12 +245,12 @@ function RowMenu({ name, actions }: { name: string; actions: MenuAction[] }) {
         {open && (
           <motion.div
             role="menu"
-            initial={{ opacity: 0, scale: 0.95, y: -4 }}
+            initial={{ opacity: 0, scale: 0.95, y: up ? 4 : -4 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, transition: reduced ? instant : { duration: dur.fast } }}
             transition={reduced ? instant : { duration: dur.fast, ease: easeOut }}
-            style={{ transformOrigin: "top right" }}
-            className="absolute right-0 top-8 z-30 w-40 rounded-xl border border-line-strong bg-surface-2 p-1 shadow-menu"
+            style={{ transformOrigin: up ? "bottom right" : "top right" }}
+            className={`absolute right-0 ${up ? "bottom-8" : "top-8"} z-30 w-40 rounded-xl border border-line-strong bg-surface-2 p-1 shadow-menu`}
           >
             {actions.map(({ label, icon: Icon, run }, i) => (
               <button

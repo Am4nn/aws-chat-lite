@@ -40,6 +40,16 @@ export function tagNumbers(text: string): number[] {
 }
 
 /**
+ * What a thread is handed of a message delivered into it: the text without the tags that lead or end it, which only
+ * said where it goes and, read by the thread's agent, look like an issue or pull request number. A tag inside a
+ * sentence is part of what was said, so it stays.
+ */
+export function copyText(text: string, numbers: number[]): string {
+  const tag = `#(?:${numbers.join("|")})(?![\\w-])`;
+  return text.replace(new RegExp(`^(?:\\s*${tag}[\\s,]*)+|(?:[\\s,]*${tag})+[\\s.,]*$`, "g"), "").trim();
+}
+
+/**
  * Turns each thread `#name` into its `#number`, which stays right after the thread is renamed. Code is left as
  * written, and a name `resolve` doesn't know (a chat's, or no thread's) stays a name.
  */
@@ -99,6 +109,8 @@ export async function routeSend(user: User, input: SendInput): Promise<{ message
   const ownThread = await threads.threadById(roomId, chatId);
   const targets = ownThread ? [] : await deliveryTargets(threads, roomId, input.threadId, ready.text);
   const agentThreads = ownThread ? [ownThread] : targets;
+  const handed: Admitted = { ...ready, text: copyText(ready.text, targets.map((t) => t.number)) };
+  if (targets.length && !handed.text && !handed.attachments.length) throw new ValidationError("Add a message after the tag.");
   const mentioned = !agentThreads.length && ready.text.includes("@") ? mentionedAgents(ready.text, await agentsRepo().list(roomId))[0] ?? null : null;
   if (agentThreads.length || mentioned) {
     const refusal = pickRefusal(pick, mergeTaint(...agentThreads.map((t) => t.taint), messageTaint(admitted)));
@@ -122,7 +134,7 @@ export async function routeSend(user: User, input: SendInput): Promise<{ message
         // deletion still reaches) the copies before it.
         const delivered: { threadId: string; seq: number }[] = [];
         for (const target of targets) {
-          const copy = await chat.send(user, { roomId, chatId: target.threadId, clientId: copyId, text: ready.text }, ready, { copy: true });
+          const copy = await chat.send(user, { roomId, chatId: target.threadId, clientId: copyId, text: handed.text }, handed, { copy: true });
           await broadcastToRoom(roomId, { type: "message.new", message: copy });
           await startOrSteer(user, roomId, target.threadId, copy, pick);
           delivered.push({ threadId: target.threadId, seq: copy.seq });

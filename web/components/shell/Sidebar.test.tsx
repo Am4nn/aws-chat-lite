@@ -62,6 +62,25 @@ describe("Sidebar chats", () => {
     expect(onArchive).toHaveBeenCalledWith(CHATS[2], false);
   });
 
+  it("opens a row's menu upward when the sidebar has no room for it below, so Unarchive isn't cut off", () => {
+    sidebar({ canManage: true, activeChatId: "c3" });
+    const nav = screen.getByRole("navigation", { name: "Room" });
+    nav.getBoundingClientRect = () => ({ top: 0, bottom: 500 }) as DOMRect;
+    const button = screen.getByRole("button", { name: "Options for #old" });
+    button.getBoundingClientRect = () => ({ top: 440, bottom: 468 }) as DOMRect;
+    fireEvent.click(button);
+    expect(screen.getByRole("menu").className).toContain("bottom-8");
+    fireEvent.click(button);
+    button.getBoundingClientRect = () => ({ top: 100, bottom: 128 }) as DOMRect;
+    fireEvent.click(button);
+    expect(screen.getAllByRole("menu").at(-1)!.className).toContain("top-8");
+  });
+
+  it("lets the open Archived list's menus overflow it once it has opened", () => {
+    sidebar({ canManage: true, activeChatId: "c3" });
+    expect(screen.getByRole("list", { name: "Archived chats" }).className).not.toContain("overflow-hidden");
+  });
+
   it("opens the Archived list when the open chat is in it", () => {
     sidebar({ canManage: true, activeChatId: "c3" });
     expect(screen.getByRole("list", { name: "Archived chats" })).toBeTruthy();

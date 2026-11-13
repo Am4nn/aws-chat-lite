@@ -3,7 +3,7 @@ import { BUILT_IN } from "../agents/model.js";
 import { ValidationError } from "../lib/errors.js";
 import { PICK_REFUSED } from "../models/privacy.js";
 import { startOrSteer } from "../runs/start.js";
-import { rewriteTags, routeSend, tagNames, tagNumbers } from "./route.js";
+import { copyText, rewriteTags, routeSend, tagNames, tagNumbers } from "./route.js";
 
 const chat = { admit: vi.fn(), send: vi.fn(), linkThread: vi.fn() };
 const threads = { threadById: vi.fn(), threadByTag: vi.fn(), createThread: vi.fn() };
@@ -23,6 +23,19 @@ describe("rewriteTags", () => {
     const resolve = () => 7;
     expect(rewriteTags("`#pr-check` #12 a#pr-check", resolve)).toBe("`#pr-check` #12 a#pr-check");
     expect(rewriteTags("#PR-Check, then #pr-check.", (n) => (n === "pr-check" ? 4 : null))).toBe("#4, then #4.");
+  });
+});
+
+describe("copyText", () => {
+  it("drops the tags that lead or end the message, which only said where it goes", () => {
+    expect(copyText("#4 please check", [4])).toBe("please check");
+    expect(copyText("please check, #4", [4])).toBe("please check");
+    expect(copyText("#1 #2, compare them", [1, 2])).toBe("compare them");
+  });
+  it("keeps a tag inside a sentence, and one that sends the message nowhere", () => {
+    expect(copyText("see #4 when you can", [4])).toBe("see #4 when you can");
+    expect(copyText("#9 please check", [4])).toBe("#9 please check");
+    expect(copyText("#4", [4])).toBe("");
   });
 });
 
@@ -89,6 +102,22 @@ describe("routeSend: thread tags in a people chat", () => {
     await send("@agent look at #1");
     expect(threads.createThread).not.toHaveBeenCalled();
     expect(copiedInto()).toEqual(["t1"]);
+  });
+
+  it("hands each thread the message without the tags that only sent it there", async () => {
+    await send("#2 #pr-check what changed?");
+    expect(chat.send.mock.calls.filter(([, , , o]) => o?.copy).map(([, i]) => i.text)).toEqual(["what changed?", "what changed?"]);
+  });
+
+  it("refuses a message that is only thread tags, before storing anything", async () => {
+    await expect(send("#2 #pr-check")).rejects.toThrow(new ValidationError("Add a message after the tag."));
+    expect(chat.send).not.toHaveBeenCalled();
+  });
+
+  it("delivers a file sent with only a tag", async () => {
+    chat.admit.mockImplementation(async (_u, i: { text: string }) => ({ text: i.text, attachments: [{ key: "k", name: "a.png", size: 1, type: "image/png" }] }));
+    await send("#2");
+    expect(copiedInto()).toEqual(["t2"]);
   });
 
   it("a send with no thread tag delivers nothing", async () => {
