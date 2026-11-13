@@ -12,3 +12,8 @@ export function AgentAvatar({ size = 26 }: { size?: number }) {
     </span>
   );
 }
+
+/** A quiet tag after an agent's name, so its words never pass for a person's. */
+export function AiTag() {
+  return <span className="shrink-0 self-center rounded bg-surface-3 px-[5px] font-mono text-[10px] font-normal leading-4 text-text-2">AI</span>;
+}

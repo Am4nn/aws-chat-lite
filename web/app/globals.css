@@ -36,6 +36,9 @@
   --color-danger-line: #4a2a26;
   --color-danger-wash: #150f0e;
 
+  /* My own bubbles in a thread, where everyone's messages sit on the right: lime mixed in thinly, so mine reads apart without a new hue. */
+  --color-me-bubble: color-mix(in srgb, var(--color-lime) 7%, var(--color-surface-3));
+
   /* Role shades kept apart from the scale above: a step's raw output reads dimmer than prose, and the run map and quote bar keep their own tints. */
   --color-output: #0f1213;
   --color-output-text: #b7c2c1;

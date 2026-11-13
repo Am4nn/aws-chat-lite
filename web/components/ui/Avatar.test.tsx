@@ -15,4 +15,15 @@ describe("Avatar", () => {
     cleanup();
     expect(letters("aman")).toBe("a");
   });
+
+  it("gives each name one colour pair, a muted ground with its initials in a lighter shade of it", () => {
+    const style = (name: string) => (render(<Avatar name={name} />).container.firstChild as HTMLElement).style;
+    const kira = style("kira");
+    expect(kira.background).not.toBe("");
+    expect(kira.color).not.toBe("");
+    expect(kira.color).not.toBe(kira.background);
+    cleanup();
+    const again = style("kira");
+    expect([again.background, again.color]).toEqual([kira.background, kira.color]);
+  });
 });

@@ -37,28 +37,77 @@ export type RowActions = {
   discard: (clientId: string) => void;
 };
 
-/** `joinsAbove`/`joinsBelow`: the next row up or down is in my group and also mentions me, so the highlight runs on. */
+/** `groupStart`/`groupEnd`: the row opens or closes a run of one person's messages. */
 type Props = {
   rowKey: string; message: Message; status: Row["status"]; ctx: RowContext; actions: RowActions;
-  groupStart: boolean; joinsAbove: boolean; joinsBelow: boolean; enter: boolean; flash?: number; editing: boolean; active: boolean;
+  groupStart: boolean; groupEnd: boolean; enter: boolean; flash?: number; editing: boolean; active: boolean;
   onActivate: (key: string) => void;
 };
 
-/** One radius class per case: Tailwind orders radius classes by value, not by source order, so two would fight. */
-const radius = (above: boolean, below: boolean) =>
-  above && below ? "" : above ? "rounded-b-[10px]" : below ? "rounded-t-[10px]" : "rounded-[10px]";
+/**
+ * A bubble's sharp corner points at its sender. Later bubbles in a group are flatter on that side too, so the run reads as one
+ * stack. One radius class per case: Tailwind orders radius classes by value, not by source order, so two would fight.
+ */
+const shape = (mine: boolean, groupStart: boolean) => mine
+  ? groupStart ? "rounded-[16px_16px_6px_16px]" : "rounded-[16px_6px_6px_16px]"
+  : groupStart ? "rounded-[16px_16px_16px_6px]" : "rounded-[6px_16px_16px_6px]";
 
 /**
- * Memoised on plain props (the message object keeps its identity until it changes), so a busy chat re-renders, and
- * re-parses the markdown of, only the rows that changed.
+ * A chat-app layout: my messages are bubbles on the right with the time under the group, everyone else's sit on the
+ * left under their avatar and name. Memoised on plain props (the message object keeps its identity until it changes),
+ * so a busy chat re-renders, and re-parses the markdown of, only the rows that changed.
  */
 export const MessageRow = memo(function MessageRow({
-  rowKey, message: m, status, ctx, actions, groupStart, joinsAbove, joinsBelow, enter, flash, editing, active, onActivate,
+  rowKey, message: m, status, ctx, actions, groupStart, groupEnd, enter, flash, editing, active, onActivate,
 }: Props) {
   const reduced = useReducedMotion();
   const time = clockTime(m.createdAt, ctx.timeZone);
+  const mine = m.authorId === ctx.meId;
   const forMe = mentionsMe(m, ctx.meId);
   const settled = !status;
+  const quote = !m.deleted && m.replyTo;
+  const hoverTime = (
+    <time dateTime={m.createdAt} title={time} className="block shrink-0 font-mono text-[10.5px] leading-5 text-text-3 opacity-0 transition-opacity group-hover:opacity-100">
+      {time.split(" ")[0]}
+    </time>
+  );
+
+  const bubble = (m.deleted || m.text || quote) && (
+    <div className={`min-w-0 px-[13px] py-2 ${shape(mine, groupStart)} ${forMe ? "bg-amber-wash" : mine ? "bg-surface-3" : "bg-surface-2"}`}>
+      {quote && (
+        <button
+          onClick={() => actions.jump(quote.seq)}
+          className="mb-0.5 flex max-w-full items-center gap-1.5 text-left text-[12.5px] text-text-3 transition-[color,opacity] hover:text-text-2 active:opacity-70"
+        >
+          <CornerUpLeft aria-hidden="true" size={12} className="shrink-0" />
+          <span className="shrink-0 font-medium text-text-2">{quote.authorName}</span>
+          <span className="truncate">{quote.excerpt || "Message deleted"}</span>
+        </button>
+      )}
+      <Body message={m} members={ctx.members} />
+    </div>
+  );
+  // Under the bubble, on the sender's side: what came of the message and what people made of it.
+  const below = (
+    <>
+      {/* Previews fill their container, so they get a fixed column rather than shrinking to fit around nothing. */}
+      {!m.deleted && m.attachments.length > 0 && (
+        <div className="w-[320px] max-w-full"><MessageAttachments attachments={m.attachments} onExpired={() => actions.refetch(m.seq)} /></div>
+      )}
+      {m.threadRef && !m.deleted && (
+        <ThreadRef threadRef={m.threadRef} roomId={m.roomId} readOnly={ctx.readOnly} onReply={actions.replyInThread} />
+      )}
+      {!m.deleted && settled && <Reactions message={m} meId={ctx.meId} members={ctx.members} readOnly={ctx.readOnly} onReact={actions.react} />}
+      {status === "failed" && (
+        <div className="mt-1 flex items-center gap-2 text-[12px]">
+          <CircleAlert aria-hidden="true" size={13} className="text-amber" />
+          <span className="text-amber">Not sent</span>
+          <button onClick={() => actions.retry(m.clientId!)} className="text-text-2 underline-offset-2 transition-[color,opacity] hover:text-text hover:underline active:opacity-70">Retry</button>
+          <button onClick={() => actions.discard(m.clientId!)} className="text-text-3 underline-offset-2 transition-[color,opacity] hover:text-text-2 hover:underline active:opacity-70">Discard</button>
+        </div>
+      )}
+    </>
+  );
 
   return (
     <motion.div
@@ -69,9 +118,7 @@ export const MessageRow = memo(function MessageRow({
       animate={{ opacity: status === "pending" ? 0.6 : 1, y: 0 }}
       transition={reduced ? instant : { duration: 0.2, ease: easeOut }}
       onPointerUp={(e) => e.pointerType === "touch" && onActivate(rowKey)}
-      className={`group relative ${radius(joinsAbove, joinsBelow)} px-3 transition-colors ${groupStart ? "mt-3 pb-px pt-1" : "py-px"} ${
-        editing ? "bg-surface-2" : forMe ? "bg-amber-wash" : "hover:bg-surface-2"
-      }`}
+      className={`group relative rounded-[10px] px-3 py-px transition-colors ${groupStart ? "mt-3" : ""} ${editing ? "bg-surface-2" : ""}`}
     >
       {flash !== undefined && (
         <motion.span
@@ -83,46 +130,35 @@ export const MessageRow = memo(function MessageRow({
           className="pointer-events-none absolute inset-0 rounded-[10px] bg-lime-flash"
         />
       )}
-      <div className="relative flex gap-3">
-        <div className="w-8 shrink-0">
-          {groupStart
-            ? <span className="mt-0.5 block"><Avatar name={m.authorName} size={32} /></span>
-            : <time dateTime={m.createdAt} title={time} className="block pt-px text-right font-mono text-[10.5px] leading-5 text-text-3 opacity-0 transition-opacity group-hover:opacity-100">{time.split(" ")[0]}</time>}
-        </div>
-        <div className="min-w-0 flex-1">
-          {groupStart && (
-            <div className="flex items-baseline gap-2">
-              <span className="text-[13.5px] font-semibold">{m.authorName}</span>
-              <time dateTime={m.createdAt} className="font-mono text-[11px] text-text-3">{time}</time>
-              {forMe && <span aria-label="Mentions you" title="Mentions you" className="font-mono text-[11px] font-semibold text-amber">@</span>}
+      {mine
+        ? (
+          <div className="relative flex flex-col items-end">
+            <div className="flex max-w-[78%] items-end gap-2">
+              {!groupEnd && hoverTime}
+              {bubble}
             </div>
-          )}
-          {m.replyTo && !m.deleted && (
-            <button
-              onClick={() => actions.jump(m.replyTo!.seq)}
-              className="mb-0.5 mt-1 flex max-w-full items-center gap-1.5 text-left text-[12.5px] text-text-3 transition-[color,opacity] hover:text-text-2 active:opacity-70"
-            >
-              <CornerUpLeft aria-hidden="true" size={12} className="shrink-0" />
-              <span className="shrink-0 font-medium text-text-2">{m.replyTo.authorName}</span>
-              <span className="truncate">{m.replyTo.excerpt || "Message deleted"}</span>
-            </button>
-          )}
-          <Body message={m} members={ctx.members} />
-          {!m.deleted && <MessageAttachments attachments={m.attachments} onExpired={() => actions.refetch(m.seq)} />}
-          {m.threadRef && !m.deleted && (
-            <ThreadRef threadRef={m.threadRef} roomId={m.roomId} readOnly={ctx.readOnly} onReply={actions.replyInThread} />
-          )}
-          {!m.deleted && settled && <Reactions message={m} meId={ctx.meId} members={ctx.members} readOnly={ctx.readOnly} onReact={actions.react} />}
-          {status === "failed" && (
-            <div className="mt-1 flex items-center gap-2 text-[12px]">
-              <CircleAlert aria-hidden="true" size={13} className="text-amber" />
-              <span className="text-amber">Not sent</span>
-              <button onClick={() => actions.retry(m.clientId!)} className="text-text-2 underline-offset-2 transition-[color,opacity] hover:text-text hover:underline active:opacity-70">Retry</button>
-              <button onClick={() => actions.discard(m.clientId!)} className="text-text-3 underline-offset-2 transition-[color,opacity] hover:text-text-2 hover:underline active:opacity-70">Discard</button>
+            {below}
+            {groupEnd && <time dateTime={m.createdAt} className="px-1 pt-0.5 font-mono text-[10.5px] text-text-4">{time}</time>}
+          </div>
+        )
+        : (
+          <div className="relative flex gap-2">
+            <div className="flex w-7 shrink-0 justify-end">
+              {groupStart ? <span className="mt-px"><Avatar name={m.authorName} size={28} /></span> : hoverTime}
             </div>
-          )}
-        </div>
-      </div>
+            <div className="flex min-w-0 flex-1 flex-col items-start">
+              {groupStart && (
+                <div className="flex items-baseline gap-[7px] px-1 pb-0.5">
+                  <span className="text-[12.5px] font-semibold text-text-2">{m.authorName}</span>
+                  <time dateTime={m.createdAt} className="font-mono text-[11px] text-text-3">{time}</time>
+                  {forMe && <span aria-label="Mentions you" title="Mentions you" className="font-mono text-[11px] font-semibold text-amber">@</span>}
+                </div>
+              )}
+              <div className="max-w-[85%]">{bubble}</div>
+              {below}
+            </div>
+          </div>
+        )}
       {settled && !m.deleted && !ctx.readOnly && <Toolbar message={m} ctx={ctx} actions={actions} pinned={active} />}
     </motion.div>
   );

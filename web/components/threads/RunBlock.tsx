@@ -14,6 +14,7 @@ import type { PendingMessage } from "@/lib/client/timeline";
 import { useRunStream } from "@/lib/client/useRunStream";
 import { dur, easeOut, instant, spring } from "@/lib/motion";
 import type { Message, RunEndStatus } from "@/lib/types";
+import { AgentAvatar, AiTag } from "@/components/ui/AgentAvatar";
 import { Spinner } from "@/components/ui/Spinner";
 import { AnswerText } from "./AnswerText";
 import { ApprovalCard } from "./ApprovalCard";
@@ -24,6 +25,8 @@ import { RunningArc, StepRow } from "./StepRow";
 type Props = {
   roomId: string;
   runId: string;
+  /** The label of the agent that answers. */
+  agent: string;
   /** The stored answer. Without one the run is shown from its live stream. */
   answer?: Message;
   steers: Message[];
@@ -48,7 +51,7 @@ const ENDINGS: Record<Exclude<RunEndStatus, "done">, { label: string; icon: type
  * answer word by word. Once its answer is stored the rows fold into a "N steps" toggle (keyed by run, this is the
  * same component, so the fold animates), and opening it replays the run's events.
  */
-export function RunBlock({ roomId, runId, answer, steers, pending, active, meName, members, onRetry, onDiscard }: Props) {
+export function RunBlock({ roomId, runId, agent, answer, steers, pending, active, meName, members, onRetry, onDiscard }: Props) {
   const reduced = useReducedMotion();
   const { models } = useModels();
   const pathname = usePathname();
@@ -89,6 +92,11 @@ export function RunBlock({ roomId, runId, answer, steers, pending, active, meNam
 
   return (
     <div className="flex flex-col gap-[18px]">
+      <div className="-mb-2 flex items-center gap-2">
+        <AgentAvatar size={22} />
+        <span className="text-[13.5px] font-semibold text-lime">{agent}</span>
+        <AiTag />
+      </div>
       {stored && (stored.steps > 0 || steers.length > 0) && (
         <motion.button
           {...fade(true)}

@@ -8,10 +8,11 @@ import { easeOut, instant } from "@/lib/motion";
 import type { Attachment } from "@/lib/types";
 import { MessageAttachments } from "@/components/chat/Attachments";
 import { MessageText } from "@/components/chat/MessageText";
+import { Avatar } from "@/components/ui/Avatar";
 
 type Props = {
   text: string; attachments: Attachment[]; members: Mentionable[];
-  /** Shown above the bubble for someone else's message; my own carry no name. */
+  /** Shown above the bubble for someone else's message. Mine carry no name; a faint tint tells them apart instead. */
   authorName?: string;
   status?: "pending" | "failed"; enter: boolean;
   onRetry?: () => void; onDiscard?: () => void; onExpired?: () => void;
@@ -28,8 +29,13 @@ export function UserBubble({ text, attachments, members, authorName, status, ent
       transition={reduced ? instant : { duration: 0.2, ease: easeOut }}
       className="flex max-w-[540px] flex-col items-end gap-1 self-end"
     >
-      {authorName && <span className="px-1 text-[11.5px] font-medium text-text-3">{authorName}</span>}
-      <div className="break-words rounded-[16px_16px_6px_16px] bg-surface-3 px-4 py-[11px] text-[14.5px] leading-[1.55] [&_p+p]:mt-1.5 [&_pre]:my-1.5">
+      {authorName && (
+        <span className="flex items-center gap-1.5 px-1">
+          <Avatar name={authorName} size={18} />
+          <span className="text-[11.5px] font-medium text-text-3">{authorName}</span>
+        </span>
+      )}
+      <div className={`break-words rounded-[16px_16px_6px_16px] ${authorName ? "bg-surface-3" : "bg-me-bubble"} px-4 py-[11px] text-[14.5px] leading-[1.55] [&_p+p]:mt-1.5 [&_pre]:my-1.5`}>
         <MessageText text={text} members={members} agents={agents} />
         <MessageAttachments attachments={attachments} onExpired={onExpired} />
       </div>
