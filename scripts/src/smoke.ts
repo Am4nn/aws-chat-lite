@@ -120,6 +120,12 @@ async function main() {
 
     const roomUrl = `${WEB}/r/${roomId}`;
     await ownerPage.goto(roomUrl, { waitUntil: "networkidle0" });
+    // Each chat once before measuring: the dev server compiles a route on its first visit and may reload the page then,
+    // which would wipe the observer below.
+    for (const i of [1, 0]) {
+      await (await ownerPage.$$("nav[aria-label=Room] ul a"))[i]!.click();
+      await ownerPage.waitForNetworkIdle({ idleTime: 500 });
+    }
     await ownerPage.evaluate(() => {
       (window as unknown as { __shifts: unknown[] }).__shifts = [];
       new PerformanceObserver((list) => (window as unknown as { __shifts: unknown[] }).__shifts.push(...list.getEntries()))
