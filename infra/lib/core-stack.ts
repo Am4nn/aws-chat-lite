@@ -165,6 +165,12 @@ export class CoreStack extends Stack {
     fn.addEnvironment("WS_CALLBACK_URL", this.stageConfig.isLocal ? `http://${this.flociWsEndpoint()}` : this.live.stage.callbackUrl);
   }
 
+  /** Lets `fn` look up a user in the pool by name, and nothing else on Cognito. */
+  allowUserLookup(fn: NodejsFunction) {
+    this.auth.userPool.grant(fn, "cognito-idp:AdminGetUser");
+    fn.addEnvironment("USER_POOL_ID", this.auth.userPool.userPoolId);
+  }
+
   /** Lets `fn` start agent runs: an asynchronous invoke of the run function's alias. */
   allowRunStart(fn: NodejsFunction) {
     this.runs.alias.grantInvoke(fn);

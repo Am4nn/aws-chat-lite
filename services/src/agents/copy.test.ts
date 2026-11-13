@@ -5,9 +5,15 @@ import { Forbidden, ValidationError } from "../lib/errors.js";
 import type { Role } from "../rooms/access.js";
 import { copyAgent } from "./copy.js";
 
+const accounts = vi.hoisted(() => new Set<string>());
+vi.mock("../lib/users.js", () => ({ userExists: async (name: string) => accounts.has(name) }));
+
 Object.assign(process.env, { TABLE_NAME: "t", AWS_REGION: "us-east-1" });
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  accounts.clear();
+});
 
 const aman = { userId: "u1", username: "aman" };
 const scout = {
@@ -77,6 +83,12 @@ describe("copyAgent", () => {
 
   it("takes the next free name when the target has one of its own", async () => {
     fakeTable("admin", { clash: true });
+    expect((await copyAgent(aman, { roomId: "from", agentId: "a1" }, "to")).agent.name).toBe("scout-2");
+  });
+
+  it("takes the next name that is nobody's username either", async () => {
+    fakeTable("admin");
+    accounts.add("scout");
     expect((await copyAgent(aman, { roomId: "from", agentId: "a1" }, "to")).agent.name).toBe("scout-2");
   });
 

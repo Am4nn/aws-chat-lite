@@ -17,4 +17,10 @@ export const messageKey = (chatId: string, seq: number) => ({ pk: `CHAT#${chatId
 /** A thread's item in the room partition, by its number, which carries its name and run status. */
 export const threadKey = (roomId: string, number: number) => ({ pk: roomKey(roomId), sk: threadSk(number) });
 
+/**
+ * How many live agents, across all rooms, have this name. Sign-up reads it, so nobody takes a name an agent has, and
+ * it is the only key sign-up may read.
+ */
+export const agentNameCountKey = (name: string) => ({ pk: `AGENTNAME#${name}`, sk: "META" });
+
 export const runKey = (runId: string) => ({ pk: `RUN#${runId}`, sk: "META" });

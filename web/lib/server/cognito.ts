@@ -74,8 +74,16 @@ const MESSAGES: Record<string, string> = {
   LimitExceededException: "Too many tries. Wait a few minutes.",
   TooManyRequestsException: "Too many tries. Wait a few minutes.",
   CodeDeliveryFailureException: "We couldn't send the email. Try again later.",
-  // The PreSignUp trigger refuses only reserved usernames.
-  UserLambdaValidationException: "That username is reserved.",
 };
 
-export const authErrorMessage = (e: unknown) => MESSAGES[(e as Error)?.name ?? ""] ?? "Something went wrong.";
+/**
+ * The PreSignUp trigger's refusals. Cognito puts the trigger's message inside its own, and a crashed trigger's text is
+ * there too, so only these known lines are ever shown.
+ */
+const SIGN_UP_REFUSALS = ["That username is reserved.", "That username is taken."];
+
+export function authErrorMessage(e: unknown) {
+  const { name = "", message = "" } = (e ?? {}) as Error;
+  if (name === "UserLambdaValidationException") return SIGN_UP_REFUSALS.find((m) => message.includes(m)) ?? "Something went wrong.";
+  return MESSAGES[name] ?? "Something went wrong.";
+}

@@ -2,7 +2,7 @@
 
 ## What we built
 - **Room agents.** Every room has the built-in `@agent` and up to 20 more, made by any member in the room panel's new **Agents** tab. An agent is data, not code:
-  - a name (`a-z`, `0-9` and dashes, 2 to 32 characters; `agent`, `everyone` and `schedule` are reserved, and so is any member's username on the day it is made);
+  - a name (`a-z`, `0-9` and dashes, 2 to 32 characters; `agent`, `everyone` and `schedule` are reserved, and so is anyone's username; two rooms may each have an agent of the same name);
   - instructions, up to 4,000 characters;
   - the tool kinds it may use (`github`, `mcp`, `sandbox`, `web`), of those the room offers;
   - a model, or `Room default`.
@@ -70,6 +70,8 @@ sequenceDiagram
 - **The agent is read once per run,** in the `load` step, and checkpointed: an edit mid-run applies from the next run, and a replay sees the agent the run started with. The other agents are checkpointed only as cards (id, name, the first line of the instructions), since twenty full instructions would come near the 256 KB checkpoint limit; a helper's whole agent is read when it starts.
 - **The built-in is virtual until edited.** Every room has `@agent` without a write at room creation; the first admin edit creates its item, recognised by its key.
 
+**One name, one meaning: a guard count across partitions.** A mention like `@reviewer` must never mean both a person and an agent, so no agent takes anyone's username and nobody signs up with an agent's name, from any room. The agent side asks Cognito (`AdminGetUser`, plus the room's members in any case, as Cognito names are case-sensitive and mentions aren't). The sign-up side can't scan every room, so each name has one counter item, `AGENTNAME#<name> / META` with `agentCount`, kept in the same transaction as the agent's create, rename (old −1, new +1) and delete, and the PreSignUp trigger reads only that item (its IAM role may `GetItem` only `AGENTNAME#*` keys). A count, not a flag, because two rooms may each have `@reviewer`. The decrement is conditional on `agentCount > 0`; an agent older than the counts makes that fail, and the write then goes again without it, so a count stays at 0, never below. `npm run backfill:agent-names` recomputes every count from the agents once after the deploy. Existing clashes stay as they are.
+
 **Share by copy, not by reference.** A copy is a new agent in the target room, owned by the copier, with the target's tool kinds. A shared reference would let one room's edit change another room's behaviour, and it would carry the source room's connections and memory along. The trade-off: the two drift apart, which for a team chat is the point.
 
 **Orchestrator and worker: subagents as durable child workflows, one event log in lanes.** The main agent is the orchestrator; a helper is a worker with a narrow task and its own context. Three choices make it durable:
@@ -122,7 +124,7 @@ What it doesn't do: helpers in parallel (a fan-out needs several child contexts 
 | Calls from one turn share a column, though they run one after another | The Map shows "decided together", not true parallelism |
 | `run.started` carries the agent's name at the start | A renamed agent's old runs show its old name |
 | Agent delete is soft; its threads fall back to `@agent`; its schedules are deleted (best effort) | A failed schedule cleanup holds cap slots until each retires on its next fire |
-| An agent name may not be a member's username at create time | A later joiner with that name gets both meanings |
+| A person and an agent never share a name, in any room; agents in different rooms may | A name an agent in a room you never see holds is refused at sign-up |
 | The first mentioned agent starts the thread | The others are ignored |
 | Time zones are stored exactly as picked, from the runtime's list plus `UTC` and `Asia/Kolkata` | A zone the runtime lists but Scheduler refuses saves, then switches schedules off (503) |
 | The schedule item is the truth; triggers retire themselves | A stale trigger costs one short invocation |

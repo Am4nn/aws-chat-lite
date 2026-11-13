@@ -82,4 +82,11 @@ describe("run engine", () => {
       Action: "lambda:InvokeFunction", Effect: "Allow", Resource: { Ref: alias },
     }));
   });
+
+  it("may look up a user in the pool, so no agent takes a person's name", () => {
+    const fn = fnNamed("cl-local-run");
+    expect(fn.props.Environment.Variables.USER_POOL_ID).toEqual({ Ref: expect.stringMatching(/^Users/) });
+    const cognito = statementsOf(fn).filter((s: any) => JSON.stringify(s.Action).includes("cognito-idp"));
+    expect(cognito).toEqual([expect.objectContaining({ Action: "cognito-idp:AdminGetUser", Resource: { "Fn::GetAtt": [expect.stringMatching(/^Users/), "Arn"] } })]);
+  });
 });

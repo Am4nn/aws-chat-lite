@@ -1,17 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
+import { AdminCreateUserCommand, CognitoIdentityProviderClient } from "@aws-sdk/client-cognito-identity-provider";
 import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import type { PreSignUpTriggerEvent } from "aws-lambda";
+import { handler as preSignUp } from "../auth/presignup.js";
 import { docClient, tableName } from "../lib/db.js";
 import { Conflict, Forbidden, NotFound, ValidationError } from "../lib/errors.js";
 import { roomsRepo } from "../rooms/repo.js";
 import { agentsRepo } from "./repo.js";
 
-// Runs against DynamoDB on Floci: npm run floci:up && npm run deploy:local, then npm -w services run test:int
+// Runs against DynamoDB and Cognito on Floci: npm run floci:up && npm run deploy:local, then npm -w services run test:int
 const rooms = roomsRepo();
 const agents = agentsRepo();
 const user = (name: string) => ({ userId: randomUUID(), username: name });
 const agentCount = async (roomId: string) => (await docClient().send(new GetCommand({
   TableName: tableName(), Key: { pk: `ROOM#${roomId}`, sk: "META" }, ConsistentRead: true,
+}))).Item?.agentCount;
+const nameCount = async (name: string) => (await docClient().send(new GetCommand({
+  TableName: tableName(), Key: { pk: `AGENTNAME#${name}`, sk: "META" }, ConsistentRead: true,
 }))).Item?.agentCount;
 const scout = { name: "scout", instructions: "Find things.", tools: ["web" as const], model: "room" as const };
 
@@ -47,7 +53,32 @@ describe("agents repo on Floci", () => {
   it("refuses a member's username, whatever its case", async () => {
     const { roomId, member } = await room();
     await expect(agents.create(member, roomId, { ...scout, name: "ann" }))
-      .rejects.toEqual(new Conflict("@ann is someone's username in this room."));
+      .rejects.toEqual(new Conflict("@ann is someone's username."));
+  });
+
+  it("refuses any account's name, from any room", async () => {
+    const { roomId, member } = await room();
+    const Username = `user-${randomUUID().slice(0, 8)}`;
+    await new CognitoIdentityProviderClient({}).send(new AdminCreateUserCommand({
+      UserPoolId: process.env.USER_POOL_ID, Username, MessageAction: "SUPPRESS",
+    }));
+    await expect(agents.create(member, roomId, { ...scout, name: Username }))
+      .rejects.toEqual(new Conflict(`@${Username} is someone's username.`));
+  });
+
+  it("two rooms may share an agent name; its count follows creates, renames and deletes, and sign-up refuses it while above 0", async () => {
+    const [a, b] = [await room(), await room()];
+    const name = `rev-${randomUUID().slice(0, 8)}`;
+    const first = await agents.create(a.owner, a.roomId, { ...scout, name });
+    const second = await agents.create(b.owner, b.roomId, { ...scout, name });
+    expect(await nameCount(name)).toBe(2);
+    await agents.remove(a.owner, a.roomId, first.agentId);
+    expect(await nameCount(name)).toBe(1);
+    const signUp = { userName: name.toUpperCase(), response: {} } as PreSignUpTriggerEvent;
+    await expect(preSignUp(signUp)).rejects.toThrow("That username is taken.");
+    await agents.update(b.owner, b.roomId, second.agentId, { name: `${name}-x` });
+    expect([await nameCount(name), await nameCount(`${name}-x`)]).toEqual([0, 1]);
+    await expect(preSignUp(signUp)).resolves.toMatchObject({ userName: name.toUpperCase() });
   });
 
   it("holds a room to 20 agents", async () => {
@@ -77,7 +108,7 @@ describe("agents repo on Floci", () => {
     await agents.create(member, roomId, { ...scout, name: "taken" });
     await expect(agents.update(member, roomId, made.agentId, { name: "taken" })).rejects.toEqual(new Conflict("@taken is taken in this room."));
     await expect(agents.update(member, roomId, made.agentId, { name: "bob" }))
-      .rejects.toEqual(new Conflict("@bob is someone's username in this room."));
+      .rejects.toEqual(new Conflict("@bob is someone's username."));
     expect(await agents.update(member, roomId, made.agentId, { name: "finder" })).toMatchObject({ name: "finder" });
     await expect(agents.create(member, roomId, scout)).resolves.toMatchObject({ name: "scout" });
     await expect(agents.create(member, roomId, { ...scout, name: "finder" })).rejects.toEqual(new Conflict("@finder is taken in this room."));
@@ -130,7 +161,7 @@ describe("agents repo on Floci", () => {
       .resolves.toMatchObject({ instructions: "by its maker" });
     await expect(agents.update(admin, roomId, auto.agentId, { name: "fast" })).resolves.toMatchObject({ name: "fast" });
     await expect(agents.createByAgent(roomId, { ...scout, name: "bob" }, madeBy))
-      .rejects.toEqual(new Conflict("@bob is someone's username in this room."));
+      .rejects.toEqual(new Conflict("@bob is someone's username."));
   });
 
   it("updateByAgent refuses another agent's, a person's and the agent's own record", async () => {

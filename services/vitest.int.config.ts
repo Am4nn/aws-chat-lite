@@ -1,10 +1,11 @@
 import { defineConfig } from "vitest/config";
 
-// Integration tests against DynamoDB on Floci (npm run floci:up && npm run deploy:local first).
+// Integration tests against DynamoDB and Cognito on Floci (npm run floci:up && npm run deploy:local first).
 export default defineConfig({
   test: {
     include: ["src/**/*.int.test.ts"],
     testTimeout: 20000,
+    setupFiles: ["src/int-setup.ts"],
     // Floci applies DynamoDB writes one at a time, each rewriting its whole store, so files run side by side only
     // queue behind each other's writes and their timings depend on which other files happen to be running.
     fileParallelism: false,

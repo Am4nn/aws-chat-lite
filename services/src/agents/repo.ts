@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { User } from "../lib/auth.js";
-import { conditionFailed, docClient, failedAt, queryAll, setFields, tableName, transactionConflict, transactWrite } from "../lib/db.js";
+import {
+  conditionFailed, docClient, failedAt, queryAll, setFields, tableName, transactionConflict, transactWrite, type TransactItem,
+} from "../lib/db.js";
 import { Conflict, Forbidden, NotFound, ValidationError } from "../lib/errors.js";
-import { roomKey, roomMetaKey } from "../lib/keys.js";
+import { agentNameCountKey, roomKey, roomMetaKey } from "../lib/keys.js";
+import { userExists } from "../lib/users.js";
 import { requireMember, roomMembers } from "../rooms/membership.js";
 import { roomChanged } from "../live/broadcast.js";
 import { uniqueCandidates } from "../threads/model.js";
@@ -20,6 +23,7 @@ const nameKey = (roomId: string, name: string) => ({ pk: roomKey(roomId), sk: `A
 export const BUILT_IN_REFUSAL = "The built-in @agent can't be renamed, deleted or copied.";
 const taken = (name: string) => new Conflict(`@${name} is taken in this room.`);
 const agentChanged = (name: string) => new Conflict(`@${name} just changed; try again.`);
+const someonesUsername = (name: string) => new Conflict(`@${name} is someone's username.`);
 
 /**
  * The built-in is stored only once an admin edits it, and then only the fields they changed. One saved before it had a
@@ -34,7 +38,8 @@ function toAgent({ pk: _pk, sk: _sk, ...item }: Record<string, unknown>): Stored
 
 /**
  * The room's agents (single table, in the room partition). An `AGENTNAME#` guard per live name makes names unique per
- * room even for two creates at the same moment, and META counts the agents so the cap holds the same way.
+ * room even for two creates at the same moment, and META counts the agents so the cap holds the same way. Across
+ * rooms, a count per name says how many live agents have it, kept in the same transactions, so sign-up can refuse it.
  */
 export function agentsRepo() {
   const db = docClient();
@@ -46,10 +51,36 @@ export function agentsRepo() {
     return agentId === BUILT_IN.agentId ? BUILT_IN : null;
   }
 
-  /** Lowercased, as mentions match names in any case. */
-  async function usernames(roomId: string) {
+  /**
+   * Whether a name is a person's username, so a mention never means a person and an agent. Cognito knows any account
+   * by its exact name; the room's members are checked in any case too, as mentions ignore case and Cognito doesn't.
+   */
+  async function usernameTest(roomId: string) {
     const members = await roomMembers(roomId, { fields: ["username"] });
-    return new Set(members.map((m) => String(m.username).toLowerCase()));
+    const lowered = new Set(members.map((m) => String(m.username).toLowerCase()));
+    return async (name: string) => lowered.has(name) || userExists(name);
+  }
+
+  /** The name's global count goes up or down by one; down only while above 0, which `writeUncounting` relies on. */
+  const count = (name: string, by: 1 | -1): TransactItem => ({
+    Update: {
+      TableName, Key: agentNameCountKey(name), UpdateExpression: "ADD agentCount :by",
+      ...(by < 0 && { ConditionExpression: "agentCount > :zero" }),
+      ExpressionAttributeValues: { ":by": by, ...(by < 0 && { ":zero": 0 }) },
+    },
+  });
+
+  /**
+   * A transaction whose last item uncounts a name. An agent made before names were counted has no count until the
+   * backfill runs; its write then goes through without the uncount, leaving the count at 0 rather than below.
+   */
+  async function writeUncounting(items: TransactItem[]) {
+    try {
+      await transactWrite(items);
+    } catch (e) {
+      if (!failedAt(e, items.length - 1)) throw e;
+      await transactWrite(items.slice(0, -1));
+    }
   }
 
   /**
@@ -81,6 +112,7 @@ export function agentsRepo() {
         },
         { Put: { TableName, Item: { ...nameKey(roomId, agent.name), agentId: agent.agentId }, ConditionExpression: "attribute_not_exists(pk)" } },
         { Put: { TableName, Item: { ...agentKey(roomId, agent.agentId), ...agent } } },
+        count(agent.name, 1),
       ]);
       return true;
     } catch (e) {
@@ -92,16 +124,16 @@ export function agentsRepo() {
   }
 
   /**
-   * `input` is already validated. A name may not be a member's username, so a mention never means two things the
-   * day it is made. With `unique` (a copy), a taken name moves on to name-2 … name-9.
+   * `input` is already validated. A name may not be someone's username. With `unique` (a copy), a taken name or a
+   * username moves on to name-2 … name-9.
    */
   async function add(roomId: string, input: AgentInput, origin: Origin, unique = false): Promise<Agent> {
-    const members = await usernames(roomId);
-    if (!unique && members.has(input.name)) throw new Conflict(`@${input.name} is someone's username in this room.`);
+    const isUsername = await usernameTest(roomId);
+    if (!unique && await isUsername(input.name)) throw someonesUsername(input.name);
     const now = new Date().toISOString();
     const base = { ...input, ...origin, builtIn: false, createdAt: now, updatedAt: now };
-    const names = unique ? uniqueCandidates(input.name).filter((n) => !members.has(n)) : [input.name];
-    for (const name of names) {
+    for (const name of unique ? uniqueCandidates(input.name) : [input.name]) {
+      if (unique && await isUsername(name)) continue;
       const agent: Agent = { ...base, agentId: randomUUID(), name };
       if (await claim(roomId, agent)) {
         await roomChanged("agents.changed", roomId);
@@ -114,13 +146,14 @@ export function agentsRepo() {
   /**
    * `patch` is already validated, and `agent` is the live agent its caller may change. A rename moves the guard in the
    * same transaction: the old guard goes (only while it is still this agent's), the new one is claimed (only if free),
-   * and the agent changes only if it still has the name we read, so of two renames at once only one wins.
+   * and the agent changes only if it still has the name we read, so of two renames at once only one wins. The global
+   * counts move with it.
    */
   async function change(roomId: string, agent: Agent, patch: Partial<AgentInput>): Promise<Agent> {
     const { agentId } = agent;
     const renaming = patch.name !== undefined && patch.name !== agent.name;
     if (renaming && agent.builtIn) throw new ValidationError(BUILT_IN_REFUSAL);
-    if (renaming && (await usernames(roomId)).has(patch.name!)) throw new Conflict(`@${patch.name} is someone's username in this room.`);
+    if (renaming && await (await usernameTest(roomId))(patch.name!)) throw someonesUsername(patch.name!);
     // The built-in's first edit creates its item, and `toAgent` recognises it only by `agentId`.
     const fields = { ...patch, updatedAt: new Date().toISOString(), ...(agent.builtIn && { agentId }) };
     const set = setFields(fields);
@@ -137,18 +170,18 @@ export function agentsRepo() {
       if (!renaming) {
         await db.send(new UpdateCommand(write));
       } else {
-        await db.send(new TransactWriteCommand({
-          TransactItems: [
-            {
-              Delete: {
-                TableName, Key: nameKey(roomId, agent.name), ConditionExpression: "agentId = :id",
-                ExpressionAttributeValues: { ":id": agentId },
-              },
+        await writeUncounting([
+          {
+            Delete: {
+              TableName, Key: nameKey(roomId, agent.name), ConditionExpression: "agentId = :id",
+              ExpressionAttributeValues: { ":id": agentId },
             },
-            { Put: { TableName, Item: { ...nameKey(roomId, patch.name!), agentId }, ConditionExpression: "attribute_not_exists(pk)" } },
-            { Update: write },
-          ],
-        }));
+          },
+          { Put: { TableName, Item: { ...nameKey(roomId, patch.name!), agentId }, ConditionExpression: "attribute_not_exists(pk)" } },
+          { Update: write },
+          count(patch.name!, 1),
+          count(agent.name, -1),
+        ]);
       }
     } catch (e) {
       if (failedAt(e, 1)) throw taken(patch.name!);
@@ -199,7 +232,7 @@ export function agentsRepo() {
       return change(roomId, agent, patch);
     },
 
-    /** Soft: the item stays for the threads that name it, while the name and the slot under the cap are freed. */
+    /** Soft: the item stays for the threads that name it, while its name, that name's count and its slot are freed. */
     async remove(user: User, roomId: string, agentId: string): Promise<void> {
       if (agentId === BUILT_IN.agentId) {
         await requireMember(roomId, user.userId, { writing: true });
@@ -207,24 +240,23 @@ export function agentsRepo() {
       }
       const agent = await changeable(user, roomId, agentId);
       try {
-        await db.send(new TransactWriteCommand({
-          TransactItems: [
-            {
-              Update: {
-                TableName, Key: agentKey(roomId, agentId), UpdateExpression: "SET deleted = :t, updatedAt = :now",
-                ConditionExpression: "attribute_not_exists(deleted)",
-                ExpressionAttributeValues: { ":t": true, ":now": new Date().toISOString() },
-              },
+        await writeUncounting([
+          {
+            Update: {
+              TableName, Key: agentKey(roomId, agentId), UpdateExpression: "SET deleted = :t, updatedAt = :now",
+              ConditionExpression: "attribute_not_exists(deleted)",
+              ExpressionAttributeValues: { ":t": true, ":now": new Date().toISOString() },
             },
-            {
-              Delete: {
-                TableName, Key: nameKey(roomId, agent.name), ConditionExpression: "agentId = :id",
-                ExpressionAttributeValues: { ":id": agentId },
-              },
+          },
+          {
+            Delete: {
+              TableName, Key: nameKey(roomId, agent.name), ConditionExpression: "agentId = :id",
+              ExpressionAttributeValues: { ":id": agentId },
             },
-            { Update: { TableName, Key: roomMetaKey(roomId), UpdateExpression: "ADD agentCount :minus", ExpressionAttributeValues: { ":minus": -1 } } },
-          ],
-        }));
+          },
+          { Update: { TableName, Key: roomMetaKey(roomId), UpdateExpression: "ADD agentCount :minus", ExpressionAttributeValues: { ":minus": -1 } } },
+          count(agent.name, -1),
+        ]);
       } catch (e) {
         if (failedAt(e, 0)) throw new NotFound("No such agent.");
         if (conditionFailed(e) || transactionConflict(e)) throw agentChanged(agent.name);

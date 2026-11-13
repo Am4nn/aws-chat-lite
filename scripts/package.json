@@ -13,6 +13,7 @@
     "sandbox-local": "tsx src/sandbox-local.ts",
     "mcp-test-local": "tsx src/mcp-test-local.ts",
     "schedule-fire": "tsx src/fire-schedule.ts",
+    "backfill-agent-names": "tsx src/backfill-agent-names.ts",
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
