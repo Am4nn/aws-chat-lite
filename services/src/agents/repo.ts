@@ -5,9 +5,8 @@ import {
   conditionFailed, docClient, failedAt, queryAll, setFields, tableName, transactionConflict, transactWrite, type TransactItem,
 } from "../lib/db.js";
 import { Conflict, Forbidden, NotFound, ValidationError } from "../lib/errors.js";
-import { agentNameCountKey, roomKey, roomMetaKey } from "../lib/keys.js";
-import { userExists } from "../lib/users.js";
-import { requireMember, roomMembers } from "../rooms/membership.js";
+import { agentNameCountKey, roomKey, roomMetaKey, usernameKey } from "../lib/keys.js";
+import { requireMember } from "../rooms/membership.js";
 import { roomChanged } from "../live/broadcast.js";
 import { uniqueCandidates } from "../threads/model.js";
 import type { Agent } from "../threads/types.js";
@@ -51,14 +50,10 @@ export function agentsRepo() {
     return agentId === BUILT_IN.agentId ? BUILT_IN : null;
   }
 
-  /**
-   * Whether a name is a person's username, so a mention never means a person and an agent. Cognito knows any account
-   * by its exact name; the room's members are checked in any case too, as mentions ignore case and Cognito doesn't.
-   */
-  async function usernameTest(roomId: string) {
-    const members = await roomMembers(roomId, { fields: ["username"] });
-    const lowered = new Set(members.map((m) => String(m.username).toLowerCase()));
-    return async (name: string) => lowered.has(name) || userExists(name);
+  /** Whether a name is anyone's username, in any case, so a mention never means a person and an agent. */
+  async function isUsername(name: string) {
+    const { Item } = await db.send(new GetCommand({ TableName, Key: usernameKey(name), ConsistentRead: true }));
+    return !!Item;
   }
 
   /** The name's global count goes up or down by one; down only while above 0, which `writeUncounting` relies on. */
@@ -128,7 +123,6 @@ export function agentsRepo() {
    * username moves on to name-2 … name-9.
    */
   async function add(roomId: string, input: AgentInput, origin: Origin, unique = false): Promise<Agent> {
-    const isUsername = await usernameTest(roomId);
     if (!unique && await isUsername(input.name)) throw someonesUsername(input.name);
     const now = new Date().toISOString();
     const base = { ...input, ...origin, builtIn: false, createdAt: now, updatedAt: now };
@@ -153,7 +147,7 @@ export function agentsRepo() {
     const { agentId } = agent;
     const renaming = patch.name !== undefined && patch.name !== agent.name;
     if (renaming && agent.builtIn) throw new ValidationError(BUILT_IN_REFUSAL);
-    if (renaming && await (await usernameTest(roomId))(patch.name!)) throw someonesUsername(patch.name!);
+    if (renaming && await isUsername(patch.name!)) throw someonesUsername(patch.name!);
     // The built-in's first edit creates its item, and `toAgent` recognises it only by `agentId`.
     const fields = { ...patch, updatedAt: new Date().toISOString(), ...(agent.builtIn && { agentId }) };
     const set = setFields(fields);

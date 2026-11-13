@@ -1,6 +1,6 @@
 import { CognitoIdentityProviderClient } from "@aws-sdk/client-cognito-identity-provider";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { userActive, userExists } from "./users.js";
+import { userActive } from "./users.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -33,20 +33,5 @@ describe("userActive", () => {
   it("passes on any other failure, so a Cognito outage never reads as a deleted account", async () => {
     answer(Object.assign(new Error("slow down"), { name: "TooManyRequestsException" }));
     await expect(userActive("aman")).rejects.toThrow("slow down");
-  });
-});
-
-describe("userExists", () => {
-  it("is true for any account by that exact name, a disabled one included, as its name stays taken", async () => {
-    answer({ Username: "aman", Enabled: false });
-    expect(await userExists("aman")).toBe(true);
-  });
-
-  it("is false when there is no such account, and passes on any other failure", async () => {
-    answer(Object.assign(new Error("User does not exist."), { name: "UserNotFoundException" }));
-    expect(await userExists("aman")).toBe(false);
-    vi.restoreAllMocks();
-    answer(Object.assign(new Error("slow down"), { name: "TooManyRequestsException" }));
-    await expect(userExists("aman")).rejects.toThrow("slow down");
   });
 });

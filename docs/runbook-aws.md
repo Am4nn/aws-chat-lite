@@ -380,7 +380,7 @@ About 45 minutes later all five stages say `Succeeded`: `Source`, `Build` (the c
   aws codepipeline enable-stage-transition --pipeline-name cl-aws-pipeline --stage-name Build --transition-type Inbound --profile ig --region ap-southeast-2
   ```
   The first line pauses, the second resumes. Runs that arrive while paused wait at the transition, and only the newest one goes on.
-- **Once, after the deploy that adds agent-name counts** (sign-up refuses an agent's name): from the repo root, `npm run backfill:agent-names -- --stage=aws`. It counts the agents made before then and prints each count it set; running it again changes nothing. Run it at a quiet moment: an agent made or deleted during the scan can leave its name's count one off, which a second run fixes.
+- **Once, after the deploy that keeps people's and agents' names apart:** from the repo root, `npm run backfill:agent-names -- --stage=aws` (it reads step 4's outputs file for the table and user pool). It records every account's username and counts the agents made before then, printing each count it set; running it again changes nothing. A count an agent changed during the run is left alone and named in the output: run it again.
 - **Roll back:** what happens by itself, and what doesn't:
   - a deploy that fails rolls back by itself: CloudFormation returns `cl-aws-core` to its last template, and the run stops;
   - a deploy that succeeds and then trips an alarm stays deployed: `WatchAlarms` fails the run and mails, but undoes nothing. Revert the commit on master (`git revert <sha>`, through a pull request), and the pipeline deploys the revert;

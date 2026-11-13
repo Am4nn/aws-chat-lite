@@ -23,4 +23,10 @@ export const threadKey = (roomId: string, number: number) => ({ pk: roomKey(room
  */
 export const agentNameCountKey = (name: string) => ({ pk: `AGENTNAME#${name}`, sk: "META" });
 
+/**
+ * A username, lowercased, written at sign-up so no agent takes it: Cognito's names are case-sensitive and mentions
+ * aren't, so `Goat` must keep `@goat` from any agent. It is the only key sign-up may write.
+ */
+export const usernameKey = (username: string) => ({ pk: `USERNAME#${username.toLowerCase()}`, sk: "META" });
+
 export const runKey = (runId: string) => ({ pk: `RUN#${runId}`, sk: "META" });

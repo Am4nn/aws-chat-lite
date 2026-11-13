@@ -1,6 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
-import { AdminCreateUserCommand, CognitoIdentityProviderClient } from "@aws-sdk/client-cognito-identity-provider";
 import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { PreSignUpTriggerEvent } from "aws-lambda";
 import { handler as preSignUp } from "../auth/presignup.js";
@@ -9,7 +8,7 @@ import { Conflict, Forbidden, NotFound, ValidationError } from "../lib/errors.js
 import { roomsRepo } from "../rooms/repo.js";
 import { agentsRepo } from "./repo.js";
 
-// Runs against DynamoDB and Cognito on Floci: npm run floci:up && npm run deploy:local, then npm -w services run test:int
+// Runs against DynamoDB on Floci: npm run floci:up && npm run deploy:local, then npm -w services run test:int
 const rooms = roomsRepo();
 const agents = agentsRepo();
 const user = (name: string) => ({ userId: randomUUID(), username: name });
@@ -19,6 +18,8 @@ const agentCount = async (roomId: string) => (await docClient().send(new GetComm
 const nameCount = async (name: string) => (await docClient().send(new GetCommand({
   TableName: tableName(), Key: { pk: `AGENTNAME#${name}`, sk: "META" }, ConsistentRead: true,
 }))).Item?.agentCount;
+/** What a sign-up leaves in the table: the trigger's record of the name. */
+const signUp = (userName: string) => preSignUp({ userName, response: {} } as PreSignUpTriggerEvent);
 const scout = { name: "scout", instructions: "Find things.", tools: ["web" as const], model: "room" as const };
 
 /** An owner, a member and an admin, in a new room. */
@@ -35,6 +36,9 @@ async function room() {
 }
 
 describe("agents repo on Floci", () => {
+  // The rooms' people, as signed up.
+  beforeAll(() => Promise.all(["Ann", "bob", "cat"].map(signUp)));
+
   it("of two creates of one name at once, one wins", async () => {
     const { roomId, owner, member } = await room();
     const results = await Promise.allSettled([agents.create(owner, roomId, scout), agents.create(member, roomId, scout)]);
@@ -50,20 +54,12 @@ describe("agents repo on Floci", () => {
     expect(await agents.create(owner, roomId, scout, { unique: true })).toMatchObject({ name: "scout-2" });
   });
 
-  it("refuses a member's username, whatever its case", async () => {
+  it("refuses anyone's username, in any case, from any room", async () => {
     const { roomId, member } = await room();
-    await expect(agents.create(member, roomId, { ...scout, name: "ann" }))
-      .rejects.toEqual(new Conflict("@ann is someone's username."));
-  });
-
-  it("refuses any account's name, from any room", async () => {
-    const { roomId, member } = await room();
-    const Username = `user-${randomUUID().slice(0, 8)}`;
-    await new CognitoIdentityProviderClient({}).send(new AdminCreateUserCommand({
-      UserPoolId: process.env.USER_POOL_ID, Username, MessageAction: "SUPPRESS",
-    }));
-    await expect(agents.create(member, roomId, { ...scout, name: Username }))
-      .rejects.toEqual(new Conflict(`@${Username} is someone's username.`));
+    const goat = `Goat-${randomUUID().slice(0, 8)}`;
+    await signUp(goat);
+    await expect(agents.create(member, roomId, { ...scout, name: goat.toLowerCase() }))
+      .rejects.toEqual(new Conflict(`@${goat.toLowerCase()} is someone's username.`));
   });
 
   it("two rooms may share an agent name; its count follows creates, renames and deletes, and sign-up refuses it while above 0", async () => {
@@ -74,11 +70,10 @@ describe("agents repo on Floci", () => {
     expect(await nameCount(name)).toBe(2);
     await agents.remove(a.owner, a.roomId, first.agentId);
     expect(await nameCount(name)).toBe(1);
-    const signUp = { userName: name.toUpperCase(), response: {} } as PreSignUpTriggerEvent;
-    await expect(preSignUp(signUp)).rejects.toThrow("That username is taken.");
+    await expect(signUp(name.toUpperCase())).rejects.toThrow("That username is taken.");
     await agents.update(b.owner, b.roomId, second.agentId, { name: `${name}-x` });
     expect([await nameCount(name), await nameCount(`${name}-x`)]).toEqual([0, 1]);
-    await expect(preSignUp(signUp)).resolves.toMatchObject({ userName: name.toUpperCase() });
+    await expect(signUp(name.toUpperCase())).resolves.toMatchObject({ userName: name.toUpperCase() });
   });
 
   it("holds a room to 20 agents", async () => {

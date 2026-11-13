@@ -10,13 +10,15 @@ describe("auth", () => {
     });
   });
 
-  it("the PreSignUp trigger may read only the agent-name counts, so it can refuse an agent's name", () => {
+  it("the PreSignUp trigger may only read agent-name counts and write username records", () => {
     const fn = fnNamed("cl-local-presignup");
     expect(fn.props.Environment.Variables.TABLE_NAME).toEqual({ Ref: expect.stringMatching(/^Main/) });
-    expect(statementsOf(fn).filter((s: any) => JSON.stringify(s.Action).includes("dynamodb:"))).toEqual([{
-      Action: "dynamodb:GetItem", Effect: "Allow", Resource: { "Fn::GetAtt": [expect.stringMatching(/^Main/), "Arn"] },
-      Condition: { "ForAllValues:StringLike": { "dynamodb:LeadingKeys": ["AGENTNAME#*"] }, Null: { "dynamodb:LeadingKeys": "false" } },
-    }]);
+    const only = (Action: string, prefix: string) => ({
+      Action, Effect: "Allow", Resource: { "Fn::GetAtt": [expect.stringMatching(/^Main/), "Arn"] },
+      Condition: { "ForAllValues:StringLike": { "dynamodb:LeadingKeys": [prefix] }, Null: { "dynamodb:LeadingKeys": "false" } },
+    });
+    expect(statementsOf(fn).filter((s: any) => JSON.stringify(s.Action).includes("dynamodb:")))
+      .toEqual([only("dynamodb:GetItem", "AGENTNAME#*"), only("dynamodb:PutItem", "USERNAME#*")]);
   });
 
   it("aws: email required, and the PreSignUp trigger (which refuses names there but confirms nobody)", () => {

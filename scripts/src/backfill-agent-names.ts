@@ -1,21 +1,42 @@
 /**
- * Sets every agent name's global count (how many live agents have it, across rooms, which sign-up refuses while above
- * 0) from the agents themselves. Run it once after the deploy that started counting: `npm run backfill:agent-names`
- * for Floci, `-- --stage=aws` for AWS with your `ig` profile. It recomputes every count, so running it again changes
- * nothing, and it prints each count it changed.
+ * Fills in, once after the deploy that started keeping them, the two records that keep people's and agents' names
+ * apart: a lowercased record of every account's username, which agents may not take, and each agent name's global
+ * count, which sign-up refuses while above 0. `npm run backfill:agent-names` for Floci, `-- --stage=aws` for AWS with
+ * your `ig` profile. Both are recomputed from scratch, so running it again changes nothing; it prints what it changed.
  */
 import { fileURLToPath } from "node:url";
+import { CognitoIdentityProviderClient, ListUsersCommand, type ListUsersCommandOutput } from "@aws-sdk/client-cognito-identity-provider";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, PutCommand, ScanCommand, type ScanCommandOutput } from "@aws-sdk/lib-dynamodb";
 import { BUILT_IN } from "../../services/src/agents/model.js";
-import { agentNameCountKey } from "../../services/src/lib/keys.js";
+import { agentNameCountKey, usernameKey } from "../../services/src/lib/keys.js";
+import { readOutputs } from "./cdk.js";
 import { run } from "./cli.js";
 import { useAwsEnv, useLocalEnv } from "./env.js";
 
 const COUNT_PREFIX = "AGENTNAME#";
 const USAGE = "usage: npm run backfill:agent-names [-- --stage=aws]";
 
-export async function backfillAgentNames(db: DynamoDBDocumentClient, TableName: string) {
+/** Writes a username record for every account in the pool; returns how many. */
+export async function backfillUsernames(cognito: CognitoIdentityProviderClient, UserPoolId: string, db: DynamoDBDocumentClient, TableName: string) {
+  let written = 0;
+  let PaginationToken: string | undefined;
+  do {
+    const page: ListUsersCommandOutput = await cognito.send(new ListUsersCommand({ UserPoolId, PaginationToken }));
+    for (const { Username } of page.Users ?? []) {
+      await db.send(new PutCommand({ TableName, Item: usernameKey(Username!) }));
+      written++;
+    }
+    PaginationToken = page.PaginationToken;
+  } while (PaginationToken);
+  return written;
+}
+
+/**
+ * Sets each agent name's count to the number of live agents that have it, across rooms. A count is written only if it
+ * still holds what the scan read: an agent made or deleted meanwhile has moved it, and that name is left for a rerun.
+ */
+export async function backfillAgentCounts(db: DynamoDBDocumentClient, TableName: string) {
   const live = new Map<string, number>();
   const stored = new Map<string, number>();
   let ExclusiveStartKey: ScanCommandOutput["LastEvaluatedKey"];
@@ -35,13 +56,25 @@ export async function backfillAgentNames(db: DynamoDBDocumentClient, TableName: 
     ExclusiveStartKey = page.LastEvaluatedKey;
   } while (ExclusiveStartKey);
 
-  const changes = [...new Set([...live.keys(), ...stored.keys()])]
-    .map((name) => ({ name, from: stored.get(name) ?? 0, to: live.get(name) ?? 0 }))
-    .filter(({ from, to }) => from !== to);
-  for (const { name, to } of changes) {
-    await db.send(new PutCommand({ TableName, Item: { ...agentNameCountKey(name), agentCount: to } }));
+  const changed: { name: string; from: number; to: number }[] = [];
+  const raced: string[] = [];
+  for (const name of new Set([...live.keys(), ...stored.keys()])) {
+    const [read, to] = [stored.get(name), live.get(name) ?? 0];
+    if ((read ?? 0) === to) continue;
+    try {
+      await db.send(new PutCommand({
+        TableName, Item: { ...agentNameCountKey(name), agentCount: to },
+        ...(read === undefined
+          ? { ConditionExpression: "attribute_not_exists(pk)" }
+          : { ConditionExpression: "agentCount = :read", ExpressionAttributeValues: { ":read": read } }),
+      }));
+      changed.push({ name, from: read ?? 0, to });
+    } catch (e) {
+      if ((e as Error).name !== "ConditionalCheckFailedException") throw e;
+      raced.push(name);
+    }
   }
-  return changes;
+  return { changed, raced };
 }
 
 async function main() {
@@ -49,11 +82,15 @@ async function main() {
   if (args.some((a) => a !== "--stage=aws")) throw new Error(USAGE);
   const stage = args.length ? "aws" : "local";
   if (stage === "aws") useAwsEnv(); else useLocalEnv();
-  // The table's name is fixed per stage, so a deploy by the pipeline, which writes no outputs file here, is enough.
-  const TableName = `cl-${stage}-main`;
-  const changes = await backfillAgentNames(DynamoDBDocumentClient.from(new DynamoDBClient({})), TableName);
-  for (const { name, from, to } of changes) console.log(`@${name}: ${from} → ${to}`);
-  console.log(`✅ ${changes.length} agent name count(s) changed in ${TableName} (${stage}).`);
+  const { TableName, UserPoolId } = stage === "aws" ? readOutputs("cl-aws-core", "outputs-aws.json") : readOutputs("cl-local-core");
+  if (!TableName || !UserPoolId) throw new Error(`No TableName or UserPoolId in the ${stage} outputs: deploy first.`);
+  const db = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+  // Usernames first: from then on no new agent can take one, while the counts are being set.
+  console.log(`${await backfillUsernames(new CognitoIdentityProviderClient({}), UserPoolId, db, TableName)} username record(s) written.`);
+  const { changed, raced } = await backfillAgentCounts(db, TableName);
+  for (const { name, from, to } of changed) console.log(`@${name}: ${from} → ${to}`);
+  if (raced.length) console.log(`Changed during the run, so left alone: ${raced.map((n) => `@${n}`).join(", ")}. Run it again.`);
+  console.log(`✅ ${changed.length} agent name count(s) changed in ${TableName} (${stage}).`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) run(main);

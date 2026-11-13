@@ -3,12 +3,10 @@ import { allowSchedules } from "./schedules.js";
 
 /**
  * A room's agents and memory: one Lambda behind the HTTP API's JWT authorizer. Deleting an agent deletes its
- * schedules, so it may delete their EventBridge schedules too, and nothing else on Scheduler. It looks users up, as no
- * agent may take a person's name.
+ * schedules, so it may delete their EventBridge schedules too, and nothing else on Scheduler.
  */
 export function addAgents(stack: CoreStack, schedules: { groupName: string }) {
   const fn = stack.addFunction("agents", "agents/handler.ts", { tableAccess: true });
-  stack.allowUserLookup(fn);
   allowSchedules(stack, fn, schedules.groupName, ["DeleteSchedule"]);
   stack.allowBroadcast(fn);
   stack.route("GET", "/rooms/{roomId}/agents", fn);

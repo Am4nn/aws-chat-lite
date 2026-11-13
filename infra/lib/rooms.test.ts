@@ -48,10 +48,10 @@ describe("rooms API", () => {
       .map((f: any) => f.Properties.FunctionName);
   };
 
-  it("only the rooms, chat, files, live, threads, run, connections, MCP, OAuth, agents, schedules, push and voice Lambdas get table access (the public health check and sign-up trigger get none)", () => {
+  it("only the rooms, chat, files, live, threads, run, connections, MCP, OAuth, agents, schedules, push and voice Lambdas get table access (the public health check gets none, and the sign-up trigger may write only username records)", () => {
     expect(tableWriters().sort()).toEqual([
       "cl-local-agents", "cl-local-chat", "cl-local-connections", "cl-local-files", "cl-local-live", "cl-local-mcp", "cl-local-mcp-connections",
-      "cl-local-oauth", "cl-local-push", "cl-local-push-routes", "cl-local-rooms", "cl-local-run", "cl-local-schedule-fire", "cl-local-schedules",
+      "cl-local-oauth", "cl-local-presignup", "cl-local-push", "cl-local-push-routes", "cl-local-rooms", "cl-local-run", "cl-local-schedule-fire", "cl-local-schedules",
       "cl-local-threads", "cl-local-voice",
     ]);
   });

@@ -23,10 +23,9 @@ describe("agents API", () => {
     expect(JSON.stringify(scheduler[0].Resource)).toMatch(/:schedule\/cl-local-agent-schedules\/\*"\]\]\}$/);
   });
 
-  it("may look up a user in the pool, so no agent takes a person's name", () => {
+  it("never asks Cognito: agents' names are checked against the table's username records", () => {
     const fn = fnNamed("cl-local-agents");
-    expect(fn.props.Environment.Variables.USER_POOL_ID).toEqual({ Ref: expect.stringMatching(/^Users/) });
-    const cognito = statementsOf(fn).filter((s: any) => JSON.stringify(s.Action).includes("cognito-idp"));
-    expect(cognito).toEqual([expect.objectContaining({ Action: "cognito-idp:AdminGetUser", Resource: { "Fn::GetAtt": [expect.stringMatching(/^Users/), "Arn"] } })]);
+    expect(fn.props.Environment.Variables.USER_POOL_ID).toBeUndefined();
+    expect(statementsOf(fn).filter((s: any) => JSON.stringify(s.Action).includes("cognito-idp"))).toEqual([]);
   });
 });

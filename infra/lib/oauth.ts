@@ -21,12 +21,12 @@ export const issuerEnvironment = (stack: CoreStack) => ({ MCP_BASE_URL: stack.pu
  * read-only here. It may look users up, so a refresh can end the grant of a deleted or disabled account.
  */
 export function addOAuth(stack: CoreStack) {
-  const { table } = stack;
+  const { table, auth } = stack;
   const fn = stack.addFunction("oauth", "oauth/handler.ts", {
     timeout: Duration.seconds(15),
     // Its rate limits count each viewer's address, which only requests carrying CloudFront's secret can vouch for.
     environment: {
-      ...issuerEnvironment(stack),
+      ...issuerEnvironment(stack), USER_POOL_ID: auth.userPool.userPoolId,
       ...(!stack.stageConfig.isLocal && { ORIGIN_VERIFY_SECRET: originSecret(stack) }),
     },
   });
@@ -36,7 +36,7 @@ export function addOAuth(stack: CoreStack) {
     conditions: { "ForAllValues:StringLike": { "dynamodb:LeadingKeys": OWN_ITEMS }, Null: { "dynamodb:LeadingKeys": "false" } },
   }));
   fn.addToRolePolicy(new iam.PolicyStatement({ actions: ["dynamodb:Query"], resources: [`${table.tableArn}/index/gsi1`] }));
-  stack.allowUserLookup(fn);
+  auth.userPool.grant(fn, "cognito-idp:AdminGetUser");
   const open = { public: true };
   stack.route("GET", "/.well-known/oauth-authorization-server", fn, open);
   stack.route("GET", "/.well-known/oauth-protected-resource", fn, open);

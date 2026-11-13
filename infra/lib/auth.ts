@@ -13,20 +13,23 @@ export interface Auth {
 
 /**
  * Cognito users, the `creators` group (who may create rooms) and the JWT authorizer for the HTTP API. A PreSignUp
- * trigger refuses reserved usernames and agents' names everywhere. Floci sends no email, so locally that trigger also
- * confirms every account at once; on AWS sign-up needs an email address and a confirmation code.
+ * trigger refuses reserved usernames and agents' names everywhere, and records each name it lets through. Floci sends
+ * no email, so locally that trigger also confirms every account at once; on AWS sign-up needs an email address and a
+ * confirmation code.
  *
- * Anyone may start a sign-up, so the trigger reads only the agent-name counts, by their partition key. The Null
- * condition stops a request without a key from passing ForAllValues trivially.
+ * Anyone may start a sign-up, so the trigger may only read agent-name counts and write username records, each by its
+ * partition key. The Null condition stops a request without a key from passing ForAllValues trivially.
  */
 export function addAuth(stack: CoreStack): Auth {
   const { prefix, isLocal } = stack.stageConfig;
   const preSignUp = stack.addFunction("presignup", "auth/presignup.ts");
-  preSignUp.addToRolePolicy(new iam.PolicyStatement({
-    actions: ["dynamodb:GetItem"],
-    resources: [stack.table.tableArn],
-    conditions: { "ForAllValues:StringLike": { "dynamodb:LeadingKeys": ["AGENTNAME#*"] }, Null: { "dynamodb:LeadingKeys": "false" } },
-  }));
+  for (const [action, keys] of [["dynamodb:GetItem", "AGENTNAME#*"], ["dynamodb:PutItem", "USERNAME#*"]] as const) {
+    preSignUp.addToRolePolicy(new iam.PolicyStatement({
+      actions: [action],
+      resources: [stack.table.tableArn],
+      conditions: { "ForAllValues:StringLike": { "dynamodb:LeadingKeys": [keys] }, Null: { "dynamodb:LeadingKeys": "false" } },
+    }));
+  }
   const userPool = new cognito.UserPool(stack, "Users", {
     userPoolName: `${prefix}-users`,
     selfSignUpEnabled: true,

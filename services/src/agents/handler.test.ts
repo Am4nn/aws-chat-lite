@@ -5,8 +5,6 @@ import { docClient } from "../lib/db.js";
 import type { Role } from "../rooms/access.js";
 import { makeHandler } from "./handler.js";
 
-vi.mock("../lib/users.js", () => ({ userExists: async () => false }));
-
 Object.assign(process.env, { TABLE_NAME: "t", AWS_REGION: "us-east-1", STAGE: "local" });
 
 afterEach(() => vi.restoreAllMocks());

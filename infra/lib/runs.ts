@@ -63,8 +63,6 @@ export function addRuns(stack: CoreStack) {
   toolKeys.grantRead(runFn);
   tokenKey.grantRead(runFn);
   stack.allowBroadcast(runFn);
-  // An agent may make or rename agents, whose names may not be a person's.
-  stack.allowUserLookup(runFn);
   const alias = new lambda.Alias(stack, "RunLive", { aliasName: "live", version: runFn.currentVersion });
   return { runFn, alias, toolKeys, toolEnvironment, tokenKey, mcpEnvironment };
 }
