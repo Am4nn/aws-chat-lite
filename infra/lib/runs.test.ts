@@ -82,4 +82,10 @@ describe("run engine", () => {
       Action: "lambda:InvokeFunction", Effect: "Allow", Resource: { Ref: alias },
     }));
   });
+
+  it("never asks Cognito: agents' names are checked against the table's username records", () => {
+    const fn = fnNamed("cl-local-run");
+    expect(fn.props.Environment.Variables.USER_POOL_ID).toBeUndefined();
+    expect(statementsOf(fn).filter((s: any) => JSON.stringify(s.Action).includes("cognito-idp"))).toEqual([]);
+  });
 });

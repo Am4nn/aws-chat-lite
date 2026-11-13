@@ -21,14 +21,15 @@ const digest = {
 
 /**
  * Two rooms: `from` holds `scout` and its schedule, `to` is where the caller has `targetRole`, has no GitHub, and
- * already has an agent named `scout` when `clash`.
+ * already has an agent named `scout` when `clash`; `scout` is someone's username when `username`.
  */
-function fakeTable(targetRole: Role, opts: { clash?: boolean } = {}) {
+function fakeTable(targetRole: Role, opts: { clash?: boolean; username?: boolean } = {}) {
   return vi.spyOn(docClient(), "send").mockImplementation((async (c: unknown) => {
     if (c instanceof GetCommand) {
       const { pk, sk } = c.input.Key as { pk: string; sk: string };
       if (sk.startsWith("MEMBER#")) return { Item: { role: pk === "ROOM#to" ? targetRole : "member" } };
       if (pk === "ROOM#from" && sk === "AGENT#a1") return { Item: { pk, sk, ...scout } };
+      if (pk === "USERNAME#scout" && opts.username) return { Item: { pk, sk } };
       return {};
     }
     if (c instanceof QueryCommand) {
@@ -77,6 +78,11 @@ describe("copyAgent", () => {
 
   it("takes the next free name when the target has one of its own", async () => {
     fakeTable("admin", { clash: true });
+    expect((await copyAgent(aman, { roomId: "from", agentId: "a1" }, "to")).agent.name).toBe("scout-2");
+  });
+
+  it("takes the next name that is nobody's username either", async () => {
+    fakeTable("admin", { username: true });
     expect((await copyAgent(aman, { roomId: "from", agentId: "a1" }, "to")).agent.name).toBe("scout-2");
   });
 

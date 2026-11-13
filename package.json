@@ -19,6 +19,7 @@
     "sandbox:local": "npm -w scripts run sandbox-local",
     "smoke": "npm -w scripts run smoke",
     "schedule:fire": "npm -w scripts run schedule-fire --",
+    "backfill:agent-names": "npm -w scripts run backfill-agent-names --",
     "check": "knip && npm run lint --workspaces --if-present && npm run typecheck --workspaces --if-present"
   },
   "devDependencies": {
