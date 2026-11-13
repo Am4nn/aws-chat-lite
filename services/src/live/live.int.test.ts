@@ -273,13 +273,13 @@ describe("agent threads over the socket", () => {
     expect(answer).toMatchObject({ authorId: "agent", agent: { status: "done" } });
   }, AGENT_MS);
 
-  it("a leading #tag or a threadId delivers a people-chat message into the thread, which starts a run", async () => {
+  it("a #tag or a threadId delivers a people-chat message into the thread, which starts a run", async () => {
     const { a, roomId, generalChatId, sa, sb } = await pair("Delivery");
     const { thread } = await threadsRepo().createThread(a, roomId, { text: "notes", clientId: "k0" });
 
     send(sa, { action: "send", requestId: "d1", roomId, chatId: generalChatId, clientId: "k1", text: "#1 and this" });
     const updated = await sb.next(messageUpdated(generalChatId, 1));
-    expect((updated.message as Frame).threadRef).toEqual({ threadId: thread.threadId, kind: "delivered", seq: 2 });
+    expect((updated.message as Frame).threadRef).toEqual({ kind: "delivered", threads: [{ threadId: thread.threadId, seq: 2 }] });
     const running = await sb.next((f) => runUpdated(thread.threadId)(f) && (f.thread as Frame).runFirstSeq === 2);
     expect((await history(a, roomId, thread.threadId))[1]).toMatchObject({ seq: 2, authorId: a.userId, clientId: "k1:t", text: "#1 and this" });
     await sb.next((f) => runUpdated(thread.threadId, "done")(f) && (f.thread as Frame).runId === (running.thread as Frame).runId, AGENT_MS);
@@ -290,18 +290,24 @@ describe("agent threads over the socket", () => {
     expect(copies.filter((m) => m.authorId === a.userId).map((m) => m.text)).toEqual(["notes", "#1 and this", "and more"]);
   }, AGENT_MS);
 
-  it("deleting a delivered message removes its copy in the thread too, and the room hears both", async () => {
+  it("deleting a message delivered into two threads removes its copy in each, and the room hears all three", async () => {
     const { a, roomId, generalChatId, sa, sb } = await pair("Removal");
     const { thread } = await threadsRepo().createThread(a, roomId, { text: "notes", clientId: "k0" });
-    send(sa, { action: "send", requestId: "r1", roomId, chatId: generalChatId, clientId: "k1", text: "#1 secret" });
-    await sb.next(messageUpdated(generalChatId, 1));
+    const { thread: other } = await threadsRepo().createThread(a, roomId, { text: "more notes", clientId: "k00" });
+    send(sa, { action: "send", requestId: "r1", roomId, chatId: generalChatId, clientId: "k1", text: "secret for #1 and #2" });
+    const both = (f: Frame) => messageUpdated(generalChatId, 1)(f) && ((f.message as Frame).threadRef as { threads: unknown[] }).threads.length === 2;
+    expect(((await sb.next(both)).message as Frame).threadRef).toEqual({
+      kind: "delivered", threads: [{ threadId: thread.threadId, seq: 2 }, { threadId: other.threadId, seq: 2 }],
+    });
     await sb.next(runUpdated(thread.threadId, "done"), AGENT_MS);
+    await sb.next(runUpdated(other.threadId, "done"), AGENT_MS);
 
     send(sa, { action: "delete", requestId: "r2", roomId, chatId: generalChatId, seq: 1 });
     const deleted = (chatId: string, seq: number) => (f: Frame) => messageUpdated(chatId, seq)(f) && (f.message as Frame).deleted === "self";
     expect((await sb.next(deleted(generalChatId, 1))).message).toMatchObject({ text: "" });
     expect((await sb.next(deleted(thread.threadId, 2))).message).toMatchObject({ text: "" });
-    expect((await history(a, roomId, thread.threadId))[1]).toMatchObject({ seq: 2, deleted: "self", text: "" });
+    expect((await sb.next(deleted(other.threadId, 2))).message).toMatchObject({ text: "" });
+    expect((await history(a, roomId, other.threadId))[1]).toMatchObject({ seq: 2, deleted: "self", text: "" });
   }, AGENT_MS);
 
   it("a mention counts once: the copy in the thread doesn't badge the member again", async () => {
@@ -320,16 +326,22 @@ describe("agent threads over the socket", () => {
       .toEqual([[b.userId], [b.userId]]);
   }, AGENT_MS);
 
-  it("a thread's #name is sent as its #number; a tag later in the text delivers nothing", async () => {
+  it("a thread's #name anywhere in the text is sent as its #number and delivers into it; a chat's name delivers nothing", async () => {
     const { a, roomId, generalChatId, sa } = await pair("Tags");
     const { thread } = await threadsRepo().createThread(a, roomId, { text: "notes", clientId: "k0" });
     await threadsRepo().rename(a, roomId, thread.threadId, "pr-check");
 
     send(sa, { action: "send", requestId: "t1", roomId, chatId: generalChatId, clientId: "k1", text: "see #pr-check and #general" });
     expect(await sa.next((f) => f.type === "ack")).toMatchObject({ ok: true, data: { text: "see #1 and #general" } });
+    expect(((await sa.next(messageUpdated(generalChatId, 1))).message as Frame).threadRef)
+      .toEqual({ kind: "delivered", threads: [{ threadId: thread.threadId, seq: 2 }] });
+    await sa.next(runUpdated(thread.threadId, "done"), AGENT_MS);
+
+    send(sa, { action: "send", requestId: "t2", roomId, chatId: generalChatId, clientId: "k2", text: "over in #general" });
+    expect(await sa.next((f) => f.type === "ack" && f.requestId === "t2")).toMatchObject({ ok: true });
     await sleep(1000);
-    expect(sa.frames.some(messageUpdated(generalChatId, 1))).toBe(false);
-  });
+    expect(sa.frames.some(messageUpdated(generalChatId, 2))).toBe(false);
+  }, AGENT_MS);
 
   it("a message in a thread chat starts the thread's run", async () => {
     const { a, roomId, sa, sb } = await pair("Thread chat");

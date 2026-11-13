@@ -46,7 +46,7 @@ describe("images on Floci", { timeout: 60_000 }, () => {
     await (await routeSend(owner, ask)).route();
 
     const [card] = (await chat.history(owner, roomId, generalChatId, {})).messages;
-    const threadId = card!.threadRef!.threadId;
+    const threadId = (card!.threadRef as { threadId: string }).threadId;
     const answer = await until("the answer", async () =>
       (await chat.history(owner, roomId, threadId, {})).messages.find((m) => m.authorId === "agent"));
     expect(answer.agent).toMatchObject({ status: "done" });
@@ -59,7 +59,7 @@ describe("images on Floci", { timeout: 60_000 }, () => {
     await (await routeSend(owner, ask)).route();
 
     const [card] = (await chat.history(owner, roomId, generalChatId, {})).messages;
-    const threadId = card!.threadRef!.threadId;
+    const threadId = (card!.threadRef as { threadId: string }).threadId;
     const answer = await until("the answer", async () =>
       (await chat.history(owner, roomId, threadId, {})).messages.find((m) => m.authorId === "agent"));
     expect(answer.agent).toMatchObject({ status: "done" });

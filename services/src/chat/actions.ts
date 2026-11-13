@@ -41,8 +41,8 @@ async function perform(connId: string, user: User, f: Frame): Promise<Outcome> {
     case "edit":
       return updated(await chat().edit(user, { ...chatRef(f), seq: seqNumber(f.seq), text: f.text }));
     case "delete": {
-      const { message, copy } = await chat().remove(user, { ...chatRef(f), seq: seqNumber(f.seq) });
-      const removed = [message, ...(copy ? [copy] : [])];
+      const { message, copies } = await chat().remove(user, { ...chatRef(f), seq: seqNumber(f.seq) });
+      const removed = [message, ...copies];
       return { data: message, notify: () => Promise.all(removed.map((m) => broadcastToRoom(m.roomId, { type: "message.updated", message: m }))) };
     }
     case "react": {

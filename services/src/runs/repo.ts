@@ -5,7 +5,8 @@ import type { ModelPick } from "../models/catalog.js";
 import { summary } from "../threads/model.js";
 import type { GeneratedImage, RunEndStatus, RunEvent, RunEventBody, ThreadSummary } from "../threads/types.js";
 import { DEAD_AFTER_MS, eventSk } from "./model.js";
-import { counterKey, messageKey, runKey, threadKey } from "../lib/keys.js";
+import { counterKey, messageKey, roomKey, runKey, threadKey } from "../lib/keys.js";
+import type { ChannelBackground } from "./context.js";
 
 /** A run's META item: one durable execution answering one thread message (plus any steers it reads). */
 export type Run = {
@@ -46,6 +47,8 @@ export type Run = {
 type Item = Record<string, unknown>;
 
 const MODEL_CONTEXT = 50;
+/** How many of the chat's messages before the one that started a thread its agent reads as background. */
+const BACKGROUND = 20;
 const EVENTS_PAGE = 100;
 const FORCED_CLOSE_ATTEMPTS = 5;
 
@@ -177,6 +180,38 @@ export function runsRepo() {
         ExpressionAttributeValues: { ":p": `CHAT#${threadId}`, ":from": seqKey(0), ":to": seqKey(uptoSeq) },
       }));
       return Items.reverse().map(asMessage);
+    },
+
+    /**
+     * For a thread started from a people-chat message (its `from`): the chat's name and its messages up to that one.
+     * Read at each call rather than copied when the thread starts, so the agent never sees a message deleted since,
+     * and the thread item, which every room load reads, stays small.
+     */
+    async background(run: Pick<Run, "roomId" | "number">): Promise<ChannelBackground | null> {
+      const { Item } = await db.send(new GetCommand({
+        TableName, Key: threadKey(run.roomId, run.number), ProjectionExpression: "#from", ExpressionAttributeNames: { "#from": "from" },
+      }));
+      const from = Item?.from as { chatId: string; seq: number } | undefined;
+      if (!from) return null;
+      // A chat's name lives on its item in the room partition, whose key starts with the creation time, not the id.
+      const [chats, { Items = [] }] = await Promise.all([
+        queryAll({
+          KeyConditionExpression: "pk = :p AND begins_with(sk, :c)", FilterExpression: "chatId = :id", ProjectionExpression: "#name",
+          ExpressionAttributeNames: { "#name": "name" }, ExpressionAttributeValues: { ":p": roomKey(run.roomId), ":c": "CHAT#", ":id": from.chatId },
+        }),
+        db.send(new QueryCommand({
+          TableName, KeyConditionExpression: "pk = :p AND sk BETWEEN :from AND :to",
+          ExpressionAttributeValues: { ":p": `CHAT#${from.chatId}`, ":from": seqKey(Math.max(0, from.seq - BACKGROUND)), ":to": seqKey(from.seq) },
+        })),
+      ]);
+      const messages = Items.map(asMessage);
+      const replySeq = messages.find((m) => m.seq === from.seq)?.replyTo?.seq;
+      const quoted = async (seq: number) => {
+        const { Item: item } = await db.send(new GetCommand({ TableName, Key: messageKey(from.chatId, seq) }));
+        return item && asMessage(item);
+      };
+      const replyTo = replySeq === undefined ? undefined : messages.find((m) => m.seq === replySeq) ?? await quoted(replySeq);
+      return { chat: String(chats[0]?.name ?? ""), replyTo, before: messages.filter((m) => m.seq < from.seq) };
     },
 
     /**

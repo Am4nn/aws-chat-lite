@@ -75,7 +75,7 @@ describe("room agents and memory in the run loop on Floci", { timeout: 90_000 },
     await route();
     const card = (await chat.history(at.owner, at.roomId, at.generalChatId, {})).messages.at(-1)!;
     expect(card.threadRef).toMatchObject({ kind: "started" });
-    const thread = (await threads.threadById(at.roomId, card.threadRef!.threadId))!;
+    const thread = (await threads.threadById(at.roomId, (card.threadRef as { threadId: string }).threadId))!;
     expect(thread.agentId).toBe(at.scout.agentId);
     expect((await finished(thread.runId!)).status).toBe("done");
   });

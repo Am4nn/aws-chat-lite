@@ -22,11 +22,11 @@ export type Message = {
   mentions: string[];
   everyone: boolean;
   /**
-   * Set on a people-chat message that started a thread (its card) or was delivered into one (its chip). `seq` is the
-   * message's copy in that thread, which a deletion also removes; a schedule's card has none, since its thread opens
-   * with the schedule's prompt rather than the card.
+   * Set on a people-chat message that started a thread (its card) or was delivered into up to three (a chip each).
+   * Each `seq` is the message's copy in that thread, which a deletion also removes; a schedule's card has none, since
+   * its thread opens with the schedule's prompt rather than the card.
    */
-  threadRef?: { threadId: string; kind: "started" | "delivered"; seq?: number };
+  threadRef?: { kind: "started"; threadId: string; seq?: number } | { kind: "delivered"; threads: { threadId: string; seq: number }[] };
   /** Set on an agent's answer (`authorId: "agent"`): how the run that wrote it ended. */
   agent?: {
     runId: string; status: RunEndStatus; reason?: string; steps: number; costMicros: number; ms: number;

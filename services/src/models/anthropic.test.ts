@@ -88,6 +88,13 @@ describe("toMessages", () => {
     ]);
   });
 
+  it("sends a text the app adds, with no author, as it is", () => {
+    const messages: ModelMessage[] = [{ role: "user", text: "Earlier in #general" }, { role: "user", author: "aman", text: "hi" }];
+    expect(toMessages(messages, SONNET, "anthropic")).toEqual([
+      { role: "user", content: [{ type: "text", text: "Earlier in #general" }, { type: "text", text: "aman: hi" }] },
+    ]);
+  });
+
   it("drops a leading assistant, a trailing assistant (a prefill) and an empty user text", () => {
     const messages: ModelMessage[] = [
       { role: "assistant", text: "earlier" },

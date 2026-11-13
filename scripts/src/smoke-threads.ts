@@ -166,17 +166,17 @@ export async function threadChecks(stamp: number, owner: Person, guest: Person) 
   const kept = await until(A, () => document.querySelector('button[title="Rename thread"]')?.textContent?.endsWith("pr-review"));
   check(renamed && taken && kept, "renaming to pr-review updates B's card and sidebar; renaming to general shows the 409 toast and keeps the name");
 
-  // Tag delivery: a leading #tag in #general hands the message to the thread.
+  // Tag delivery: a #tag anywhere in a #general message hands the message to the thread.
   await A.click(`nav a[href="/r/${roomId}/c/${general}"]`);
   await until(A, (path) => location.pathname === path && !!document.querySelector("textarea#composer"), `/r/${roomId}/c/${general}`);
-  await send(A, "#pr-review also docs");
+  await send(A, "also docs, see #pr-review");
   const chip = await until(A, () => [...document.querySelectorAll("main a")].some((a) => a.textContent === "→ #pr-review"), undefined, 15_000);
   const first = await thread(1);
-  const copy = await eventually(() => history(first.threadId), (ms) => ms.some((m) => m.text.endsWith("also docs") && m.authorName === owner.name), 10_000);
-  const copySeq = copy.find((m) => m.text.endsWith("also docs"))?.seq;
+  const copy = await eventually(() => history(first.threadId), (ms) => ms.some((m) => m.text.startsWith("also docs") && m.authorName === owner.name), 10_000);
+  const copySeq = copy.find((m) => m.text.startsWith("also docs"))?.seq;
   const rerun = await eventually(() => thread(1), (t) => t.runFirstSeq === copySeq, 10_000);
   check(chip && copySeq !== undefined && rerun.runFirstSeq === copySeq,
-    `"#pr-review also docs" in #general lands in the thread (seq ${copySeq}), starts a run there, and shows the → #pr-review chip`);
+    `"also docs, see #pr-review" in #general lands in the thread (seq ${copySeq}), starts a run there, and shows the → #pr-review chip`);
   await settled(1);
 
   // Steering: B sends while a slow step runs, so the agent reads it between steps and takes one more. Opening a page

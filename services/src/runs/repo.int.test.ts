@@ -124,6 +124,27 @@ describe("runs repo on Floci", () => {
     expect(await runs.chatLastSeq(thread.threadId)).toBe(3);
   });
 
+  it("background reads the chat a thread started in: its name, the message replied to, and the live messages before", async () => {
+    const owner = user("owner");
+    const { roomId, generalChatId } = await roomsRepo().createRoom(owner, "Background");
+    const say = (text: string, replyToSeq?: number) =>
+      chatRepo().send(owner, { roomId, chatId: generalChatId, clientId: `k${++clients}`, text, replyToSeq });
+    await say("the build broke");
+    await say("oops, wrong room");
+    await chatRepo().remove(owner, { roomId, chatId: generalChatId, seq: 2 });
+    await say("is it green yet?");
+    const ask = await say("@agent why", 1);
+    const { thread } = await threadsRepo().createThread(owner, roomId, {
+      text: ask.text, clientId: `k${++clients}`, from: { chatId: generalChatId, seq: ask.seq },
+    });
+
+    const background = (await runs.background(thread))!;
+    expect(background).toMatchObject({ chat: "general", replyTo: { seq: 1, text: "the build broke" } });
+    expect(background.before.map((m) => [m.seq, m.text])).toEqual([[1, "the build broke"], [2, ""], [3, "is it green yet?"]]);
+    const { thread: plain } = await threadsRepo().createThread(owner, roomId, { text: "go", clientId: `k${++clients}` });
+    expect(await runs.background(plain)).toBeNull();
+  });
+
   it("progress writes the run and the thread, and bumps the thread's rev", async () => {
     const { roomId, thread, run } = await runningThread();
     const before = Number((await threadItem(roomId, thread.number))!.rev);
