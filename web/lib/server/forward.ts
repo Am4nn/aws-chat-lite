@@ -35,6 +35,8 @@ const ROUTES: [method: string, pattern: string][] = [
   ["DELETE", "/rooms/:x/connections/github"],
   ["POST", "/rooms/:x/connections/github/sign-in"],
   ["PUT", "/rooms/:x/approval-timeout"],
+  ["PUT", "/rooms/:x/approval-mode"],
+  ["PUT", "/rooms/:x/post-cap"],
   ["GET", "/rooms/:x/audit"],
   ["GET", "/rooms/:x/files"],
   ["POST", "/rooms/:x/files/uploads"],

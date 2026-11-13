@@ -102,6 +102,35 @@ describe("approval timeout", () => {
   });
 });
 
+describe("approval mode and post cap", () => {
+  it("an admin sets the mode, it is logged, and the room hears", async () => {
+    const mode = await call("admin", "PUT /rooms/{roomId}/approval-mode", { mode: "auto" });
+    expect(mode).toMatchObject({ status: 200, body: { approvalMode: "auto" } });
+    expect(mode.notify).toHaveBeenCalledWith("r");
+    expect(writes(mode.send)[0]!.input.TransactItems![1]!.Put?.Item).toMatchObject({ kind: "mode", detail: "Agent approvals: Auto" });
+  });
+
+  it("an admin sets the cap, it is logged, and the room hears", async () => {
+    const cap = await call("admin", "PUT /rooms/{roomId}/post-cap", { cap: 25 });
+    expect(cap).toMatchObject({ status: 200, body: { postCap: 25 } });
+    expect(cap.notify).toHaveBeenCalledWith("r");
+    expect(writes(cap.send)[0]!.input.TransactItems![1]!.Put?.Item).toMatchObject({ kind: "cap", detail: "Agent posts per run: 25" });
+  });
+
+  it("a member changes neither", async () => {
+    for (const [route, body] of [["PUT /rooms/{roomId}/approval-mode", { mode: "auto" }], ["PUT /rooms/{roomId}/post-cap", { cap: 5 }]] as const) {
+      const res = await call("member", route, body);
+      expect(res.status).toBe(403);
+      expect(res.notify).not.toHaveBeenCalled();
+    }
+  });
+
+  it("refuses a mode or cap it doesn't know", async () => {
+    expect((await call("admin", "PUT /rooms/{roomId}/approval-mode", { mode: "yolo" })).status).toBe(400);
+    expect((await call("admin", "PUT /rooms/{roomId}/post-cap", { cap: 0 })).status).toBe(400);
+  });
+});
+
 describe("signing in with GitHub", () => {
   const signIn = "POST /rooms/{roomId}/connections/github/sign-in";
   const finish = "POST /github-flows/finish";
@@ -257,7 +286,7 @@ describe("GET connections", () => {
   it("a member reads the connection and the timeout but can't manage, and no key material leaves", async () => {
     const res = await call("member", "GET /rooms/{roomId}/connections", undefined, { github: connection, approvalTimeoutSec: 2700 });
     expect(res.body).toEqual({
-      github: connection, mcp: [], approvalTimeoutMin: 45, canManage: false, installUrl: "https://github.com/apps/fake-app/installations/new",
+      github: connection, mcp: [], approvalTimeoutMin: 45, approvalMode: "ask", postCap: 10, canManage: false, installUrl: "https://github.com/apps/fake-app/installations/new",
     });
     expect(JSON.stringify(res.body)).not.toMatch(/BEGIN|ghs_|tvly-/);
     expect(JSON.stringify(res.body)).not.toContain("fake-client");

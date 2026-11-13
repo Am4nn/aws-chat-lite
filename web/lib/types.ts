@@ -13,6 +13,8 @@ export type Chat = { chatId: string; name: string; lastSeq: number; unread: numb
 
 export type Member = { userId: string; username: string; role: Role; online: boolean; lastSeen?: string };
 
+export type ApprovalMode = "ask" | "auto" | "bypass";
+
 export type RoomView = {
   room: { roomId: string; name: string; ownerId: string; archived: boolean };
   me: { role: Role };
@@ -23,6 +25,7 @@ export type RoomView = {
   defaultModel: ModelPick;
   models: ModelOption[];
   sandboxInternet: boolean;
+  approvalMode: ApprovalMode;
   /** The built-in @agent first. */
   agents: Agent[];
   timeZone: string;
@@ -153,7 +156,7 @@ export type McpConnection = {
   addedAt: string;
 };
 export type McpApp = { grantId: string; clientName: string; scopes: Scope[]; createdAt: string; lastUsedAt: string };
-export type AuditKind = "asked" | "tool" | "approved" | "denied" | "expired" | "cancelled" | "connected" | "disconnected" | "timeout";
+export type AuditKind = "asked" | "tool" | "approved" | "denied" | "expired" | "cancelled" | "connected" | "disconnected" | "timeout" | "mode" | "cap";
 export type AuditEntry = {
   id: string; at: string; actor: string; kind: AuditKind; threadNumber?: number; tool?: string; detail: string; agent?: string;
 };

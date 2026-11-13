@@ -21,6 +21,9 @@ export function auditLine(e: AuditEntry): string {
       return `${e.actor} disconnected ${e.detail}`;
     case "timeout":
       return `${e.actor} set the approval timeout to ${e.detail}`;
+    case "mode":
+    case "cap":
+      return `${e.actor} set ${e.detail}`;
   }
 }
 

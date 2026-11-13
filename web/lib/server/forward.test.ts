@@ -33,6 +33,8 @@ describe("matchForward (/bff/api/* → HTTP API allowlist)", () => {
     ["DELETE", ["rooms", "r", "connections", "github"], "/rooms/r/connections/github"],
     ["POST", ["rooms", "r", "connections", "github", "sign-in"], "/rooms/r/connections/github/sign-in"],
     ["PUT", ["rooms", "r", "approval-timeout"], "/rooms/r/approval-timeout"],
+    ["PUT", ["rooms", "r", "approval-mode"], "/rooms/r/approval-mode"],
+    ["PUT", ["rooms", "r", "post-cap"], "/rooms/r/post-cap"],
     ["GET", ["rooms", "r", "audit"], "/rooms/r/audit"],
     ["POST", ["runs", "abc", "approvals", "2"], "/runs/abc/approvals/2"],
     ["GET", ["rooms", "r", "files"], "/rooms/r/files"],

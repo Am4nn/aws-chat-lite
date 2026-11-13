@@ -1,5 +1,5 @@
 import { ValidationError } from "../lib/errors.js";
-import type { ApprovalStatus } from "../threads/types.js";
+import type { ApprovalMode, ApprovalStatus } from "../threads/types.js";
 
 /** What the model is told when a write step was cut short after it may already have reached `place`. */
 export const unsure = (place: string) =>
@@ -36,6 +36,20 @@ export function formatWait(sec: number): string {
 export function timeoutMinutes(raw: unknown): number {
   if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 5 || raw > 1440) {
     throw new ValidationError("The approval timeout is 5 to 1440 minutes.");
+  }
+  return raw;
+}
+
+export const DEFAULT_POST_CAP = 10;
+
+export function approvalModeOf(raw: unknown): ApprovalMode {
+  if (raw !== "ask" && raw !== "auto" && raw !== "bypass") throw new ValidationError("Pick ask, auto or bypass.");
+  return raw;
+}
+
+export function postCapOf(raw: unknown): number {
+  if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 1 || raw > 50) {
+    throw new ValidationError("The post cap is 1 to 50 posts a run.");
   }
   return raw;
 }

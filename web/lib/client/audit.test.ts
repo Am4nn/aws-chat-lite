@@ -25,6 +25,10 @@ describe("auditLine", () => {
   });
   it("timeout", () => expect(auditLine(entry({ kind: "timeout", threadNumber: undefined, detail: "30 min" })))
     .toBe("bea set the approval timeout to 30 min"));
+  it("mode and cap", () => {
+    expect(auditLine(entry({ kind: "mode", threadNumber: undefined, detail: "Agent approvals: Auto" }))).toBe("bea set Agent approvals: Auto");
+    expect(auditLine(entry({ kind: "cap", threadNumber: undefined, detail: "Agent posts per run: 3" }))).toBe("bea set Agent posts per run: 3");
+  });
 });
 
 describe("auditMayHaveChanged", () => {

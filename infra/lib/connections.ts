@@ -22,5 +22,7 @@ export function addConnections(stack: CoreStack) {
   stack.route("POST", "/rooms/{roomId}/connections/github/sign-in", fn);
   stack.route("POST", "/github-flows/finish", fn);
   stack.route("PUT", "/rooms/{roomId}/approval-timeout", fn);
+  stack.route("PUT", "/rooms/{roomId}/approval-mode", fn);
+  stack.route("PUT", "/rooms/{roomId}/post-cap", fn);
   stack.route("GET", "/rooms/{roomId}/audit", fn);
 }

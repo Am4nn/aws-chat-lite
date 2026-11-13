@@ -57,7 +57,10 @@ export type McpConnection = {
   addedAt: string;
 };
 export type McpApp = { grantId: string; clientName: string; scopes: Scope[]; createdAt: string; lastUsedAt: string };
-export type AuditKind = "asked" | "tool" | "approved" | "denied" | "expired" | "cancelled" | "connected" | "disconnected" | "timeout";
+/** How much of what an agent does in a room waits for a member: everything that writes (ask), only the risky (auto), or nothing (bypass). */
+export type ApprovalMode = "ask" | "auto" | "bypass";
+
+export type AuditKind = "asked" | "tool" | "approved" | "denied" | "expired" | "cancelled" | "connected" | "disconnected" | "timeout" | "mode" | "cap";
 export type AuditEntry = {
   id: string; at: string; actor: string; kind: AuditKind; threadNumber?: number; tool?: string; detail: string;
   /** The agent that made the call or answered the ask. */

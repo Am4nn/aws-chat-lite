@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ValidationError } from "../lib/errors.js";
-import { conflictCopy, deniedResult, expiredResult, formatWait, skipNote, timeoutMinutes, unsure } from "./model.js";
+import { approvalModeOf, conflictCopy, deniedResult, expiredResult, formatWait, postCapOf, skipNote, timeoutMinutes, unsure } from "./model.js";
 
 describe("formatWait", () => {
   it("says hours, minutes or under a minute", () => {
@@ -21,6 +21,16 @@ describe("timeoutMinutes", () => {
     for (const raw of [4, 1441, "x", 10.5, undefined]) {
       expect(() => timeoutMinutes(raw)).toThrow(new ValidationError("The approval timeout is 5 to 1440 minutes."));
     }
+  });
+});
+
+describe("approval mode and post cap", () => {
+  it("takes ask, auto or bypass, and a post cap of 1 to 50", () => {
+    expect(approvalModeOf("bypass")).toBe("bypass");
+    expect(() => approvalModeOf("yolo")).toThrow("Pick ask, auto or bypass.");
+    expect(postCapOf(1)).toBe(1);
+    expect(postCapOf(50)).toBe(50);
+    for (const bad of [0, 51, 2.5, "10"]) expect(() => postCapOf(bad)).toThrow("The post cap is 1 to 50 posts a run.");
   });
 });
 

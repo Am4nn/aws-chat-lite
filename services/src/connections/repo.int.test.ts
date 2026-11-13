@@ -53,6 +53,22 @@ describe("connections repo on Floci", () => {
     expect(entry).toMatchObject({ kind: "timeout", actor: "owner", detail: "30 min" });
   });
 
+  it("a room starts in Ask with a post cap of 10; an admin's change round-trips and is audited once", async () => {
+    const { owner, roomId } = await room();
+    expect(await repo.get(roomId)).toMatchObject({ approvalMode: "ask", postCap: 10, sandboxInternet: false });
+    await repo.setApprovalMode(owner, roomId, "bypass");
+    await repo.setPostCap(owner, roomId, 3);
+    expect(await repo.get(roomId)).toMatchObject({ approvalMode: "bypass", postCap: 3 });
+    expect((await auditRepo().list(roomId)).entries.map((e) => e.detail)).toEqual(expect.arrayContaining(["Agent approvals: Bypass", "Agent posts per run: 3"]));
+  });
+
+  it("a member changes neither mode nor cap, and nothing is logged", async () => {
+    const { member, roomId } = await room();
+    await expect(repo.setApprovalMode(member, roomId, "auto")).rejects.toThrow("Only admins can change the room's connections.");
+    await expect(repo.setPostCap(member, roomId, 5)).rejects.toThrow("Only admins can change the room's connections.");
+    expect(await kinds(roomId)).toEqual([]);
+  });
+
   it("a member changes nothing, and nothing is logged", async () => {
     const { member, roomId } = await room();
     await expect(repo.setApprovalTimeout(member, roomId, 30)).rejects.toBeInstanceOf(Forbidden);

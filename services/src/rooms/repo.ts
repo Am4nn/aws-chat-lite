@@ -11,7 +11,7 @@ import { modelOptions, type ModelOption, type ModelPick } from "../models/catalo
 import { agentsRepo } from "../agents/repo.js";
 import { DEFAULT_TIME_ZONE } from "../schedules/zone.js";
 import { claimableName, summary } from "../threads/model.js";
-import type { Agent, Budget, ThreadSummary } from "../threads/types.js";
+import type { Agent, ApprovalMode, Budget, ThreadSummary } from "../threads/types.js";
 import { can, type Action, type Role } from "./access.js";
 import { chatName, roomName } from "./model.js";
 import { INVITE_TTL_SEC, inviteState, newInviteCode } from "./invites.js";
@@ -29,6 +29,7 @@ interface RoomView {
   models: ModelOption[];
   /** Whether the room's sandbox reaches the internet; off until an admin turns it on. */
   sandboxInternet: boolean;
+  approvalMode: ApprovalMode;
   /** The built-in @agent first, then the others by name. */
   agents: Agent[];
   /** The IANA zone the room's schedules fire in. */
@@ -247,6 +248,7 @@ export function roomsRepo() {
         defaultModel: (meta.defaultModel as ModelPick | undefined) ?? "auto",
         models: modelOptions(process.env.STAGE ?? ""),
         sandboxInternet: !!meta.sandboxInternet,
+        approvalMode: (meta.approvalMode as ApprovalMode | undefined) ?? "ask",
         agents,
         timeZone: (meta.timeZone as string | undefined) ?? DEFAULT_TIME_ZONE,
       };
