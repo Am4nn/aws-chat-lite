@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Member, TaintSource } from "@/lib/types";
+import type { ApprovalMode, Member, TaintSource } from "@/lib/types";
 import { Header } from "./Header";
 
-const header = (taint: TaintSource[], panelOpen = true, navCollapsed = false, onPeople = () => {}, members: Member[] = []) =>
-  render(<Header roomName="Room" chatName="general" taint={taint} members={members} panelOpen={panelOpen} navCollapsed={navCollapsed} onMenu={() => {}} onPeople={onPeople} onTogglePanel={() => {}} />);
+const header = (taint: TaintSource[], panelOpen = true, navCollapsed = false, onPeople = () => {}, members: Member[] = [], approvalMode?: ApprovalMode) =>
+  render(<Header roomName="Room" chatName="general" taint={taint} approvalMode={approvalMode} members={members} panelOpen={panelOpen} navCollapsed={navCollapsed} onMenu={() => {}} onPeople={onPeople} onTogglePanel={() => {}} />);
 
 afterEach(cleanup);
 
@@ -23,6 +23,18 @@ describe("Header", () => {
   it("shows no lock for a thread that only read room chat", () => {
     header(["room"]);
     expect(screen.queryByRole("img", { name: /Private/ })).toBeNull();
+  });
+
+  it("shows the room's mode beside the title in Auto and Bypass only", () => {
+    header([], true, false, () => {}, [], "auto");
+    expect(screen.getByRole("img", { name: "Auto: agents post and set up agents without asking." }).textContent).toBe("Auto");
+    cleanup();
+    header([], true, false, () => {}, [], "bypass");
+    expect(screen.getByRole("img", { name: "Bypass: agent tools run without asking, except deletes and calls that would carry room chat out." }).textContent).toBe("Bypass");
+    cleanup();
+    header([], true, false, () => {}, [], "ask");
+    expect(screen.queryByText("Auto")).toBeNull();
+    expect(screen.queryByText("Bypass")).toBeNull();
   });
 
   it("offers the sidebar back on a wide screen only once it has been hidden", () => {

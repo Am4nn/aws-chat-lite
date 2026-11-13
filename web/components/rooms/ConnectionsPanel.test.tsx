@@ -11,12 +11,18 @@ const mockedBff = vi.mocked(bff);
 const puts = () => mockedBff.mock.calls.filter(([, init]) => init?.method === "PUT");
 
 beforeEach(() => {
+  let mode = "ask";
   mockedBff.mockReset();
   mockedBff.mockImplementation(async (path, init) => {
-    if (path.endsWith("/connections")) return { github: null, mcp: [], approvalTimeoutMin: 120, canManage: true, installUrl: null };
+    if (path.endsWith("/connections")) return { github: null, mcp: [], approvalTimeoutMin: 120, approvalMode: mode, postCap: 10, canManage: true, installUrl: null };
     if (path.endsWith("/approval-timeout")) return { approvalTimeoutMin: (init?.body as { minutes: number }).minutes };
     if (path.endsWith("/github/sign-in")) return { authorizeUrl: "https://github.com/login/oauth/authorize?state=s" };
     if (path.endsWith("/github/installations")) return { installations: [{ id: 1, account: "fake-org", repos: ["fake-org/playground"] }] };
+    if (path.endsWith("/approval-mode")) {
+      mode = (init?.body as { mode: string }).mode;
+      return { approvalMode: mode };
+    }
+    if (path.endsWith("/post-cap")) return { postCap: (init?.body as { cap: number }).cap };
     return { entries: [] };
   });
 });
@@ -50,7 +56,7 @@ describe("ConnectionsPanel", () => {
   it("shows a member the approval timeout without a way to change it", async () => {
     const admin = mockedBff.getMockImplementation()!;
     mockedBff.mockImplementation(async (path, init) => (path.endsWith("/connections")
-      ? { github: null, mcp: [], approvalTimeoutMin: 120, canManage: false, installUrl: null }
+      ? { github: null, mcp: [], approvalTimeoutMin: 120, approvalMode: "ask", postCap: 10, canManage: false, installUrl: null }
       : admin(path, init)));
     render(<ConnectionsPanel roomId="r2" archived={false} />);
     const settings = within(screen.getByRole("region", { name: "Settings" }));
@@ -104,12 +110,40 @@ describe("ConnectionsPanel", () => {
 
   it("opens no picker for a member", async () => {
     mockedBff.mockImplementation(async (path) => {
-      if (path.endsWith("/connections")) return { github: null, mcp: [], approvalTimeoutMin: 120, canManage: false, installUrl: null };
+      if (path.endsWith("/connections")) return { github: null, mcp: [], approvalTimeoutMin: 120, approvalMode: "ask", postCap: 10, canManage: false, installUrl: null };
       return { entries: [] };
     });
     // A room of its own: the panel cache still holds the admin's answer for r1 from the tests above.
     render(<ConnectionsPanel roomId="r2" archived={false} pickGitHub onPickStarted={() => {}} />);
     expect(await screen.findByText("Not connected")).toBeTruthy();
     expect(mockedBff.mock.calls.some(([path]) => path.endsWith("/installations"))).toBe(false);
+  });
+
+  it("lets an admin switch the mode and set the post cap", async () => {
+    render(<ConnectionsPanel roomId="r1" archived={false} />);
+    const settings = within(screen.getByRole("region", { name: "Settings" }));
+    fireEvent.click(await settings.findByRole("button", { name: "Bypass" }));
+    await waitFor(() => expect(settings.getByRole("button", { name: "Bypass" }).getAttribute("aria-pressed")).toBe("true"));
+    expect(settings.getByRole("button", { name: "Ask" }).getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(settings.getByRole("button", { name: "Change the post cap" }));
+    const field = settings.getByRole("textbox", { name: "Post cap per run, 1 to 50" });
+    fireEvent.change(field, { target: { value: "25" } });
+    fireEvent.blur(field);
+    await settings.findByText("25");
+    expect(puts()).toEqual([
+      ["/bff/api/rooms/r1/approval-mode", { method: "PUT", body: { mode: "bypass" } }],
+      ["/bff/api/rooms/r1/post-cap", { method: "PUT", body: { cap: 25 } }],
+    ]);
+  });
+
+  it("shows a member the mode and post cap without a way to change them", async () => {
+    mockedBff.mockImplementation(async (path) => (path.endsWith("/connections")
+      ? { github: null, mcp: [], approvalTimeoutMin: 120, approvalMode: "auto", postCap: 10, canManage: false, installUrl: null }
+      : { entries: [] }));
+    render(<ConnectionsPanel roomId="r3" archived={false} />);
+    const settings = within(screen.getByRole("region", { name: "Settings" }));
+    expect(await settings.findByText("10")).toBeTruthy();
+    for (const name of ["Ask", "Auto", "Bypass"]) expect((settings.getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
+    expect(settings.queryByRole("button", { name: "Change the post cap" })).toBeNull();
   });
 });

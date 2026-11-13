@@ -7,7 +7,7 @@ import { bff, errorText } from "@/lib/client/bff";
 import { markFlowStarted } from "@/lib/client/flow-return";
 import { useLiveEvent } from "@/lib/client/LiveProvider";
 import { swap } from "@/lib/motion";
-import type { GitHubConnection, McpConnection } from "@/lib/types";
+import type { ApprovalMode, GitHubConnection, McpConnection } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { PanelLoading } from "@/components/ui/PanelLoading";
 import { PanelSection } from "@/components/ui/PanelSection";
@@ -20,13 +20,13 @@ import { RoomSettings } from "./RoomSettings";
 import { useRoomData } from "./useRoomData";
 
 type Connections = {
-  github: GitHubConnection | null; mcp: McpConnection[]; approvalTimeoutMin: number; canManage: boolean; installUrl: string | null;
+  github: GitHubConnection | null; mcp: McpConnection[]; approvalTimeoutMin: number; approvalMode: ApprovalMode; postCap: number; canManage: boolean; installUrl: string | null;
 };
 type Mode = { kind: "view" } | { kind: "confirmDisconnect" } | { kind: "pick"; installations: Installation[] | null };
 
 /**
  * The Room tab's Connections, Settings and Activity sections, which one answer from the server feeds: what the room's
- * agent may reach, how long its writes wait, and the room's log. Every member reads them; admins change them. The
+ * agent may reach, how long its writes wait, how much runs without asking, and the room's log. Every member reads them; admins change them. The
  * server's answer is the truth, fetched again whenever the room changes. `pickGitHub`: the admin is back from GitHub's
  * sign-in, so the repo picker opens.
  */
@@ -75,7 +75,11 @@ export function ConnectionsPanel({ roomId, archived, pickGitHub, onPickStarted }
           </Part>
         </div>
       </PanelSection>
-      <RoomSettings roomId={roomId} approvalTimeoutMin={data?.approvalTimeoutMin} manage={manage} onChange={(approvalTimeoutMin) => changed({ approvalTimeoutMin })} />
+      <RoomSettings
+        roomId={roomId} approvalTimeoutMin={data?.approvalTimeoutMin} approvalMode={data?.approvalMode} postCap={data?.postCap} manage={manage}
+        onChange={(approvalTimeoutMin) => changed({ approvalTimeoutMin })} onModeChange={(approvalMode) => changed({ approvalMode })}
+        onCapChange={(postCap) => changed({ postCap })}
+      />
       <ActivityLog roomId={roomId} version={version} />
     </>
   );
