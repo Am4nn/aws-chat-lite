@@ -270,6 +270,10 @@ export async function liveChecks(stamp: number, owner: Person, guest: Person, th
   const rising = await entrance(B, A, roomId, general, "rising in");
   check(rising.seen > 0 && rising.moving >= 3, `a new message fades and rises in (${rising.moving} of ${rising.seen} frames in motion)`);
   await B.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "reduce" }]);
+  // The app hears the change through a media-query listener, a moment after it is made; a message that lands before
+  // then still fades in, which a slow runner showed as 14 moving frames.
+  await B.waitForFunction(() => matchMedia("(prefers-reduced-motion: reduce)").matches);
+  await new Promise((r) => setTimeout(r, 500));
   const still = await entrance(B, A, roomId, general, "appearing at once");
   check(still.seen > 0 && still.moving === 0, `with reduced motion a new message appears at once (${still.moving} of ${still.seen} frames in motion)`);
   await B.emulateMediaFeatures([]);
