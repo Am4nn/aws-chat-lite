@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent, type KeyboardEvent } from "react";
-import { FolderGit2, Globe, ImageIcon, Server, SquareTerminal, type LucideIcon } from "lucide-react";
+import { ChevronRight, FolderGit2, Globe, ImageIcon, Server, SquareTerminal, type LucideIcon } from "lucide-react";
 import type { Agent, AgentModel, ModelOption, ToolKind } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { panelInput } from "@/components/ui/Field";
@@ -22,9 +22,10 @@ const MAX_INSTRUCTIONS = 4000;
 /**
  * A new agent, or changes to one. Only the tool kinds the room offers can be ticked; a kind the agent already had
  * stays ticked when its connection goes, and comes back to life when it returns. The built-in @agent keeps its name.
+ * `brief` is what every agent is told before its own instructions, shown so the box isn't mistaken for all of it.
  */
-export function AgentForm({ initial, kinds, models, busy, onCancel, onSubmit }: {
-  initial?: Agent; kinds: ToolKind[]; models: ModelOption[]; busy: boolean; onCancel: () => void; onSubmit: (input: AgentInput) => void;
+export function AgentForm({ initial, kinds, brief, models, busy, onCancel, onSubmit }: {
+  initial?: Agent; kinds: ToolKind[]; brief: string; models: ModelOption[]; busy: boolean; onCancel: () => void; onSubmit: (input: AgentInput) => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [instructions, setInstructions] = useState(initial?.instructions ?? "");
@@ -70,6 +71,13 @@ export function AgentForm({ initial, kinds, models, busy, onCancel, onSubmit }: 
           value={instructions} onChange={(e) => setInstructions(e.target.value)}
           className={`${panelInput} resize-y py-2 leading-snug`}
         />
+        <details className="group text-[12.5px] text-text-3">
+          <summary className="flex w-fit cursor-pointer list-none items-center gap-1 rounded-sm transition-colors hover:text-text-2 [&::-webkit-details-marker]:hidden">
+            <ChevronRight aria-hidden="true" size={13} className="transition-transform group-open:rotate-90" />
+            Always included
+          </summary>
+          <p className="mt-1.5 rounded-lg bg-surface-1 px-2.5 py-2 leading-relaxed">{brief}</p>
+        </details>
       </div>
       <fieldset className="flex flex-col gap-1">
         <legend className="mb-1 text-xs font-medium text-text-3">Tools</legend>

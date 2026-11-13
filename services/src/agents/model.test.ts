@@ -28,6 +28,11 @@ describe("instructionsText", () => {
 describe("toolKinds", () => {
   it("dedupes and sorts", () => expect(toolKinds(["web", "images", "github", "web"])).toEqual(["github", "images", "web"]));
   it("gives the built-in @agent every kind, images included", () => expect(BUILT_IN.tools).toEqual(["github", "images", "mcp", "sandbox", "web"]));
+  it("gives the built-in @agent a role, whose first line other agents read when they hand it work", () =>
+    expect(BUILT_IN.instructions.split("\n")).toEqual([
+      "The room's generalist.",
+      "Take any question or task: answer directly when you can, and research or run code when it needs checking. If another agent in the room is the specialist for part of it, hand that part to them. Keep answers short and lead with the result; ask one question when the request is unclear.",
+    ]));
   it.each([["shell"], "web", undefined])("refuses %j", (raw) => expect(() => toolKinds(raw)).toThrow("Unknown tool kind."));
 });
 
