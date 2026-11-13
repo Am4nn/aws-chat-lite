@@ -19,9 +19,11 @@ export function findAgentMentions(text: string, agents: string[]) {
   return [...text.matchAll(re)].map((m) => ({ start: m.index, end: m.index + m[0].length, name: m[1].toLowerCase() }));
 }
 
+/** The text with its code blanked out, so what's found in it is where it is in the text. */
+export const outsideCode = (text: string) => text.replace(CODE, (code) => " ".repeat(code.length));
+
 export function parseMentions(text: string, members: Mentionable[]) {
-  const prose = text.replace(CODE, (code) => " ".repeat(code.length));
-  const found = findMentions(prose, members);
+  const found = findMentions(outsideCode(text), members);
   const ids = new Set<string>();
   for (const { name } of found) {
     const member = members.find((m) => m.username.toLowerCase() === name);
@@ -30,7 +32,8 @@ export function parseMentions(text: string, members: Mentionable[]) {
   return { mentions: [...ids], everyone: found.some((f) => f.name === "everyone") };
 }
 
-export type MentionOption = { name: string; kind: "agent" | "everyone" | "member" };
+/** A row of the `@` or `#` list; a thread's carries its number. */
+export type MentionOption = { name: string; kind: "agent" | "everyone" | "member" | "thread" | "chat"; number?: number };
 
 const MENTION_OPTIONS = 6;
 
@@ -47,11 +50,11 @@ export function mentionOptions(query: string, { agents, members, meId }: {
 }
 
 /**
- * The `@name` being typed just before the caret, for autocomplete: `start` is where the `@` sits. Inside a code span,
- * or right after a word character (an email), it isn't a mention.
+ * The `@name` or `#tag` being typed just before the caret, for autocomplete: `start` is where the `trigger` sits.
+ * Inside a code span, or right after a word character (an email), it is neither.
  */
-export function mentionQuery(beforeCaret: string): { start: number; query: string } | null {
-  const m = /(?<![\w`])@([\w.-]*)$/.exec(beforeCaret);
+export function mentionQuery(beforeCaret: string): { start: number; query: string; trigger: "@" | "#" } | null {
+  const m = /(?<![\w`])([@#])([\w.-]*)$/.exec(beforeCaret);
   if (!m || (beforeCaret.match(/`/g)?.length ?? 0) % 2 === 1) return null;
-  return { start: m.index, query: m[1] };
+  return { start: m.index, query: m[2], trigger: m[1] as "@" | "#" };
 }

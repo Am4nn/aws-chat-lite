@@ -8,11 +8,11 @@ import { AgentAvatar } from "@/components/ui/AgentAvatar";
 import { Avatar } from "@/components/ui/Avatar";
 
 /**
- * The @ list above the composer. Focus stays in the text box, which owns the keys and points at the highlighted option
- * (`id`-`index`), so a press picks without stealing focus.
+ * The @ or # list above the composer. Focus stays in the text box, which owns the keys and points at the highlighted
+ * option (`id`-`index`), so a press picks without stealing focus.
  */
-export function MentionList({ id, options, highlight, onPick, onHighlight }: {
-  id: string; options: MentionOption[]; highlight: number; onPick: (name: string) => void; onHighlight: (i: number) => void;
+export function MentionList({ id, label, options, highlight, onPick, onHighlight }: {
+  id: string; label: string; options: MentionOption[]; highlight: number; onPick: (name: string) => void; onHighlight: (i: number) => void;
 }) {
   const reduced = useReducedMotion();
   const fast = reduced ? instant : { duration: dur.fast, ease: easeOut };
@@ -22,14 +22,14 @@ export function MentionList({ id, options, highlight, onPick, onHighlight }: {
         <motion.ul
           id={id}
           role="listbox"
-          aria-label="Mention someone"
+          aria-label={label}
           initial={{ opacity: 0, y: reduced ? 0 : 6 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, transition: fast }}
           transition={fast}
           className="absolute bottom-full left-4 z-20 mb-2 w-64 rounded-xl border border-line-strong bg-surface-2 p-1 shadow-menu sm:left-7"
         >
-          {options.map(({ name, kind }, i) => (
+          {options.map(({ name, kind, number }, i) => (
             <li
               key={`${kind}-${name}`}
               id={`${id}-${i}`}
@@ -42,9 +42,11 @@ export function MentionList({ id, options, highlight, onPick, onHighlight }: {
               {kind === "agent" && <AgentAvatar size={22} />}
               {kind === "everyone" && <span className="grid size-[22px] place-items-center rounded-full bg-surface-4"><Users aria-hidden="true" size={12} /></span>}
               {kind === "member" && <Avatar name={name} size={22} />}
-              {name}
+              {kind === "thread" || kind === "chat" ? `#${name}` : name}
               {kind === "agent" && <span className="ml-auto text-[11.5px] text-text-3">agent</span>}
               {kind === "everyone" && <span className="ml-auto text-[11.5px] text-text-3">whole room</span>}
+              {kind === "thread" && <span className="ml-auto font-mono text-[11.5px] text-text-3">#{number}</span>}
+              {kind === "chat" && <span className="ml-auto text-[11.5px] text-text-3">chat</span>}
             </li>
           ))}
         </motion.ul>

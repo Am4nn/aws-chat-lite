@@ -1,5 +1,6 @@
 import { createContext } from "react";
 import type { Chat, ThreadSummary } from "../types";
+import type { MentionOption } from "./mentions";
 
 export type RoomTags = { roomId: string; threads: Pick<ThreadSummary, "number" | "name">[]; chats: Pick<Chat, "chatId" | "name">[] };
 
@@ -9,14 +10,37 @@ export const RoomTagsContext = createContext<RoomTags | null>(null);
 /** The server's tag: not part of a word, and not the start of a longer name. */
 const TAG = /(?<!\w)#([a-z0-9-]{1,32})(?![\w-])/gi;
 
+/** A thread a draft's tag names: by number, or by the name the server turns into its number on the way in. */
+const namesThread = (tag: string, tags: RoomTags) =>
+  tags.threads.some((t) => String(t.number) === tag || t.name.toLowerCase() === tag.toLowerCase());
+
 /**
  * A message the server would refuse: it tags one of the room's threads and says nothing else, so the thread's agent
  * would get a bare tag to make sense of.
  */
 export function onlyThreadTags(text: string, tags: RoomTags): boolean {
-  const named = [...text.matchAll(TAG)].some(([, tag]) =>
-    tags.threads.some((t) => String(t.number) === tag || t.name.toLowerCase() === tag!.toLowerCase()));
+  const named = [...text.matchAll(TAG)].some(([, tag]) => namesThread(tag!, tags));
   return named && !/[^\s,.:;-]/.test(text.replace(TAG, ""));
+}
+
+/** The `#tags` in a draft that will link once it's sent: unlike a stored message, a thread can still go by its name. */
+export function findDraftTags(text: string, tags: RoomTags) {
+  return [...text.matchAll(TAG)]
+    .filter(([, tag]) => namesThread(tag!, tags) || tags.chats.some((c) => c.name.toLowerCase() === tag!.toLowerCase()))
+    .map((m) => ({ start: m.index, end: m.index + m[0].length }));
+}
+
+const TAG_OPTIONS = 6;
+
+/** The `#` list for what was typed: the newest threads first, then the chats. */
+export function tagOptions(query: string, tags: RoomTags): MentionOption[] {
+  const q = query.toLowerCase();
+  const threads = tags.threads
+    .filter((t) => t.name.toLowerCase().startsWith(q) || String(t.number).startsWith(q))
+    .sort((a, b) => b.number - a.number)
+    .map((t) => ({ name: t.name, kind: "thread" as const, number: t.number }));
+  const chats = tags.chats.filter((c) => c.name.toLowerCase().startsWith(q)).map((c) => ({ name: c.name, kind: "chat" as const }));
+  return [...threads, ...chats].slice(0, TAG_OPTIONS);
 }
 
 /**
