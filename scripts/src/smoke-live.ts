@@ -18,11 +18,20 @@ async function rowWith(page: Page, text: string) {
   return handle.asElement() as ElementHandle<Element>;
 }
 
+/**
+ * Opens a row's toolbar and presses one of its buttons. The press goes to the button itself, not to a screen point: the
+ * toolbar floats over the row above, and on a GitHub runner a click at its point missed the button.
+ */
 async function toolbar(page: Page, text: string, label: string) {
   const row = await rowWith(page, text);
   await row.hover();
-  await (await row.$(`button[aria-label="${label}"]`))!.click();
+  await press(row, `button[aria-label="${label}"]`);
   return row;
+}
+
+async function press(within: ElementHandle<Element>, selector: string) {
+  const button = await within.waitForSelector(selector, { timeout: 5_000 });
+  await button!.evaluate((b) => (b as HTMLElement).click());
 }
 
 /** The sidebar badges on one chat row as they read on screen: "", "1", "@1" or "@1 2". */
@@ -137,7 +146,7 @@ export async function liveChecks(stamp: number, owner: Person, guest: Person, th
   await B.keyboard.press("Backspace");
 
   const helloRow = await toolbar(B, hello, "Add reaction");
-  await (await helloRow.$('button[aria-label="React thumbs up"]'))!.click();
+  await press(helloRow, 'button[aria-label="React thumbs up"]');
   check(await until(A, () => [...document.querySelectorAll("main button[aria-pressed]")].some((x) => (x as HTMLElement).innerText.includes("👍") && (x as HTMLElement).innerText.includes("1"))),
     "B reacts 👍 and A sees the chip");
 
