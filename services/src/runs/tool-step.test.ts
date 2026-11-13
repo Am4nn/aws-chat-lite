@@ -17,6 +17,7 @@ const runs = {
 const audit = { record: vi.fn() };
 const fake = vi.hoisted(() => ({
   mcp: [] as unknown[], addTaint: vi.fn(async () => {}), runSandbox: vi.fn(async () => ({ ok: true, output: "4", ms: 5 })),
+  mode: "ask", internet: false, taint: [] as string[],
 }));
 vi.mock("./repo.js", () => ({ runsRepo: () => runs }));
 vi.mock("./notify.js", () => ({ notifyRun: async () => {} }));
@@ -26,8 +27,12 @@ vi.mock("../budget/repo.js", () => ({
     withArchived: async () => ({ budget: { spentMicros: 0, capMicros: 3_000_000, month: "2026-11" }, archived: false }), spend: () => ({}),
   }),
 }));
-vi.mock("../connections/repo.js", () => ({ connectionsRepo: () => ({ get: async () => ({ github: null, mcp: fake.mcp, approvalTimeoutSec: 7200 }) }) }));
-vi.mock("../threads/repo.js", () => ({ threadsRepo: () => ({ addTaint: fake.addTaint, threadById: async () => ({ taint: [] }) }) }));
+vi.mock("../connections/repo.js", () => ({
+  connectionsRepo: () => ({
+    get: async () => ({ github: null, mcp: fake.mcp, approvalTimeoutSec: 7200, approvalMode: fake.mode, postCap: 10, sandboxInternet: fake.internet }),
+  }),
+}));
+vi.mock("../threads/repo.js", () => ({ threadsRepo: () => ({ addTaint: fake.addTaint, threadById: async () => ({ taint: fake.taint }) }) }));
 vi.mock("../images/step.js", async (actual) => ({
   ...await actual<object>(), imageDeps: () => ({}), generateImageStep: async () => ({ ok: true, output: "Saved images/1-1-1-cat.png." }),
 }));
@@ -43,8 +48,10 @@ const run = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  fake.mcp = [];
+  Object.assign(fake, { mcp: [], mode: "ask", internet: false, taint: [] });
 });
+
+const NOW_ASKS = "This call now needs a room member's approval. Call it again to ask for it.";
 
 /** A member's no to `call`, as the settled approval comes back. */
 const deniedBy = (by: string, call: { id: string; name: string; input: Record<string, unknown> }) => ({
@@ -92,15 +99,44 @@ describe("toolStep", () => {
   it("a write the room's mode lets run goes ahead with no approval", async () => {
     const conn: McpConnection = {
       name: "test", url: "http://127.0.0.1:4710/mcp", auth: "oauth", status: "connected", toolCount: 1, toolsAt: "2026-11-11T00:00:00Z",
-      addedBy: "aman", addedAt: "2026-11-11T00:00:00Z", tools: [{ name: "add_note", description: "Saves a note.", inputSchema: { type: "object" }, readOnly: false }],
+      addedBy: "aman", addedAt: "2026-11-11T00:00:00Z", tools: [{ name: "add_note", description: "Saves a note.", inputSchema: { type: "object" }, readOnly: false, destructive: false }],
     };
     fake.mcp = [conn];
+    fake.mode = "bypass";
     const mcpCall = vi.fn(async () => ({ ok: true, output: "saved" }));
     const appended = logged();
     const writer = { ...run, agent: { ...BUILT_IN, tools: ["mcp" as const] } };
     await toolStep(writer, { id: "c1", name: "mcp__test__add_note", input: { text: "hi" } }, undefined, async () => ({ mcpCall }) as unknown as ToolEnv);
     expect(mcpCall).toHaveBeenCalledWith({ roomId: "r1", name: "test" }, "add_note", { text: "hi" });
     expect(appended.find((e) => e.type === "step.finished")).toMatchObject({ ok: true, output: "saved" });
+  });
+
+  it("holds back a call its gate let through once it would ask: here the thread read room chat in the meantime", async () => {
+    const fetchPage = vi.fn(async () => ({ url: "https://example.com/", status: 200, contentType: "text/plain", body: "hi" }));
+    const envOf = async () => ({ fetchPage, keys: {} }) as unknown as ToolEnv;
+    const reader = { ...run, agent: { ...BUILT_IN, tools: ["web" as const] } };
+    const call = { id: "c1", name: "web_fetch", input: { url: "https://example.com/" } };
+    fake.mode = "auto";
+    fake.taint = ["room"];
+    const appended = logged();
+    await toolStep(reader, call, undefined, envOf);
+    expect(fetchPage).not.toHaveBeenCalled();
+    expect(appended.find((e) => e.type === "step.finished")).toMatchObject({ ok: false, output: NOW_ASKS });
+
+    const approved = { ...deniedBy("bea", call), status: "approved" as const };
+    await toolStep(reader, call, approved, envOf);
+    expect(fetchPage).toHaveBeenCalledWith("https://example.com/");
+  });
+
+  it("holds back sandbox code once the sandbox reaches the internet in a thread that read room chat", async () => {
+    fake.internet = true;
+    fake.taint = ["room"];
+    const appended = logged();
+    await toolStep(run, { id: "c1", name: "sandbox_run", input: { language: "python", code: "print(1)" } });
+    expect(fake.runSandbox).not.toHaveBeenCalled();
+    expect(fake.addTaint).not.toHaveBeenCalled();
+    expect(appended.find((e) => e.type === "step.finished")).toMatchObject({ ok: false, output: NOW_ASKS });
+    expect(appended.some((e) => e.type === "usage")).toBe(false);
   });
 
   it("logs nothing for a tool the model was never offered", async () => {

@@ -14,7 +14,7 @@ import { DEAD_AFTER_MS } from "./model.js";
 import { notifyRun } from "./notify.js";
 import { runsRepo } from "./repo.js";
 import { laneOf, limitsReached, models, roomConnections, toolRoom, type RoutedRun } from "./steps.js";
-import { asksFirst, IMAGE_GATE, mayRun, SANDBOX_GATE } from "./tools.js";
+import { asksFirst, mayRun, runGate } from "./tools.js";
 
 /*
  * The steps around a tool call's wait for a member. Everything the wait depends on is read inside a step, so a
@@ -32,8 +32,7 @@ type Gate = { asks: false } | { asks: true; timeoutSec: number; title: string; i
  */
 export async function gateOf(run: RoutedRun, call: ToolCall, taint: TaintSource[]): Promise<Gate> {
   const room = await roomConnections(run.roomId);
-  const gates = [IMAGE_GATE, SANDBOX_GATE];
-  const tool = gates.find((g) => g.spec.name === call.name) ?? findTool(call.name, room);
+  const tool = runGate(call.name) ?? findTool(call.name, room);
   if (!tool || !mayRun(run.model, models().servedBy(run.model), call.name, room, run.agent.tools)) return { asks: false };
   const thread = await threadsRepo().threadById(run.roomId, run.threadId);
   const seen = mergeTaint(taint, thread?.taint ?? []);

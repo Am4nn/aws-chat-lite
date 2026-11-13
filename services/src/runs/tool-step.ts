@@ -17,7 +17,7 @@ import type { FilesSynced } from "../workspace/types.js";
 import { stepEvent } from "./context.js";
 import { notifyRun } from "./notify.js";
 import { runsRepo, type Run } from "./repo.js";
-import { IMAGE_TOOL, mayRun, runFakeLookup, SANDBOX_TOOL, toolDetail } from "./tools.js";
+import { asksFirst, IMAGE_GATE, mayRun, runFakeLookup, runGate, SANDBOX_GATE, SANDBOX_TOOL, toolDetail, type Gated } from "./tools.js";
 import {
   auditTool, costOf, laneOf, limitsReached, models, recordCall, roomConnections, toolRoom, watchStop,
   type RoutedRun, type StepResult, type Usage, type Writer,
@@ -41,8 +41,8 @@ type Room = Awaited<ReturnType<typeof roomConnections>>;
 type RoomCall = { room: Room; settled?: Approval; started: RunEvent; rerun: boolean; envOf: typeof toolEnv; taint: TaintSource[] };
 
 /** What the model is told in place of a call's result when it asked first and wasn't approved. */
-function unapproved(settled: Approval | undefined): string {
-  switch (settled?.status) {
+function unapproved(settled: Approval): string {
+  switch (settled.status) {
     case "denied":
       return deniedResult(settled.by ?? "a member");
     case "expired":
@@ -54,20 +54,34 @@ function unapproved(settled: Approval | undefined): string {
   }
 }
 
+/** The thread's taint with what the model's turn saw, which can be ahead of it. */
+const seenBy = async (run: RoutedRun, taint: TaintSource[]) =>
+  mergeTaint(taint, (await threadsRepo().threadById(run.roomId, run.threadId))?.taint ?? []);
+
+/**
+ * Why a call may not run, or null. One that asked runs only once approved. One that didn't is weighed again, since the
+ * room's mode, its sandbox's internet or the thread's taint may have changed since its gate: if it would ask now, the
+ * model is told to call it again, and that call's gate shows the card.
+ */
+function heldBack(tool: Gated, settled: Approval | undefined, seen: TaintSource[], room: Room): string | null {
+  if (settled) return settled.status === "approved" ? null : unapproved(settled);
+  const rules = { mode: room.approvalMode, sandboxInternet: room.sandboxInternet };
+  return asksFirst(tool, seen, rules) ? "This call now needs a room member's approval. Call it again to ask for it." : null;
+}
+
 /**
  * A web, GitHub, MCP, memory or room call. One that asked first runs only once approved, with the input the approval
  * showed; one the room's mode let through runs as the model made it. A write never runs twice: a retry that finds its
- * step already started can't know whether GitHub or the MCP server took the first try. GitHub data and MCP output taint the thread before any of it is logged.
+ * step already started can't know whether GitHub or the MCP server took the first try. GitHub data and MCP output
+ * taint the thread before any of it is logged.
  */
 async function runRoomTool(run: RoutedRun, tool: Tool, call: ToolCall, { room, settled, started, rerun, envOf, taint }: RoomCall): Promise<ToolResult> {
-  const [transport, thread] = await Promise.all([
-    envOf(process.env.TOOL_MODE, room.github ?? undefined), threadsRepo().threadById(run.roomId, run.threadId),
-  ]);
-  const env = { ...transport, room: toolRoom(run, isPrivate(mergeTaint(taint, thread?.taint ?? []))) };
+  const [transport, seen] = await Promise.all([envOf(process.env.TOOL_MODE, room.github ?? undefined), seenBy(run, taint)]);
+  const env = { ...transport, room: toolRoom(run, isPrivate(seen)) };
   const input = settled?.call.input ?? call.input;
-  const refused = tool.check?.(input, env);
+  // Its own check comes first: a call it refuses never asked, so telling the model to call again would loop.
+  const refused = tool.check?.(input, env) ?? heldBack(tool, settled, seen, room);
   if (refused) return { ok: false, output: refused };
-  if (settled && settled.status !== "approved") return { ok: false, output: unapproved(settled) };
   if (tool.write && rerun) return { ok: false, output: unsure(tool.kind === "mcp" ? mcpServerOf(call.name) : "GitHub") };
   if (tool.kind === "github") await threadsRepo().addTaint(run.roomId, run.number, ["github"]);
   if (tool.kind === "mcp") await threadsRepo().addTaint(run.roomId, run.number, [mcpTaint(mcpServerOf(call.name))]);
@@ -112,25 +126,26 @@ export async function toolStep(
     runs.allEvents(run.runId), runs.eventWriter(run.runId, laneOf(run)), roomConnections(run.roomId),
   ]);
   const offered = mayRun(run.model, models().servedBy(run.model), call.name, room, run.agent.tools);
-  const imaging = offered && call.name === IMAGE_TOOL.name;
-  // Sandbox code or an image that asked first runs only once approved.
-  const declined = offered && (imaging || call.name === SANDBOX_TOOL.name) && !!settled && settled.status !== "approved";
-  const sandboxed = offered && !declined && call.name === SANDBOX_TOOL.name;
+  const gate = offered ? runGate(call.name) : undefined;
+  const imaging = gate === IMAGE_GATE;
   // The run's cost after an image step: its usage events, an earlier attempt's charge included, plus this attempt's.
   let charged = 0;
   const costAfter = () => (imaging ? costOf(events) + charged : run.costMicros);
   // An earlier attempt finished the tool and logged it, and only failed after: its result stands.
   const done = stepEvent(events, "step.finished", step);
   if (done) {
-    if (!sandboxed) return { steps: step, costMicros: costAfter() };
+    // Sandbox code a member declined never ran, so there is no time to bill.
+    if (gate !== SANDBOX_GATE || (settled && settled.status !== "approved")) return { steps: step, costMicros: costAfter() };
     return await runs.recorded<StepResult>(run.runId, `sandbox-${step}`) ?? billSandbox(run, writer, events, step, done.ms);
   }
 
+  const held = gate ? heldBack(gate, settled, await seenBy(run, taint), room) : null;
+  const sandboxed = gate === SANDBOX_GATE && !held;
   if (sandboxed) await threadsRepo().addTaint(run.roomId, run.number, ["sandbox"]);
   const before = stepEvent(events, "step.started", step);
   const detail = toolDetail(call, room);
   const started = before ?? await writer.append({ type: "step.started", step, call, detail });
-  if (sandboxed || (imaging && !declined)) await auditTool(run, started, call.name, detail);
+  if (gate && !held) await auditTool(run, started, call.name, detail);
   const currentStep = run.helper ? `${run.agent.name} › ${call.name}` : call.name;
   await notifyRun(run.roomId, await runs.progress(run, { steps: step, currentStep }), started.seq);
   const t0 = Date.now();
@@ -139,8 +154,8 @@ export async function toolStep(
     const meter = { model: IMAGE_MODEL, job: "image" as const, toolStep: step };
     return recordCall(run, writer, meter, { type: "usage", ...usage, costMicros }, { costMicros: costAfter() });
   };
-  const result: Outcome = declined
-    ? { ok: false, output: unapproved(settled) }
+  const result: Outcome = held
+    ? { ok: false, output: held }
     : imaging
       ? await generateImageStep(run, step, call.input, events, imageDeps(bill))
       : await runCall(run, call, offered, step, { room, settled, started, rerun: !!before, envOf, taint });

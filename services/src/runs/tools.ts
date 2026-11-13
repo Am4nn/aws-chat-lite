@@ -33,7 +33,7 @@ export const SANDBOX_TOOL: ToolSpec = {
   },
 };
 
-export const IMAGE_TOOL: ToolSpec = {
+const IMAGE_TOOL: ToolSpec = {
   name: "image_generate",
   description: "Generate an image from a text description, with Gemini. "
     + "It is saved to the room's files under images/ and shown in the thread. About $0.07 per image.",
@@ -122,8 +122,11 @@ export const SANDBOX_GATE = {
   ask: (input: Record<string, unknown>) => `Run ${String(input.language)} in the sandbox with internet access?`,
 } as const;
 
+/** The gate of a tool the run itself provides rather than the room's tools: the sandbox or images. */
+export const runGate = (name: string) => [IMAGE_GATE, SANDBOX_GATE].find((g) => g.spec.name === name);
+
 /** A tool as the approval gate weighs it. */
-type Gated = Pick<Tool, "spec" | "write" | "destructive"> & { kind: Tool["kind"] | "images" | "sandbox" };
+export type Gated = Pick<Tool, "spec" | "write" | "destructive"> & { kind: Tool["kind"] | "images" | "sandbox" };
 
 /** Kinds whose input leaves the room: GitHub's too, since a search or a comment carries text to GitHub. */
 const OUTBOUND = new Set<Gated["kind"]>(["web", "mcp", "images", "github"]);
