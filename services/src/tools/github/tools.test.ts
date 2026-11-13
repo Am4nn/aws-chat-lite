@@ -37,6 +37,12 @@ describe("GITHUB_TOOLS", () => {
     }
   });
 
+  it("tells the model a write may wait for approval, since the room's mode decides whether it does", () => {
+    for (const t of GITHUB_TOOLS.filter((g) => g.write)) {
+      expect(t.spec.description).toMatch(/May wait for a room member's approval, as the room's settings decide\.$/);
+    }
+  });
+
   it("refuses a repo outside the connection before any call", () => {
     const { env, calls } = setup();
     expect(tool("github_comment").check!({ repo: "other/x", number: 1, body: "b" }, env)).toBe(
