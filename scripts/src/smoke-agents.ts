@@ -242,4 +242,30 @@ export async function agentChecks(stamp: number, owner: Person, guest: Person) {
   const theirs = (await bff(A, `/bff/api/rooms/${second.roomId}/schedules`)).body.schedules as (Schedule & { agentId: string })[];
   check(toasted && !!copied && theirs.length === 1 && !theirs[0]!.enabled && theirs[0]!.agentId === copied?.agentId,
     `A copies @researcher to "${other}": the toast says so, and that room lists @researcher with its schedule off`);
+
+  // Room powers: A switches the room to Auto; B's header says so at once, and @herald's post lands in #fake with no card.
+  const fake = (await bff(A, `/bff/api/rooms/${roomId}/chats`, "POST", { name: "fake" })).body as { chatId: string };
+  await bff(A, `/bff/api/rooms/${roomId}/agents`, "POST", { name: "herald", instructions: "Post what you are asked to.", tools: ["room_post"] });
+  await bff(A, `/bff/api/rooms/${roomId}/approval-mode`, "PUT", { mode: "auto" });
+  const badge = await until(B, () => document.querySelector('header [role="img"][title^="Auto:"]')?.textContent?.trim() === "Auto", undefined, 10_000);
+  check(badge, "A switches the room to Auto: B's header shows the Auto badge within 10 s, with no reload");
+
+  const posting = await ask("@herald call:room_post");
+  let waited = false;
+  const postRun = await eventually(threads, (ts) => {
+    const status = ts.find((t) => t.number === posting.number)?.status;
+    waited ||= status === "waiting";
+    return ["done", "failed", "stopped"].includes(status ?? "");
+  }, RUN_MS);
+  const posted = ((await bff(A, `/bff/api/rooms/${roomId}/chats/${fake.chatId}/messages`)).body.messages as
+    { authorId: string; authorName: string; text: string; agentPost?: { number: number } }[]).at(-1);
+  await open(B, `${WEB}/r/${roomId}/c/${fake.chatId}`);
+  const rowShown = await until(B, (link) => {
+    const a = [...document.querySelectorAll("main a")].find((el) => el.textContent?.trim() === link);
+    return !!a && !!a.parentElement?.textContent?.includes("AI");
+  }, `from #${posting.name}`, 15_000);
+  check(postRun.find((t) => t.number === posting.number)?.status === "done" && !waited && posted?.authorId === "agent" && posted.authorName === "herald"
+    && posted.agentPost?.number === posting.number && posted.text === "fake" && rowShown,
+  `@herald call:room_post in Auto ends done with no approval; #fake's last message is herald's "fake" from #${posting.number}, and B sees it with the AI tag and "from #${posting.name}"`);
+  await bff(A, `/bff/api/rooms/${roomId}/approval-mode`, "PUT", { mode: "ask" });
 }
