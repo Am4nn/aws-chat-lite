@@ -105,6 +105,11 @@ describe("MessageText rich, for agent answers", () => {
     expect(rich("| @alice |\n|---|\n| #4 |")).toMatch(/<td[^>]*><a [^>]*>#pr-check<\/a><\/td>/);
     expect(rich("**@alice**")).toContain('<strong><span class="mention text-lime">@alice</span></strong>');
   });
+  it("strikes through only between double tildes", () => {
+    expect(rich("takes ~5 min, costs ~$2")).toContain("<p>takes ~5 min, costs ~$2</p>");
+    expect(rich("from ~5~ to ~10~ min")).toContain("<p>from ~5~ to ~10~ min</p>");
+    expect(rich("~~x~~")).toContain("<del>x</del>");
+  });
   it("refuses javascript: links and raw html", () => {
     expect(rich("[x](javascript:alert(1))")).not.toContain('href="javascript');
     expect(rich("<script>x</script>")).not.toContain("<script");

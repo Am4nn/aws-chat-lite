@@ -145,7 +145,7 @@ export async function threadChecks(stamp: number, owner: Person, guest: Person) 
   const expanded = await until(A, () => window.__doneSteps().length === 2);
   await A.evaluate(() => window.__doneSteps()[0].click());
   const output = await until(A, () => document.querySelector("main pre")?.textContent?.includes("Found 3 notes"));
-  const answered = await A.evaluate(() => !!window.__answer());
+  const answered = await A.evaluate(() => { const answer = window.__answer(); return !!answer && !answer.querySelector("h2"); });
   check(views === 1 && titled && folded && expanded && output && answered,
     `the card opens #1 check-pr-41 as one view (at most ${views} on screen): its 2 steps fold into "▸ 2 steps", expanding shows "Found 3 notes", and the answer opens with "Fake answer for…" as a paragraph, not a headline`);
 

@@ -20,7 +20,7 @@ export function AnswerText({ text, streaming, members }: { text: string; streami
   const [arrived] = useState(streaming);
   return (
     <motion.div
-      initial={arrived ? { opacity: 0 } : false}
+      initial={arrived && !reduced ? { opacity: 0 } : false}
       animate={{ opacity: 1 }}
       transition={reduced ? instant : { duration: dur.slow, ease: easeOut }}
       className={BODY}

@@ -2,7 +2,7 @@
 
 import { Children, useContext, useMemo, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
-import Markdown, { type Components } from "react-markdown";
+import Markdown, { type Components, type Options } from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { findAgentMentions, findMentions, type Mentionable } from "@/lib/client/mentions";
@@ -12,7 +12,8 @@ const LEAD = "mention-lead rounded-full bg-lime/15 px-1.5 py-px font-medium text
 const ALLOWED = ["p", "strong", "em", "code", "pre", "a", "br", "del"];
 // An agent's answer can be a whole write-up; people's chat lines stay inline, so a "# " in chat never turns into a title.
 const RICH_ALLOWED = [...ALLOWED, "ul", "ol", "li", "blockquote", "h1", "h2", "h3", "h4", "hr", "table", "thead", "tbody", "tr", "th", "td"];
-const RICH_PLUGINS = [remarkGfm, remarkBreaks];
+// A single tilde is "about" in chat ("~5 min, ~$2"), so only a double one strikes through.
+const RICH_PLUGINS: Options["remarkPlugins"] = [[remarkGfm, { singleTilde: false }], remarkBreaks];
 const NO_AGENTS: string[] = [];
 const SAFE_URL = /^https?:/i;
 
