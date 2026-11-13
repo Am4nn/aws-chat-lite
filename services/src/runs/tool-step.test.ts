@@ -45,7 +45,9 @@ vi.mock("../rooms/repo.js", () => ({
   }),
 }));
 vi.mock("../chat/repo.js", () => ({ chatRepo: () => ({ send: fake.send }) }));
-vi.mock("../agents/repo.js", () => ({ agentsRepo: () => ({ list: async () => [BUILT_IN], createByAgent: fake.createByAgent }) }));
+vi.mock("../agents/repo.js", () => ({ agentsRepo: () => ({
+  list: async () => [BUILT_IN], byId: async () => BUILT_IN, createByAgent: fake.createByAgent,
+}) }));
 
 process.env.MODEL_GATEWAY = "fake";
 

@@ -10,13 +10,15 @@ const agent = (agentId: string, name: string, over: Partial<Agent> = {}): Agent 
 });
 const madeByScout = { madeBy: { agentId: "S", name: "scout" }, createdBy: "", createdByName: "" };
 
-const fake = vi.hoisted(() => ({ createByAgent: vi.fn(), updateByAgent: vi.fn(), github: null as unknown }));
+const fake = vi.hoisted(() => ({
+  createByAgent: vi.fn(), updateByAgent: vi.fn(), github: null as unknown, scout: undefined as unknown as Agent & { deleted?: boolean },
+}));
 vi.mock("../../agents/repo.js", () => ({
   agentsRepo: () => ({
     list: async () => [
-      BUILT_IN, agent("H", "helper", { ...madeByScout, tools: ["github"] }), agent("A1", "reviewer"), agent("S", "scout"),
-      agent("A2", "writer"),
+      BUILT_IN, agent("H", "helper", { ...madeByScout, tools: ["github"] }), agent("A1", "reviewer"), fake.scout, agent("A2", "writer"),
     ],
+    byId: async (_roomId: string, agentId: string) => (agentId === "S" ? fake.scout : null),
     createByAgent: fake.createByAgent,
     updateByAgent: fake.updateByAgent,
   }),
@@ -29,7 +31,10 @@ const env = {
     delegates: ["A1"], tainted: false, postCap: 10,
   },
 } as ToolEnv;
-const withKinds = (kinds: ToolEnv["room"]["kinds"]) => ({ ...env, room: { ...env.room, kinds } });
+/** The creating agent as it is stored now, which may differ from the copy its run started with. */
+const scoutNow = (over: Partial<Agent> & { deleted?: boolean } = {}) => {
+  fake.scout = agent("S", "scout", { tools: env.room.kinds, delegates: ["A1"], ...over });
+};
 const bea = { userId: "u-bea", username: "bea" };
 const tool = (name: string) => AGENT_TOOLS.find((t) => t.spec.name === name)!;
 const create = tool("agent_create");
@@ -38,6 +43,7 @@ const edit = tool("agent_edit");
 beforeEach(() => {
   vi.clearAllMocks();
   fake.github = null;
+  scoutNow();
   fake.createByAgent.mockImplementation(async (_roomId, input) => ({ ...agent("N", input.name), ...input }));
   fake.updateByAgent.mockImplementation(async (_roomId, agentId, patch) => ({ ...agent(agentId, "helper"), ...patch }));
 });
@@ -76,8 +82,28 @@ describe("agent_create", () => {
     expect(await create.check!({ name: "helper", tools: ["room_agents", "web"] }, env)).toBeNull();
   });
 
+  it("bounds the agent by its creator as it is now, not as its run started", async () => {
+    const started = { ...env, room: { ...env.room, kinds: ["github", "room_agents", "web"], delegates: "all" } } as ToolEnv;
+    fake.github = { installationId: 1 };
+    expect(await create.check!({ name: "helper", tools: ["github"], delegates: ["writer"] }, started))
+      .toBe("@scout can't give what it doesn't have: github, @writer. Ask a member to add it by hand.");
+    await create.run({ name: "helper", tools: [] }, started);
+    expect(fake.createByAgent.mock.calls[0][1]).toMatchObject({ delegates: ["A1"] });
+    expect(await edit.check!({ agent: "helper", tools: ["github"] }, started))
+      .toBe("@scout can't give what it doesn't have: github. Ask a member to add it by hand.");
+  });
+
+  it("refuses once its creator was deleted", async () => {
+    scoutNow({ deleted: true });
+    expect(await create.check!({ name: "helper", tools: [] }, env)).toBe("@scout was deleted, so it can't set up agents.");
+    expect(await edit.check!({ agent: "helper", instructions: "x" }, env)).toBe("@scout was deleted, so it can't set up agents.");
+    expect(await create.run({ name: "helper", tools: [] }, env)).toEqual({ ok: false, output: "@scout was deleted, so it can't set up agents." });
+    expect(fake.createByAgent).not.toHaveBeenCalled();
+  });
+
   it("refuses a kind the room has no connection for, and invalid fields", async () => {
-    expect(await create.check!({ name: "helper", tools: ["github"] }, withKinds(["github", "room_agents"]))).toBe("This room has no github connection.");
+    scoutNow({ tools: ["github", "room_agents"] });
+    expect(await create.check!({ name: "helper", tools: ["github"] }, env)).toBe("This room has no github connection.");
     expect(await create.check!({ name: "x", tools: [] }, env)).toMatch(/^Agent names use a-z/);
     expect(await create.check!({ name: "helper", tools: ["shell"] }, env)).toBe("Unknown tool kind.");
     expect(await create.check!({ name: "helper", tools: [], model: "gpt" }, env)).toBe("Unknown model.");
@@ -111,7 +137,8 @@ describe("agent_edit", () => {
   });
 
   it("keeps a kind the agent already has after the room lost its connection", async () => {
-    expect(await edit.check!({ agent: "helper", tools: ["github"] }, withKinds(["github", "room_agents"]))).toBeNull();
+    scoutNow({ tools: ["github", "room_agents"] });
+    expect(await edit.check!({ agent: "helper", tools: ["github"] }, env)).toBeNull();
   });
 
   it("tells the model when the repo refuses", async () => {
