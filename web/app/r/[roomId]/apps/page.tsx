@@ -6,11 +6,12 @@ import { AppsList } from "./AppsList";
 import { ConnectClient } from "./ConnectClient";
 
 /**
- * The site's public origin, which serves /mcp. Behind CloudFront the request's Host is the Function URL's, so the
- * configured origin comes first; `next dev` has none and is reached directly.
+ * Where /mcp is served: locally the emulator's own address, on AWS the site's public origin. Behind CloudFront the
+ * request's Host is the Function URL's, so the configured origin comes before the request's.
  */
-async function siteOrigin() {
-  const configured = serverEnv().siteOrigins[0];
+async function mcpOrigin() {
+  const { mcpBaseUrl, siteOrigins } = serverEnv();
+  const configured = mcpBaseUrl ?? siteOrigins[0];
   if (configured) return configured;
   const h = await headers();
   return `${h.get("x-forwarded-proto") ?? "http"}://${h.get("host")}`;
@@ -21,7 +22,7 @@ async function siteOrigin() {
  * account, not the room, but opens inside the room it was reached from so the sidebar stays.
  */
 export default async function AppsPage() {
-  const [{ apps }, origin] = await Promise.all([serverApi<{ apps: McpApp[] }>("/me/apps"), siteOrigin()]);
+  const [{ apps }, origin] = await Promise.all([serverApi<{ apps: McpApp[] }>("/me/apps"), mcpOrigin()]);
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto w-full max-w-[640px] px-4 pb-10 pt-8 sm:px-7">
