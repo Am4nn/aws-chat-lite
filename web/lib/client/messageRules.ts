@@ -20,9 +20,13 @@ export function canEditLast(messages: Message[], me: string, now: number): Messa
   return last && canEdit(last, me, now) ? last : undefined;
 }
 
-/** Consecutive messages from one person share a header until they pause for five minutes. */
+/**
+ * Consecutive messages from one person share a header until they pause for five minutes. Every agent post has the author id
+ * "agent", so the agent's name and the thread it posted from also split a group: the header is what shows who and from where.
+ */
 export const startsGroup = (prev: Message | undefined, m: Message) =>
-  !prev || prev.authorId !== m.authorId || Date.parse(m.createdAt) - Date.parse(prev.createdAt) > GROUP_GAP_MS;
+  !prev || prev.authorId !== m.authorId || prev.authorName !== m.authorName || prev.agentPost?.threadId !== m.agentPost?.threadId
+  || Date.parse(m.createdAt) - Date.parse(prev.createdAt) > GROUP_GAP_MS;
 
 /** One person's reaction added or taken away. Applied to the newest copy of a message, so others' reactions survive. */
 export function withReaction(m: Message, reaction: Reaction, userId: string, on: boolean): Message {

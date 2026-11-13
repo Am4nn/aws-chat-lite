@@ -48,6 +48,12 @@ describe("startsGroup", () => {
     expect(startsGroup(msg(1, { createdAt: ago(9) }), msg(2, { createdAt: ago(1) }))).toBe(true);
     expect(startsGroup(msg(1, { authorId: "bob" }), msg(2))).toBe(true);
   });
+  it("keeps agents' posts apart: every agent post shares one author id, so the name and the source thread tell them apart", () => {
+    const post = (extra: Partial<Message>) => msg(1, { authorId: "agent", authorName: "scout", agentPost: { threadId: "T1", number: 1 }, ...extra });
+    expect(startsGroup(post({}), post({ authorName: "critic" }))).toBe(true);
+    expect(startsGroup(post({}), post({ agentPost: { threadId: "T2", number: 2 } }))).toBe(true);
+    expect(startsGroup(post({ createdAt: ago(3) }), post({ createdAt: ago(1) }))).toBe(false);
+  });
 });
 
 describe("mentionsMe", () => {
