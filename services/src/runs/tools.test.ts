@@ -243,6 +243,13 @@ describe("asksFirst", () => {
     expect(asksFirst(roomTool("room_post", "room_post"), ["room"], ask)).toBe(true);
   });
 
+  it.each([["agent_create"], ["agent_edit"]])(
+    "always asks before %s from a thread holding private content, since instructions reach other agents' models", (name) => {
+      for (const rules of [ask, auto, bypass]) expect(asksFirst(roomTool(name, "room_agents"), ["github"], rules)).toBe(true);
+      expect(asksFirst(roomTool(name, "room_agents"), ["room"], auto)).toBe(false);
+    },
+  );
+
   it("runs everything in Bypass but the floor", () => {
     expect(asksFirst(tool("github_comment"), [], bypass)).toBe(false);
     expect(asksFirst(tool("web_fetch"), ["github"], bypass)).toBe(false);
