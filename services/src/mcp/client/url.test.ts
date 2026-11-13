@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ValidationError } from "../../lib/errors.js";
-import { browserUrl, localHosts, mcpServerUrl } from "./url.js";
+import { browserUrl, localHosts, mcpServerUrl, ownMcpUrls } from "./url.js";
 
 describe("mcpServerUrl", () => {
   it("refuses keys in the query, and keeps other parameters", () => {
@@ -26,6 +26,21 @@ describe("mcpServerUrl", () => {
     expect(mcpServerUrl("http://127.0.0.1:4710/mcp", ["127.0.0.1"]).hostname).toBe("127.0.0.1");
     expect(() => mcpServerUrl(42, [])).toThrow("That isn't a valid URL.");
     expect(() => mcpServerUrl("not a url", [])).toThrow("That isn't a valid URL.");
+  });
+});
+
+describe("mcpServerUrl and chat-lite's own server", () => {
+  const own = ownMcpUrls({ SITE_ORIGINS: "https://chat.amanarya.com,http://localhost:3000", MCP_BASE_URL: "http://api.local:4566/" });
+
+  it("refuses chat-lite's own MCP server on any site origin or the MCP base, however it's written", () => {
+    for (const raw of ["https://chat.amanarya.com/mcp", "https://CHAT.amanarya.com/mcp/", "https://chat.amanarya.com/mcp?x=1", "http://localhost:3000/mcp", "http://api.local:4566/mcp"]) {
+      expect(() => mcpServerUrl(raw, ["localhost", "api.local"], own)).toThrow("That's chat-lite's own MCP server.");
+    }
+  });
+
+  it("allows other paths on those hosts, and other servers", () => {
+    expect(mcpServerUrl("https://chat.amanarya.com/other/mcp", [], own).href).toBe("https://chat.amanarya.com/other/mcp");
+    expect(mcpServerUrl("https://mcp.linear.app/mcp", [], own).hostname).toBe("mcp.linear.app");
   });
 });
 

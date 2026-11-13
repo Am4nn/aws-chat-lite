@@ -37,6 +37,7 @@ describe("room MCP connections", () => {
     expect(props.Environment.Variables).toMatchObject({
       TOKEN_KEY_SECRET: "cl-local-token-key", SITE_ORIGINS: "http://localhost:3000,http://localhost:3100", TABLE_NAME: { Ref: expect.any(String) },
     });
+    expect(props.Environment.Variables).toMatchObject({ MCP_BASE_URL: expect.anything() });
     expect(props.Environment.Variables.WS_CALLBACK_URL).toBeDefined();
     expect(fnNamed("cl-aws-mcp-connections", "aws").props.Environment.Variables).toMatchObject({ SITE_ORIGINS: "https://chat.amanarya.com" });
   });

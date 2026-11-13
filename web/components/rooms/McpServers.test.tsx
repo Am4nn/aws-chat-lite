@@ -77,6 +77,25 @@ describe("McpServers", () => {
     sessionStorage.clear();
   });
 
+  it("offers one-click Linear and Notion to admins, and connects through the usual flow", async () => {
+    vi.mocked(bff).mockResolvedValueOnce({ authorizeUrl: "https://mcp.linear.app/authorize" });
+    render(<Panel initial={[]} manage />);
+    expect(screen.getByRole("button", { name: "Connect Notion" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Connect Linear" }));
+    await waitFor(() => expect(bff).toHaveBeenCalledWith("/bff/api/rooms/r1/connections/mcp", {
+      body: { name: "linear", url: "https://mcp.linear.app/mcp", redirectUri: `${window.location.origin}/bff/mcp/callback` },
+    }));
+  });
+
+  it("hides a catalog entry the room already has, and the whole catalog from members", () => {
+    const { unmount } = render(<Panel initial={[conn("linear", { url: "https://mcp.linear.app/mcp" })]} manage />);
+    expect(screen.queryByRole("button", { name: "Connect Linear" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Connect Notion" })).toBeTruthy();
+    unmount();
+    render(<Panel initial={[]} manage={false} />);
+    expect(screen.queryByRole("button", { name: /^Connect / })).toBeNull();
+  });
+
   it("removes a server only after the admin confirms", async () => {
     vi.mocked(bff).mockResolvedValueOnce({});
     render(<Panel initial={[conn("test")]} manage />);

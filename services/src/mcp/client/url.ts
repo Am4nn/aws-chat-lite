@@ -33,13 +33,24 @@ export function browserUrl(raw: string, localHosts: string[]): URL {
   return url;
 }
 
+/** chat-lite's own MCP endpoint on every origin it is served from. */
+export function ownMcpUrls(env: Record<string, string | undefined> = process.env): string[] {
+  return [...(env.SITE_ORIGINS ?? "").split(","), env.MCP_BASE_URL ?? ""]
+    .map((base) => base.trim().replace(/\/+$/, ""))
+    .filter(Boolean)
+    .map((base) => `${base}/mcp`);
+}
+
 /** A remote MCP server's URL as an admin typed it. */
-export function mcpServerUrl(raw: unknown, localHosts: string[]): URL {
+export function mcpServerUrl(raw: unknown, localHosts: string[], own: string[] = ownMcpUrls()): URL {
   if (typeof raw !== "string") throw new ValidationError("That isn't a valid URL.");
   const url = browserUrl(raw.trim(), localHosts);
   // The URL is shown to every member and stored in plain text, unlike the sealed OAuth tokens.
   if ([...url.searchParams.keys()].some((name) => KEY_PARAM.test(name))) {
     throw new ValidationError("Don't put keys in the URL: chat-lite signs in with OAuth.");
   }
+  // Connecting a room to its own server would loop its agents' calls back through chat-lite.
+  const target = (u: URL) => (u.origin + u.pathname).replace(/\/+$/, "");
+  if (own.some((candidate) => target(new URL(candidate)) === target(url))) throw new ValidationError("That's chat-lite's own MCP server.");
   return url;
 }
