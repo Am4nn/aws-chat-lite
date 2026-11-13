@@ -6,7 +6,7 @@ import { mcpServerOf } from "../mcp/client/names.js";
 import type { TokenUsage } from "../models/catalog.js";
 import { IMAGE_MODEL } from "../models/images.js";
 import type { ToolCall } from "../models/gateway.js";
-import { isPrivate, mcpTaint, mergeTaint, type TaintSource } from "../models/privacy.js";
+import { isPrivate, mcpTaint, mergeTaint, ROOM_TAINT, type TaintSource } from "../models/privacy.js";
 import { threadsRepo } from "../threads/repo.js";
 import type { GeneratedImage, RunEvent, Source } from "../threads/types.js";
 import { findTool, toolEnv } from "../tools/index.js";
@@ -69,22 +69,29 @@ function heldBack(tool: Gated, settled: Approval | undefined, seen: TaintSource[
   return asksFirst(tool, seen, rules) ? "This call now needs a room member's approval. Call it again to ask for it." : null;
 }
 
+/** What a tool's output brings into the thread: GitHub data, a server's MCP output, or room chat. */
+function taintOf(tool: Tool, name: string): TaintSource[] {
+  if (tool.kind === "github") return ["github"];
+  if (tool.kind === "mcp") return [mcpTaint(mcpServerOf(name))];
+  return tool.kind === "room_read" ? [ROOM_TAINT] : [];
+}
+
 /**
  * A web, GitHub, MCP, memory or room call. One that asked first runs only once approved, with the input the approval
  * showed; one the room's mode let through runs as the model made it. A write never runs twice: a retry that finds its
- * step already started can't know whether GitHub or the MCP server took the first try. GitHub data and MCP output
- * taint the thread before any of it is logged.
+ * step already started can't know whether GitHub or the MCP server took the first try. GitHub data, MCP output and
+ * room chat taint the thread before any of it is logged, so the next gate and the next model turn see it.
  */
 async function runRoomTool(run: RoutedRun, tool: Tool, call: ToolCall, { room, settled, started, rerun, envOf, taint }: RoomCall): Promise<ToolResult> {
   const [transport, seen] = await Promise.all([envOf(process.env.TOOL_MODE, room.github ?? undefined), seenBy(run, taint)]);
-  const env = { ...transport, room: toolRoom(run, isPrivate(seen)) };
+  const env = { ...transport, room: toolRoom(run, { tainted: isPrivate(seen), postCap: room.postCap }) };
   const input = settled?.call.input ?? call.input;
   // Its own check comes first: a call it refuses never asked, so telling the model to call again would loop.
   const refused = tool.check?.(input, env) ?? heldBack(tool, settled, seen, room);
   if (refused) return { ok: false, output: refused };
   if (tool.write && rerun) return { ok: false, output: unsure(tool.kind === "mcp" ? mcpServerOf(call.name) : "GitHub") };
-  if (tool.kind === "github") await threadsRepo().addTaint(run.roomId, run.number, ["github"]);
-  if (tool.kind === "mcp") await threadsRepo().addTaint(run.roomId, run.number, [mcpTaint(mcpServerOf(call.name))]);
+  const brings = taintOf(tool, call.name);
+  if (brings.length) await threadsRepo().addTaint(run.roomId, run.number, brings);
   await auditTool(run, started, call.name, tool.detail(input));
   return tool.run(input, env);
 }

@@ -70,13 +70,15 @@ export type AuditEntry = {
 
 /** What an agent may use: `mcp` stands for all of the room's MCP servers. */
 export type ToolKind = "sandbox" | "web" | "github" | "mcp" | "images" | "room_read" | "room_post" | "room_agents";
+/** The agents an agent may hand work to. */
+export type Delegates = "all" | string[];
 /** `room` follows the room's default model. */
 export type AgentModel = ModelPick | "room";
 export type Agent = {
   agentId: string; name: string; instructions: string; tools: ToolKind[]; model: AgentModel;
   builtIn: boolean; createdBy: string; createdByName: string; createdAt: string; updatedAt: string;
   /** Absent means every agent in the room. */
-  delegates?: "all" | string[];
+  delegates?: Delegates;
   /** Set when an agent made this one; `createdBy` is then the approving member, or "" when the mode needed no card. */
   madeBy?: { agentId: string; name: string };
 };

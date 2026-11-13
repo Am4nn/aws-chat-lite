@@ -1,5 +1,5 @@
 import type { ToolSpec } from "../models/gateway.js";
-import type { GitHubConnection, Source } from "../threads/types.js";
+import type { Delegates, GitHubConnection, Source, ToolKind } from "../threads/types.js";
 
 export type ToolKeys = {
   tavilyKey?: string; githubAppId?: string; githubAppSlug?: string; githubPrivateKey?: string; githubClientId?: string; githubClientSecret?: string;
@@ -12,8 +12,14 @@ export type ToolEnv = {
   keys: ToolKeys;
   github?: GitHubConnection;
   mcpCall: (target: { roomId: string; name: string }, tool: string, input: Record<string, unknown>) => Promise<ToolResult>;
-  /** The thread the call is made for. `tainted`: it holds private content. */
-  room: { roomId: string; threadNumber: number; agentName: string; tainted: boolean };
+  /**
+   * The run and thread the call is made for, and the agent making it. `tainted`: the thread holds private content.
+   * `postCap`: how many chat posts the room lets one run make.
+   */
+  room: {
+    roomId: string; threadId: string; threadNumber: number; runId: string; agentId: string; agentName: string;
+    kinds: ToolKind[]; delegates: Delegates; tainted: boolean; postCap: number;
+  };
 };
 
 export type Tool = {

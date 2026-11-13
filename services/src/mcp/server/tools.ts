@@ -38,13 +38,13 @@ const ROOM = { type: "string", description: "A room's id or name." };
 const CHAT = { type: "string", description: "A chat name, a thread tag like #12, or an id." };
 
 // The SDK's low-level server doesn't check arguments against the input schema, so each tool checks its own.
-function text(input: Input, key: string): string {
+export function text(input: Input, key: string): string {
   const value = input[key];
   if (typeof value !== "string" || !value.trim()) throw new ValidationError(`${key} must be a non-empty string.`);
   return value;
 }
 
-function whole(input: Input, key: string, min: number, max: number): number | undefined {
+export function whole(input: Input, key: string, min: number, max: number): number | undefined {
   const value = input[key];
   if (value === undefined) return undefined;
   if (typeof value !== "number" || !Number.isInteger(value) || value < min || value > max) {

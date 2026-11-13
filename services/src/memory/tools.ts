@@ -1,18 +1,8 @@
-import { UserError } from "../lib/errors.js";
-import type { Tool, ToolResult } from "../tools/types.js";
+import { answer } from "../tools/answer.js";
+import type { Tool } from "../tools/types.js";
 import { type MemoryRepo, memoryRepo } from "./repo.js";
 
 export type MemoryStore = Pick<MemoryRepo, "save" | "update" | "forget">;
-
-/** A refusal the repo writes for people (memory full, a bad length, an unknown id) goes back to the model as-is. */
-async function answer(work: () => Promise<string>): Promise<ToolResult> {
-  try {
-    return { ok: true, output: await work() };
-  } catch (e) {
-    if (e instanceof UserError) return { ok: false, output: e.message };
-    throw e;
-  }
-}
 
 const idSchema = { type: "string", description: "The entry's id, shown in brackets in the room memory." };
 

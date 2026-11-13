@@ -37,6 +37,7 @@ vi.mock("../images/step.js", async (actual) => ({
   ...await actual<object>(), imageDeps: () => ({}), generateImageStep: async () => ({ ok: true, output: "Saved images/1-1-1-cat.png." }),
 }));
 vi.mock("../workspace/session.js", () => ({ runSandbox: fake.runSandbox }));
+vi.mock("../rooms/repo.js", () => ({ roomDirectory: async () => ({ members: [{ userId: "u1", username: "aman", role: "owner" }] }) }));
 
 process.env.MODEL_GATEWAY = "fake";
 
@@ -137,6 +138,19 @@ describe("toolStep", () => {
     expect(fake.addTaint).not.toHaveBeenCalled();
     expect(appended.find((e) => e.type === "step.finished")).toMatchObject({ ok: false, output: NOW_ASKS });
     expect(appended.some((e) => e.type === "usage")).toBe(false);
+  });
+
+  it("marks the thread as holding room data before a read's result is logged", async () => {
+    const order: unknown[] = [];
+    fake.addTaint.mockImplementation(async (...args: unknown[]) => void order.push(args));
+    runs.eventWriter.mockResolvedValue({ append: async (e: object) => (order.push(e), { ...e, seq: 7, at: "2026-11-12T00:00:00.000Z" }) });
+    const reader = { ...run, agent: { ...BUILT_IN, tools: ["room_read" as const] } };
+    await toolStep(reader, { id: "c1", name: "room_members", input: {} });
+    expect(order).toEqual([
+      expect.objectContaining({ type: "step.started" }),
+      ["r1", 3, ["room"]],
+      expect.objectContaining({ type: "step.finished", ok: true, output: "aman · owner" }),
+    ]);
   });
 
   it("logs nothing for a tool the model was never offered", async () => {

@@ -104,7 +104,9 @@ describe("htmlText", () => {
 
 describe("webFetch", () => {
   const mcpCall = () => Promise.reject(new Error("not wired"));
-  const room = { roomId: "r1", threadNumber: 1, agentName: "agent", tainted: false };
+  const room: ToolEnv["room"] = {
+    roomId: "r1", threadId: "t1", threadNumber: 1, runId: "run1", agentId: "agent", agentName: "agent", kinds: [], delegates: "all", tainted: false, postCap: 10,
+  };
   const env = (opts = {}): ToolEnv => ({ fetch, fetchPage: (u) => fetchPage(u, local(opts)), keys: {}, mcpCall, room });
   const run = (path: string) => webFetch.run({ url: `${base}${path}` }, env());
 

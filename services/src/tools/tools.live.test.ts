@@ -56,7 +56,7 @@ describe.skipIf(!process.env.REAL_TOOLS)("tools against the real services", () =
     };
     env = {
       fetch, fetchPage: (url) => fetchPage(url), keys, mcpCall: () => Promise.reject(new Error("No MCP servers in this suite.")),
-      room: { roomId: "r1", threadNumber: 1, agentName: "agent", tainted: false },
+      room: { roomId: "r1", threadId: "t1", threadNumber: 1, runId: "run1", agentId: "agent", agentName: "agent", kinds: [], delegates: "all", tainted: false, postCap: 10 },
     };
   });
 

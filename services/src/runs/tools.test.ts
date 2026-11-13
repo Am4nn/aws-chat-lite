@@ -131,6 +131,13 @@ describe("toolsFor", () => {
     expect(toolsFor("claude-sonnet-5-5", "anthropic", room, ["mcp"]).map((t) => t.name)).toEqual(["mcp__test__add_note", ...memory]);
   });
 
+  it("offers room_* tools only to an agent with that kind", () => {
+    const room = { ...noMcp, github: false };
+    expect(toolsFor("claude-sonnet-5-5", "anthropic", room, ["web"]).map((t) => t.name)).not.toContain("room_list");
+    expect(toolsFor("claude-sonnet-5-5", "anthropic", room, ["room_read"]).map((t) => t.name))
+      .toEqual(expect.arrayContaining(["room_list", "room_read", "room_search", "room_members"]));
+  });
+
   it("never runs a call to a kind its agent may not use, even one the model names", () => {
     expect(mayRun("claude-sonnet-5-5", "anthropic", "sandbox_run", noMcp, ["web"])).toBe(false);
     expect(mayRun("claude-sonnet-5-5", "anthropic", "github_comment", noMcp, ["web"])).toBe(false);

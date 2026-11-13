@@ -13,13 +13,15 @@ const words = "attachments, GitHub data, MCP tool output, sandbox files";
 export const PICK_REFUSED = `This has private content (${words}), so DeepSeek is off here. Pick another model.`;
 export const RUN_REFUSED = `This thread now has private content (${words}), so DeepSeek stopped. Send again with another model.`;
 
+export const ROOM_TAINT = "room" satisfies TaintSource;
+
 export const mcpTaint = (server: string): TaintSource => `mcp:${server}`;
 
 export const messageTaint = (m: { attachments?: unknown[] }): TaintSource[] => (m.attachments?.length ? ["attachment"] : []);
 
 export const mergeTaint = (...lists: TaintSource[][]): TaintSource[] => [...new Set(lists.flat())].sort();
 
-export const privateOf = (taint: TaintSource[]): TaintSource[] => taint.filter((t) => t !== "room");
+export const privateOf = (taint: TaintSource[]): TaintSource[] => taint.filter((t) => t !== ROOM_TAINT);
 
 export const isPrivate = (taint: TaintSource[]): boolean => privateOf(taint).length > 0;
 

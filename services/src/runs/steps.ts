@@ -49,9 +49,11 @@ export const models = () => (shared ??= gateway());
 /** The room's connections, with its id, as the tool lookups take them. */
 export const roomConnections = async (roomId: string) => ({ roomId, ...await connectionsRepo().get(roomId) });
 
-/** The thread a tool call is made for, as the tools see it. */
-export const toolRoom = (run: RoutedRun, tainted: boolean): ToolEnv["room"] =>
-  ({ roomId: run.roomId, threadNumber: run.number, agentName: run.agent.name, tainted });
+/** The run and thread a tool call is made for, as the tools see them. */
+export const toolRoom = (run: RoutedRun, { tainted, postCap }: { tainted: boolean; postCap: number }): ToolEnv["room"] => ({
+  roomId: run.roomId, threadId: run.threadId, threadNumber: run.number, runId: run.runId, agentId: run.agent.agentId,
+  agentName: run.agent.name, kinds: run.agent.tools, delegates: run.agent.delegates ?? "all", tainted, postCap,
+});
 
 /**
  * One audit row per tool step that runs, in the name of the agent that ran it. Its id and time are the step's start

@@ -33,7 +33,9 @@ function fakeStore(opts: { full?: boolean } = {}) {
 
 const env = (tainted: boolean): ToolEnv => ({
   fetch, fetchPage: () => Promise.reject(new Error("unused")), keys: {}, mcpCall: () => Promise.reject(new Error("unused")),
-  room: { roomId: "r1", threadNumber: 12, agentName: "scout", tainted },
+  room: {
+    roomId: "r1", threadId: "t12", threadNumber: 12, runId: "run1", agentId: "a-scout", agentName: "scout", kinds: [], delegates: "all", tainted, postCap: 10,
+  },
 });
 
 function tools(opts: { full?: boolean } = {}) {
