@@ -3,7 +3,7 @@ import { BUILT_IN } from "../agents/model.js";
 import { ValidationError } from "../lib/errors.js";
 import { PICK_REFUSED } from "../models/privacy.js";
 import { startOrSteer } from "../runs/start.js";
-import { rewriteTags, routeSend, tagNames } from "./route.js";
+import { rewriteTags, routeSend, tagNames, tagNumbers } from "./route.js";
 
 const chat = { admit: vi.fn(), send: vi.fn(), linkThread: vi.fn() };
 const threads = { threadById: vi.fn(), threadByTag: vi.fn(), createThread: vi.fn() };
@@ -29,6 +29,72 @@ describe("rewriteTags", () => {
 describe("tagNames", () => {
   it("lists each name tag once, lowercased, outside code", () => {
     expect(tagNames("#Deploy #deploy #3 `#hidden` #pr-check")).toEqual(["deploy", "pr-check"]);
+  });
+});
+
+describe("tagNumbers", () => {
+  it("lists each number tag once, in order, outside code and inline code", () => {
+    expect(tagNumbers("#3 then #1, `#2` and #3 again\n```\n#4\n```\na#5 #6x #7")).toEqual([3, 1, 7]);
+  });
+});
+
+describe("routeSend: thread tags in a people chat", () => {
+  const me = { userId: "u1", username: "aman" };
+  const byNumber = new Map([1, 2, 3, 4].map((n) => [n, { threadId: `t${n}`, number: n, taint: [] as string[] }]));
+  const send = async (text: string) => {
+    const { route } = await routeSend(me, { roomId: "r", chatId: "general", clientId: "k1", text });
+    await route();
+  };
+  const copiedInto = () => chat.send.mock.calls.filter(([, , , o]) => o?.copy).map(([, i]) => i.chatId);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    let seq = 0;
+    chat.admit.mockImplementation(async (_u, i: { text: string }) => ({ text: i.text, attachments: [] }));
+    chat.send.mockImplementation(async (_u, i: { chatId: string }) => ({ roomId: "r", chatId: i.chatId, seq: ++seq }));
+    threads.threadById.mockResolvedValue(null);
+    threads.threadByTag.mockImplementation(async (_r, tag: { number?: number; name?: string }) =>
+      (tag.name === "pr-check" ? byNumber.get(4) : byNumber.get(tag.number ?? 0)) ?? null);
+    agents.list.mockResolvedValue([BUILT_IN]);
+  });
+
+  it("a tag anywhere in the text delivers the message into that thread and starts its run", async () => {
+    await send("see #2 when you can");
+    expect(copiedInto()).toEqual(["t2"]);
+    expect(startOrSteer).toHaveBeenCalledWith(me, "r", "t2", expect.objectContaining({ chatId: "t2", seq: 2 }), undefined);
+    expect(chat.linkThread).toHaveBeenLastCalledWith(expect.objectContaining({ seq: 1 }), { kind: "delivered", threads: [{ threadId: "t2", seq: 2 }] });
+  });
+
+  it("a leading tag still delivers, and a thread named by its #name is delivered as its #number", async () => {
+    await send("#pr-check also docs");
+    expect(chat.send).toHaveBeenCalledWith(me, expect.objectContaining({ chatId: "general", text: "#4 also docs" }), expect.anything());
+    expect(copiedInto()).toEqual(["t4"]);
+  });
+
+  it("copies into each of the first three threads it tags, in order; a tag no thread has, or in code, routes nowhere", async () => {
+    await send("#9 `#4` #2, #1 and #2 again, then #3 #4");
+    expect(copiedInto()).toEqual(["t2", "t1", "t3"]);
+    expect(vi.mocked(startOrSteer).mock.calls.map(([, , threadId]) => threadId)).toEqual(["t2", "t1", "t3"]);
+    expect(chat.linkThread).toHaveBeenLastCalledWith(expect.objectContaining({ seq: 1 }), {
+      kind: "delivered", threads: [{ threadId: "t2", seq: 2 }, { threadId: "t1", seq: 3 }, { threadId: "t3", seq: 4 }],
+    });
+  });
+
+  it("a thread tagged by name and by number gets one copy", async () => {
+    await send("#pr-check and #4");
+    expect(copiedInto()).toEqual(["t4"]);
+  });
+
+  it("a tagged thread takes the message rather than an agent it mentions", async () => {
+    await send("@agent look at #1");
+    expect(threads.createThread).not.toHaveBeenCalled();
+    expect(copiedInto()).toEqual(["t1"]);
+  });
+
+  it("a send with no thread tag delivers nothing", async () => {
+    await send("over in #general, #99 and `#1`");
+    expect(copiedInto()).toEqual([]);
+    expect(chat.linkThread).not.toHaveBeenCalled();
   });
 });
 
@@ -58,9 +124,11 @@ describe("routeSend: the model pick", () => {
     expect(chat.send).not.toHaveBeenCalled();
   });
 
-  it("DeepSeek with a file delivered by tag, or for @agent, is refused, and nothing is stored", async () => {
+  it("DeepSeek with a file delivered by tag, into any private thread tagged, or for @agent, is refused, and nothing is stored", async () => {
     threads.threadByTag.mockResolvedValue({ threadId: "t2", number: 2, taint: [] });
     await expect(send({ text: "#2 see this", attachments: [file], model: "deepseek-pro" })).rejects.toThrow(PICK_REFUSED);
+    threads.threadByTag.mockImplementation(async (_r, tag: { number: number }) => (tag.number === 1 ? privateThread : { threadId: "t2", number: 2, taint: [] }));
+    await expect(send({ text: "#2 and #1 see this", model: "deepseek-pro" })).rejects.toThrow(PICK_REFUSED);
     threads.threadByTag.mockResolvedValue(null);
     await expect(send({ text: "@agent look", attachments: [file], model: "deepseek-pro" })).rejects.toThrow(PICK_REFUSED);
     expect(chat.send).not.toHaveBeenCalled();

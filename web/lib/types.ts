@@ -48,7 +48,7 @@ export type Message = {
   reactions: Partial<Record<Reaction, string[]>>;
   mentions: string[];
   everyone: boolean;
-  threadRef?: { threadId: string; kind: "started" | "delivered" };
+  threadRef?: { kind: "started"; threadId: string } | { kind: "delivered"; threads: { threadId: string }[] };
   agent?: { runId: string; status: RunEndStatus; reason?: string; steps: number; costMicros: number; ms: number; model: string; pick: ModelPick; firstSeq: number; images?: GeneratedImage[] };
   /** How many times the message has changed (edit, delete, reaction); absent until the first change. */
   v?: number;

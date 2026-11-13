@@ -16,31 +16,34 @@ type Props = { threadRef: NonNullable<Message["threadRef"]>; roomId: string; rea
 
 /**
  * What a chat message handed to the agent became. The message that started a thread carries one card, which follows
- * the thread live in place rather than adding messages; one delivered into a thread carries a link to it. It grows
+ * the thread live in place rather than adding messages; one delivered into threads carries a link to each. It grows
  * in under the message when the hand-off lands.
  */
 export function ThreadRef({ threadRef, roomId, readOnly, onReply }: Props) {
   const reduced = useReducedMotion();
-  const thread = useThreads().byId(threadRef.threadId);
-  const href = thread && `/r/${roomId}/t/${thread.number}`;
+  const { byId } = useThreads();
+  const ids = threadRef.kind === "started" ? [threadRef.threadId] : threadRef.threads.map((t) => t.threadId);
+  const threads = ids.flatMap((id) => byId(id) ?? []);
+  const [first] = threads;
+  const href = (t: ThreadSummary) => `/r/${roomId}/t/${t.number}`;
 
   return (
     <AnimatePresence initial={false}>
-      {thread && href && (
+      {first && (
         <motion.div
           initial={{ height: 0, opacity: 0 }}
           animate={{ height: "auto", opacity: 1 }}
           transition={reduced ? instant : { duration: dur.base, ease: easeOut }}
           className="overflow-hidden"
         >
-          <div className="pb-0.5 pt-1.5">
+          <div className={`pb-0.5 pt-1.5 ${threadRef.kind === "delivered" ? "flex flex-wrap gap-1" : ""}`}>
             {threadRef.kind === "started"
-              ? <ThreadCard thread={thread} href={href} readOnly={readOnly} onReply={() => onReply(thread.threadId)} />
-              : (
-                <Link href={href} className="inline-flex h-6 items-center rounded-md px-1.5 font-mono text-[12px] text-text-3 transition-[background-color,color,scale] hover:bg-surface-2 hover:text-text active:scale-[0.96]">
-                  → #{thread.name}
+              ? <ThreadCard thread={first} href={href(first)} readOnly={readOnly} onReply={() => onReply(first.threadId)} />
+              : threads.map((t) => (
+                <Link key={t.threadId} href={href(t)} className="inline-flex h-6 items-center rounded-md px-1.5 font-mono text-[12px] text-text-3 transition-[background-color,color,scale] hover:bg-surface-2 hover:text-text active:scale-[0.96]">
+                  → #{t.name}
                 </Link>
-              )}
+              ))}
           </div>
         </motion.div>
       )}

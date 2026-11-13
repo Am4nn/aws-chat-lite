@@ -75,14 +75,6 @@ export function summary(
   return { ...thread, taint: [...((taint as Set<TaintSource> | undefined) ?? [])].sort(), archived: isArchived(thread, nowMs) };
 }
 
-/** `#12` or `#name` at the very start of a message; a tag later in the text is just text. */
-export function leadingTag(text: string): { number: number } | { name: string } | null {
-  const tag = /^#([a-z0-9-]{1,32})(?=\s|$)/i.exec(text)?.[1]?.toLowerCase();
-  if (!tag) return null;
-  if (/^\d+$/.test(tag)) return { number: Number(tag) };
-  return NAME.test(tag) ? { name: tag } : null;
-}
-
 export function summaryLine(text: string): string {
   const line = text.split("\n").map((l) => l.trim()).find(Boolean) ?? "";
   // By code point, so an emoji at the cut isn't split in half.
