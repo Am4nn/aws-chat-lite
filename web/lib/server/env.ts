@@ -19,6 +19,8 @@ export function serverEnv() {
      * CloudFront doesn't forward the browser's Host, so the request's own host is the Function URL's and can't match.
      */
     siteOrigins: (e.SITE_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+    /** Set locally, where the emulator serves /mcp on an address of its own; on AWS the site's origin serves it. */
+    mcpBaseUrl: e.MCP_BASE_URL?.replace(/\/$/, "") || undefined,
     /** The secret CloudFront sends in x-origin-verify; unset in next dev, which turns the check off. */
     originSecret: e.ORIGIN_VERIFY_SECRET || undefined,
   };

@@ -12,4 +12,11 @@ describe("serverEnv", () => {
     vi.stubEnv("DICTATION", undefined);
     expect(serverEnv().dictation).toBe("transcribe");
   });
+
+  it("knows the MCP server's own address only when it is set, without a trailing slash", () => {
+    vi.stubEnv("MCP_BASE_URL", "http://mcp.localhost:4566/");
+    expect(serverEnv().mcpBaseUrl).toBe("http://mcp.localhost:4566");
+    vi.stubEnv("MCP_BASE_URL", "");
+    expect(serverEnv().mcpBaseUrl).toBeUndefined();
+  });
 });
