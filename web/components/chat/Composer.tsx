@@ -4,12 +4,14 @@ import { useContext, useEffect, useId, useImperativeHandle, useLayoutEffect, use
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useParams } from "next/navigation";
 import { ArrowUp, Paperclip, Square } from "lucide-react";
-import { mentionOptions, mentionQuery, type Mentionable } from "@/lib/client/mentions";
-import { onlyThreadTags, RoomTagsContext } from "@/lib/client/roomTags";
+import { RoomAgentsContext } from "@/lib/client/agents";
+import { mentionOptions, mentionQuery, type Mentionable, type MentionOption } from "@/lib/client/mentions";
+import { onlyThreadTags, RoomTagsContext, tagOptions } from "@/lib/client/roomTags";
 import { useEscape } from "@/lib/client/useEscape";
 import { dur, easeOut, instant } from "@/lib/motion";
 import type { Message } from "@/lib/types";
 import { UploadChip } from "./Attachments";
+import { ComposerHighlights } from "./ComposerHighlights";
 import { MentionList } from "./MentionList";
 import { DictationRow, isDictating, MicButton } from "./MicButton";
 import { ModeBanner } from "./ModeBanner";
@@ -25,6 +27,11 @@ const MAX_TEXT = 4000;
 const COUNTER_FROM = 3600;
 const TYPING_EVERY_MS = 3000;
 const MAX_HEIGHT_PX = 200;
+/**
+ * Shared by the text box and the highlights behind it, which line up only while these match. The gutter is kept on
+ * both, so the box's scrollbar, once it needs one, doesn't narrow its text alone.
+ */
+const TEXT_LAYOUT = "px-1 py-[8px] text-[14.5px] leading-[22px] whitespace-pre-wrap break-words [scrollbar-gutter:stable]";
 
 /** Spoken words go in at the caret, with a space on either side unless one is already there. */
 function withWords(text: string, caret: number, words: string) {
@@ -36,14 +43,13 @@ function withWords(text: string, caret: number, words: string) {
 }
 
 /**
- * `agents`: the room's agents, offered first in the @ list where naming one starts a thread with it (a people chat).
  * `mode`: reply or edit, where the view offers them (`onModeChange`); ArrowUp in an empty box edits
  * my last message when `onEditLast` finds one. `uploads`: absent where files can't be sent, which hides the paperclip.
  * `steering`: an agent is running here, so a message steers it, and Stop (`onStop`) sits beside Send. `pill`: the model
  * choice, left of Send.
  */
 type Props = {
-  ref?: Ref<ComposerHandle>; members: Mentionable[]; agents?: { name: string }[]; meId: string; mode?: ComposerMode;
+  ref?: Ref<ComposerHandle>; members: Mentionable[]; meId: string; mode?: ComposerMode;
   uploads?: ReturnType<typeof useUploads>; placeholder?: string; steering?: boolean; stopping?: boolean; pill?: ReactNode;
   /** In a people chat a `#tag` sends the message into that thread, so a message that is only a tag is held back. */
   routesTags?: boolean;
@@ -52,13 +58,14 @@ type Props = {
 };
 
 export function Composer({
-  ref, members, agents = [], meId, mode = null, uploads, placeholder = "Message", steering = false, stopping = false, pill, routesTags = false,
+  ref, members, meId, mode = null, uploads, placeholder = "Message", steering = false, stopping = false, pill, routesTags = false,
   onModeChange, onSend, onSaveEdit, onEditLast, onTyping, onStop,
 }: Props) {
   const reduced = useReducedMotion();
   const { roomId } = useParams<{ roomId: string }>();
   const listId = useId();
   const area = useRef<HTMLTextAreaElement>(null);
+  const mirror = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const lastTyping = useRef(0);
   const nextCaret = useRef<number | null>(null);
@@ -91,6 +98,7 @@ export function Composer({
     const el = area.current!;
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT_PX)}px`;
+    mirror.current!.scrollTop = el.scrollTop;
     if (nextCaret.current !== null) {
       el.setSelectionRange(nextCaret.current, nextCaret.current);
       nextCaret.current = null;
@@ -99,14 +107,18 @@ export function Composer({
 
   const dictation = useDictation({ roomId, onText: insertDictation });
   const dictating = isDictating(dictation);
+  const shown = dictating ? withWords(text, caret, transcriptText(dictation.live)).value : text;
   useEscape(dictation.state !== "idle", dictation.cancel);
 
+  const agents = useContext(RoomAgentsContext);
+  const tags = useContext(RoomTagsContext);
   const query = mentionQuery(text.slice(0, caret));
-  const options = query && query.start !== dismissedAt ? mentionOptions(query.query, { agents, members, meId }) : [];
+  const options = !query || query.start === dismissedAt ? []
+    : query.trigger === "@" ? mentionOptions(query.query, { agents, members, meId })
+    : tags ? tagOptions(query.query, tags) : [];
 
   const editing = mode?.kind === "edit" ? mode.message : undefined;
   const trimmed = text.trim();
-  const tags = useContext(RoomTagsContext);
   const bareTag = routesTags && !editing && !uploads?.uploads.length && !!tags && onlyThreadTags(trimmed, tags);
   const canSubmit = trimmed.length <= MAX_TEXT && !uploads?.busy && !dictating && !bareTag &&
     (editing ? !!trimmed || editing.attachments.length > 0 : !!trimmed || !!uploads?.uploads.length);
@@ -121,9 +133,9 @@ export function Composer({
     }
   }
 
-  function insertMention(name: string) {
+  function insertOption(option: MentionOption) {
     if (!query) return;
-    const before = `${text.slice(0, query.start)}@${name} `;
+    const before = `${text.slice(0, query.start)}${query.trigger}${option.tag ?? option.name} `;
     nextCaret.current = before.length;
     change(before + text.slice(caret), before.length);
   }
@@ -173,7 +185,7 @@ export function Composer({
       }
       if (e.key === "Enter" || e.key === "Tab") {
         e.preventDefault();
-        return insertMention(options[highlight].name);
+        return insertOption(options[highlight]);
       }
       if (e.key === "Escape") {
         e.preventDefault();
@@ -202,7 +214,10 @@ export function Composer({
 
   return (
     <div className="relative mx-auto w-full max-w-[836px] px-4 pb-5 sm:px-7">
-      <MentionList id={listId} options={options} highlight={highlight} onPick={insertMention} onHighlight={setHighlight} />
+      <MentionList
+        id={listId} label={query?.trigger === "#" ? "Tag a thread or chat" : "Mention someone"}
+        options={options} highlight={highlight} onPick={insertOption} onHighlight={setHighlight}
+      />
 
       <div className={`rounded-2xl border bg-surface-2 transition-colors duration-300 ${steering ? "border-lime-line" : "border-line-strong focus-within:border-line-hover"}`}>
         <ModeBanner mode={mode} onCancel={() => onModeChange?.(null)} />
@@ -251,24 +266,28 @@ export function Composer({
           )}
           <MicButton dictation={dictation} />
           <label htmlFor="composer" className="sr-only">{steering ? "Steer the agent" : "Message"}</label>
-          <textarea
-            id="composer"
-            ref={area}
-            rows={1}
-            role="combobox"
-            aria-autocomplete="list"
-            aria-expanded={options.length > 0}
-            aria-controls={options.length ? listId : undefined}
-            aria-activedescendant={options.length ? `${listId}-${highlight}` : undefined}
-            value={dictating ? withWords(text, caret, transcriptText(dictation.live)).value : text}
-            readOnly={dictating}
-            placeholder={editing ? "Edit your message" : steering ? "Steer the agent…" : placeholder}
-            onChange={(e) => change(e.target.value, e.target.selectionStart)}
-            onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
-            onKeyDown={onKeyDown}
-            onPaste={onPaste}
-            className="min-h-[38px] flex-1 resize-none bg-transparent px-1 py-[8px] text-[14.5px] leading-[22px] text-text outline-none placeholder:text-text-3"
-          />
+          <div className="relative flex min-w-0 flex-1">
+            <ComposerHighlights ref={mirror} text={shown} members={members} className={TEXT_LAYOUT} />
+            <textarea
+              id="composer"
+              ref={area}
+              rows={1}
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={options.length > 0}
+              aria-controls={options.length ? listId : undefined}
+              aria-activedescendant={options.length ? `${listId}-${highlight}` : undefined}
+              value={shown}
+              readOnly={dictating}
+              placeholder={editing ? "Edit your message" : steering ? "Steer the agent…" : placeholder}
+              onChange={(e) => change(e.target.value, e.target.selectionStart)}
+              onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
+              onScroll={(e) => { mirror.current!.scrollTop = e.currentTarget.scrollTop; }}
+              onKeyDown={onKeyDown}
+              onPaste={onPaste}
+              className={`relative min-h-[38px] min-w-0 flex-1 resize-none bg-transparent text-transparent caret-text outline-none placeholder:text-text-3 ${TEXT_LAYOUT}`}
+            />
+          </div>
           {trimmed.length > COUNTER_FROM && (
             <span className={`self-center font-mono text-[11px] ${trimmed.length > MAX_TEXT ? "text-amber" : "text-text-3"}`}>
               {trimmed.length}/{MAX_TEXT}

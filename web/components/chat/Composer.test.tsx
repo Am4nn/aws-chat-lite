@@ -2,7 +2,8 @@
 import { createRef } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Message } from "@/lib/types";
+import type { Agent, Message } from "@/lib/types";
+import { RoomAgentsContext } from "@/lib/client/agents";
 import { RoomTagsContext, type RoomTags } from "@/lib/client/roomTags";
 import { Composer, type ComposerHandle, type ComposerMode } from "./Composer";
 
@@ -149,5 +150,91 @@ describe("Composer thread tags", () => {
     const { type, send } = inChannel(false);
     type("#pr-check");
     expect(send().disabled).toBe(false);
+  });
+});
+
+describe("Composer # list", () => {
+  const tags: RoomTags = {
+    roomId: "r1", threads: [{ number: 3, name: "pr-check" }, { number: 12, name: "deploy" }], chats: [{ chatId: "c2", name: "pr-chat" }],
+  };
+  function tagging() {
+    render(
+      <RoomTagsContext value={tags}>
+        <Composer members={[]} meId="u1" onSend={() => {}} onTyping={() => {}} />
+      </RoomTagsContext>,
+    );
+    const box = screen.getByRole("combobox") as HTMLTextAreaElement;
+    const type = (value: string) => fireEvent.change(box, { target: { value, selectionStart: value.length } });
+    const options = () => screen.queryAllByRole("option").map((o) => o.textContent);
+    return { box, type, options };
+  }
+
+  it("offers the threads, then the chats, that start with what was typed", () => {
+    const { type, options } = tagging();
+    type("see #pr");
+    expect(screen.getByRole("listbox", { name: "Tag a thread or chat" })).toBeTruthy();
+    expect(options()).toEqual(["#pr-check#3", "#pr-chatchat"]);
+    type("see #1");
+    expect(options()).toEqual(["#deploy#12"]);
+  });
+
+  it("puts the picked name in at the caret, with a space after it", () => {
+    const { box, type } = tagging();
+    type("see #pr");
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(box.value).toBe("see #pr-check ");
+    type("see #pr");
+    fireEvent.keyDown(box, { key: "ArrowDown" });
+    fireEvent.keyDown(box, { key: "Tab" });
+    expect(box.value).toBe("see #pr-chat ");
+  });
+
+  it("closes on Escape", () => {
+    const { box, type } = tagging();
+    type("#pr");
+    expect(box.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.keyDown(box, { key: "Escape" });
+    expect(box.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it.each(["`#pr", "a#pr"])("opens nothing for %j: code, or part of a word", (text) => {
+    const { type, options } = tagging();
+    type(text);
+    expect(options()).toEqual([]);
+  });
+});
+
+describe("Composer @ list", () => {
+  it("offers the room's agents, the same ones the highlights know", () => {
+    render(
+      <RoomAgentsContext value={[{ name: "scout" }] as Agent[]}>
+        <Composer members={[]} meId="u1" onSend={() => {}} onTyping={() => {}} />
+      </RoomAgentsContext>,
+    );
+    const box = screen.getByRole("combobox") as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "@sc", selectionStart: 3 } });
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["scoutagent"]);
+  });
+});
+
+describe("Composer highlights", () => {
+  const tags: RoomTags = { roomId: "r1", threads: [{ number: 12, name: "pr-check" }], chats: [{ chatId: "c1", name: "general" }] };
+  const agents = [{ name: "agent" }, { name: "scout" }] as Agent[];
+
+  it("marks the mentions and tags that name someone or something in the room, and nothing else", () => {
+    const { container } = render(
+      <RoomAgentsContext value={agents}>
+        <RoomTagsContext value={tags}>
+          <Composer members={[{ userId: "u2", username: "bea" }]} meId="u1" onSend={() => {}} onTyping={() => {}} />
+        </RoomTagsContext>
+      </RoomAgentsContext>,
+    );
+    const box = screen.getByRole("combobox") as HTMLTextAreaElement;
+    const text = "@agent @everyone @bea @scout #pr-check #12 #general @nobody #nothing `@agent` a@b.com";
+    fireEvent.change(box, { target: { value: text, selectionStart: text.length } });
+    const marks = [...container.querySelectorAll("mark")];
+    expect(marks.map((m) => m.textContent)).toEqual(["@agent", "@everyone", "@bea", "@scout", "#pr-check", "#12", "#general"]);
+    expect(marks[0]!.parentElement!.textContent!.startsWith(text)).toBe(true);
+    expect(box.value).toBe(text);
   });
 });
