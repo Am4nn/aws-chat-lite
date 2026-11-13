@@ -31,7 +31,7 @@ export type Tool = {
   /** The step row line. */
   detail(input: Record<string, unknown>): string;
   /** An error before any approval is asked, or null. */
-  check?(input: Record<string, unknown>, env: ToolEnv): string | null;
+  check?(input: Record<string, unknown>, env: ToolEnv): string | null | Promise<string | null>;
   /** The approval title, for a call that waits on one: in Ask every write, and a web call in a thread with private content. */
   ask?(input: Record<string, unknown>, env: ToolEnv): string;
   run(input: Record<string, unknown>, env: ToolEnv): Promise<ToolResult>;

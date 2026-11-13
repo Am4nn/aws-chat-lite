@@ -40,7 +40,7 @@ export async function gateOf(run: RoutedRun, call: ToolCall, taint: TaintSource[
   if (!asksFirst(tool, seen, rules) || await limitsReached(run)) return { asks: false };
   const { github, approvalTimeoutSec } = room;
   const env = { ...await toolEnv(process.env.TOOL_MODE, github ?? undefined), room: toolRoom(run, { tainted: isPrivate(seen), postCap: room.postCap }) };
-  if ("check" in tool && tool.check?.(call.input, env)) return { asks: false };
+  if ("check" in tool && await tool.check?.(call.input, env)) return { asks: false };
   const input = tool.kind === "github" ? { ...call.input, repo: repoOf(call.input, github ?? undefined) } : call.input;
   return { asks: true, timeoutSec: approvalTimeoutSec, title: tool.ask?.(input, env) ?? `Run ${call.name}?`, input };
 }

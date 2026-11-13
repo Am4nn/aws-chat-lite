@@ -176,11 +176,12 @@ export function chatRepo() {
     /**
      * A `copy` is the server's copy of a message already sent elsewhere (into the thread it was delivered to or
      * started); the original counted its mentions, so the copy doesn't count them again. A `system` message is one the
-     * server posts in a pseudo-author's name (a schedule's card), who has no read state to move.
+     * server posts in a pseudo-author's name (a schedule's card, an agent's post), who has no read state to move. An
+     * `agentPost` names the thread an agent posted it from.
      */
     async send(
       user: User, input: ChatRef & { clientId: string; text: unknown; replyToSeq?: number; attachments?: unknown }, admitted?: Admitted,
-      opts: { copy?: boolean; system?: boolean } = {},
+      opts: { copy?: boolean; system?: boolean; agentPost?: Message["agentPost"] } = {},
     ): Promise<Message> {
       const at = { roomId: input.roomId, chatId: input.chatId };
       const { text, attachments } = admitted ?? await admit(user, input);
@@ -193,6 +194,7 @@ export function chatRepo() {
       const message: Message = {
         ...at, seq, authorId: user.userId, authorName: user.username, clientId: input.clientId, text,
         createdAt: new Date().toISOString(), attachments, reactions: {}, mentions, everyone,
+        ...(opts.agentPost && { agentPost: opts.agentPost }),
         ...(quoted && { replyTo: { seq: quoted.seq, authorName: quoted.authorName, excerpt: excerpt(forReaders(quoted).text) } }),
       };
       await db.send(new PutCommand({

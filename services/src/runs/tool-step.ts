@@ -69,6 +69,12 @@ function heldBack(tool: Gated, settled: Approval | undefined, seen: TaintSource[
   return asksFirst(tool, seen, rules) ? "This call now needs a room member's approval. Call it again to ask for it." : null;
 }
 
+/** Where the model can see whether a write it made went through. */
+function writtenTo(tool: Tool, name: string): string {
+  if (tool.kind === "mcp") return mcpServerOf(name);
+  return tool.kind === "room_post" ? "the chat" : "GitHub";
+}
+
 /** What a tool's output brings into the thread: GitHub data, a server's MCP output, or room chat. */
 function taintOf(tool: Tool, name: string): TaintSource[] {
   if (tool.kind === "github") return ["github"];
@@ -87,9 +93,9 @@ async function runRoomTool(run: RoutedRun, tool: Tool, call: ToolCall, { room, s
   const env = { ...transport, room: toolRoom(run, { tainted: isPrivate(seen), postCap: room.postCap }) };
   const input = settled?.call.input ?? call.input;
   // Its own check comes first: a call it refuses never asked, so telling the model to call again would loop.
-  const refused = tool.check?.(input, env) ?? heldBack(tool, settled, seen, room);
+  const refused = (await tool.check?.(input, env)) ?? heldBack(tool, settled, seen, room);
   if (refused) return { ok: false, output: refused };
-  if (tool.write && rerun) return { ok: false, output: unsure(tool.kind === "mcp" ? mcpServerOf(call.name) : "GitHub") };
+  if (tool.write && rerun) return { ok: false, output: unsure(writtenTo(tool, call.name)) };
   const brings = taintOf(tool, call.name);
   if (brings.length) await threadsRepo().addTaint(run.roomId, run.number, brings);
   await auditTool(run, started, call.name, tool.detail(input));

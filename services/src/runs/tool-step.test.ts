@@ -17,7 +17,7 @@ const runs = {
 const audit = { record: vi.fn() };
 const fake = vi.hoisted(() => ({
   mcp: [] as unknown[], addTaint: vi.fn(async () => {}), runSandbox: vi.fn(async () => ({ ok: true, output: "4", ms: 5 })),
-  mode: "ask", internet: false, taint: [] as string[],
+  mode: "ask", internet: false, taint: [] as string[], send: vi.fn(),
 }));
 vi.mock("./repo.js", () => ({ runsRepo: () => runs }));
 vi.mock("./notify.js", () => ({ notifyRun: async () => {} }));
@@ -37,7 +37,13 @@ vi.mock("../images/step.js", async (actual) => ({
   ...await actual<object>(), imageDeps: () => ({}), generateImageStep: async () => ({ ok: true, output: "Saved images/1-1-1-cat.png." }),
 }));
 vi.mock("../workspace/session.js", () => ({ runSandbox: fake.runSandbox }));
-vi.mock("../rooms/repo.js", () => ({ roomDirectory: async () => ({ members: [{ userId: "u1", username: "aman", role: "owner" }] }) }));
+vi.mock("../rooms/repo.js", () => ({
+  roomDirectory: async () => ({
+    chats: [{ chatId: "c1", name: "general", lastSeq: 1, archived: false }], threads: [], agents: [BUILT_IN],
+    members: [{ userId: "u1", username: "aman", role: "owner" }],
+  }),
+}));
+vi.mock("../chat/repo.js", () => ({ chatRepo: () => ({ send: fake.send }) }));
 
 process.env.MODEL_GATEWAY = "fake";
 
@@ -151,6 +157,18 @@ describe("toolStep", () => {
       ["r1", 3, ["room"]],
       expect.objectContaining({ type: "step.finished", ok: true, output: "aman · owner" }),
     ]);
+  });
+
+  it("never posts twice: a post step found already started tells the model to check the chat", async () => {
+    const call = { id: "c1", name: "room_post", input: { chat: "general", text: "Deploy done" } };
+    runs.allEvents.mockResolvedValueOnce([{ type: "step.started", step: 1, call, detail: "#general", seq: 5, at: "2026-11-12T00:00:00.000Z" }]);
+    fake.mode = "auto";
+    const appended = logged();
+    await toolStep({ ...run, agent: { ...BUILT_IN, tools: ["room_post"] } }, call);
+    expect(fake.send).not.toHaveBeenCalled();
+    expect(appended.find((e) => e.type === "step.finished")).toMatchObject({
+      ok: false, output: "This write may or may not have happened (the step was interrupted). Check the chat before trying again.",
+    });
   });
 
   it("logs nothing for a tool the model was never offered", async () => {

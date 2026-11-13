@@ -4,7 +4,9 @@ import { PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it } from "vitest";
 import { decideApproval } from "../approvals/decide.js";
 import { approvalsRepo } from "../approvals/repo.js";
+import { agentsRepo } from "../agents/repo.js";
 import { auditRepo } from "../audit/repo.js";
+import { chatRepo } from "../chat/repo.js";
 import { connectionsRepo } from "../connections/repo.js";
 import { docClient, tableName } from "../lib/db.js";
 import { Conflict, Gone } from "../lib/errors.js";
@@ -314,6 +316,33 @@ describe("approvals in the run loop, on Floci", { timeout: 60_000 }, () => {
     expect(await gateOf(run, searchCall, [])).toEqual({ asks: false });
     await threadsRepo().addTaint(at.roomId, run.number, ["room"]);
     expect(await gateOf(run, searchCall, [])).toMatchObject({ asks: true, title: 'Search the web for "acme payroll"?' });
+  });
+
+  it("in Ask a post waits for a member, in Auto it posts at once, and the channel gets it as the agent's", async () => {
+    const at = await room({ connected: false });
+    const { chatId } = await roomsRepo().createChat(at.roomId, at.aman.userId, "fake");
+    const herald = await agentsRepo().create(at.aman, at.roomId, { name: "herald", instructions: "Post updates.", tools: ["room_post"], model: "room" });
+    const post = async () => {
+      const { thread, message } = await threadsRepo().createThread(at.aman, at.roomId, {
+        text: "go call:room_post", clientId: `k${++clients}`, agentId: herald.agentId,
+      });
+      return { thread, ...await startOrSteer(at.aman, at.roomId, thread.threadId, message) };
+    };
+
+    const asked = await post();
+    expect((await waiting(at.roomId, asked.thread.threadId)).approval?.title).toBe('Post in #fake: "fake"?');
+    await decideApproval(at.bea, asked.runId, 1, "approve");
+    expect((await finished(asked.runId)).status).toBe("done");
+
+    await connectionsRepo().setApprovalMode(at.aman, at.roomId, "auto");
+    const auto = await post();
+    expect((await finished(auto.runId)).status).toBe("done");
+    expect(await eventsOf(auto.runId, "approval.requested")).toEqual([]);
+
+    const postOf = ({ thread }: typeof asked) => ({
+      authorId: "agent", authorName: "herald", text: "fake", agentPost: { threadId: thread.threadId, number: thread.number },
+    });
+    expect((await chatRepo().history(at.aman, at.roomId, chatId, {})).messages).toMatchObject([postOf(asked), postOf(auto)]);
   });
 
   it("a skip note is logged only by the close that ends the run, so it never lands mid-answer", async () => {

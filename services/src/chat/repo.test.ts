@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { GetCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { docClient } from "../lib/db.js";
 import { Gone } from "../lib/errors.js";
 import { chatRepo } from "./repo.js";
@@ -172,6 +172,20 @@ describe("send", () => {
     const send = fakeTable({}, () => ({ Attributes: { lastSeq: 5 } }));
     expect(await post({ system: true })).toMatchObject({ seq: 5, authorName: "ann" });
     expect(keysWritten(send).some((k) => k.startsWith("READ#"))).toBe(false);
+  });
+
+  it("stores an agent post's thread link, moves no read marker, and notifies the people it names", async () => {
+    const send = fakeTable({}, (c) => (c instanceof QueryCommand ? { Items: [me, { userId: "u2", username: "bea" }] } : { Attributes: { lastSeq: 5 } }));
+    const agentPost = { threadId: "t1", number: 7 };
+    const text = "Deploy done, @bea";
+    const message = await chatRepo().send(
+      { userId: "agent", username: "scout" }, { ...at, clientId: "k1", text }, { text, attachments: [] }, { system: true, agentPost },
+    );
+    expect(message).toMatchObject({ authorName: "scout", agentPost });
+    const put = writes(send).find((c) => c instanceof PutCommand) as PutCommand;
+    expect(put.input.Item).toMatchObject({ authorId: "agent", agentPost });
+    expect(keysWritten(send)).not.toContain("READ#agent#c1");
+    expect(pushed).toMatchObject([{ kind: "mention", authorName: "scout", userIds: ["u2"] }]);
   });
 });
 
