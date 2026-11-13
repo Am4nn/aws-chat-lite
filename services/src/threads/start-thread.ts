@@ -1,4 +1,4 @@
-import { BUILT_IN, mentionedAgent } from "../agents/model.js";
+import { BUILT_IN, mentionedAgents } from "../agents/model.js";
 import { agentsRepo } from "../agents/repo.js";
 import type { User } from "../lib/auth.js";
 import { NotFound, ValidationError } from "../lib/errors.js";
@@ -12,7 +12,7 @@ import type { ThreadSummary } from "./types.js";
 /** The agent picked for the thread, which must be one of the room's; without a pick, the first the text mentions. */
 async function threadAgent(roomId: string, agentId: unknown, text: string): Promise<string> {
   const agents = agentsRepo();
-  if (agentId === undefined) return (mentionedAgent(text, await agents.list(roomId)) ?? BUILT_IN).agentId;
+  if (agentId === undefined) return (mentionedAgents(text, await agents.list(roomId))[0] ?? BUILT_IN).agentId;
   const agent = typeof agentId === "string" ? await agents.byId(roomId, agentId) : null;
   if (!agent || agent.deleted) throw new NotFound("No such agent.");
   return agent.agentId;

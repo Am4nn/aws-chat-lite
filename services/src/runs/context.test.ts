@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "../chat/model.js";
 import type { RunEvent, RunEventBody } from "../threads/types.js";
-import { answerOf, buildContext, channelBackground, threadMessages } from "./context.js";
+import { answerOf, askText, buildContext, channelBackground, threadMessages } from "./context.js";
 
 const message = (seq: number, authorId: string, authorName: string, text: string): Message => ({
   roomId: "r", chatId: "t", seq, authorId, authorName, text, createdAt: "2026-11-11T00:00:00.000Z",
@@ -241,5 +241,13 @@ describe("lanes", () => {
     const image = { path: "images/7-1-2-fox.png", aspect: "1:1" as const };
     const drew = run.map((e) => (e.type === "step.finished" && e.step === 2 ? { ...e, image } : e));
     expect(answerOf(drew).images).toEqual([image]);
+  });
+});
+
+describe("askText", () => {
+  it("is what members wrote since the agent last answered, and what they steered with since", () => {
+    const prior = [message(1, "u1", "ravi", "@scout first"), message(2, "agent", "agent", "done"), message(3, "u1", "ravi", "now ask @critic"), message(4, "u2", "mia", "and @scout")];
+    const run = events({ type: "steer", messageSeq: 5, authorName: "ravi", text: "@docs too" }, { type: "text", text: "@nobody", turn: 1 });
+    expect(askText(prior, run)).toBe("now ask @critic\nand @scout\n@docs too");
   });
 });

@@ -49,6 +49,13 @@ export function threadMessages(prior: Message[]): ModelMessage[] {
   );
 }
 
+/** What the members asked this run: their messages since the agent last answered, then what they steered it with. */
+export function askText(prior: Message[], events: RunEvent[]): string {
+  const answered = prior.map((m) => m.authorId).lastIndexOf("agent");
+  const steers = events.flatMap((e) => (e.type === "steer" ? [e.text] : []));
+  return [...prior.slice(answered + 1).map((m) => m.text), ...steers].join("\n");
+}
+
 /** A thread started from a people-chat message: that chat's name, the message it replied to, and the ones before it. */
 export type ChannelBackground = { chat: string; replyTo?: Message; before: Message[] };
 

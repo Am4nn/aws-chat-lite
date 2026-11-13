@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Agent } from "../threads/types.js";
 import {
-  BUILT_IN, agentModel, agentName, agentOrDefault, canChange, instructionsText, mapKinds, mentionedAgent, toolKinds,
+  BUILT_IN, agentModel, agentName, agentOrDefault, canChange, instructionsText, mapKinds, mentionedAgents, toolKinds,
 } from "./model.js";
 
 const NAME_RULE = "Agent names use a-z, 0-9 and dashes, 2 to 32 characters, starting with a letter.";
@@ -59,18 +59,18 @@ it("mapKinds keeps the kinds the room offers", () => {
   });
 });
 
-describe("mentionedAgent", () => {
+describe("mentionedAgents", () => {
   const reviewer = agent("reviewer");
   const reviewer2 = agent("reviewer-2");
   const agents = [BUILT_IN, reviewer, reviewer2];
-  it("picks the earliest mention", () => {
-    expect(mentionedAgent("hi @reviewer and @agent", agents)).toBe(reviewer);
-    expect(mentionedAgent("@agent, ask @reviewer", agents)).toBe(BUILT_IN);
-    expect(mentionedAgent("hey @Reviewer", agents)).toBe(reviewer);
+  it("lists each agent named, in the order the text names them", () => {
+    expect(mentionedAgents("hi @reviewer and @agent", agents)).toEqual([reviewer, BUILT_IN]);
+    expect(mentionedAgents("@agent, ask @reviewer, then @agent again", agents)).toEqual([BUILT_IN, reviewer]);
+    expect(mentionedAgents("hey @Reviewer", agents)).toEqual([reviewer]);
   });
-  it("matches the whole name", () => expect(mentionedAgent("@reviewer-2 go", agents)).toBe(reviewer2));
+  it("matches the whole name", () => expect(mentionedAgents("@reviewer-2 go", agents)).toEqual([reviewer2]));
   it.each(["`@reviewer`", "```\n@reviewer\n```", "a@reviewer.com", "nobody here"])("finds none in %j", (text) =>
-    expect(mentionedAgent(text, agents)).toBeNull());
+    expect(mentionedAgents(text, agents)).toEqual([]));
 });
 
 describe("agentOrDefault", () => {

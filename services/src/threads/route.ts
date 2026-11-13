@@ -1,4 +1,4 @@
-import { mentionedAgent } from "../agents/model.js";
+import { mentionedAgents } from "../agents/model.js";
 import { agentsRepo } from "../agents/repo.js";
 import type { User } from "../lib/auth.js";
 import { NotFound, ValidationError } from "../lib/errors.js";
@@ -99,7 +99,7 @@ export async function routeSend(user: User, input: SendInput): Promise<{ message
   const ownThread = await threads.threadById(roomId, chatId);
   const targets = ownThread ? [] : await deliveryTargets(threads, roomId, input.threadId, ready.text);
   const agentThreads = ownThread ? [ownThread] : targets;
-  const mentioned = !agentThreads.length && ready.text.includes("@") ? mentionedAgent(ready.text, await agentsRepo().list(roomId)) : null;
+  const mentioned = !agentThreads.length && ready.text.includes("@") ? mentionedAgents(ready.text, await agentsRepo().list(roomId))[0] ?? null : null;
   if (agentThreads.length || mentioned) {
     const refusal = pickRefusal(pick, mergeTaint(...agentThreads.map((t) => t.taint), messageTaint(admitted)));
     if (refusal) throw new ValidationError(refusal);
