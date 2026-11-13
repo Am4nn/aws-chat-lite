@@ -16,7 +16,7 @@ describe("route skeletons", () => {
   });
 
   it("covers every room page a tap can wait on", () => {
-    expect(Object.keys(ROUTE_SKELETONS).sort()).toEqual(["chat", "map", "new-thread", "thread"]);
+    expect(Object.keys(ROUTE_SKELETONS).sort()).toEqual(["apps", "chat", "map", "new-thread", "thread"]);
   });
 
   it("the chat and thread skeletons end on the composer's exact box, so the page lands without a jump", () => {

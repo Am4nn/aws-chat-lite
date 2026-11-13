@@ -36,6 +36,11 @@ describe("Sidebar", () => {
     fireEvent.click(hide);
     expect(onCollapse).toHaveBeenCalledOnce();
   });
+
+  it("opens Connected apps inside this room, so the sidebar stays", () => {
+    sidebar();
+    expect(screen.getByRole("link", { name: "Connected apps" }).getAttribute("href")).toBe("/r/r1/apps");
+  });
 });
 
 describe("Sidebar chats", () => {

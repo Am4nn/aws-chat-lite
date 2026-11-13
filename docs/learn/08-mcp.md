@@ -11,7 +11,7 @@
   - `list_rooms`, `list_room` and `read_messages` (scope `rooms:read`, marked read-only);
   - `post_message` and `start_thread` (scope `rooms:write`). A post appears under the user's own name, and an `@agent` in it starts a thread, as in the web app.
 - **A thin OAuth 2.1 authorization server in front of Cognito** (Lambda `cl-<stage>-oauth`): metadata, dynamic client registration, `authorize`, `token` and `revoke`. Sign-in and consent happen on the web app's new `/consent` page, which already signs in through Cognito.
-- **Connected apps** (`/apps`, linked from the sidebar): every app the user let in, with its scopes and last use. `Remove` ends its access at once.
+- **Connected apps** (`/r/<roomId>/apps`, linked from the sidebar, opens inside the room shell): every app the user let in, with its scopes and last use, and the `claude mcp add` command for this site. `Remove` ends its access at once.
 - **A local OAuth MCP test server** (`services/src/mcp/testing/server.ts`, on port 4710 under `npm run dev`). It is the SDK's `Server` plus a hand-written authorization server on `node:http`, with discovery, registration, PKCE, refresh rotation and revocation. Its tools are `echo`, `whoami` and `fail` (read-only) and `add_note` (a write). Unit tests run it in-process; Floci's Lambdas reach it at `http://host.docker.internal:4710`.
 - **`npm run smoke`** gained 19 MCP checks (`scripts/src/smoke-mcp.ts`): two browsers on the fake model, plus the SDK's own MCP client playing Claude Code.
   - **As a client:**
@@ -31,8 +31,8 @@
     - after the token swap, `tools/list` gives the five tools and `list_rooms` the room;
     - `post_message` shows live on B's page, as A;
     - a signed-out browser goes through `/login` and back to the same request, and Cancel returns `access_denied`;
-    - `/consent`, `/apps` and `/login` send the frame headers, and Chrome refuses to frame `/apps`;
-    - Connected apps lists `smoke-client` and fits a phone; Remove asks, the row goes at once under reduced motion, and the app's token then gets 401. The SDK client, seeing that 401, tries its refresh token and gets `invalid_grant`, since the grant is gone;
+    - `/consent`, Connected apps and `/login` send the frame headers, and Chrome refuses to frame Connected apps;
+    - Connected apps opens from the sidebar with the sidebar kept, lists `smoke-client` and the `claude mcp add` command, and fits a phone; Remove asks, the row goes at once under reduced motion, and the app's token then gets 401. The SDK client, seeing that 401, tries its refresh token and gets `invalid_grant`, since the grant is gone;
     - a foreign `Origin` on `/mcp` gets 403, `GET` 405 with `Allow: POST`, no token 401 with `resource_metadata`;
     - 20 registrations get 201 and the 21st 429 `slow_down`.
 
@@ -154,7 +154,7 @@ Membership is checked again on every call, so someone removed from a room loses 
 | Ruling | Cost if wrong |
 |---|---|
 | Authorize lives on the API and hands sign-in and consent to the web app's `/consent`; Cognito's hosted UI is never used | One extra redirect; `/consent`, and `/login` behind it, must stay frame-proof |
-| Every page sends `frame-ancestors 'none'` + `X-Frame-Options: DENY`, not only `/consent` and `/apps` | A later feature that frames the app (an embed) needs its own path exempted |
+| Every page sends `frame-ancestors 'none'` + `X-Frame-Options: DENY`, not only `/consent` and Connected apps | A later feature that frames the app (an embed) needs its own path exempted |
 | Opaque tokens, hashed on one grant item; no JWTs | One `GetItem` per MCP request; no offline verification |
 | DCR only, both ways; no Client ID Metadata Documents | Servers that accept only CIMD or pre-registered clients can't be connected, and CIMD-only clients can't connect to us |
 | Every authorize fault is an error page, even with a registered redirect URI | A client sees our error page instead of its own `error=` callback |

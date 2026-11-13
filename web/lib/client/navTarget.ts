@@ -1,9 +1,9 @@
 type ClickLike = Pick<MouseEvent, "defaultPrevented" | "button" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey" | "target">;
 
 /** A room page, read from its URL. */
-type Place = { roomId: string; chatId?: string; threadNumber?: number; map: boolean; newThread: boolean };
+type Place = { roomId: string; chatId?: string; threadNumber?: number; map: boolean; newThread: boolean; apps: boolean };
 
-export type SkeletonKind = "chat" | "thread" | "map" | "new-thread";
+export type SkeletonKind = "chat" | "thread" | "map" | "new-thread" | "apps";
 
 const keyOf = (url: URL) => url.pathname + url.search;
 
@@ -26,7 +26,7 @@ export function placeOf(href: string): Place | null {
   const url = new URL(href, "http://x");
   const [r, roomId, kind, id] = url.pathname.split("/").filter(Boolean);
   if (r !== "r" || !roomId) return null;
-  const place: Place = { roomId, map: false, newThread: false };
+  const place: Place = { roomId, map: false, newThread: false, apps: kind === "apps" };
   if (kind === "c" && id) place.chatId = id;
   else if (kind === "t" && id === "new") place.newThread = true;
   else if (kind === "t" && id) {
@@ -41,6 +41,7 @@ export function skeletonKind(href: string): SkeletonKind | null {
   const place = placeOf(href);
   if (!place) return null;
   if (place.newThread) return "new-thread";
+  if (place.apps) return "apps";
   if (place.threadNumber !== undefined) return place.map ? "map" : "thread";
   return "chat";
 }
