@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode, type Ref } from "react";
+import { useContext, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode, type Ref } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useParams } from "next/navigation";
 import { ArrowUp, Paperclip, Square } from "lucide-react";
 import { mentionOptions, mentionQuery, type Mentionable } from "@/lib/client/mentions";
+import { onlyThreadTags, RoomTagsContext } from "@/lib/client/roomTags";
 import { useEscape } from "@/lib/client/useEscape";
 import { dur, easeOut, instant } from "@/lib/motion";
 import type { Message } from "@/lib/types";
@@ -44,12 +45,14 @@ function withWords(text: string, caret: number, words: string) {
 type Props = {
   ref?: Ref<ComposerHandle>; members: Mentionable[]; agents?: { name: string }[]; meId: string; mode?: ComposerMode;
   uploads?: ReturnType<typeof useUploads>; placeholder?: string; steering?: boolean; stopping?: boolean; pill?: ReactNode;
+  /** In a people chat a `#tag` sends the message into that thread, so a message that is only a tag is held back. */
+  routesTags?: boolean;
   onModeChange?: (mode: ComposerMode) => void; onSend: (text: string) => void; onSaveEdit?: (m: Message, text: string) => void;
   onEditLast?: () => boolean; onTyping: () => void; onStop?: () => void;
 };
 
 export function Composer({
-  ref, members, agents = [], meId, mode = null, uploads, placeholder = "Message", steering = false, stopping = false, pill,
+  ref, members, agents = [], meId, mode = null, uploads, placeholder = "Message", steering = false, stopping = false, pill, routesTags = false,
   onModeChange, onSend, onSaveEdit, onEditLast, onTyping, onStop,
 }: Props) {
   const reduced = useReducedMotion();
@@ -103,7 +106,9 @@ export function Composer({
 
   const editing = mode?.kind === "edit" ? mode.message : undefined;
   const trimmed = text.trim();
-  const canSubmit = trimmed.length <= MAX_TEXT && !uploads?.busy && !dictating &&
+  const tags = useContext(RoomTagsContext);
+  const bareTag = routesTags && !editing && !uploads?.uploads.length && !!tags && onlyThreadTags(trimmed, tags);
+  const canSubmit = trimmed.length <= MAX_TEXT && !uploads?.busy && !dictating && !bareTag &&
     (editing ? !!trimmed || editing.attachments.length > 0 : !!trimmed || !!uploads?.uploads.length);
 
   function change(value: string, caretAt: number) {
@@ -291,6 +296,7 @@ export function Composer({
           <button
             onClick={submit}
             disabled={!canSubmit}
+            title={bareTag ? "Add a message after the tag" : undefined}
             aria-label={editing ? "Save edit" : steering ? "Steer the running agent" : "Send"}
             className="grid size-[38px] shrink-0 place-items-center rounded-[11px] bg-lime text-lime-ink transition-[background,color,scale] hover:bg-lime-soft active:scale-95 disabled:bg-surface-3 disabled:text-text-3"
           >

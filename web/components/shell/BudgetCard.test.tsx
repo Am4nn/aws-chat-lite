@@ -37,6 +37,13 @@ describe("BudgetCard", () => {
     await waitFor(() => expect(mocks.bff).toHaveBeenCalledWith("/bff/api/rooms/r1/budget", { method: "PUT", body: { capUsd: 7.5 } }));
   });
 
+  it("closes the field when the server refuses the cap, so it never strands open; the toast says why", async () => {
+    mocks.bff.mockRejectedValue(new Error("Pick a cap up to $20."));
+    fireEvent.blur(editCap("25"));
+    await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
+    expect(screen.getByRole("button", { name: "Change the monthly cap" })).toBeTruthy();
+  });
+
   it("leaves the cap alone on Escape, or when it didn't change", () => {
     const input = editCap("9");
     fireEvent.keyDown(input, { key: "Escape" });

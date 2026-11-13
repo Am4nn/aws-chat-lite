@@ -3,6 +3,7 @@ import { createRef } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Message } from "@/lib/types";
+import { RoomTagsContext, type RoomTags } from "@/lib/client/roomTags";
 import { Composer, type ComposerHandle, type ComposerMode } from "./Composer";
 
 const dictation = vi.hoisted(() => ({
@@ -119,5 +120,34 @@ describe("Composer tag insert", () => {
     const { onModeChange, insert } = tagged({ kind: "reply", message: { authorName: "bea", text: "hi" } as Message });
     insert("#pr-review");
     expect(onModeChange).toHaveBeenCalledWith(null);
+  });
+});
+
+describe("Composer thread tags", () => {
+  const tags: RoomTags = { roomId: "r1", threads: [{ number: 1, name: "pr-check" }], chats: [] };
+  const inChannel = (routesTags: boolean) => {
+    render(
+      <RoomTagsContext value={tags}>
+        <Composer members={[]} meId="u1" routesTags={routesTags} onSend={() => {}} onSaveEdit={() => {}} onTyping={() => {}} />
+      </RoomTagsContext>,
+    );
+    const box = screen.getByRole("combobox");
+    const send = () => screen.getByRole("button", { name: "Send" }) as HTMLButtonElement;
+    return { type: (text: string) => fireEvent.change(box, { target: { value: text } }), send };
+  };
+
+  it("won't send a channel message that only tags a thread, and says what's missing", () => {
+    const { type, send } = inChannel(true);
+    type("#pr-check ");
+    expect(send().disabled).toBe(true);
+    expect(send().title).toBe("Add a message after the tag");
+    type("#pr-check what changed?");
+    expect(send().disabled).toBe(false);
+  });
+
+  it("sends a bare tag where it doesn't route, as in a thread", () => {
+    const { type, send } = inChannel(false);
+    type("#pr-check");
+    expect(send().disabled).toBe(false);
   });
 });

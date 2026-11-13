@@ -51,14 +51,14 @@ export function threadMessages(prior: Message[]): ModelMessage[] {
 }
 
 /**
- * The `others` the members asked this run for: named in their messages since the agent last answered, or in what they
- * steered it with. One the run already handed a task is left out, so the agent isn't told to ask it again.
+ * The `others` the members asked this run for: named in the thread's messages since the agent last answered, steers
+ * included, read as they stand now, so a message deleted since asks no one. One the run already handed a task is left
+ * out, so the agent isn't told to ask it again.
  */
-export function askedAgents<T extends { agentId: string; name: string }>(prior: Message[], events: RunEvent[], others: T[]): T[] {
-  const answered = prior.map((m) => m.authorId).lastIndexOf("agent");
-  const steers = events.flatMap((e) => (e.type === "steer" ? [e.text] : []));
+export function askedAgents<T extends { agentId: string; name: string }>(thread: Message[], events: RunEvent[], others: T[]): T[] {
+  const answered = thread.map((m) => m.authorId).lastIndexOf("agent");
   const helped = new Set(events.flatMap((e) => (e.type === "helper.started" ? [e.agentId] : [])));
-  const text = [...prior.slice(answered + 1).map((m) => m.text), ...steers].join("\n");
+  const text = thread.slice(answered + 1).map((m) => m.text).join("\n");
   return mentionedAgents(text, others).filter((a) => !helped.has(a.agentId));
 }
 

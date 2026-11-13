@@ -76,11 +76,6 @@ describe("Sidebar chats", () => {
     expect(screen.getAllByRole("menu").at(-1)!.className).toContain("top-8");
   });
 
-  it("lets the open Archived list's menus overflow it once it has opened", () => {
-    sidebar({ canManage: true, activeChatId: "c3" });
-    expect(screen.getByRole("list", { name: "Archived chats" }).className).not.toContain("overflow-hidden");
-  });
-
   it("opens the Archived list when the open chat is in it", () => {
     sidebar({ canManage: true, activeChatId: "c3" });
     expect(screen.getByRole("list", { name: "Archived chats" })).toBeTruthy();

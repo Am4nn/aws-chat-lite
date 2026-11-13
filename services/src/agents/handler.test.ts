@@ -1,3 +1,4 @@
+import { BUILT_IN } from "./model.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GetCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { docClient } from "../lib/db.js";
@@ -90,6 +91,11 @@ describe("agents routes", () => {
     expect(kept).toMatchObject({ status: 200, body: { agent: { name: "scout", tools: ["web"] } } });
     const added = await call("admin", "PATCH /rooms/{roomId}/agents/{agentId}", { tools: ["mcp", "web"] }, { agentId: "a1" });
     expect(added).toMatchObject({ status: 400, body: { error: "This room has no mcp connection." } });
+  });
+
+  it("PATCH that blanks @agent's role answers with the default role it keeps", async () => {
+    const res = await call("admin", "PATCH /rooms/{roomId}/agents/{agentId}", { instructions: "" }, { agentId: "agent" });
+    expect(res).toMatchObject({ status: 200, body: { agent: { name: "agent", instructions: BUILT_IN.instructions } } });
   });
 
   it("DELETE removes the agent's schedules and their triggers", async () => {

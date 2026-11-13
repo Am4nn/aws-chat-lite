@@ -10,6 +10,16 @@ export const RoomTagsContext = createContext<RoomTags | null>(null);
 const TAG = /(?<!\w)#([a-z0-9-]{1,32})(?![\w-])/gi;
 
 /**
+ * A message the server would refuse: it tags one of the room's threads and says nothing else, so the thread's agent
+ * would get a bare tag to make sense of.
+ */
+export function onlyThreadTags(text: string, tags: RoomTags): boolean {
+  const named = [...text.matchAll(TAG)].some(([, tag]) =>
+    tags.threads.some((t) => String(t.number) === tag || t.name.toLowerCase() === tag!.toLowerCase()));
+  return named && !/[^\s,.:;-]/.test(text.replace(TAG, ""));
+}
+
+/**
  * The `#tags` in plain text that name something in the room. The server stores a thread tag as its number, which
  * survives renames, so `#12` shows the thread's name as it is today; a tag with letters can only be a chat's.
  */

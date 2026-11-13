@@ -13,6 +13,7 @@ import { useNow } from "@/lib/client/useNow";
 import { dur, easeOut, instant, spring } from "@/lib/motion";
 import type { Message, Reaction, Role } from "@/lib/types";
 import { ThreadRef } from "@/components/threads/ThreadCard";
+import { AgentAvatar, AiTag } from "@/components/ui/AgentAvatar";
 import { Avatar } from "@/components/ui/Avatar";
 import { MessageAttachments } from "./Attachments";
 import { MessageText } from "./MessageText";
@@ -63,6 +64,8 @@ export const MessageRow = memo(function MessageRow({
   const reduced = useReducedMotion();
   const time = clockTime(m.createdAt, ctx.timeZone);
   const mine = m.authorId === ctx.meId;
+  // A schedule posts its run's card into a chat; it is the room's automation, not a person.
+  const automated = m.authorId === "schedule";
   const forMe = mentionsMe(m, ctx.meId);
   const settled = !status;
   const quote = !m.deleted && m.replyTo;
@@ -73,7 +76,7 @@ export const MessageRow = memo(function MessageRow({
   );
 
   const bubble = (m.deleted || m.text || quote) && (
-    <div className={`min-w-0 px-[13px] py-2 ${shape(mine, groupStart)} ${forMe ? "bg-amber-wash" : mine ? "bg-surface-3" : "bg-surface-2"}`}>
+    <div className={`min-w-0 px-[13px] py-2 ${shape(mine, groupStart)} ${forMe ? "bg-amber-wash ring-1 ring-inset ring-amber-line" : mine ? "bg-surface-3" : "bg-surface-2"}`}>
       {quote && (
         <button
           onClick={() => actions.jump(quote.seq)}
@@ -133,23 +136,25 @@ export const MessageRow = memo(function MessageRow({
       {mine
         ? (
           <div className="relative flex flex-col items-end">
+            {groupStart && <span className="sr-only">You</span>}
             <div className="flex max-w-[78%] items-end gap-2">
               {!groupEnd && hoverTime}
               {bubble}
             </div>
             {below}
-            {groupEnd && <time dateTime={m.createdAt} className="px-1 pt-0.5 font-mono text-[10.5px] text-text-4">{time}</time>}
+            {groupEnd && <time dateTime={m.createdAt} className="px-1 pt-0.5 font-mono text-[10.5px] text-text-3">{time}</time>}
           </div>
         )
         : (
           <div className="relative flex gap-2">
             <div className="flex w-7 shrink-0 justify-end">
-              {groupStart ? <span className="mt-px"><Avatar name={m.authorName} size={28} /></span> : hoverTime}
+              {groupStart ? <span className="mt-px">{automated ? <AgentAvatar size={28} /> : <Avatar name={m.authorName} size={28} />}</span> : hoverTime}
             </div>
             <div className="flex min-w-0 flex-1 flex-col items-start">
               {groupStart && (
                 <div className="flex items-baseline gap-[7px] px-1 pb-0.5">
-                  <span className="text-[12.5px] font-semibold text-text-2">{m.authorName}</span>
+                  <span className={`text-[12.5px] font-semibold ${automated ? "text-lime" : "text-text-2"}`}>{m.authorName}</span>
+                  {automated && <AiTag />}
                   <time dateTime={m.createdAt} className="font-mono text-[11px] text-text-3">{time}</time>
                   {forMe && <span aria-label="Mentions you" title="Mentions you" className="font-mono text-[11px] font-semibold text-amber">@</span>}
                 </div>
@@ -246,6 +251,8 @@ function Toolbar({ message: m, ctx, actions, pinned }: { message: Message; ctx: 
   const ref = useRef<HTMLDivElement>(null);
   const smile = useRef<HTMLButtonElement>(null);
   const close = () => { setPicking(false); setConfirming(false); };
+  // Over the empty side of the row: on my right-aligned bubbles the right edge is the message itself.
+  const own = m.authorId === ctx.meId;
   useClickOutside(ref, picking || confirming, close);
   const open = pinned || picking || confirming;
   // A reply to the message that started a thread is meant for the thread, as its card's Reply is.
@@ -269,7 +276,7 @@ function Toolbar({ message: m, ctx, actions, pinned }: { message: Message; ctx: 
       data-group
       onMouseLeave={() => setConfirming(false)}
       onKeyDown={onKeyDown}
-      className={`absolute -top-4 right-3 z-10 flex items-center gap-0.5 rounded-[10px] border border-line-strong bg-surface-2 p-0.5 shadow-pop transition-opacity duration-150 ${
+      className={`absolute -top-4 ${own ? "left-3" : "right-3"} z-10 flex items-center gap-0.5 rounded-[10px] border border-line-strong bg-surface-2 p-0.5 shadow-pop transition-opacity duration-150 ${
         open ? "opacity-100" : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
       }`}
     >
@@ -283,8 +290,8 @@ function Toolbar({ message: m, ctx, actions, pinned }: { message: Message; ctx: 
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, transition: reduced ? instant : { duration: dur.fast } }}
             transition={reduced ? instant : { duration: dur.fast, ease: easeOut }}
-            style={{ transformOrigin: "bottom right" }}
-            className="absolute bottom-full right-0 mb-1.5 flex gap-0.5 rounded-xl border border-line-strong bg-surface-2 p-1 shadow-menu"
+            style={{ transformOrigin: own ? "bottom left" : "bottom right" }}
+            className={`absolute bottom-full ${own ? "left-0" : "right-0"} mb-1.5 flex gap-0.5 rounded-xl border border-line-strong bg-surface-2 p-1 shadow-menu`}
           >
             {REACTIONS.map((r, i) => {
               const mine = !!m.reactions[r]?.includes(ctx.meId);

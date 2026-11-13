@@ -281,13 +281,13 @@ describe("agent threads over the socket", () => {
     const updated = await sb.next(messageUpdated(generalChatId, 1));
     expect((updated.message as Frame).threadRef).toEqual({ kind: "delivered", threads: [{ threadId: thread.threadId, seq: 2 }] });
     const running = await sb.next((f) => runUpdated(thread.threadId)(f) && (f.thread as Frame).runFirstSeq === 2);
-    expect((await history(a, roomId, thread.threadId))[1]).toMatchObject({ seq: 2, authorId: a.userId, clientId: "k1:t", text: "and this" });
+    expect((await history(a, roomId, thread.threadId))[1]).toMatchObject({ seq: 2, authorId: a.userId, clientId: "k1:t", text: "#1 and this" });
     await sb.next((f) => runUpdated(thread.threadId, "done")(f) && (f.thread as Frame).runId === (running.thread as Frame).runId, AGENT_MS);
 
     send(sa, { action: "send", requestId: "d2", roomId, chatId: generalChatId, threadId: thread.threadId, clientId: "k2", text: "and more" });
     expect((await sb.next(messageUpdated(generalChatId, 2))).message).toMatchObject({ threadRef: { kind: "delivered" } });
     const copies = await history(a, roomId, thread.threadId);
-    expect(copies.filter((m) => m.authorId === a.userId).map((m) => m.text)).toEqual(["notes", "and this", "and more"]);
+    expect(copies.filter((m) => m.authorId === a.userId).map((m) => m.text)).toEqual(["notes", "#1 and this", "and more"]);
   }, AGENT_MS);
 
   it("deleting a message delivered into two threads removes its copy in each, and the room hears all three", async () => {

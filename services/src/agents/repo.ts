@@ -170,7 +170,7 @@ export function agentsRepo() {
         throw e;
       }
       await roomChanged("agents.changed", roomId);
-      return { ...agent, ...fields };
+      return toAgent({ ...agent, ...fields });
     },
 
     /** Soft: the item stays for the threads that name it, while the name and the slot under the cap are freed. */

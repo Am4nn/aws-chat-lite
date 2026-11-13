@@ -29,6 +29,8 @@ export function BudgetCard({ roomId, isOwner }: { roomId: string; isOwner: boole
       setBudget((await bff<{ budget: Budget }>(`/bff/api/rooms/${roomId}/budget`, { method: "PUT", body: { capUsd } })).budget);
       setDraft(null);
     } catch (e) {
+      // Closed rather than left open: the field has lost focus, so nothing would take it out again.
+      setDraft(null);
       toast(errorText(e), "error");
     } finally {
       setSaving(false);

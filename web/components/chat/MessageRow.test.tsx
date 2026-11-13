@@ -36,6 +36,23 @@ const mine: Message = { ...message, authorId: "me", authorName: "aman", text: "o
 const theirs: Message = { ...message, mentions: [] };
 
 describe("MessageRow", () => {
+  it("names my messages for a screen reader, and keeps the toolbar off my bubble, over the row's empty left", () => {
+    const out = html(mine);
+    expect(out).toContain('<span class="sr-only">You</span>');
+    expect(out).toMatch(/role="toolbar"[^>]*class="[^"]*-top-4 left-3/);
+    expect(html(message)).toMatch(/role="toolbar"[^>]*class="[^"]*-top-4 right-3/);
+  });
+
+  it("shows a schedule's message as the room's automation, with the agent's tile and AI tag, never a person's avatar", () => {
+    const out = html({ ...message, authorId: "schedule", authorName: "schedule", mentions: [] });
+    expect(out).toContain("bg-lime-wash text-lime");
+    expect(out).toContain(">AI</span>");
+    expect(out).not.toContain("rounded-full font-bold uppercase");
+  });
+
+  it("outlines a bubble that mentions me, so it stands out from the plain ones", () =>
+    expect(html(message)).toContain("bg-amber-wash ring-1 ring-inset ring-amber-line"));
+
   it("puts my message on the right as a plain bubble, with no avatar or name, and its time under the group", () => {
     const out = html(mine);
     expect(out).toContain("items-end");

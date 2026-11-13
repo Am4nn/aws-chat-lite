@@ -3,7 +3,7 @@ import { BUILT_IN } from "../agents/model.js";
 import { ValidationError } from "../lib/errors.js";
 import { PICK_REFUSED } from "../models/privacy.js";
 import { startOrSteer } from "../runs/start.js";
-import { copyText, rewriteTags, routeSend, tagNames, tagNumbers } from "./route.js";
+import { onlyTags, rewriteTags, routeSend, tagNames, tagNumbers } from "./route.js";
 
 const chat = { admit: vi.fn(), send: vi.fn(), linkThread: vi.fn() };
 const threads = { threadById: vi.fn(), threadByTag: vi.fn(), createThread: vi.fn() };
@@ -26,17 +26,10 @@ describe("rewriteTags", () => {
   });
 });
 
-describe("copyText", () => {
-  it("drops the tags that lead or end the message, which only said where it goes", () => {
-    expect(copyText("#4 please check", [4])).toBe("please check");
-    expect(copyText("please check, #4", [4])).toBe("please check");
-    expect(copyText("#1 #2, compare them", [1, 2])).toBe("compare them");
-  });
-  it("keeps a tag inside a sentence, and one that sends the message nowhere", () => {
-    expect(copyText("see #4 when you can", [4])).toBe("see #4 when you can");
-    expect(copyText("#9 please check", [4])).toBe("#9 please check");
-    expect(copyText("#4", [4])).toBe("");
-  });
+describe("onlyTags", () => {
+  it.each(["#4", " #1 #2, ", "#4: ", "#general #4."])("is true for %j, which says where to go but nothing else", (text) =>
+    expect(onlyTags(text)).toBe(true));
+  it.each(["#4 please check", "#2: fix this", "#2's log", "`#4`", "see #4"])("is false for %j", (text) => expect(onlyTags(text)).toBe(false));
 });
 
 describe("tagNames", () => {
@@ -104,9 +97,9 @@ describe("routeSend: thread tags in a people chat", () => {
     expect(copiedInto()).toEqual(["t1"]);
   });
 
-  it("hands each thread the message without the tags that only sent it there", async () => {
+  it("hands each thread the message as written; the brief tells its agent what a #tag is", async () => {
     await send("#2 #pr-check what changed?");
-    expect(chat.send.mock.calls.filter(([, , , o]) => o?.copy).map(([, i]) => i.text)).toEqual(["what changed?", "what changed?"]);
+    expect(chat.send.mock.calls.filter(([, , , o]) => o?.copy).map(([, i]) => i.text)).toEqual(["#2 #4 what changed?", "#2 #4 what changed?"]);
   });
 
   it("refuses a message that is only thread tags, before storing anything", async () => {

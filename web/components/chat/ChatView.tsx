@@ -182,7 +182,7 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
         ? <ArchivedNotice chat={!archived} />
         : (
           <Composer
-            ref={composer} members={members} agents={agents} meId={me.userId} mode={mode} uploads={uploads} onModeChange={setMode}
+            ref={composer} routesTags members={members} agents={agents} meId={me.userId} mode={mode} uploads={uploads} onModeChange={setMode}
             onSend={send} onSaveEdit={saveEdit}
             // A people chat can start a run too, with @agent or a #thread tag; files make what it sees private.
             pill={<ModelPill value={pick} onChange={setPick} taint={uploads.uploads.length ? ["attachment"] : []} />}

@@ -104,7 +104,7 @@ export async function modelTurn(run: RoutedRun, turn: number): Promise<Turn> {
   // a helper or its own answer, to a model that may not see it.
   const system = systemPrompt({
     agent: run.agent, others: run.others, memory, privateOk: modelInfo(run.model).privateOk && taint.length > 0,
-    helperOf: run.helper?.parent, asked: askedAgents(prior, events, run.others),
+    helperOf: run.helper?.parent, asked: askedAgents([...prior, ...steers], events, run.others),
   });
   const opening = run.helper
     ? [{ role: "user" as const, author: run.helper.parent, text: run.helper.task }]

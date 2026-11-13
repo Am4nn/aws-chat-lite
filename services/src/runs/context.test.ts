@@ -247,10 +247,14 @@ describe("lanes", () => {
 describe("askedAgents", () => {
   const card = (name: string) => ({ agentId: `id-${name}`, name, about: "" });
   const others = [card("scout"), card("critic"), card("docs")];
-  it("are the others members named since the agent last answered, or steered with since, in the order named", () => {
-    const prior = [message(1, "u1", "ravi", "@docs first"), message(2, "agent", "agent", "done"), message(3, "u1", "ravi", "now ask @critic"), message(4, "u2", "mia", "and @scout")];
-    const run = events({ type: "steer", messageSeq: 5, authorName: "ravi", text: "@docs too" }, { type: "text", text: "@docs", turn: 1 });
-    expect(askedAgents(prior, run, others).map((a) => a.name)).toEqual(["critic", "scout", "docs"]);
+  it("are the others members named since the agent last answered, in the order named", () => {
+    const thread = [message(1, "u1", "ravi", "@docs first"), message(2, "agent", "agent", "done"), message(3, "u1", "ravi", "now ask @critic"), message(4, "u2", "mia", "and @scout"), message(5, "u1", "ravi", "@docs too")];
+    expect(askedAgents(thread, events({ type: "text", text: "@docs", turn: 1 }), others).map((a) => a.name)).toEqual(["critic", "scout", "docs"]);
+  });
+  it("reads a message as it stands, so one deleted since asks no one", () => {
+    const deleted = { ...message(2, "u1", "ravi", ""), deleted: "self" as const };
+    const run = events({ type: "steer", messageSeq: 2, authorName: "ravi", text: "@critic too" });
+    expect(askedAgents([message(1, "u1", "ravi", "@scout go"), deleted], run, others).map((a) => a.name)).toEqual(["scout"]);
   });
   it("reads the whole thread before the agent's first answer", () =>
     expect(askedAgents([message(1, "u1", "ravi", "@scout @critic review")], [], others).map((a) => a.name)).toEqual(["scout", "critic"]));
