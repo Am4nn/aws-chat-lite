@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ModelOption } from "../types";
-import { footerText, liveFooter, modelLabel, nextEnabled, pickMenu, pillLabel, shownPick, taintHint } from "./models";
+import { footerText, isPrivate, liveFooter, modelLabel, nextEnabled, pickMenu, pillLabel, shownPick, taintHint } from "./models";
 
 const o = (pick: ModelOption["pick"], label: string, short: string, id: string | undefined, privateOk = true): ModelOption => ({
   pick, id, label, short, price: id ? "$2 / $10" : "", privateOk,
@@ -119,5 +119,12 @@ describe("taintHint", () => {
   it("names MCP output once, however many servers it came from", () => {
     expect(taintHint(["mcp:notes"])).toBe("Private: has MCP tool output, so DeepSeek is off.");
     expect(taintHint(["github", "mcp:a", "mcp:b"])).toBe("Private: has GitHub data and MCP tool output, so DeepSeek is off.");
+  });
+});
+
+describe("room taint", () => {
+  it("leaves DeepSeek enabled and hints nothing for room-only taint", () => {
+    expect(pickMenu(models, { value: "auto", roomDefault: "auto", taint: ["room"], isAdmin: false }).privateNote).toBe(false);
+    expect(isPrivate(["room"])).toBe(false);
   });
 });

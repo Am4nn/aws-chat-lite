@@ -29,17 +29,17 @@ describe("findChat", () => {
   } as any;
 
   it("reads #<digits> as a thread number, even when a chat has that name", () => {
-    expect(findChat(view, "#12")).toEqual({ chatId: "t12", name: "pr-check" });
+    expect(findChat(view, "#12", "list_room")).toEqual({ chatId: "t12", name: "pr-check" });
   });
 
   it("prefers a chat's name to a thread's, with or without #, then takes an id", () => {
-    expect(findChat(view, "#general")).toEqual({ chatId: "c1", name: "general" });
-    expect(findChat(view, "PR-Check")).toEqual({ chatId: "t12", name: "pr-check" });
-    expect(findChat(view, "t3")).toEqual({ chatId: "t3", name: "general" });
-    expect(findChat(view, "12")).toEqual({ chatId: "c2", name: "12" });
+    expect(findChat(view, "#general", "list_room")).toEqual({ chatId: "c1", name: "general" });
+    expect(findChat(view, "PR-Check", "list_room")).toEqual({ chatId: "t12", name: "pr-check" });
+    expect(findChat(view, "t3", "list_room")).toEqual({ chatId: "t3", name: "general" });
+    expect(findChat(view, "12", "list_room")).toEqual({ chatId: "c2", name: "12" });
   });
 
-  it("points to list_room when none matches", () => {
-    expect(() => findChat(view, "#9")).toThrow(new UserError('No chat or thread "#9" in Dev. Try list_room.'));
+  it("names an unknown chat and the tool that lists them", () => {
+    expect(() => findChat(view, "#9", "list_room")).toThrow(new UserError('No chat or thread "#9" in Dev. Try list_room.'));
   });
 });

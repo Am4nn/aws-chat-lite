@@ -37,10 +37,10 @@ export function makeHandler(
     try {
       switch (event.routeKey) {
         case "GET /rooms/{roomId}/connections": {
-          const { github, mcp, approvalTimeoutSec, canManage } = await repo.view(roomId, subFromEvent(event));
+          const { github, mcp, approvalTimeoutSec, approvalMode, postCap, canManage } = await repo.view(roomId, subFromEvent(event));
           const slug = (await githubApp()).keys.githubAppSlug;
           return json(200, {
-            github, mcp, approvalTimeoutMin: Math.round(approvalTimeoutSec / 60), canManage,
+            github, mcp, approvalTimeoutMin: Math.round(approvalTimeoutSec / 60), approvalMode, postCap, canManage,
             installUrl: slug ? `https://github.com/apps/${slug}/installations/new` : null,
           });
         }
@@ -66,6 +66,10 @@ export function makeHandler(
           return changed(roomId, { statusCode: 204 });
         case "PUT /rooms/{roomId}/approval-timeout":
           return changed(roomId, json(200, { approvalTimeoutMin: await repo.setApprovalTimeout(callerFromEvent(event), roomId, body.minutes) }));
+        case "PUT /rooms/{roomId}/approval-mode":
+          return changed(roomId, json(200, { approvalMode: await repo.setApprovalMode(callerFromEvent(event), roomId, body.mode) }));
+        case "PUT /rooms/{roomId}/post-cap":
+          return changed(roomId, json(200, { postCap: await repo.setPostCap(callerFromEvent(event), roomId, body.cap) }));
         case "GET /rooms/{roomId}/audit":
           await requireMember(roomId, subFromEvent(event));
           return json(200, await auditRepo().list(roomId, event.queryStringParameters?.before));

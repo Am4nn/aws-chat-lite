@@ -10,10 +10,20 @@ export function useAgentNames(): string[] {
   return useMemo(() => agents.map((a) => a.name), [agents]);
 }
 
+/** The tool kinds that reach into the room; a new agent starts without them. */
+export const ROOM_KINDS: ToolKind[] = ["room_read", "room_post", "room_agents"];
+
 export type CopyResult = { agent: Agent; dropped: ToolKind[]; schedules: { copied: number; skipped: number } };
 
 /** A thread whose agent was deleted is answered by @agent, so that's its label too. */
 export const agentLabel = (agentId: string, agents: Agent[]) => `@${agents.find((a) => a.agentId === agentId)?.name ?? "agent"}`;
+
+/** Who an agent is from: built in, a member, an agent, or an agent a member approved. */
+export function madeByLine(a: Agent): string {
+  if (a.builtIn) return "built in";
+  if (!a.madeBy) return `by ${a.createdByName}`;
+  return `by @${a.madeBy.name}${a.createdByName ? ` · approved by ${a.createdByName}` : ""}`;
+}
 
 /** Mirrors the server's rule, which remains the real check: its creator or an admin, and only admins for @agent. */
 export const canEditAgent = (agent: Agent, me: { userId: string; role: Role }) =>

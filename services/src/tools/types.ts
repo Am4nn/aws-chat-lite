@@ -1,5 +1,6 @@
+import type { User } from "../lib/auth.js";
 import type { ToolSpec } from "../models/gateway.js";
-import type { GitHubConnection, Source } from "../threads/types.js";
+import type { GitHubConnection, Source, ToolKind } from "../threads/types.js";
 
 export type ToolKeys = {
   tavilyKey?: string; githubAppId?: string; githubAppSlug?: string; githubPrivateKey?: string; githubClientId?: string; githubClientSecret?: string;
@@ -12,19 +13,34 @@ export type ToolEnv = {
   keys: ToolKeys;
   github?: GitHubConnection;
   mcpCall: (target: { roomId: string; name: string }, tool: string, input: Record<string, unknown>) => Promise<ToolResult>;
-  /** The thread the call is made for. `tainted`: it holds private content. */
-  room: { roomId: string; threadNumber: number; agentName: string; tainted: boolean };
+  /**
+   * The run and thread the call is made for, and the agent making it. `tainted`: the thread holds private content.
+   * `postCap`: how many chat posts the room lets one run make.
+   */
+  room: {
+    roomId: string; threadId: string; threadNumber: number; runId: string; agentId: string; agentName: string;
+    tainted: boolean; postCap: number;
+  };
+  /** The member who approved the call; absent when it ran without asking. */
+  approver?: User;
 };
 
 export type Tool = {
   spec: ToolSpec;
-  kind: "github" | "mcp" | "memory" | "web";
+  kind: "github" | "mcp" | "memory" | "web" | "room_read" | "room_post" | "room_agents";
   write: boolean;
+  /** Deletes something, so it asks first in every approval mode. */
+  destructive?: boolean;
   /** The step row line. */
   detail(input: Record<string, unknown>): string;
   /** An error before any approval is asked, or null. */
-  check?(input: Record<string, unknown>, env: ToolEnv): string | null;
-  /** The approval title, for a call that waits on one: every write, and a web call in a thread with private content. */
+  check?(input: Record<string, unknown>, env: ToolEnv): string | null | Promise<string | null>;
+  /** The approval title, for a call that waits on one: in Ask every write, and a web call in a thread with private content. */
   ask?(input: Record<string, unknown>, env: ToolEnv): string;
+  /**
+   * The input a member approves, with what the call would fill in on its own spelled out, so the card shows all of
+   * it; an approved call runs with this input. The call's own input when absent.
+   */
+  pinned?(input: Record<string, unknown>, env: ToolEnv): Promise<Record<string, unknown>>;
   run(input: Record<string, unknown>, env: ToolEnv): Promise<ToolResult>;
 };

@@ -1,6 +1,6 @@
 import { ValidationError } from "../lib/errors.js";
 import { modelOptions, pickInfo, type ModelPick } from "./catalog.js";
-import { type TaintSource } from "./privacy.js";
+import { isPrivate, type TaintSource } from "./privacy.js";
 
 export const ROUTER_PROMPT =
   "Pick the model for this team-chat request. Reply with one word. haiku: greetings, small talk, quick facts, short rewrites or summaries. sonnet: code, debugging, tools, analysis, planning, or anything with several steps. If unsure, reply sonnet.";
@@ -19,7 +19,7 @@ export function resolvePick(
   taint: TaintSource[],
 ): { pick: ModelPick; by: "pick" | "default" } {
   if (pick) return { pick, by: "pick" };
-  const blocked = taint.length > 0 && roomDefault !== "auto" && !pickInfo(roomDefault)?.privateOk;
+  const blocked = isPrivate(taint) && roomDefault !== "auto" && !pickInfo(roomDefault)?.privateOk;
   return { pick: blocked ? "auto" : roomDefault, by: "default" };
 }
 

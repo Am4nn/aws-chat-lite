@@ -11,7 +11,7 @@ function setup(answer?: (call: GitHubCall) => Response | undefined) {
   const { calls, fetch } = recordGitHub(answer);
   const env: ToolEnv = {
     fetch, fetchPage: () => Promise.reject(new Error("no pages")), keys: fakeKeys(), github: conn,
-    mcpCall: () => Promise.reject(new Error("not wired")), room: { roomId: "r1", threadNumber: 1, agentName: "agent", tainted: false },
+    mcpCall: () => Promise.reject(new Error("not wired")), room: { roomId: "r1", threadId: "t1", threadNumber: 1, runId: "run1", agentId: "agent", agentName: "agent", tainted: false, postCap: 10 },
   };
   return { calls, env, repoCalls: () => calls.filter((c) => c.path.startsWith("/repos/")).map((c) => `${c.method} ${c.path}`) };
 }
@@ -34,6 +34,12 @@ describe("GITHUB_TOOLS", () => {
     for (const t of GITHUB_TOOLS) {
       expect(t.spec.name).toMatch(/^[a-z_]{1,64}$/);
       expect(t.kind).toBe("github");
+    }
+  });
+
+  it("tells the model a write may wait for approval, since the room's mode decides whether it does", () => {
+    for (const t of GITHUB_TOOLS.filter((g) => g.write)) {
+      expect(t.spec.description).toMatch(/May wait for a room member's approval, as the room's settings decide\.$/);
     }
   });
 

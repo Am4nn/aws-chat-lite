@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { Agent } from "../threads/types.js";
+import type { Agent, Delegates, ToolKind } from "../threads/types.js";
 import {
-  BUILT_IN, agentModel, agentName, agentOrDefault, canChange, instructionsText, mapKinds, mentionedAgents, toolKinds,
+  BUILT_IN, agentModel, agentName, agentOrDefault, canAgentEdit, canChange, delegateList, delegatesTo, grantRefusal, instructionsText, mapKinds,
+  mentionedAgents, toolKinds,
 } from "./model.js";
 
 const NAME_RULE = "Agent names use a-z, 0-9 and dashes, 2 to 32 characters, starting with a letter.";
@@ -27,7 +28,11 @@ describe("instructionsText", () => {
 
 describe("toolKinds", () => {
   it("dedupes and sorts", () => expect(toolKinds(["web", "images", "github", "web"])).toEqual(["github", "images", "web"]));
-  it("gives the built-in @agent every kind, images included", () => expect(BUILT_IN.tools).toEqual(["github", "images", "mcp", "sandbox", "web"]));
+  it("keeps the room kinds off the built-in @agent, and accepts them on any agent", () => {
+    expect(BUILT_IN.tools).toEqual(["github", "images", "mcp", "sandbox", "web"]);
+    expect(toolKinds(["room_post", "web", "room_read"])).toEqual(["room_post", "room_read", "web"]);
+    expect(() => toolKinds(["room_admin"])).toThrow("Unknown tool kind.");
+  });
   it("gives the built-in @agent a role, whose first line other agents read when they hand it work", () =>
     expect(BUILT_IN.instructions.split("\n")).toEqual([
       "The room's generalist.",
@@ -58,6 +63,41 @@ describe("canChange", () => {
   });
 });
 
+describe("grantRefusal", () => {
+  const scout = { name: "scout", tools: ["web", "room_post"] as ToolKind[], delegates: ["A1"] as Delegates };
+  const named = (id: string) => ({ A1: "reviewer", A2: "writer" })[id] ?? id;
+  it("lets an agent grant only the kinds and delegates it has", () => {
+    expect(grantRefusal(scout, { tools: ["web"], delegates: ["A1"] }, named)).toBeNull();
+    expect(grantRefusal(scout, { tools: ["web", "github", "room_agents"], delegates: ["A1", "A2"] }, named))
+      .toBe("@scout can't give what it doesn't have: github, room_agents, @writer. Ask a member to add it by hand.");
+  });
+  it("gives every agent only when it may hand work to every agent itself", () => {
+    expect(grantRefusal(scout, { tools: [], delegates: "all" }, named))
+      .toBe("@scout can't give what it doesn't have: any agent. Ask a member to add it by hand.");
+    expect(grantRefusal({ ...scout, delegates: "all" }, { tools: [], delegates: "all" }, named)).toBeNull();
+    expect(grantRefusal({ ...scout, delegates: "all" }, { tools: [], delegates: ["A2"] }, named)).toBeNull();
+  });
+});
+
+describe("canAgentEdit", () => {
+  const madeBy = { agentId: "S", name: "scout" };
+  it("lets an agent edit the agents it made", () => expect(canAgentEdit(agent("b", { agentId: "B", madeBy }), "S")).toBe(true));
+  it("never one a person or another agent made, itself, a deleted one or the built-in", () => {
+    expect(canAgentEdit(agent("b", { agentId: "B" }), "S")).toBe(false);
+    expect(canAgentEdit(agent("b", { agentId: "B", madeBy: { agentId: "X", name: "other" } }), "S")).toBe(false);
+    expect(canAgentEdit(agent("s", { agentId: "S", madeBy }), "S")).toBe(false);
+    expect(canAgentEdit({ ...agent("b", { agentId: "B", madeBy }), deleted: true }, "S")).toBe(false);
+    expect(canAgentEdit({ ...BUILT_IN, madeBy }, "S")).toBe(false);
+  });
+});
+
+it("delegatesTo: every agent by default, else the listed ones", () => {
+  expect(delegatesTo({}, "A2")).toBe(true);
+  expect(delegatesTo({ delegates: "all" }, "A2")).toBe(true);
+  expect(delegatesTo({ delegates: ["A1"] }, "A2")).toBe(false);
+  expect(delegatesTo({ delegates: ["A1"] }, "A1")).toBe(true);
+});
+
 it("mapKinds keeps the kinds the room offers", () => {
   expect(mapKinds(["github", "mcp", "sandbox", "web"], ["mcp", "sandbox", "web"])).toEqual({
     kept: ["mcp", "sandbox", "web"], dropped: ["github"],
@@ -86,4 +126,13 @@ describe("agentOrDefault", () => {
   it("hands back a live agent without the flag", () => {
     expect(agentOrDefault({ ...agent("scout"), deleted: false })).toEqual(agent("scout"));
   });
+});
+
+it("takes all or a list of agent ids for delegates", () => {
+  expect(delegateList("all")).toBe("all");
+  expect(delegateList(["a1", "a1", "b2"])).toEqual(["a1", "b2"]);
+  expect(delegateList([])).toEqual([]);
+  expect(() => delegateList("some")).toThrow('Delegates are "all" or a list of agent ids.');
+  expect(() => delegateList(["bad id"])).toThrow('Delegates are "all" or a list of agent ids.');
+  expect(() => delegateList(Array.from({ length: 22 }, (_, i) => `a${i}`))).toThrow('Delegates are "all" or a list of agent ids.');
 });

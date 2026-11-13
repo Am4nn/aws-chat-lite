@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Agent, RoomSummary } from "../types";
-import { agentLabel, canEditAgent, copyTargets, copyToast } from "./agents";
+import { agentLabel, canEditAgent, copyTargets, copyToast, madeByLine } from "./agents";
 
 const agent = (over: Partial<Agent> = {}): Agent => ({
   agentId: "a1", name: "reviewer", instructions: "", tools: ["web"], model: "room", builtIn: false,
@@ -50,5 +50,14 @@ describe("agentLabel", () => {
   it("names the thread's agent, and @agent for one that is gone", () => {
     expect(agentLabel("a1", [builtIn, agent()])).toBe("@reviewer");
     expect(agentLabel("gone", [builtIn, agent()])).toBe("@agent");
+  });
+});
+
+describe("madeByLine", () => {
+  it("says who made an agent, and who approved one an agent made", () => {
+    expect(madeByLine(builtIn)).toBe("built in");
+    expect(madeByLine(agent())).toBe("by aman");
+    expect(madeByLine(agent({ madeBy: { agentId: "S", name: "scout" }, createdByName: "bea" }))).toBe("by @scout · approved by bea");
+    expect(madeByLine(agent({ madeBy: { agentId: "S", name: "scout" }, createdByName: "" }))).toBe("by @scout");
   });
 });

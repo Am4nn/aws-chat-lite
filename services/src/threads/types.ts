@@ -28,7 +28,7 @@ export type ThreadSummary = {
   costMicros: number;
   /** The model the latest run answers on, once it has routed. */
   model?: string;
-  /** Why the thread is private, sorted; [] while it has no private content. */
+  /** What the thread holds, sorted: private content, and `"room"` once it read room chat (not private). */
   taint: TaintSource[];
   summary?: string;
   /** Set while status is "waiting". */
@@ -43,7 +43,8 @@ export type Source = { title: string; url: string };
 export type ApprovalStatus = "pending" | "approved" | "denied" | "expired" | "cancelled";
 export type GitHubConnection = { installationId: number; account: string; repos: string[]; addedBy: string; addedAt: string };
 export type Scope = "rooms:read" | "rooms:write";
-export type McpToolInfo = { name: string; description: string; inputSchema: object; readOnly: boolean };
+/** `destructive`: absent in a snapshot taken before servers' destructive hints were kept. */
+export type McpToolInfo = { name: string; description: string; inputSchema: object; readOnly: boolean; destructive?: boolean };
 export type McpConnection = {
   name: string;
   url: string;
@@ -57,7 +58,10 @@ export type McpConnection = {
   addedAt: string;
 };
 export type McpApp = { grantId: string; clientName: string; scopes: Scope[]; createdAt: string; lastUsedAt: string };
-export type AuditKind = "asked" | "tool" | "approved" | "denied" | "expired" | "cancelled" | "connected" | "disconnected" | "timeout";
+/** How much of what an agent does in a room waits for a member: everything that writes (ask), only the risky (auto), or nothing (bypass). */
+export type ApprovalMode = "ask" | "auto" | "bypass";
+
+export type AuditKind = "asked" | "tool" | "approved" | "denied" | "expired" | "cancelled" | "connected" | "disconnected" | "timeout" | "mode" | "cap";
 export type AuditEntry = {
   id: string; at: string; actor: string; kind: AuditKind; threadNumber?: number; tool?: string; detail: string;
   /** The agent that made the call or answered the ask. */
@@ -65,12 +69,18 @@ export type AuditEntry = {
 };
 
 /** What an agent may use: `mcp` stands for all of the room's MCP servers. */
-export type ToolKind = "sandbox" | "web" | "github" | "mcp" | "images";
+export type ToolKind = "sandbox" | "web" | "github" | "mcp" | "images" | "room_read" | "room_post" | "room_agents";
+/** The agents an agent may hand work to. */
+export type Delegates = "all" | string[];
 /** `room` follows the room's default model. */
 export type AgentModel = ModelPick | "room";
 export type Agent = {
   agentId: string; name: string; instructions: string; tools: ToolKind[]; model: AgentModel;
   builtIn: boolean; createdBy: string; createdByName: string; createdAt: string; updatedAt: string;
+  /** Absent means every agent in the room. */
+  delegates?: Delegates;
+  /** Set when an agent made this one; `createdBy` is then the approving member, or "" when the mode needed no card. */
+  madeBy?: { agentId: string; name: string };
 };
 export type MemoryEntry = {
   memoryId: string; text: string; private: boolean;

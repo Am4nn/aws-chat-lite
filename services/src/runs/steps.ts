@@ -1,4 +1,4 @@
-import { agentOrDefault } from "../agents/model.js";
+import { agentOrDefault, delegatesTo } from "../agents/model.js";
 import { agentsRepo } from "../agents/repo.js";
 import { auditRepo } from "../audit/repo.js";
 import { budgetRepo } from "../budget/repo.js";
@@ -49,9 +49,11 @@ export const models = () => (shared ??= gateway());
 /** The room's connections, with its id, as the tool lookups take them. */
 export const roomConnections = async (roomId: string) => ({ roomId, ...await connectionsRepo().get(roomId) });
 
-/** The thread a tool call is made for, as the tools see it. */
-export const toolRoom = (run: RoutedRun, tainted: boolean): ToolEnv["room"] =>
-  ({ roomId: run.roomId, threadNumber: run.number, agentName: run.agent.name, tainted });
+/** The run and thread a tool call is made for, as the tools see them. */
+export const toolRoom = (run: RoutedRun, { tainted, postCap }: { tainted: boolean; postCap: number }): ToolEnv["room"] => ({
+  roomId: run.roomId, threadId: run.threadId, threadNumber: run.number, runId: run.runId, agentId: run.agent.agentId,
+  agentName: run.agent.name, tainted, postCap,
+});
 
 /**
  * One audit row per tool step that runs, in the name of the agent that ran it. Its id and time are the step's start
@@ -74,7 +76,7 @@ export async function load(runId: string): Promise<{ run: Run; provisional: bool
   ]);
   const agent = agentOrDefault(stored);
   // A thread keeps its `thread-<N>` name until someone or a run names it; names like that can't be picked.
-  return { run, provisional: !!thread && isNumberedName(thread.name), agent, others: all.filter((a) => a.agentId !== agent.agentId).map(agentCard) };
+  return { run, provisional: !!thread && isNumberedName(thread.name), agent, others: all.filter((a) => a.agentId !== agent.agentId && delegatesTo(agent, a.agentId)).map(agentCard) };
 }
 
 /**

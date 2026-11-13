@@ -51,9 +51,8 @@ const idsUnder = async (roomId: string, prefix: string, field: string) => (await
  * Keyword search across a room's chats and threads (archived threads too: archiving only hides them from the
  * sidebar): the 30 newest matching messages, newest first.
  */
-export async function searchRoom(user: User, roomId: string, rawQuery: unknown): Promise<{ results: Message[] }> {
+export async function searchMessages(roomId: string, rawQuery: unknown): Promise<{ results: Message[] }> {
   const q = normalizeQuery(rawQuery);
-  await requireMember(roomId, user.userId);
   const ids = (await Promise.all([idsUnder(roomId, "CHAT#", "chatId"), idsUnder(roomId, "THREAD#", "threadId")])).flat();
   const found: Record<string, unknown>[] = [];
   for (let i = 0; i < ids.length; i += PARALLEL_CHATS) {
@@ -63,4 +62,10 @@ export async function searchRoom(user: User, roomId: string, rawQuery: unknown):
     .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
     .slice(0, MAX_RESULTS);
   return { results: await Promise.all(newest.map(toMessage)) };
+}
+
+export async function searchRoom(user: User, roomId: string, rawQuery: unknown): Promise<{ results: Message[] }> {
+  normalizeQuery(rawQuery);
+  await requireMember(roomId, user.userId);
+  return searchMessages(roomId, rawQuery);
 }

@@ -31,6 +31,12 @@ describe("mcpTool", () => {
     expect(write.detail({ text: "x" })).toBe("test · add_note");
   });
 
+  it("reads a snapshot without the field as destructive, and a read-only tool never as destructive", () => {
+    expect(mcpTool("r1", testConnection(), addNote).destructive).toBe(true);
+    expect(mcpTool("r1", testConnection(), { ...addNote, destructive: false }).destructive).toBe(false);
+    expect(mcpTool("r1", testConnection(), { ...echo, destructive: true }).destructive).toBe(false);
+  });
+
   it("refuses a call when the server needs reconnecting, or when the input isn't an object", () => {
     expect(mcpTool("r1", testConnection(), echo).check!({ text: "hi" }, env)).toBeNull();
     expect(mcpTool("r1", testConnection({ status: "needs_auth" }), echo).check!({}, env))

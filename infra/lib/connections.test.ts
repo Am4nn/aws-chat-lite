@@ -3,7 +3,7 @@ import { fnNamed, template } from "./test-templates.js";
 
 const ROUTES = [
   "GET /rooms/{roomId}/connections", "GET /rooms/{roomId}/connections/github/installations", "PUT /rooms/{roomId}/connections/github",
-  "DELETE /rooms/{roomId}/connections/github", "PUT /rooms/{roomId}/approval-timeout", "GET /rooms/{roomId}/audit",
+  "DELETE /rooms/{roomId}/connections/github", "PUT /rooms/{roomId}/approval-timeout", "PUT /rooms/{roomId}/approval-mode", "PUT /rooms/{roomId}/post-cap", "GET /rooms/{roomId}/audit",
   "POST /rooms/{roomId}/connections/github/sign-in", "POST /github-flows/finish",
 ];
 

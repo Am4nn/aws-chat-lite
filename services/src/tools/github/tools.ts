@@ -201,7 +201,7 @@ export const GITHUB_TOOLS: Tool[] = [
   }),
   githubTool({
     name: "github_comment",
-    description: "Comments on an issue or pull request. Waits for a room member's approval.",
+    description: "Comments on an issue or pull request. May wait for a room member's approval, as the room's settings decide.",
     properties: { number: NUMBER, body: { type: "string" } },
     required: ["number", "body"],
     permissions: { issues: "write", pull_requests: "write" },
@@ -213,7 +213,7 @@ export const GITHUB_TOOLS: Tool[] = [
   }),
   githubTool({
     name: "github_create_issue",
-    description: "Opens an issue. Waits for a room member's approval.",
+    description: "Opens an issue. May wait for a room member's approval, as the room's settings decide.",
     properties: { title: { type: "string" }, body: { type: "string" }, labels: LABELS },
     required: ["title"],
     permissions: { issues: "write" },
@@ -226,7 +226,7 @@ export const GITHUB_TOOLS: Tool[] = [
   }),
   githubTool({
     name: "github_add_labels",
-    description: "Adds labels to an issue or pull request. Waits for a room member's approval.",
+    description: "Adds labels to an issue or pull request. May wait for a room member's approval, as the room's settings decide.",
     properties: { number: NUMBER, labels: LABELS },
     required: ["number", "labels"],
     permissions: { issues: "write", pull_requests: "write" },
@@ -239,8 +239,8 @@ export const GITHUB_TOOLS: Tool[] = [
   }),
   githubTool({
     name: "github_push_branch",
-    description:
-      "Commits files to a branch in one commit, creating the branch from base (default: the default branch) if it's new. Never the default branch; open a PR instead. Waits for a room member's approval.",
+    description: "Commits files to a branch in one commit, creating the branch from base (default: the default branch) if it's "
+      + "new. Never the default branch; open a PR instead. May wait for a room member's approval, as the room's settings decide.",
     properties: {
       branch: { type: "string" },
       base: { type: "string" },
@@ -262,7 +262,8 @@ export const GITHUB_TOOLS: Tool[] = [
   }),
   githubTool({
     name: "github_create_pr",
-    description: "Opens a pull request from head into base (default: the default branch). Waits for a room member's approval.",
+    description: "Opens a pull request from head into base (default: the default branch). "
+      + "May wait for a room member's approval, as the room's settings decide.",
     properties: { title: { type: "string" }, head: { type: "string" }, base: { type: "string" }, body: { type: "string" } },
     required: ["title", "head"],
     // Opening a PR reads both branches, which takes contents:read on top of the PR write.
@@ -277,7 +278,7 @@ export const GITHUB_TOOLS: Tool[] = [
   }),
   githubTool({
     name: "github_merge_pr",
-    description: "Merges a pull request. Waits for a room member's approval.",
+    description: "Merges a pull request. May wait for a room member's approval, as the room's settings decide.",
     properties: { number: NUMBER, method: { type: "string", enum: ["merge", "squash", "rebase"] } },
     required: ["number"],
     permissions: { contents: "write", pull_requests: "write" },

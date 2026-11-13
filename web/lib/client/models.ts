@@ -11,10 +11,13 @@ export function pickMenu(models: ModelOption[], s: MenuState) {
     price: m.price,
     selected: m.pick === s.value,
     isDefault: m.pick === s.roomDefault,
-    disabled: !m.privateOk && s.taint.length > 0,
+    disabled: !m.privateOk && isPrivate(s.taint),
   }));
   return { items, privateNote: items.some((i) => i.disabled), canSetDefault: s.isAdmin && s.value !== s.roomDefault };
 }
+
+/** Room chat is already visible to members. */
+export const isPrivate = (taint: TaintSource[]): boolean => taint.some((t) => t !== "room");
 
 /** By kind: every server's `mcp:<name>` reads the same. */
 const TAINT_WORDS: Record<string, string> = {
@@ -23,7 +26,7 @@ const TAINT_WORDS: Record<string, string> = {
 
 /** Why DeepSeek is off on a private thread, for the header's lock and the model menu. */
 export function taintHint(taint: TaintSource[]): string {
-  const words = new Set(taint.map((t) => TAINT_WORDS[t.split(":")[0]!]));
+  const words = new Set(taint.filter((t) => t !== "room").map((t) => TAINT_WORDS[t.split(":")[0]!]));
   return `Private: has ${[...words].join(" and ")}, so DeepSeek is off.`;
 }
 
@@ -33,7 +36,7 @@ export function taintHint(taint: TaintSource[]): string {
  */
 export function shownPick(models: ModelOption[], own: ModelPick | undefined, roomDefault: ModelPick, taint: TaintSource[]): ModelPick {
   if (own) return own;
-  const blocked = taint.length > 0 && !models.find((m) => m.pick === roomDefault)?.privateOk;
+  const blocked = isPrivate(taint) && !models.find((m) => m.pick === roomDefault)?.privateOk;
   return blocked ? "auto" : roomDefault;
 }
 

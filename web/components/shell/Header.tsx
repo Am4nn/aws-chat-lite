@@ -1,24 +1,26 @@
 import type { ReactNode } from "react";
 import { ChevronRight, Hash, Lock, Menu, PanelRight } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
-import { taintHint } from "@/lib/client/models";
-import type { Member, TaintSource } from "@/lib/types";
+import { APPROVAL_MODES } from "@/lib/client/approval-mode";
+import { isPrivate, taintHint } from "@/lib/client/models";
+import type { ApprovalMode, Member, TaintSource } from "@/lib/types";
 
 const STACK = 4;
 
 /**
  * `thread`: on a thread page, its title and run status in place of a chat's name. `taint`: what made that thread private.
- * `panelOpen`: whether the room panel shows. The avatar stack opens the panel's People tab; search lives in the panel. The sidebar button needs no such state: while the drawer is open, the
+ * `approvalMode`: shown as a quiet pill unless it is Ask. `panelOpen`: whether the room panel shows. The avatar stack opens the panel's People tab; search lives in the panel. The sidebar button needs no such state: while the drawer is open, the
  * header is inert.
  */
-export function Header({ roomName, chatName, thread, taint = [], members, panelOpen, navCollapsed, onMenu, onPeople, onTogglePanel }: {
-  roomName: string; chatName?: string; thread?: ReactNode; taint?: TaintSource[]; members: Member[]; panelOpen: boolean;
+export function Header({ roomName, chatName, thread, taint = [], approvalMode, members, panelOpen, navCollapsed, onMenu, onPeople, onTogglePanel }: {
+  roomName: string; chatName?: string; thread?: ReactNode; taint?: TaintSource[]; approvalMode?: ApprovalMode; members: Member[]; panelOpen: boolean;
   /** The reader hid the sidebar, so its button shows on a wide screen too. */
   navCollapsed: boolean;
   onMenu: () => void; onPeople: () => void; onTogglePanel: () => void;
 }) {
   // Whoever is online leads the stack, so presence is visible even in a big room.
   const stack = [...members].sort((a, b) => Number(b.online) - Number(a.online)).slice(0, STACK);
+  const mode = approvalMode === "ask" ? undefined : APPROVAL_MODES.find((m) => m.mode === approvalMode);
   const online = members.filter((m) => m.online).length;
 
   return (
@@ -33,9 +35,14 @@ export function Header({ roomName, chatName, thread, taint = [], members, panelO
         </h1>
       )}
       {thread}
-      {taint.length > 0 && (
+      {isPrivate(taint) && (
         <span role="img" aria-label={taintHint(taint)} title={taintHint(taint)} className="shrink-0 text-text-3">
           <Lock aria-hidden="true" size={14} />
+        </span>
+      )}
+      {mode && (
+        <span role="img" aria-label={mode.title} title={mode.title} className="shrink-0 rounded-md bg-surface-3 px-1.5 py-0.5 text-[11px] font-medium text-text-2">
+          {mode.label}
         </span>
       )}
       <div className="ml-auto flex shrink-0 items-center gap-2">

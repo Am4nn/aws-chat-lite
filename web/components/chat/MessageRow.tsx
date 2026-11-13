@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { memo, useContext, useRef, useState, type KeyboardEvent, type ReactNode, type Ref } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { CircleAlert, CornerUpLeft, Pencil, Reply, SmilePlus, Trash2 } from "lucide-react";
@@ -64,8 +65,10 @@ export const MessageRow = memo(function MessageRow({
   const reduced = useReducedMotion();
   const time = clockTime(m.createdAt, ctx.timeZone);
   const mine = m.authorId === ctx.meId;
-  // A schedule posts its run's card into a chat; it is the room's automation, not a person.
-  const automated = m.authorId === "schedule";
+  // A schedule's card and an agent's post are the room's automation, not a person.
+  const automated = m.authorId === "schedule" || !!m.agentPost;
+  const { byId } = useThreads();
+  const source = m.agentPost;
   const forMe = mentionsMe(m, ctx.meId);
   const settled = !status;
   const quote = !m.deleted && m.replyTo;
@@ -152,10 +155,15 @@ export const MessageRow = memo(function MessageRow({
             </div>
             <div className="flex min-w-0 flex-1 flex-col items-start">
               {groupStart && (
-                <div className="flex items-baseline gap-[7px] px-1 pb-0.5">
-                  <span className={`text-[12.5px] font-semibold ${automated ? "text-lime" : "text-text-2"}`}>{m.authorName}</span>
+                <div className="flex max-w-full min-w-0 items-baseline gap-[7px] px-1 pb-0.5">
+                  <span className={`shrink-0 text-[12.5px] font-semibold ${automated ? "text-lime" : "text-text-2"}`}>{m.authorName}</span>
                   {automated && <AiTag />}
-                  <time dateTime={m.createdAt} className="font-mono text-[11px] text-text-3">{time}</time>
+                  {source && (
+                    <Link href={`/r/${m.roomId}/t/${source.number}`} className="min-w-0 truncate text-[12px] text-text-3 transition-colors hover:text-text-2 hover:underline">
+                      from #{byId(source.threadId)?.name ?? source.number}
+                    </Link>
+                  )}
+                  <time dateTime={m.createdAt} className="shrink-0 font-mono text-[11px] text-text-3">{time}</time>
                   {forMe && <span aria-label="Mentions you" title="Mentions you" className="font-mono text-[11px] font-semibold text-amber">@</span>}
                 </div>
               )}

@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { GetCommand, PutCommand, TransactWriteCommand, type TransactWriteCommandInput } from "@aws-sdk/lib-dynamodb";
 import { auditItem } from "../audit/repo.js";
 import { requireMember } from "../rooms/membership.js";
-import { formatWait, timeoutMinutes } from "../approvals/model.js";
+import { approvalModeOf, DEFAULT_POST_CAP, formatWait, postCapOf, timeoutMinutes } from "../approvals/model.js";
 import type { User } from "../lib/auth.js";
 import { conditionFailed, docClient, queryAll, tableName, takeOnce, withoutKeys } from "../lib/db.js";
 import { FlowFailed, Forbidden, Gone, Upstream, ValidationError } from "../lib/errors.js";
@@ -11,7 +11,7 @@ import { roomKey, roomMetaKey } from "../lib/keys.js";
 import { can } from "../rooms/access.js";
 import { cut } from "../tools/cut.js";
 import { GitHubError } from "../tools/github/app.js";
-import type { AuditKind, GitHubConnection, McpConnection } from "../threads/types.js";
+import type { ApprovalMode, AuditKind, GitHubConnection, McpConnection } from "../threads/types.js";
 import { pkce, type Installation } from "./github-sign-in.js";
 
 /** A GitHub sign-in between the admin leaving for GitHub and coming back. */
@@ -65,14 +65,22 @@ export function connectionsRepo() {
   }
 
   /** Read by the run engine as well as the room's settings, so it checks no one's role. */
-  async function get(roomId: string): Promise<{ github: GitHubConnection | null; mcp: McpConnection[]; approvalTimeoutSec: number }> {
+  async function get(roomId: string): Promise<{
+    github: GitHubConnection | null; mcp: McpConnection[]; approvalTimeoutSec: number; approvalMode: ApprovalMode; postCap: number; sandboxInternet: boolean;
+  }> {
     const [conn, mcp, meta] = await Promise.all([
       db.send(new GetCommand({ TableName, Key: githubKey(roomId), ConsistentRead: true })),
       mcpConnections(roomId),
       db.send(new GetCommand({ TableName, Key: roomMetaKey(roomId), ConsistentRead: true })),
     ]);
     const github = conn.Item ? withoutKeys<GitHubConnection>(conn.Item) : null;
-    return { github, mcp, approvalTimeoutSec: Number(meta.Item?.approvalTimeoutSec ?? DEFAULT_APPROVAL_TIMEOUT_SEC) };
+    return {
+      github, mcp,
+      approvalTimeoutSec: Number(meta.Item?.approvalTimeoutSec ?? DEFAULT_APPROVAL_TIMEOUT_SEC),
+      approvalMode: (meta.Item?.approvalMode as ApprovalMode | undefined) ?? "ask",
+      postCap: Number(meta.Item?.postCap ?? DEFAULT_POST_CAP),
+      sandboxInternet: !!meta.Item?.sandboxInternet,
+    };
   }
 
   /** TTL deletion can lag by days, so the expiry is checked here too. */
@@ -183,6 +191,30 @@ export function connectionsRepo() {
         },
       });
       return minutes;
+    },
+
+    async setApprovalMode(user: User, roomId: string, raw: unknown): Promise<ApprovalMode> {
+      const mode = approvalModeOf(raw);
+      await requireManager(roomId, user.userId, { writing: true });
+      await withAudit(user, roomId, "mode", `Agent approvals: ${mode[0]!.toUpperCase()}${mode.slice(1)}`, {
+        Update: {
+          TableName, Key: roomMetaKey(roomId), UpdateExpression: "SET approvalMode = :mode", ConditionExpression: "attribute_exists(pk)",
+          ExpressionAttributeValues: { ":mode": mode },
+        },
+      });
+      return mode;
+    },
+
+    async setPostCap(user: User, roomId: string, raw: unknown): Promise<number> {
+      const cap = postCapOf(raw);
+      await requireManager(roomId, user.userId, { writing: true });
+      await withAudit(user, roomId, "cap", `Agent posts per run: ${cap}`, {
+        Update: {
+          TableName, Key: roomMetaKey(roomId), UpdateExpression: "SET postCap = :cap", ConditionExpression: "attribute_exists(pk)",
+          ExpressionAttributeValues: { ":cap": cap },
+        },
+      });
+      return cap;
     },
   };
 }

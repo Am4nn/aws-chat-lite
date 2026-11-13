@@ -10,9 +10,10 @@ const conn = (over: Partial<McpConnection> = {}): McpConnection => ({
 });
 
 describe("toolLabel", () => {
-  it("says which tools run at once and which ask first", () => {
+  it("says which tools run at once, which always ask first and which ask as the room's mode decides", () => {
     expect(toolLabel(tool("echo", true))).toBe("read-only");
-    expect(toolLabel(tool("add_note"))).toBe("asks first");
+    expect(toolLabel(tool("drop_notes"))).toBe("asks first");
+    expect(toolLabel({ ...tool("add_note"), destructive: false })).toBe("may ask first");
   });
 });
 

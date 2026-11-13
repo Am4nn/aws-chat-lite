@@ -37,6 +37,18 @@ describe("decide", () => {
     });
   });
 
+  it("stores who approved by id as well as name, so what the call makes can be theirs", async () => {
+    const send = fakeTable((c) => {
+      if (isMember(c)) return { Item: { role: "member" } };
+      if (c instanceof GetCommand) return { Item: { ...stored, status: "pending" } };
+      return { Attributes: { ...stored, by: "bea", byId: "u2" } };
+    });
+    await approvalsRepo().decide(bea, "run1", 3, "approve");
+    const [update] = updates(send);
+    expect(update.input.UpdateExpression).toBe("SET #status = :decision, #by = :by, byId = :byId");
+    expect(update.input.ExpressionAttributeValues).toMatchObject({ ":decision": "approved", ":by": "bea", ":byId": "u2" });
+  });
+
   it("names the winner when someone decided first", async () => {
     fakeTable((c) => {
       if (isMember(c)) return { Item: { role: "member" } };
@@ -49,6 +61,13 @@ describe("decide", () => {
   it("refuses someone outside the approval's room", async () => {
     const send = fakeTable((c) => (isMember(c) ? {} : { Item: stored }));
     await expect(approvalsRepo().decide(bea, "run1", 3, "approve")).rejects.toBeInstanceOf(Forbidden);
+    expect(updates(send)).toHaveLength(0);
+  });
+
+  it("refuses a decision from anyone without a member item, an agent's pseudo-user included", async () => {
+    const send = fakeTable((c) => (isMember(c) ? {} : { Item: { ...stored, status: "pending" } }));
+    await expect(approvalsRepo().decide({ userId: "agent", username: "scout" }, "run1", 3, "approve"))
+      .rejects.toThrow("Only members of this room can approve.");
     expect(updates(send)).toHaveLength(0);
   });
 

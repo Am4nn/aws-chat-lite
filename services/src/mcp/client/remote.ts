@@ -59,6 +59,8 @@ function toolInfo(t: Tool): McpToolInfo {
     description: cut(t.description ?? "", MAX_DESCRIPTION_CHARS),
     inputSchema: t.inputSchema,
     readOnly: t.annotations?.readOnlyHint === true,
+    // The MCP spec's default: a tool may delete unless its server says it doesn't.
+    destructive: t.annotations?.destructiveHint !== false,
   };
 }
 

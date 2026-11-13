@@ -2,9 +2,9 @@ import { mcpServerOf } from "../mcp/client/names.js";
 import { modelInfo, type Provider } from "../models/catalog.js";
 import { ASPECTS } from "../images/step.js";
 import type { ToolCall, ToolSpec } from "../models/gateway.js";
-import { mcpTaint, type TaintSource } from "../models/privacy.js";
+import { isPrivate, mcpTaint, privateOf, type TaintSource } from "../models/privacy.js";
 import { LANGUAGES, MAX_TIMEOUT_SEC } from "../sandbox/sandbox.js";
-import type { Agent, ToolKind } from "../threads/types.js";
+import type { Agent, ApprovalMode, ToolKind } from "../threads/types.js";
 import { findTool, roomTools, type RoomMcp } from "../tools/index.js";
 import type { Tool } from "../tools/types.js";
 
@@ -33,7 +33,7 @@ export const SANDBOX_TOOL: ToolSpec = {
   },
 };
 
-export const IMAGE_TOOL: ToolSpec = {
+const IMAGE_TOOL: ToolSpec = {
   name: "image_generate",
   description: "Generate an image from a text description, with Gemini. "
     + "It is saved to the room's files under images/ and shown in the thread. About $0.07 per image.",
@@ -114,17 +114,44 @@ export function mayRun(model: string, served: Provider, name: string, { roomId, 
 }
 
 /**
- * Whether a call waits for a member's approval. A write always does. A web, MCP or image call sends its input out, so
- * text injected into private content could have the model carry that content out in it: such a call asks once the
- * thread holds any private content but what this same MCP server returned itself. GitHub reads and memory keep their
- * input inside what the room already shares. `taint` is the thread's, with whatever the model's turn saw that the
- * stored taint may lag behind.
+ * The sandbox as the approval gate sees it. Its file work stays in the room, but while the room lets it reach the
+ * internet, code written after reading room chat could carry that chat out.
  */
-export function asksFirst(tool: Pick<Tool, "spec" | "write"> & { kind: Tool["kind"] | "images" }, taint: TaintSource[]): boolean {
+export const SANDBOX_GATE = {
+  spec: SANDBOX_TOOL, kind: "sandbox", write: false,
+  ask: (input: Record<string, unknown>) => `Run ${String(input.language)} in the sandbox with internet access?`,
+} as const;
+
+/** The gate of a tool the run itself provides rather than the room's tools: the sandbox or images. */
+export const runGate = (name: string) => [IMAGE_GATE, SANDBOX_GATE].find((g) => g.spec.name === name);
+
+/** A tool as the approval gate weighs it. */
+export type Gated = Pick<Tool, "spec" | "write" | "destructive"> & { kind: Tool["kind"] | "images" | "sandbox" };
+
+/** Kinds whose input leaves the room: GitHub's too, since a search or a comment carries text to GitHub. */
+const OUTBOUND = new Set<Gated["kind"]>(["web", "mcp", "images", "github"]);
+
+/**
+ * Whether a call waits for a member's approval. The floor asks in every mode: before a call that deletes, before
+ * one whose input leaves the room once the thread read room chat, since text injected into that chat could have the
+ * model carry it out, and before a post or an agent's setup from a thread holding private content: a channel's
+ * messages are the background of any later thread there, and an agent's instructions are its prompt and the line other
+ * agents read about it, whatever their models, so a member reads them first. Past the floor, Bypass asks nothing, and
+ * Auto lets posts and agent setup run. Otherwise a write asks, and so does a web, MCP or image call once the thread
+ * holds any private content but what this same MCP server returned itself. A GitHub read sends its input only to the
+ * room's own repos, and memory stays in the room, so private content alone never makes them ask. `taint` is the
+ * thread's, with whatever the model's turn saw that the stored taint may lag behind.
+ */
+export function asksFirst(tool: Gated, taint: TaintSource[], { mode, sandboxInternet }: { mode: ApprovalMode; sandboxInternet: boolean }): boolean {
+  const leaves = OUTBOUND.has(tool.kind) || (tool.kind === "sandbox" && sandboxInternet);
+  const roomWrite = tool.kind === "room_post" || tool.kind === "room_agents";
+  if (tool.destructive || (leaves && taint.includes("room")) || (roomWrite && isPrivate(taint))) return true;
+  if (mode === "bypass") return false;
+  if (mode === "auto" && roomWrite) return false;
   if (tool.write) return true;
   if (tool.kind !== "web" && tool.kind !== "mcp" && tool.kind !== "images") return false;
   const own = tool.kind === "mcp" ? mcpTaint(mcpServerOf(tool.spec.name)) : undefined;
-  return taint.some((t) => t !== own);
+  return privateOf(taint).some((t) => t !== own);
 }
 
 /** The line a running step shows under its tool's name. */

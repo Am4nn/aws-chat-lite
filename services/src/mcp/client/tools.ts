@@ -10,14 +10,16 @@ import { NeedsAuth, type TokenStore } from "./types.js";
 import { localHosts } from "./url.js";
 
 /**
- * One of a room's remote tools, as the agent sees it. Its read-only label comes from the snapshot an admin saw when
- * connecting, so a server can't later turn a write into a read that skips the approval.
+ * One of a room's remote tools, as the agent sees it. Its read-only and destructive labels come from the snapshot an
+ * admin saw when connecting, so a server can't later turn a write into a read that skips the approval. A snapshot from
+ * before destructive hints were kept counts every write as destructive.
  */
 export function mcpTool(roomId: string, conn: McpConnection, info: McpToolInfo): Tool {
   return {
     spec: { name: mcpToolName(conn.name, info.name), description: `${conn.name} (MCP): ${info.description}`, inputSchema: info.inputSchema },
     kind: "mcp",
     write: !info.readOnly,
+    destructive: !info.readOnly && info.destructive !== false,
     detail: () => `${conn.name} · ${info.name}`,
     check(input) {
       if (conn.status === "needs_auth") return needsReconnecting(conn.name);

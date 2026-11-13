@@ -58,9 +58,9 @@ describe("agents routes", () => {
     const res = await call("member", "GET /rooms/{roomId}/agents");
     expect(res.status).toBe(200);
     expect(res.body.agents.map((a: { name: string }) => a.name)).toEqual(["agent", "scout"]);
-    expect(res.body.kinds).toEqual(["images", "sandbox", "web"]);
+    expect(res.body.kinds).toEqual(["images", "sandbox", "web", "room_agents", "room_post", "room_read"]);
     expect(res.body.brief).toMatch(/^You work inside chat-lite, a team chat room/);
-    expect((await call("member", "GET /rooms/{roomId}/agents", undefined, {}, { github: true })).body.kinds).toEqual(["github", "images", "sandbox", "web"]);
+    expect((await call("member", "GET /rooms/{roomId}/agents", undefined, {}, { github: true })).body.kinds).toEqual(["github", "images", "sandbox", "web", "room_agents", "room_post", "room_read"]);
   });
 
   it("POST refuses a bad name, before any write", async () => {
@@ -79,6 +79,19 @@ describe("agents routes", () => {
     const res = await call("member", "POST /rooms/{roomId}/agents", { name: " Critic ", instructions: "Be blunt.", tools: ["web"], model: "haiku" });
     expect(res.status).toBe(201);
     expect(res.body.agent).toMatchObject({ name: "critic", instructions: "Be blunt.", tools: ["web"], model: "haiku", createdBy: "u1" });
+  });
+
+  it("POST and PATCH take a delegate list", async () => {
+    const made = await call("member", "POST /rooms/{roomId}/agents", { name: "critic", tools: ["web"], delegates: ["a1"] });
+    expect(made.body.agent).toMatchObject({ delegates: ["a1"] });
+    const patched = await call("admin", "PATCH /rooms/{roomId}/agents/{agentId}", { delegates: "all" }, { agentId: "a1" });
+    expect(patched.body.agent).toMatchObject({ delegates: "all" });
+  });
+
+  it("POST refuses a bad delegate list, before any write", async () => {
+    const bad = await call("member", "POST /rooms/{roomId}/agents", { name: "critic", tools: ["web"], delegates: "some" });
+    expect(bad.status).toBe(400);
+    expect(transactions(bad.send)).toHaveLength(0);
   });
 
   it("PATCH by a member who didn't make the agent is a 403", async () => {

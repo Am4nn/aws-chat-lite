@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Ban, Check, Clock, Link2, MessageSquare, Timer, Unplug, Wrench, X, type LucideIcon } from "lucide-react";
+import { Ban, Check, Clock, Link2, MessageSquare, ShieldCheck, Timer, Unplug, Wrench, X, type LucideIcon } from "lucide-react";
 import { auditLine, auditMayHaveChanged } from "@/lib/client/audit";
 import { bff, errorText } from "@/lib/client/bff";
 import { timeAgo } from "@/lib/client/format";
@@ -18,7 +18,7 @@ type Page = { entries: AuditEntry[]; next?: string };
 
 const ICONS: Record<AuditKind, LucideIcon> = {
   asked: MessageSquare, tool: Wrench, approved: Check, denied: X, expired: Clock, cancelled: Ban,
-  connected: Link2, disconnected: Unplug, timeout: Timer,
+  connected: Link2, disconnected: Unplug, timeout: Timer, mode: ShieldCheck, cap: MessageSquare,
 };
 
 const CLOCK_TICK_MS = 60_000;

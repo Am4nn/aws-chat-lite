@@ -110,6 +110,43 @@ describe("agents repo on Floci", () => {
     await expect(agents.create(member, roomId, scout)).resolves.toMatchObject({ name: "scout" });
   });
 
+  it("an agent-made agent records its maker; the approving member edits and deletes it as its creator; in Auto it has no approver and only admins and its maker change it", async () => {
+    const { roomId, member, admin } = await room();
+    const maker = await agents.create(admin, roomId, scout);
+    const madeBy = { agentId: maker.agentId, name: "scout" };
+    const approved = await agents.createByAgent(roomId, { ...scout, name: "helper", delegates: [] }, madeBy, member);
+    expect(await agents.byId(roomId, approved.agentId)).toMatchObject({
+      name: "helper", madeBy, createdBy: member.userId, createdByName: "bob", delegates: [], builtIn: false,
+    });
+    await expect(agents.update(member, roomId, approved.agentId, { instructions: "x" })).resolves.toMatchObject({ instructions: "x" });
+    await agents.remove(member, roomId, approved.agentId);
+    expect(await agents.byId(roomId, approved.agentId)).toMatchObject({ deleted: true });
+
+    const auto = await agents.createByAgent(roomId, { ...scout, name: "runner" }, madeBy);
+    expect(auto).toMatchObject({ createdBy: "", createdByName: "", madeBy });
+    await expect(agents.update(member, roomId, auto.agentId, { instructions: "x" }))
+      .rejects.toEqual(new Forbidden("Only its creator or an admin can change @runner."));
+    await expect(agents.updateByAgent(roomId, auto.agentId, { instructions: "by its maker" }, maker.agentId))
+      .resolves.toMatchObject({ instructions: "by its maker" });
+    await expect(agents.update(admin, roomId, auto.agentId, { name: "fast" })).resolves.toMatchObject({ name: "fast" });
+    await expect(agents.createByAgent(roomId, { ...scout, name: "bob" }, madeBy))
+      .rejects.toEqual(new Conflict("@bob is someone's username in this room."));
+  });
+
+  it("updateByAgent refuses another agent's, a person's and the agent's own record", async () => {
+    const { roomId, member, admin } = await room();
+    const maker = await agents.create(member, roomId, scout);
+    const other = await agents.create(member, roomId, { ...scout, name: "other" });
+    const theirs = await agents.createByAgent(roomId, { ...scout, name: "theirs" }, { agentId: other.agentId, name: "other" });
+    const refused = new Forbidden("An agent can edit only the agents it created, never itself.");
+    for (const agentId of [theirs.agentId, other.agentId, maker.agentId, "agent"]) {
+      await expect(agents.updateByAgent(roomId, agentId, { instructions: "x" }, maker.agentId)).rejects.toEqual(refused);
+    }
+    const mine = await agents.createByAgent(roomId, { ...scout, name: "mine" }, { agentId: maker.agentId, name: "scout" });
+    await agents.remove(admin, roomId, mine.agentId);
+    await expect(agents.updateByAgent(roomId, mine.agentId, { instructions: "x" }, maker.agentId)).rejects.toEqual(new NotFound("No such agent."));
+  });
+
   it("refuses someone outside the room", async () => {
     const { roomId } = await room();
     await expect(agents.create(user("eve"), roomId, scout)).rejects.toEqual(new NotFound("Room not found."));

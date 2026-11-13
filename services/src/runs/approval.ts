@@ -4,7 +4,7 @@ import { auditRepo } from "../audit/repo.js";
 import { budgetRepo } from "../budget/repo.js";
 import type { ToolCall } from "../models/gateway.js";
 import { enqueuePush } from "../push/enqueue.js";
-import { mergeTaint, type TaintSource } from "../models/privacy.js";
+import { isPrivate, mergeTaint, type TaintSource } from "../models/privacy.js";
 import { findTool, toolEnv } from "../tools/index.js";
 import { repoOf } from "../tools/github/repo.js";
 import { threadsRepo } from "../threads/repo.js";
@@ -14,7 +14,7 @@ import { DEAD_AFTER_MS } from "./model.js";
 import { notifyRun } from "./notify.js";
 import { runsRepo } from "./repo.js";
 import { laneOf, limitsReached, models, roomConnections, toolRoom, type RoutedRun } from "./steps.js";
-import { asksFirst, IMAGE_GATE, mayRun } from "./tools.js";
+import { asksFirst, mayRun, runGate } from "./tools.js";
 
 /*
  * The steps around a tool call's wait for a member. Everything the wait depends on is read inside a step, so a
@@ -24,23 +24,27 @@ import { asksFirst, IMAGE_GATE, mayRun } from "./tools.js";
 type Gate = { asks: false } | { asks: true; timeoutSec: number; title: string; input: Record<string, unknown> };
 
 /**
- * Whether a call waits for a member's approval, as `asksFirst` rules. Only a call the run may make, whose input passes
- * the tool's own check (so a repo outside the connection is refused before anyone is asked), asks; a run that must end
- * anyway asks no one. A GitHub call's repo is pinned here, so the write runs on the repo the card named even if the
- * connection changes during the wait. `taint` is what the model's turn saw, which the thread's own can lag behind.
+ * Whether a call waits for a member's approval, as `asksFirst` rules under the room's mode. Only a call the run may
+ * make, whose input passes the tool's own check (so a repo outside the connection is refused before anyone is asked),
+ * asks; a run that must end anyway asks no one. A GitHub call's repo is pinned here, so the write runs on the repo the
+ * card named even if the connection changes during the wait; a tool with a `pinned` input, such as an agent's setup,
+ * shows and later runs that, so the card names everything the call will do. `taint` is what the model's turn saw, which the thread's
+ * own can lag behind. A tool that asks only because of the floor, a GitHub read, has no title of its own.
  */
 export async function gateOf(run: RoutedRun, call: ToolCall, taint: TaintSource[]): Promise<Gate> {
   const room = await roomConnections(run.roomId);
-  const tool = call.name === IMAGE_GATE.spec.name ? IMAGE_GATE : findTool(call.name, room);
+  const tool = runGate(call.name) ?? findTool(call.name, room);
   if (!tool || !mayRun(run.model, models().servedBy(run.model), call.name, room, run.agent.tools)) return { asks: false };
-  const thread = tool.write ? undefined : await threadsRepo().threadById(run.roomId, run.threadId);
+  const thread = await threadsRepo().threadById(run.roomId, run.threadId);
   const seen = mergeTaint(taint, thread?.taint ?? []);
-  if (!asksFirst(tool, seen) || await limitsReached(run)) return { asks: false };
+  const rules = { mode: room.approvalMode, sandboxInternet: room.sandboxInternet };
+  if (!asksFirst(tool, seen, rules) || await limitsReached(run)) return { asks: false };
   const { github, approvalTimeoutSec } = room;
-  const env = { ...await toolEnv(process.env.TOOL_MODE, github ?? undefined), room: toolRoom(run, seen.length > 0) };
-  if ("check" in tool && tool.check?.(call.input, env)) return { asks: false };
-  const input = tool.kind === "github" ? { ...call.input, repo: repoOf(call.input, github ?? undefined) } : call.input;
-  return { asks: true, timeoutSec: approvalTimeoutSec, title: tool.ask!(input, env), input };
+  const env = { ...await toolEnv(process.env.TOOL_MODE, github ?? undefined), room: toolRoom(run, { tainted: isPrivate(seen), postCap: room.postCap }) };
+  if ("check" in tool && await tool.check?.(call.input, env)) return { asks: false };
+  const input = tool.kind === "github" ? { ...call.input, repo: repoOf(call.input, github ?? undefined) }
+    : "pinned" in tool && tool.pinned ? await tool.pinned(call.input, env) : call.input;
+  return { asks: true, timeoutSec: approvalTimeoutSec, title: tool.ask?.(input, env) ?? `Run ${call.name}?`, input };
 }
 
 /**

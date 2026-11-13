@@ -154,17 +154,34 @@ export function chatRepo() {
     return { text, attachments: await Promise.all(declared.map(storedAttachment)) };
   }
 
+  /**
+   * Oldest to newest, at most a page (`limit`, 50 by default): the newest messages, or those before or after a seq,
+   * or half a page either side of one (for jumping to a quoted message). The chat's counter item proves the chat is
+   * in this room; the caller is not checked, so a run can read its own room's chats.
+   */
+  async function roomHistory(roomId: string, chatId: string, cursor: Cursor): Promise<{ messages: Message[] }> {
+    await chatInRoom({ roomId, chatId });
+    const { before, after, around, limit = PAGE } = cursor;
+    const items = around !== undefined
+      ? [...await page(chatId, 0, around - 1, true, PAGE / 2), ...await page(chatId, around, LAST_SEQ, false, PAGE / 2)]
+      : after !== undefined
+        ? await page(chatId, after + 1, LAST_SEQ, false, limit)
+        : await page(chatId, 0, before === undefined ? LAST_SEQ : before - 1, true, limit);
+    return { messages: await Promise.all(items.map(toMessage)) };
+  }
+
   return {
     admit,
 
     /**
      * A `copy` is the server's copy of a message already sent elsewhere (into the thread it was delivered to or
      * started); the original counted its mentions, so the copy doesn't count them again. A `system` message is one the
-     * server posts in a pseudo-author's name (a schedule's card), who has no read state to move.
+     * server posts in a pseudo-author's name (a schedule's card, an agent's post), who has no read state to move. An
+     * `agentPost` names the thread an agent posted it from.
      */
     async send(
       user: User, input: ChatRef & { clientId: string; text: unknown; replyToSeq?: number; attachments?: unknown }, admitted?: Admitted,
-      opts: { copy?: boolean; system?: boolean } = {},
+      opts: { copy?: boolean; system?: boolean; agentPost?: Message["agentPost"] } = {},
     ): Promise<Message> {
       const at = { roomId: input.roomId, chatId: input.chatId };
       const { text, attachments } = admitted ?? await admit(user, input);
@@ -177,6 +194,7 @@ export function chatRepo() {
       const message: Message = {
         ...at, seq, authorId: user.userId, authorName: user.username, clientId: input.clientId, text,
         createdAt: new Date().toISOString(), attachments, reactions: {}, mentions, everyone,
+        ...(opts.agentPost && { agentPost: opts.agentPost }),
         ...(quoted && { replyTo: { seq: quoted.seq, authorName: quoted.authorName, excerpt: excerpt(forReaders(quoted).text) } }),
       };
       await db.send(new PutCommand({
@@ -369,21 +387,12 @@ export function chatRepo() {
       throw new Conflict("Your read state kept changing; try again.");
     },
 
-    /**
-     * Oldest to newest, at most a page (`limit`, 50 by default): the newest messages, or those before or after a seq,
-     * or half a page either side of one (for jumping to a quoted message). The chat's counter item proves the chat is
-     * in this room.
-     */
+    roomHistory,
+
+    /** A member's read of a chat: the same page, after checking the caller is in the room. */
     async history(user: User, roomId: string, chatId: string, cursor: Cursor): Promise<{ messages: Message[] }> {
       await requireMember(roomId, user.userId);
-      await chatInRoom({ roomId, chatId });
-      const { before, after, around, limit = PAGE } = cursor;
-      const items = around !== undefined
-        ? [...await page(chatId, 0, around - 1, true, PAGE / 2), ...await page(chatId, around, LAST_SEQ, false, PAGE / 2)]
-        : after !== undefined
-          ? await page(chatId, after + 1, LAST_SEQ, false, limit)
-          : await page(chatId, 0, before === undefined ? LAST_SEQ : before - 1, true, limit);
-      return { messages: await Promise.all(items.map(toMessage)) };
+      return roomHistory(roomId, chatId, cursor);
     },
   };
 }

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { User } from "../../lib/auth.js";
 import { DEFAULT_ERROR, UserError, ValidationError } from "../../lib/errors.js";
-import type { Message } from "../../chat/model.js";
+import { transcriptLine } from "../../chat/model.js";
 import type { ChatRepo } from "../../chat/repo.js";
 import type { broadcastToRoom } from "../../live/broadcast.js";
 import type { RoomsRepo } from "../../rooms/repo.js";
@@ -38,13 +38,13 @@ const ROOM = { type: "string", description: "A room's id or name." };
 const CHAT = { type: "string", description: "A chat name, a thread tag like #12, or an id." };
 
 // The SDK's low-level server doesn't check arguments against the input schema, so each tool checks its own.
-function text(input: Input, key: string): string {
+export function text(input: Input, key: string): string {
   const value = input[key];
   if (typeof value !== "string" || !value.trim()) throw new ValidationError(`${key} must be a non-empty string.`);
   return value;
 }
 
-function whole(input: Input, key: string, min: number, max: number): number | undefined {
+export function whole(input: Input, key: string, min: number, max: number): number | undefined {
   const value = input[key];
   if (value === undefined) return undefined;
   if (typeof value !== "number" || !Number.isInteger(value) || value < min || value > max) {
@@ -64,17 +64,12 @@ async function myRoomView(user: User, input: Input, deps: ServerDeps) {
 
 async function roomAndChat(user: User, input: Input, deps: ServerDeps) {
   const view = await myRoomView(user, input, deps);
-  return { view, chat: findChat(view, text(input, "chat")) };
+  return { view, chat: findChat(view, text(input, "chat"), "list_room") };
 }
 
 // A tab settles its pending send by client id. An MCP post has no tab waiting on it, so any fresh id does; the prefix
 // shows in the stored message where it came from.
 const clientId = () => `mcp-${randomUUID()}`;
-
-function line(m: Message): string {
-  const files = m.attachments.length ? ` [${m.attachments.length} file${m.attachments.length === 1 ? "" : "s"}]` : "";
-  return `[${m.seq}] ${m.authorName} · ${m.createdAt}: ${m.deleted ? "(deleted)" : m.text}${files}`;
-}
 
 const TOOLS: ServerTool[] = [
   {
@@ -116,7 +111,7 @@ const TOOLS: ServerTool[] = [
       const limit = whole(input, "limit", 1, 100) ?? 30;
       const { view, chat } = await roomAndChat(user, input, deps);
       const { messages } = await deps.history(user, view.room.roomId, chat.chatId, { ...(before && { before }), limit });
-      return [`${view.room.name} · #${chat.name}`, ...messages.map(line)].join("\n");
+      return [`${view.room.name} · #${chat.name}`, ...messages.map(transcriptLine)].join("\n");
     },
   },
   {
