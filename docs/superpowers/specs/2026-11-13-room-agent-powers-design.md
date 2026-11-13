@@ -85,6 +85,9 @@ Changed by owners and admins (admins are all-powerful in a room). Default **Ask*
   - anything that deletes or archives (none of the new tools do; this guards existing and future ones);
   - any call that leaves the room once the thread holds room data from the read tools: web, MCP, image generation,
     GitHub (reads and writes, since a search carries text out), and the sandbox while its internet is on;
+  - a post or an agent's setup (create, edit) from a thread holding private content: a channel's messages reach any
+    later thread there, and an agent's instructions become its prompt and the line other agents read about it,
+    whatever their models. The setup card shows the resolved tools, model and delegates the agent will get;
   - an agent approving its own request (only people approve).
   - For MCP tools, "deletes" means destructive: a non-read-only MCP tool counts as destructive unless its server marks
     it `destructiveHint: false`, the MCP spec's default. Bypass runs only those marked not destructive.
