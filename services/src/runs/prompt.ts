@@ -14,10 +14,11 @@ const BASE = "You work inside chat-lite, a team chat room, answering in one of i
 /**
  * The system prompt of one model call in a run: who the agent is, what the room told it, and the room's memory as it
  * stands now. `privateOk` is the model's: a model that may not see private content gets no private entries.
- * `helperOf` names the agent that handed a helper its task; a helper can't hand tasks on.
+ * `helperOf` names the agent that handed a helper its task; a helper can't hand tasks on. `asked` are the other agents
+ * the messages this run answers name: the run's agent leads, and brings them in.
  */
-export function systemPrompt({ agent, others, memory, privateOk, helperOf }: {
-  agent: Agent; others: AgentCard[]; memory: MemoryEntry[]; privateOk: boolean; helperOf?: string;
+export function systemPrompt({ agent, others, memory, privateOk, helperOf, asked = [] }: {
+  agent: Agent; others: AgentCard[]; memory: MemoryEntry[]; privateOk: boolean; helperOf?: string; asked?: AgentCard[];
 }): string {
   return [
     BASE,
@@ -25,6 +26,8 @@ export function systemPrompt({ agent, others, memory, privateOk, helperOf }: {
     agent.instructions && `Instructions from the room for @${agent.name}:\n${agent.instructions}`,
     helperOf && `You are helping @${helperOf}, who gave you one task. Do it and reply with what they need; they see only your final answer.`,
     !helperOf && others.length > 0 && "You can hand a sub-task to another agent with delegate; it sees only the task you give it.",
+    !helperOf && asked.length > 0 && `The members asked for ${asked.map((a) => (a.about ? `@${a.name} (${a.about})` : `@${a.name}`)).join(" and ")}. `
+      + "You lead: hand each of them its part with delegate, then answer once with what they found.",
     "Save lasting facts and decisions the room will want later with memory_save; keep each one short.",
     memoryBlock(memory, privateOk),
   ].filter(Boolean).join("\n\n");

@@ -1,3 +1,4 @@
+import { mentionedAgents } from "../agents/model.js";
 import { inlineType } from "../chat/files.js";
 import type { Attachment, Message } from "../chat/model.js";
 import type { ImagePart, ModelMessage, ToolCall } from "../models/gateway.js";
@@ -47,6 +48,18 @@ export function threadMessages(prior: Message[]): ModelMessage[] {
   return (from < 0 ? [] : prior.slice(from)).map((m) =>
     m.authorId === "agent" ? { role: "assistant", text: m.text } : memberMessage(m.authorName, m.text, m.attachments),
   );
+}
+
+/**
+ * The `others` the members asked this run for: named in their messages since the agent last answered, or in what they
+ * steered it with. One the run already handed a task is left out, so the agent isn't told to ask it again.
+ */
+export function askedAgents<T extends { agentId: string; name: string }>(prior: Message[], events: RunEvent[], others: T[]): T[] {
+  const answered = prior.map((m) => m.authorId).lastIndexOf("agent");
+  const steers = events.flatMap((e) => (e.type === "steer" ? [e.text] : []));
+  const helped = new Set(events.flatMap((e) => (e.type === "helper.started" ? [e.agentId] : [])));
+  const text = [...prior.slice(answered + 1).map((m) => m.text), ...steers].join("\n");
+  return mentionedAgents(text, others).filter((a) => !helped.has(a.agentId));
 }
 
 /** A thread started from a people-chat message: that chat's name, the message it replied to, and the ones before it. */

@@ -50,17 +50,16 @@ export function mapKinds(kinds: ToolKind[], available: ToolKind[]): { kept: Tool
 }
 
 /**
- * The agent named first in the text, outside code. An `@` after a word character is an email address, and the name
- * must end where the mention does, so `@reviewer-2` never starts `@reviewer`.
+ * The agents the text names outside code, in the order it first names them. An `@` after a word character is an email
+ * address, and the name must end where the mention does, so `@reviewer-2` never names `@reviewer`.
  */
-export function mentionedAgent(text: string, agents: Agent[]): Agent | null {
+export function mentionedAgents<T extends { name: string }>(text: string, agents: T[]): T[] {
   const plain = text.replace(CODE, " ");
-  let first: { agent: Agent; at: number } | null = null;
-  for (const agent of agents) {
-    const at = plain.search(new RegExp(`(?<!\\w)@${agent.name}(?![\\w-])`, "i"));
-    if (at >= 0 && (!first || at < first.at)) first = { agent, at };
-  }
-  return first?.agent ?? null;
+  return agents
+    .map((agent) => ({ agent, at: plain.search(new RegExp(`(?<!\\w)@${agent.name}(?![\\w-])`, "i")) }))
+    .filter(({ at }) => at >= 0)
+    .sort((a, b) => a.at - b.at)
+    .map(({ agent }) => agent);
 }
 
 /** A thread whose agent was deleted is answered by the built-in one. */

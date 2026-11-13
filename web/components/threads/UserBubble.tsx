@@ -2,6 +2,7 @@
 
 import { motion, useReducedMotion } from "motion/react";
 import { CircleAlert } from "lucide-react";
+import { useAgentNames } from "@/lib/client/agents";
 import type { Mentionable } from "@/lib/client/mentions";
 import { easeOut, instant } from "@/lib/motion";
 import type { Attachment } from "@/lib/types";
@@ -19,6 +20,7 @@ type Props = {
 /** What people say in a thread sits on the right, so the agent's work reads as the column's main text. */
 export function UserBubble({ text, attachments, members, authorName, status, enter, onRetry, onDiscard, onExpired }: Props) {
   const reduced = useReducedMotion();
+  const agents = useAgentNames();
   return (
     <motion.div
       initial={enter ? { opacity: 0, y: reduced ? 0 : 6 } : false}
@@ -28,7 +30,7 @@ export function UserBubble({ text, attachments, members, authorName, status, ent
     >
       {authorName && <span className="px-1 text-[11.5px] font-medium text-text-3">{authorName}</span>}
       <div className="break-words rounded-[16px_16px_6px_16px] bg-surface-3 px-4 py-[11px] text-[14.5px] leading-[1.55] [&_p+p]:mt-1.5 [&_pre]:my-1.5">
-        <MessageText text={text} members={members} />
+        <MessageText text={text} members={members} agents={agents} />
         <MessageAttachments attachments={attachments} onExpired={onExpired} />
       </div>
       {status === "failed" && (

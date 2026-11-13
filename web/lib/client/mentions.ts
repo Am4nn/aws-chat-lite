@@ -12,6 +12,13 @@ export function findMentions(text: string, members: Mentionable[]) {
   return [...text.matchAll(re)].map((m) => ({ start: m.index, end: m.index + m[0].length, name: m[1].toLowerCase() }));
 }
 
+/** Finds `@agent` in plain text the way the server routes it: the name ends where the mention does, so `@scout-team` never names `@scout`. */
+export function findAgentMentions(text: string, agents: string[]) {
+  if (!agents.length) return [];
+  const re = new RegExp(`(?<!\\w)@(${agents.map(escape).join("|")})(?![\\w-])`, "gi");
+  return [...text.matchAll(re)].map((m) => ({ start: m.index, end: m.index + m[0].length, name: m[1].toLowerCase() }));
+}
+
 export function parseMentions(text: string, members: Mentionable[]) {
   const prose = text.replace(CODE, (code) => " ".repeat(code.length));
   const found = findMentions(prose, members);

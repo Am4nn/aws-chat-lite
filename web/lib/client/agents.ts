@@ -1,8 +1,14 @@
-import { createContext } from "react";
+import { createContext, useContext, useMemo } from "react";
 import { isAdmin, type Agent, type Role, type RoomSummary, type ToolKind } from "../types";
 
 /** The room's agents from its view, the built-in @agent first, for labels, the agent picker and the `@` list. */
 export const RoomAgentsContext = createContext<Agent[]>([]);
+
+/** The room's agent names, for highlighting their mentions. */
+export function useAgentNames(): string[] {
+  const agents = useContext(RoomAgentsContext);
+  return useMemo(() => agents.map((a) => a.name), [agents]);
+}
 
 export type CopyResult = { agent: Agent; dropped: ToolKind[]; schedules: { copied: number; skipped: number } };
 

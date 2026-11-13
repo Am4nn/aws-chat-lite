@@ -64,4 +64,13 @@ describe("systemPrompt", () => {
     expect(helper).not.toContain(line);
     expect(helper).toContain("You are helping @lead, who gave you one task. Do it and reply with what they need; they see only your final answer.");
   });
+
+  it("tells the agent to bring in the agents the thread's people named, with what each does", () => {
+    const researcher = agentCard({ ...reviewer, agentId: "a2", name: "researcher", instructions: "Finds sources.\nCites them." });
+    const text = prompt({ asked: [researcher, agentCard(BUILT_IN)] });
+    expect(text).toContain("The members asked for @researcher (Finds sources.) and @agent");
+    expect(text).toContain("You lead: hand each of them its part with delegate, then answer once with what they found.");
+    expect(prompt()).not.toContain("You lead");
+    expect(prompt({ asked: [researcher], helperOf: "lead" })).not.toContain("You lead");
+  });
 });

@@ -6,7 +6,7 @@ import { loadImages } from "../models/vision.js";
 import { mergeTaint, messageTaint, runRefusal, type TaintSource } from "../models/privacy.js";
 import { threadsRepo } from "../threads/repo.js";
 import type { RunEvent } from "../threads/types.js";
-import { answerOf, buildContext, channelBackground, inLane, threadMessages } from "./context.js";
+import { answerOf, askedAgents, buildContext, channelBackground, inLane, threadMessages } from "./context.js";
 import { stoppedBy } from "./model.js";
 import { systemPrompt } from "./prompt.js";
 import { runsRepo, type Run } from "./repo.js";
@@ -104,7 +104,7 @@ export async function modelTurn(run: RoutedRun, turn: number): Promise<Turn> {
   // a helper or its own answer, to a model that may not see it.
   const system = systemPrompt({
     agent: run.agent, others: run.others, memory, privateOk: modelInfo(run.model).privateOk && taint.length > 0,
-    helperOf: run.helper?.parent,
+    helperOf: run.helper?.parent, asked: askedAgents(prior, events, run.others),
   });
   const opening = run.helper
     ? [{ role: "user" as const, author: run.helper.parent, text: run.helper.task }]

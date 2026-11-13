@@ -1,11 +1,13 @@
 "use client";
 
-import { memo, useRef, useState, type KeyboardEvent, type ReactNode, type Ref } from "react";
+import { memo, useContext, useRef, useState, type KeyboardEvent, type ReactNode, type Ref } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { CircleAlert, CornerUpLeft, Pencil, Reply, SmilePlus, Trash2 } from "lucide-react";
+import { RoomAgentsContext, useAgentNames } from "@/lib/client/agents";
 import { clockTime } from "@/lib/client/format";
 import type { Mentionable } from "@/lib/client/mentions";
 import { canDelete, canEdit, mentionsMe, REACTION_NAMES, reactionLabel } from "@/lib/client/messageRules";
+import { useThreads } from "@/lib/client/ThreadsProvider";
 import { useClickOutside } from "@/lib/client/useClickOutside";
 import { useNow } from "@/lib/client/useNow";
 import { dur, easeOut, instant, spring } from "@/lib/motion";
@@ -127,6 +129,11 @@ export const MessageRow = memo(function MessageRow({
 });
 
 function Body({ message: m, members }: { message: Message; members: Mentionable[] }) {
+  const agents = useAgentNames();
+  const roomAgents = useContext(RoomAgentsContext);
+  const { byId } = useThreads();
+  const started = m.threadRef?.kind === "started" ? byId(m.threadRef.threadId) : undefined;
+  const lead = started && roomAgents.find((a) => a.agentId === started.agentId)?.name;
   if (m.deleted) {
     return <p className="text-[14px] italic text-text-3">{m.deleted === "admin" ? "Removed by an admin" : "Message deleted"}</p>;
   }
@@ -134,7 +141,7 @@ function Body({ message: m, members }: { message: Message; members: Mentionable[
   // "(edited)" sits inline after the last paragraph, the way it would read in a sentence.
   return (
     <div className={`break-words text-[14.5px] leading-[1.55] text-text-body [&_p+p]:mt-1.5 [&_pre]:my-1.5 ${m.editedAt ? "[&>p:nth-last-child(2)]:inline" : ""}`}>
-      <MessageText text={m.text} members={members} />
+      <MessageText text={m.text} members={members} agents={agents} lead={lead} />
       {m.editedAt && <span className="ml-1.5 text-[11.5px] text-text-3">(edited)</span>}
     </div>
   );
