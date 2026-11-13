@@ -18,11 +18,20 @@ async function rowWith(page: Page, text: string) {
   return handle.asElement() as ElementHandle<Element>;
 }
 
+/**
+ * Opens a row's toolbar and presses one of its buttons. The press goes to the button itself, not to a screen point: the
+ * toolbar floats over the row above, and on a GitHub runner a click at its point missed the button.
+ */
 async function toolbar(page: Page, text: string, label: string) {
   const row = await rowWith(page, text);
   await row.hover();
-  await (await row.$(`button[aria-label="${label}"]`))!.click();
+  await press(row, `button[aria-label="${label}"]`);
   return row;
+}
+
+async function press(within: ElementHandle<Element>, selector: string) {
+  const button = await within.waitForSelector(selector, { timeout: 5_000 });
+  await button!.evaluate((b) => (b as HTMLElement).click());
 }
 
 /** The sidebar badges on one chat row as they read on screen: "", "1", "@1" or "@1 2". */
@@ -137,7 +146,7 @@ export async function liveChecks(stamp: number, owner: Person, guest: Person, th
   await B.keyboard.press("Backspace");
 
   const helloRow = await toolbar(B, hello, "Add reaction");
-  await (await helloRow.$('button[aria-label="React thumbs up"]'))!.click();
+  await press(helloRow, 'button[aria-label="React thumbs up"]');
   check(await until(A, () => [...document.querySelectorAll("main button[aria-pressed]")].some((x) => (x as HTMLElement).innerText.includes("👍") && (x as HTMLElement).innerText.includes("1"))),
     "B reacts 👍 and A sees the chip");
 
@@ -261,6 +270,10 @@ export async function liveChecks(stamp: number, owner: Person, guest: Person, th
   const rising = await entrance(B, A, roomId, general, "rising in");
   check(rising.seen > 0 && rising.moving >= 3, `a new message fades and rises in (${rising.moving} of ${rising.seen} frames in motion)`);
   await B.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "reduce" }]);
+  // The app hears the change through a media-query listener, a moment after it is made; a message that lands before
+  // then still fades in, which a slow runner showed as 14 moving frames.
+  await B.waitForFunction(() => matchMedia("(prefers-reduced-motion: reduce)").matches);
+  await new Promise((r) => setTimeout(r, 500));
   const still = await entrance(B, A, roomId, general, "appearing at once");
   check(still.seen > 0 && still.moving === 0, `with reduced motion a new message appears at once (${still.moving} of ${still.seen} frames in motion)`);
   await B.emulateMediaFeatures([]);

@@ -260,12 +260,15 @@ export async function agentChecks(stamp: number, owner: Person, guest: Person) {
   const posted = ((await bff(A, `/bff/api/rooms/${roomId}/chats/${fake.chatId}/messages`)).body.messages as
     { authorId: string; authorName: string; text: string; agentPost?: { number: number } }[]).at(-1);
   await open(B, `${WEB}/r/${roomId}/c/${fake.chatId}`);
+  // The thread is named after its first answer, so the link reads the name it has now, not the one it started with.
+  const named = await eventually(threads, (ts) => ts.find((t) => t.number === posting.number)?.name !== posting.name, 15_000);
   const rowShown = await until(B, (link) => {
     const a = [...document.querySelectorAll("main a")].find((el) => el.textContent?.trim() === link);
     return !!a && !!a.parentElement?.textContent?.includes("AI");
-  }, `from #${posting.name}`, 15_000);
+  }, `from #${named.find((t) => t.number === posting.number)?.name}`, 15_000);
   check(postRun.find((t) => t.number === posting.number)?.status === "done" && !waited && posted?.authorId === "agent" && posted.authorName === "herald"
     && posted.agentPost?.number === posting.number && posted.text === "fake" && rowShown,
-  `@herald call:room_post in Auto ends done with no approval; #fake's last message is herald's "fake" from #${posting.number}, and B sees it with the AI tag and "from #${posting.name}"`);
+  `@herald call:room_post in Auto ends done with no approval; #fake's last message is herald's "fake" from #${posting.number}, and B sees it with the AI tag and "from #<its thread>" `
+    + `(run ${postRun.find((t) => t.number === posting.number)?.status}, waited ${waited}, last ${JSON.stringify(posted && { by: posted.authorName, text: posted.text, from: posted.agentPost?.number })}, row ${rowShown})`);
   await bff(A, `/bff/api/rooms/${roomId}/approval-mode`, "PUT", { mode: "ask" });
 }
