@@ -5,7 +5,9 @@
  * then tools and approvals on fake GitHub, then MCP both ways against the local test server, then room agents,
  * helpers, memory and schedules, then images, voice and push notifications on their fakes.
  */
-import puppeteer, { type Page } from "puppeteer-core";
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { run } from "./cli.js";
 import { useLocalEnv } from "./env.js";
 import { clsFrom } from "./smoke-helpers.js";
@@ -19,6 +21,8 @@ import { mcpChecks } from "./smoke-mcp.js";
 import { agentChecks } from "./smoke-agents.js";
 import { mediaChecks } from "./smoke-media.js";
 
+/** Where a broken run leaves its screenshots, under the scripts workspace. */
+const FAILURE_DIR = "smoke-failure";
 const CHROME = process.env.CHROME_PATH ?? "C:/Program Files/Google/Chrome/Application/chrome.exe";
 
 /** Clicks the second chat and counts the frames, over 800 ms, in which the main content was off its resting place. */
@@ -60,6 +64,17 @@ async function layoutChecks(page: Page, roomUrl: string) {
   await page.click('button[aria-label="Open sidebar"]');
   const back = await until(page, () => document.querySelector("nav[aria-label=Room]")!.parentElement!.getBoundingClientRect().width === 272);
   check(hidden && stillHidden && back, `"Hide sidebar" hides it, it stays hidden after a reload, and "Open sidebar" brings it back (${hidden}/${stillHidden}/${back})`);
+}
+
+/**
+ * Every open page as it stood when a step broke, in smoke-failure/ (CI keeps the folder): a click that missed its
+ * target is only explained by what was on screen.
+ */
+async function screenshotAll(browser: Browser) {
+  mkdirSync(FAILURE_DIR, { recursive: true });
+  const pages = await browser.pages();
+  await Promise.all(pages.map((page, i) => page.screenshot({ path: join(FAILURE_DIR, `page-${i}.png`), fullPage: true }).catch(() => {})));
+  console.error(`Saved ${pages.length} screenshots to ${FAILURE_DIR}`);
 }
 
 async function main() {
@@ -164,6 +179,9 @@ async function main() {
     await agentChecks(stamp, { page: ownerPage, name: owner }, { page: guestPage, name: guest });
     await mediaChecks(stamp, { page: ownerPage, name: owner }, { page: guestPage, name: guest });
     await emptyHomeCheck(browser, newcomer);
+  } catch (e) {
+    await screenshotAll(browser);
+    throw e;
   } finally {
     await browser.close();
   }

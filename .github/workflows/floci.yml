@@ -71,4 +71,5 @@ jobs:
           path: |
             floci.log
             dev.log
+            scripts/smoke-failure/
           if-no-files-found: ignore
