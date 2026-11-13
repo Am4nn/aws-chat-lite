@@ -268,7 +268,7 @@ export function RoomShell({ view, rooms, me, serverTimeZone, navHidden, children
                 <ViewSwitch />
               </>
             )}
-            taint={activeThread?.taint} panelOpen={narrow ? overlay === "panel" : panelOpen}
+            taint={activeThread?.taint} approvalMode={view.approvalMode} panelOpen={narrow ? overlay === "panel" : panelOpen}
             navCollapsed={navCollapsed} onMenu={() => (phone ? setOverlay("nav") : setNav(false))} onPeople={() => showPanel("people")} onTogglePanel={togglePanel}
           />
           <div className="relative min-h-0 flex-1 overflow-hidden">
