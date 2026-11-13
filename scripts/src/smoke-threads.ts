@@ -60,14 +60,18 @@ const answerFrames = (untilStopped: boolean) => sampleFrames({
 });
 type Frames = { texts: string[]; seen: number; moving: number; shimmers: number; shimmering: number };
 
-/** Counts the frames where the answer starting with `marker` is still fading in, until 1.5 s after it first shows. */
-const fadeFrames = (marker: string) => sampleFrames({
-  vars: "let seen = 0, moving = 0, firstSeen = 0;",
-  perFrame: `const p = [...document.querySelectorAll("main p")].find((el) => el.textContent.startsWith(${JSON.stringify(marker)}));
-    if (p) {
+/**
+ * Counts the frames where the thread's next new answer is still fading in, until 1.5 s after it first shows. The fake
+ * model quotes a thread's first message in every answer, so the new one is told apart by count, not by text.
+ */
+const NEXT_ANSWER_FADE = sampleFrames({
+  vars: `const answers = () => [...document.querySelectorAll("main p")].filter((el) => el.textContent.startsWith("Fake answer for"));
+    const before = answers().length; let seen = 0, moving = 0, firstSeen = 0;`,
+  perFrame: `const all = answers();
+    if (all.length > before) {
       seen++;
       firstSeen ||= now;
-      if (!placed(p.parentElement)) moving++;
+      if (!placed(all.at(-1).parentElement)) moving++;
     }`,
   done: "(firstSeen && now - firstSeen > 1500) || now - start > 30000",
   result: "{ seen, moving }",
@@ -258,10 +262,9 @@ export async function threadChecks(stamp: number, owner: Person, guest: Person) 
   check(!!answer && streamedExactly(live.texts, answer.text), `the resumed answer on screen equals the stored one, word for word (${live.texts.length} samples)`);
   // The fade is watched on a follow-up sent from the open thread: an answer that was already streaming when the page
   // loaded finished fading before any sampler could start.
-  const marker = `fade check ${Date.now() % 1000}`;
-  const fading = A.evaluate(fadeFrames(`Fake answer for "${marker}`)) as Promise<{ seen: number; moving: number }>;
+  const fading = A.evaluate(NEXT_ANSWER_FADE) as Promise<{ seen: number; moving: number }>;
   await A.click("textarea#composer");
-  await A.keyboard.type(marker);
+  await A.keyboard.type("one more");
   await A.keyboard.press("Enter");
   const fade = await fading;
   check(fade.moving >= 3, `a new answer fades in as it arrives (${fade.moving} of ${fade.seen} frames in motion)`);
