@@ -42,6 +42,7 @@ export function ThreadView({ roomId, initialThread, me, members, archived, initi
   // Waiting on an approval is still live: a message steers the run, and Stop ends it.
   const running = isLive(thread.status);
   const chat = useChatTimeline({ roomId, chatId: threadId, meId: me.userId, initial });
+  const agent = agentLabel(thread.agentId, useContext(RoomAgentsContext));
   const { timeline } = chat;
   const scroll = useStickToBottom();
   const { queue, retry, discard } = useOutbox({ roomId, chatId: threadId, chat, toBottom: scroll.toBottom });
@@ -74,7 +75,7 @@ export function ThreadView({ roomId, initialThread, me, members, archived, initi
   );
   const runBlock = (runId: string, answer: Message | undefined, steers: Message[], isLast: boolean) => (
     <RunBlock
-      key={`run:${runId}`} roomId={roomId} runId={runId} answer={answer} steers={steers} pending={isLast && steering ? timeline.pending : []}
+      key={`run:${runId}`} roomId={roomId} runId={runId} agent={agent} answer={answer} steers={steers} pending={isLast && steering ? timeline.pending : []}
       active={running && runId === thread.runId} meName={me.username} members={members} onRetry={retry} onDiscard={discard}
     />
   );
@@ -100,7 +101,7 @@ export function ThreadView({ roomId, initialThread, me, members, archived, initi
           className="h-full overflow-y-auto"
         >
           <div ref={scroll.content} className="mx-auto flex w-full max-w-[836px] flex-col gap-[18px] px-4 pb-4 pt-[26px] sm:px-7">
-            {!chat.hasOlder && <ThreadIntro thread={thread} />}
+            {!chat.hasOlder && <ThreadIntro agent={agent} />}
             {chat.olderFailed && (
               <button onClick={chat.loadOlder} className="self-center rounded-md px-2 py-1 text-[12.5px] text-text-3 transition-[background-color,color,scale] hover:bg-surface-2 hover:text-text active:scale-[0.96]">
                 Couldn&apos;t load older messages · <span className="text-text-2 underline underline-offset-2">Retry</span>
@@ -139,8 +140,7 @@ export function ThreadView({ roomId, initialThread, me, members, archived, initi
 }
 
 /** The start of a thread: who answers here and how to steer it. The header already names the thread. */
-function ThreadIntro({ thread }: { thread: ThreadSummary }) {
-  const agent = agentLabel(thread.agentId, useContext(RoomAgentsContext));
+function ThreadIntro({ agent }: { agent: string }) {
   return (
     <div className="flex items-center gap-3 pb-1">
       <AgentAvatar size={32} />

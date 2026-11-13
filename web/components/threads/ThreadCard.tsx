@@ -10,6 +10,7 @@ import { useThreads } from "@/lib/client/ThreadsProvider";
 import { useNow } from "@/lib/client/useNow";
 import { dur, easeOut, instant } from "@/lib/motion";
 import type { Message, ThreadSummary } from "@/lib/types";
+import { AgentAvatar, AiTag } from "@/components/ui/AgentAvatar";
 import { ThreadStatusIcon } from "./ThreadStatusIcon";
 
 type Props = { threadRef: NonNullable<Message["threadRef"]>; roomId: string; readOnly: boolean; onReply: (threadId: string) => void };
@@ -34,7 +35,7 @@ export function ThreadRef({ threadRef, roomId, readOnly, onReply }: Props) {
           initial={{ height: 0, opacity: 0 }}
           animate={{ height: "auto", opacity: 1 }}
           transition={reduced ? instant : { duration: dur.base, ease: easeOut }}
-          className="overflow-hidden"
+          className="max-w-full overflow-hidden"
         >
           <div className={`pb-0.5 pt-1.5 ${threadRef.kind === "delivered" ? "flex flex-wrap gap-1" : ""}`}>
             {threadRef.kind === "started"
@@ -61,17 +62,22 @@ function ThreadCard({ thread: t, href, readOnly, onReply }: { thread: ThreadSumm
   const agent = agentLabel(t.agentId, useContext(RoomAgentsContext));
 
   return (
-    <div className="flex max-w-[480px] items-center gap-2.5 rounded-[14px] border border-line-strong bg-surface-1 py-2 pl-3.5 pr-2">
-      <ThreadStatusIcon status={t.status} />
+    <div className="flex w-[480px] max-w-full items-center gap-2.5 rounded-[14px] border border-line-strong bg-surface-1 py-2 pl-3 pr-2">
+      <AgentAvatar size={26} />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13.5px]">
-          <span className="font-mono font-medium">#{t.name}</span>{" "}
-          <span className="font-mono text-[12px] text-text-3">{agent}</span>
+        <p className="flex min-w-0 items-baseline gap-1.5 whitespace-nowrap text-[13.5px]">
+          <span className="truncate font-mono font-medium">#{t.name}</span>
+          {/* A phone keeps the width for the thread's name; the robot avatar still says an agent has it. */}
+          <span className="flex shrink-0 items-center gap-1.5 max-sm:hidden">
+            <span className="text-[12.5px] font-semibold text-lime">{agent}</span>
+            <AiTag />
+          </span>
         </p>
-        <p className="flex min-w-0 items-baseline gap-2 text-[12.5px]">
+        <p className="flex min-w-0 items-center gap-1.5 text-[12.5px]">
+          <ThreadStatusIcon status={t.status} size={12} />
           <span className={`shrink-0 ${t.status === "waiting" ? "text-amber" : "text-text-2"}`}>{running ? "Running" : runLabel(t) || "Starting…"}</span>
           {t.status !== "idle" && (
-            <span suppressHydrationWarning className={`truncate font-mono text-[11.5px] tabular-nums ${running ? "text-lime" : "text-text-3"}`}>
+            <span suppressHydrationWarning className={`ml-0.5 truncate font-mono text-[11.5px] tabular-nums ${running ? "text-lime" : "text-text-3"}`}>
               {runMeta(t, now)}
             </span>
           )}
@@ -83,7 +89,7 @@ function ThreadCard({ thread: t, href, readOnly, onReply }: { thread: ThreadSumm
           className="flex h-7 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[12.5px] text-text-2 transition-[background-color,color,scale] hover:bg-surface-3 hover:text-text active:scale-[0.96]"
         >
           <Reply aria-hidden="true" size={13} />
-          Reply
+          <span className="max-sm:sr-only">Reply</span>
         </button>
       )}
       <Link

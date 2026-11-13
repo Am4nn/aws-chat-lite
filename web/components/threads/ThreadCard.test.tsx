@@ -51,6 +51,15 @@ describe("ThreadCard", () => {
     expect(screen.getByRole("link", { name: "Open" }).getAttribute("href")).toBe("/r/r/t/7");
   });
 
+  it("marks the agent as one: a robot avatar, its name in lime and an AI tag, beside the status icon", () => {
+    card();
+    const name = screen.getByText("@agent");
+    expect(name.className).toContain("text-lime");
+    expect(name.nextElementSibling?.textContent).toBe("AI");
+    expect(document.querySelector(".lucide-bot")).not.toBeNull();
+    expect(document.querySelector("svg.text-sky")).not.toBeNull();
+  });
+
   it("counts the steps while it runs", () => {
     const { text } = card({ status: "running", steps: 2, endedAt: undefined, currentStep: "search_notes" });
     expect(text).toContain("Running");

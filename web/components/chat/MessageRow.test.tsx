@@ -18,37 +18,65 @@ const message: Message = {
   roomId: "r", chatId: "c", seq: 4, authorId: "ben", authorName: "ben", text: "@me ship it?", createdAt: "2026-11-12T04:53:00Z",
   attachments: [], reactions: {}, mentions: ["me"], everyone: false,
 };
-const html = (m: Message, joins: { joinsAbove?: boolean; joinsBelow?: boolean } = {}) => renderToStaticMarkup(
+const html = (m: Message, group: { groupStart?: boolean; groupEnd?: boolean } = {}) => renderToStaticMarkup(
   <MessageRow
-    rowKey="k" message={m} status={undefined} ctx={ctx} actions={actions} groupStart={!joins.joinsAbove} enter={false} editing={false} active={false} onActivate={noop}
-    joinsAbove={!!joins.joinsAbove} joinsBelow={!!joins.joinsBelow}
+    rowKey="k" message={m} status={undefined} ctx={ctx} actions={actions} enter={false} editing={false} active={false} onActivate={noop}
+    groupStart={group.groupStart ?? true} groupEnd={group.groupEnd ?? true}
   />,
 );
-/** The row's own class list: the first element's. */
-const rowClass = (out: string) => out.match(/class="([^"]*)"/)![1]!;
+/** The bubble around a message's text: the paragraph sits in the body, which sits in the bubble. */
+function bubble(m: Message, group: { groupStart?: boolean; groupEnd?: boolean } = {}) {
+  const row = document.createElement("div");
+  row.innerHTML = html(m, group);
+  return row.querySelector("p")!.parentElement!.parentElement!.className;
+}
 /** A left border or an inset bar on the left edge; `border-line-…` colour names don't count. */
 const LEFT_BAR = /inset_2px|\bborder-l(-\d|[\s"])/;
+const mine: Message = { ...message, authorId: "me", authorName: "aman", text: "on it", mentions: [] };
+const theirs: Message = { ...message, mentions: [] };
 
 describe("MessageRow", () => {
-  it("marks a message that mentions you with a tint and an @ by its time, never a bar down its left edge", () => {
+  it("puts my message on the right as a plain bubble, with no avatar or name, and its time under the group", () => {
+    const out = html(mine);
+    expect(out).toContain("items-end");
+    expect(out).not.toContain("aman");
+    expect(out).not.toContain("rounded-full");
+    expect(out).toMatch(/<time[^>]*>4:53 AM<\/time>/);
+    expect(bubble(mine)).toContain("bg-surface-3");
+  });
+
+  it("gives the time under my group only to its last message", () => {
+    expect(html(mine, { groupEnd: false })).not.toMatch(/<time[^>]*>4:53 AM</);
+  });
+
+  it("puts someone else's message on the left, with their avatar and name at the start of the group only", () => {
+    const out = html(theirs);
+    expect(out).toContain("rounded-full");
+    expect(out).toContain(">ben</span>");
+    expect(bubble(theirs)).toContain("bg-surface-2");
+    const later = html(theirs, { groupStart: false });
+    expect(later).not.toContain(">ben</span>");
+    expect(later).not.toContain("rounded-full");
+  });
+
+  it("points a bubble's corner at its sender, flatter on the messages that follow in a group", () => {
+    expect(bubble(mine)).toContain("rounded-[16px_16px_6px_16px]");
+    expect(bubble(mine, { groupStart: false })).toContain("rounded-[16px_6px_6px_16px]");
+    expect(bubble(theirs)).toContain("rounded-[16px_16px_16px_6px]");
+    expect(bubble(theirs, { groupStart: false })).toContain("rounded-[6px_16px_16px_6px]");
+  });
+
+  it("marks a message that mentions you with an amber bubble and an @ by its time, never a bar down its left edge", () => {
     const out = html(message);
-    expect(out).toContain("bg-amber-wash");
+    expect(bubble(message)).toContain("bg-amber-wash");
     expect(out).toMatch(/aria-label="Mentions you"[^>]*>@</);
     expect(out).not.toMatch(LEFT_BAR);
   });
 
   it("leaves a message that doesn't mention you unmarked", () => {
-    const out = html({ ...message, mentions: [] });
+    const out = html(theirs);
     expect(out).not.toContain("bg-amber-wash");
     expect(out).not.toContain("Mentions you");
-  });
-
-  it("rounds a highlighted run of grouped mentions only at its top and bottom, so it reads as one block", () => {
-    expect(rowClass(html(message))).toMatch(/(^| )rounded-\[10px\]( |$)/);
-    expect(rowClass(html(message, { joinsBelow: true }))).toMatch(/(^| )rounded-t-\[10px\]( |$)/);
-    expect(rowClass(html(message, { joinsAbove: true }))).toMatch(/(^| )rounded-b-\[10px\]( |$)/);
-    const middle = rowClass(html(message, { joinsAbove: true, joinsBelow: true }));
-    expect(middle).not.toMatch(/rounded-/);
   });
 
   it("never marks a deleted message as mentioning you", () => {
@@ -59,7 +87,7 @@ describe("MessageRow", () => {
   });
 
   it("shows a quote reply as an icon and muted text, without a left bar", () => {
-    const out = html({ ...message, mentions: [], replyTo: { seq: 2, authorName: "ava", excerpt: "the new empty states" } });
+    const out = html({ ...theirs, replyTo: { seq: 2, authorName: "ava", excerpt: "the new empty states" } });
     expect(out).toContain("the new empty states");
     expect(out).toContain("lucide-corner-up-left");
     expect(out).not.toMatch(LEFT_BAR);
@@ -74,7 +102,7 @@ describe("MessageRow Reply", () => {
     const replyInThread = vi.fn();
     render(
       <MessageRow
-        rowKey="k" message={m} status={undefined} ctx={ctx} actions={{ ...actions, reply, replyInThread }} groupStart joinsAbove={false} joinsBelow={false}
+        rowKey="k" message={m} status={undefined} ctx={ctx} actions={{ ...actions, reply, replyInThread }} groupStart groupEnd
         enter={false} editing={false} active={false} onActivate={noop}
       />,
     );
@@ -104,7 +132,7 @@ describe("MessageRow lead", () => {
       <RoomAgentsContext value={agents}>
         <MessageRow
           rowKey="k" message={{ ...message, text: "@critic @scout review", threadRef: { kind: "started", threadId: "t1" } }} status={undefined} ctx={ctx}
-          actions={actions} groupStart enter={false} editing={false} active={false} onActivate={noop} joinsAbove={false} joinsBelow={false}
+          actions={actions} groupStart enter={false} editing={false} active={false} onActivate={noop} groupEnd
         />
       </RoomAgentsContext>,
     );

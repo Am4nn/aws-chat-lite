@@ -121,14 +121,14 @@ export async function liveChecks(stamp: number, owner: Person, guest: Person, th
   await A.keyboard.press("Enter");
   check(await arrived, `B sees A's "${hello}" live (${Date.now() - sentAt} ms, limit 2000)`);
 
-  // Two mentions in one group read as one highlight: rounded only at its top and bottom, so no seam between them.
+  // Two mentions in one group: each bubble is washed amber, and the second follows the first under one header.
   await say(A, roomId, general, `@${guest.name} and again`);
   check(await until(B, (texts) => {
     const rows = [...document.querySelectorAll("main [data-seq]")];
     const [top, bottom] = texts.map((t) => rows.find((r) => (r as HTMLElement).innerText.includes(t)));
-    return !!top && bottom === top.nextElementSibling && [top, bottom].every((r) => r.classList.contains("bg-amber-wash"))
-      && top.classList.contains("rounded-t-[10px]") && bottom!.classList.contains("rounded-b-[10px]");
-  }, [hello, "and again"]), "A's two mentions of B in a row show B one continuous highlight");
+    return !!top && bottom === top.nextElementSibling && [top, bottom].every((r) => r.querySelector(".bg-amber-wash"))
+      && !bottom!.querySelector('[aria-label="Mentions you"]');
+  }, [hello, "and again"]), "A's two mentions of B in a row show B two amber bubbles in one group");
 
   await B.click("textarea#composer");
   await B.keyboard.type("thinking");
