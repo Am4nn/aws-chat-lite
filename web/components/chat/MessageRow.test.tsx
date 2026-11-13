@@ -50,6 +50,31 @@ describe("MessageRow", () => {
     expect(out).not.toContain("rounded-full font-bold uppercase");
   });
 
+  describe("an agent's post", () => {
+    const post: Message = { ...message, authorId: "agent", authorName: "scout", text: "Deploy done", mentions: [], agentPost: { threadId: "T4", number: 4 } };
+    afterEach(() => threads.clear());
+
+    it("shows the agent's tile, its own name in lime and the AI tag, never a person's avatar, and links to its thread by current name", () => {
+      threads.set("T4", { threadId: "T4", number: 4, name: "release" } as ThreadSummary);
+      const out = html(post);
+      expect(out).toContain("bg-lime-wash text-lime");
+      expect(out).toContain(">scout</span>");
+      expect(out).toContain(">AI</span>");
+      expect(out).not.toContain("rounded-full font-bold uppercase");
+      const row = document.createElement("div");
+      row.innerHTML = out;
+      const link = row.querySelector("a")!;
+      expect(link.textContent).toBe("from #release");
+      expect(link.getAttribute("href")).toBe("/r/r/t/4");
+    });
+
+    it("links by number when the thread isn't loaded", () => {
+      const row = document.createElement("div");
+      row.innerHTML = html(post);
+      expect(row.querySelector("a")!.textContent).toBe("from #4");
+    });
+  });
+
   it("outlines a bubble that mentions me, so it stands out from the plain ones", () =>
     expect(html(message)).toContain("bg-amber-wash ring-1 ring-inset ring-amber-line"));
 

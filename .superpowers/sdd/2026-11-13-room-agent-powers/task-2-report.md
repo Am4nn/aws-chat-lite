@@ -11,3 +11,6 @@ services: approvals/model(.test), connections/{repo,handler,handler.test,repo.in
 
 ## Notes
 Handler test split into two tests because `vi.spyOn(docClient(), "send")` accumulates calls across `call()`s in one test. Existing GET connections test expectation extended with the two new fields.
+
+## Controller verification
+services full run on ee6879f: 126 files, 1359/1359 passed.
