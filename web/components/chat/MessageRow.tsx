@@ -205,6 +205,8 @@ function Toolbar({ message: m, ctx, actions, pinned }: { message: Message; ctx: 
   const close = () => { setPicking(false); setConfirming(false); };
   useClickOutside(ref, picking || confirming, close);
   const open = pinned || picking || confirming;
+  // A reply to the message that started a thread is meant for the thread, as its card's Reply is.
+  const started = m.threadRef?.kind === "started" ? m.threadRef : undefined;
 
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
     if (e.key === "Escape" && (picking || confirming)) {
@@ -261,7 +263,7 @@ function Toolbar({ message: m, ctx, actions, pinned }: { message: Message; ctx: 
         )}
       </AnimatePresence>
       <ToolButton ref={smile} first label="Add reaction" onClick={() => setPicking((p) => !p)} pressed={picking}><SmilePlus aria-hidden="true" size={15} /></ToolButton>
-      <ToolButton label="Reply" onClick={() => actions.reply(m)}><Reply aria-hidden="true" size={15} /></ToolButton>
+      <ToolButton label="Reply" onClick={() => (started ? actions.replyInThread(started.threadId) : actions.reply(m))}><Reply aria-hidden="true" size={15} /></ToolButton>
       {canEdit(m, ctx.meId, now) && <ToolButton label="Edit" onClick={() => actions.edit(m)}><Pencil aria-hidden="true" size={14} /></ToolButton>}
       {canDelete(m, ctx.meId, ctx.role, now) && (confirming
         ? (

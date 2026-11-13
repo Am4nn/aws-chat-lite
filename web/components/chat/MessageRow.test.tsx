@@ -1,7 +1,11 @@
+// @vitest-environment jsdom
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Message } from "@/lib/types";
 import { MessageRow, type RowActions, type RowContext } from "./MessageRow";
+
+vi.mock("@/lib/client/ThreadsProvider", () => ({ useThreads: () => ({ byId: () => undefined }) }));
 
 const noop = () => {};
 const actions: RowActions = {
@@ -57,5 +61,34 @@ describe("MessageRow", () => {
     expect(out).toContain("the new empty states");
     expect(out).toContain("lucide-corner-up-left");
     expect(out).not.toMatch(LEFT_BAR);
+  });
+});
+
+describe("MessageRow Reply", () => {
+  afterEach(cleanup);
+
+  function clickReply(m: Message) {
+    const reply = vi.fn();
+    const replyInThread = vi.fn();
+    render(
+      <MessageRow
+        rowKey="k" message={m} status={undefined} ctx={ctx} actions={{ ...actions, reply, replyInThread }} groupStart joinsAbove={false} joinsBelow={false}
+        enter={false} editing={false} active={false} onActivate={noop}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Reply" }));
+    return { reply, replyInThread };
+  }
+
+  it("quotes a person's message", () => {
+    const { reply, replyInThread } = clickReply(message);
+    expect(reply).toHaveBeenCalledWith(message);
+    expect(replyInThread).not.toHaveBeenCalled();
+  });
+
+  it("on a message that started a thread, tags the thread instead of quoting", () => {
+    const { reply, replyInThread } = clickReply({ ...message, threadRef: { threadId: "t1", kind: "started" } });
+    expect(replyInThread).toHaveBeenCalledWith("t1");
+    expect(reply).not.toHaveBeenCalled();
   });
 });

@@ -166,17 +166,21 @@ export async function threadChecks(stamp: number, owner: Person, guest: Person) 
   const kept = await until(A, () => document.querySelector('button[title="Rename thread"]')?.textContent?.endsWith("pr-review"));
   check(renamed && taken && kept, "renaming to pr-review updates B's card and sidebar; renaming to general shows the 409 toast and keeps the name");
 
-  // Tag delivery: a leading #tag in #general hands the message to the thread.
+  // Tag delivery: the card's Reply puts "#pr-review " in the composer, and that leading tag hands the message to the thread.
   await A.click(`nav a[href="/r/${roomId}/c/${general}"]`);
   await until(A, (path) => location.pathname === path && !!document.querySelector("textarea#composer"), `/r/${roomId}/c/${general}`);
-  await send(A, "#pr-review also docs");
+  await A.evaluate(() => ([...window.__cards()[0]!.querySelectorAll("button")] as HTMLElement[]).find((b) => b.textContent?.trim() === "Reply")!.click());
+  const tagged = await until(A, () => document.activeElement?.id === "composer"
+    && (document.activeElement as HTMLTextAreaElement).value === "#pr-review " && !document.body.textContent?.includes("Replying to"));
+  await A.keyboard.type("also docs");
+  await A.keyboard.press("Enter");
   const chip = await until(A, () => [...document.querySelectorAll("main a")].some((a) => a.textContent === "→ #pr-review"), undefined, 15_000);
   const first = await thread(1);
   const copy = await eventually(() => history(first.threadId), (ms) => ms.some((m) => m.text.endsWith("also docs") && m.authorName === owner.name), 10_000);
   const copySeq = copy.find((m) => m.text.endsWith("also docs"))?.seq;
   const rerun = await eventually(() => thread(1), (t) => t.runFirstSeq === copySeq, 10_000);
-  check(chip && copySeq !== undefined && rerun.runFirstSeq === copySeq,
-    `"#pr-review also docs" in #general lands in the thread (seq ${copySeq}), starts a run there, and shows the → #pr-review chip`);
+  check(tagged && chip && copySeq !== undefined && rerun.runFirstSeq === copySeq,
+    `the card's Reply fills the composer with "#pr-review " (no quote); "also docs" sent after it lands in the thread (seq ${copySeq}), starts a run there, and shows the → #pr-review chip`);
   await settled(1);
 
   // Steering: B sends while a slow step runs, so the agent reads it between steps and takes one more. Opening a page
