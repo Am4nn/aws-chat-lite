@@ -57,13 +57,14 @@ describe("MessageText #tags", () => {
 
 describe("MessageText agent mentions", () => {
   const agents = ["scout", "critic"];
-  const out = (text: string, lead?: boolean) => renderToStaticMarkup(<MessageText text={text} members={members} agents={agents} lead={lead} />);
+  const out = (text: string, lead?: string) => renderToStaticMarkup(<MessageText text={text} members={members} agents={agents} lead={lead} />);
   it("highlights the agent that leads the thread the message started, and the others as mentions", () => {
-    const html = out("@scout @critic review this", true);
+    const html = out("@scout @critic review this", "scout");
     expect(html).toContain('<span class="mention-lead rounded-full bg-lime/15 px-1.5 py-px font-medium text-lime" title="Leads the thread">@scout</span>');
     expect(html).toContain('<span class="mention text-lime">@critic</span>');
   });
-  it("gives the lead to the first agent named outside code", () =>
-    expect(out("`@scout` then @critic", true)).toContain('title="Leads the thread">@critic</span>'));
+  it("marks the thread's agent as lead wherever the text names it", () =>
+    expect(out("@scout then @critic", "critic")).toContain('title="Leads the thread">@critic</span>'));
+  it("takes no longer name for an agent's", () => expect(out("@scout-team, @critic go", "scout")).not.toContain("@scout</span>"));
   it("shows no lead for a message that started no thread", () => expect(out("@scout @critic")).not.toContain("mention-lead"));
 });

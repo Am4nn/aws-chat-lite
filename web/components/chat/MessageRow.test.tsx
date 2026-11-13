@@ -2,10 +2,12 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Message } from "@/lib/types";
+import { RoomAgentsContext } from "@/lib/client/agents";
+import type { Agent, Message, ThreadSummary } from "@/lib/types";
 import { MessageRow, type RowActions, type RowContext } from "./MessageRow";
 
-vi.mock("@/lib/client/ThreadsProvider", () => ({ useThreads: () => ({ byId: () => undefined }) }));
+const threads = vi.hoisted(() => new Map<string, ThreadSummary>());
+vi.mock("@/lib/client/ThreadsProvider", () => ({ useThreads: () => ({ byId: (id: string) => threads.get(id) }) }));
 
 const noop = () => {};
 const actions: RowActions = {
@@ -91,4 +93,28 @@ describe("MessageRow Reply", () => {
     expect(replyInThread).toHaveBeenCalledWith("t1");
     expect(reply).not.toHaveBeenCalled();
   });
+});
+
+describe("MessageRow lead", () => {
+  const agent = (agentId: string, name: string) => ({ agentId, name }) as Agent;
+  const agents = [agent("a1", "scout"), agent("a2", "critic")];
+  const started = (agentId: string) => {
+    threads.set("t1", { threadId: "t1", number: 1, name: "review", agentId, status: "running" } as ThreadSummary);
+    return renderToStaticMarkup(
+      <RoomAgentsContext value={agents}>
+        <MessageRow
+          rowKey="k" message={{ ...message, text: "@critic @scout review", threadRef: { kind: "started", threadId: "t1" } }} status={undefined} ctx={ctx}
+          actions={actions} groupStart enter={false} editing={false} active={false} onActivate={noop} joinsAbove={false} joinsBelow={false}
+        />
+      </RoomAgentsContext>,
+    );
+  };
+  afterEach(() => threads.clear());
+
+  it("marks the agent the thread went to as lead, not the first one the text names", () => {
+    const out = started("a1");
+    expect(out).toContain('title="Leads the thread">@scout</span>');
+    expect(out).toContain('<span class="mention text-lime">@critic</span>');
+  });
+  it("marks no lead when the thread's agent is gone", () => expect(started("gone")).not.toContain("Leads the thread"));
 });

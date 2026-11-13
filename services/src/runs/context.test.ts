@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "../chat/model.js";
 import type { RunEvent, RunEventBody } from "../threads/types.js";
-import { answerOf, askText, buildContext, channelBackground, threadMessages } from "./context.js";
+import { answerOf, askedAgents, buildContext, channelBackground, threadMessages } from "./context.js";
 
 const message = (seq: number, authorId: string, authorName: string, text: string): Message => ({
   roomId: "r", chatId: "t", seq, authorId, authorName, text, createdAt: "2026-11-11T00:00:00.000Z",
@@ -244,10 +244,18 @@ describe("lanes", () => {
   });
 });
 
-describe("askText", () => {
-  it("is what members wrote since the agent last answered, and what they steered with since", () => {
-    const prior = [message(1, "u1", "ravi", "@scout first"), message(2, "agent", "agent", "done"), message(3, "u1", "ravi", "now ask @critic"), message(4, "u2", "mia", "and @scout")];
-    const run = events({ type: "steer", messageSeq: 5, authorName: "ravi", text: "@docs too" }, { type: "text", text: "@nobody", turn: 1 });
-    expect(askText(prior, run)).toBe("now ask @critic\nand @scout\n@docs too");
+describe("askedAgents", () => {
+  const card = (name: string) => ({ agentId: `id-${name}`, name, about: "" });
+  const others = [card("scout"), card("critic"), card("docs")];
+  it("are the others members named since the agent last answered, or steered with since, in the order named", () => {
+    const prior = [message(1, "u1", "ravi", "@docs first"), message(2, "agent", "agent", "done"), message(3, "u1", "ravi", "now ask @critic"), message(4, "u2", "mia", "and @scout")];
+    const run = events({ type: "steer", messageSeq: 5, authorName: "ravi", text: "@docs too" }, { type: "text", text: "@docs", turn: 1 });
+    expect(askedAgents(prior, run, others).map((a) => a.name)).toEqual(["critic", "scout", "docs"]);
+  });
+  it("reads the whole thread before the agent's first answer", () =>
+    expect(askedAgents([message(1, "u1", "ravi", "@scout @critic review")], [], others).map((a) => a.name)).toEqual(["scout", "critic"]));
+  it("leaves out an agent this run already handed a task", () => {
+    const run = events({ type: "helper.started", step: 1, agentId: "id-scout", agentName: "scout", task: "t", model: "m" });
+    expect(askedAgents([message(1, "u1", "ravi", "@scout @critic review")], run, others).map((a) => a.name)).toEqual(["critic"]);
   });
 });
