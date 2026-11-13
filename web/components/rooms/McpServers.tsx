@@ -5,7 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ChevronDown, Server } from "lucide-react";
 import { bff, errorText } from "@/lib/client/bff";
 import { markFlowStarted } from "@/lib/client/flow-return";
-import { keptLine, toolLabel } from "@/lib/client/mcp";
+import { keptLine, MCP_CATALOG, toolLabel } from "@/lib/client/mcp";
 import { dur, easeOut, instant } from "@/lib/motion";
 import type { McpConnection } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
@@ -81,6 +81,11 @@ export function McpServers({ roomId, servers, manage, onChange }: {
         </AnimatePresence>
       </ul>
       {!manage && servers.length === 0 && <p className="text-[12.5px] text-text-3">None yet.</p>}
+      {manage && !adding && MCP_CATALOG.filter((entry) => !servers.some((s) => s.url === entry.url)).map((entry) => (
+        <Button key={entry.name} onClick={() => add(entry.name, entry.url)} disabled={busy !== null} className="w-full">
+          Connect {entry.label}
+        </Button>
+      ))}
       {manage && (adding
         ? <AddServer busy={busy === "add"} onCancel={() => setAdding(false)} onSubmit={add} />
         : <Button onClick={() => setAdding(true)} disabled={busy !== null} className="w-full"><Server aria-hidden="true" size={14} />Add MCP server</Button>)}

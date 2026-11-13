@@ -11,7 +11,7 @@ export function addMcpConnections(stack: CoreStack) {
   const fn = stack.addFunction("mcp-connections", "mcp/client/handler.ts", {
     tableAccess: true,
     timeout: Duration.seconds(30),
-    environment: { ...mcpEnvironment, ...stack.siteOriginsEnvironment() },
+    environment: { ...mcpEnvironment, ...stack.siteOriginsEnvironment(), MCP_BASE_URL: stack.publicApiUrl },
   });
   tokenKey.grantRead(fn);
   stack.allowBroadcast(fn);
