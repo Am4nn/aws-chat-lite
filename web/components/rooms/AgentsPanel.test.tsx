@@ -143,6 +143,19 @@ describe("AgentsPanel", () => {
     expect(mockedBff.mock.calls.filter(([path]) => path.endsWith("/agents"))).toHaveLength(1);
   });
 
+  it("drops delegates deleted since, so the list always saves", async () => {
+    mockedBff.mockImplementation(async () => ({
+      agents: [agent("scout", { delegates: ["critic", "ghost"] }), agent("critic")], kinds: ["web"], brief: "",
+    }));
+    show([room("r1", "member")], "r-stale");
+    fireEvent.click(await screen.findByRole("button", { name: "Actions for @scout" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Save" }));
+    await vi.waitFor(() => expect(mockedBff).toHaveBeenCalledWith("/bff/api/rooms/r-stale/agents/scout", {
+      method: "PATCH", body: expect.objectContaining({ delegates: ["critic"] }),
+    }));
+  });
+
   it("adds a created agent at the end of the list", async () => {
     show([room("r1", "member")], "r-create");
     fireEvent.click(await screen.findByRole("button", { name: "New agent" }));

@@ -41,7 +41,9 @@ export function AgentForm({ initial, others, kinds, brief, models, busy, onCance
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    onSubmit({ name: name.trim(), instructions, tools, model, delegates });
+    // Agents deleted since stay in the stored list; sending only live ones keeps it within the server's cap.
+    const live = delegates === "all" ? delegates : delegates.filter((d) => others.some((o) => o.agentId === d));
+    onSubmit({ name: name.trim(), instructions, tools, model, delegates: live });
   }
 
   function onKeyDown(e: KeyboardEvent) {

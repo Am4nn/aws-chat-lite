@@ -2,7 +2,7 @@ import { requireOffered } from "../../agents/kinds.js";
 import { KINDS, agentModel, agentName, canAgentEdit, grantRefusal, instructionsText, toolKinds } from "../../agents/model.js";
 import { agentsRepo, type AgentInput } from "../../agents/repo.js";
 import { NotFound, UserError, ValidationError } from "../../lib/errors.js";
-import type { Agent } from "../../threads/types.js";
+import type { Agent, Delegates } from "../../threads/types.js";
 import { answer } from "../answer.js";
 import type { Tool, ToolEnv } from "../types.js";
 
@@ -12,8 +12,12 @@ const stage = () => process.env.STAGE ?? "";
 const nameOf = (raw: unknown) => String(raw ?? "").trim().replace(/^@/, "").toLowerCase();
 const noSuchAgent = (name: string) => `There's no @${name} in this room.`;
 
-/** The agents the model named, as ids. Only the room's live agents can be named. */
-function delegateIds(raw: unknown, agents: Agent[]): string[] {
+/**
+ * The agents the model named, as ids, or "all" as an approval card spells out a creator's own "all". Only the room's
+ * live agents can be named.
+ */
+function delegatesOf(raw: unknown, agents: Agent[]): Delegates {
+  if (raw === "all") return "all";
   if (!Array.isArray(raw)) throw new ValidationError("delegates is a list of agent names.");
   return [...new Set(raw.map((n) => {
     const found = agents.find((a) => a.name === nameOf(n));
@@ -22,11 +26,15 @@ function delegateIds(raw: unknown, agents: Agent[]): string[] {
   }))];
 }
 
-/** A new agent hands work to the same agents as the one making it unless it says otherwise. */
+/**
+ * A new agent hands work to the same agents as the one making it unless it says otherwise: those still in the room,
+ * since the creator's stored list keeps agents deleted since.
+ */
 const newAgent = (input: Record<string, unknown>, agents: Agent[], creator: Creator): AgentInput => ({
   name: agentName(input.name), instructions: instructionsText(input.instructions), tools: toolKinds(input.tools),
   model: agentModel(input.model, stage()),
-  delegates: input.delegates === undefined ? creator.delegates : delegateIds(input.delegates, agents),
+  delegates: input.delegates !== undefined ? delegatesOf(input.delegates, agents)
+    : creator.delegates === "all" ? "all" : creator.delegates.filter((id) => agents.some((a) => a.agentId === id)),
 });
 
 const changes = (input: Record<string, unknown>, agents: Agent[]): Partial<AgentInput> => ({
@@ -34,7 +42,7 @@ const changes = (input: Record<string, unknown>, agents: Agent[]): Partial<Agent
   ...(input.instructions !== undefined && { instructions: instructionsText(input.instructions) }),
   ...(input.tools !== undefined && { tools: toolKinds(input.tools) }),
   ...(input.model !== undefined && { model: agentModel(input.model, stage()) }),
-  ...(input.delegates !== undefined && { delegates: delegateIds(input.delegates, agents) }),
+  ...(input.delegates !== undefined && { delegates: delegatesOf(input.delegates, agents) }),
 });
 
 /**
@@ -62,6 +70,12 @@ async function refusal(work: () => Promise<string | null>): Promise<string | nul
     throw e;
   }
 }
+
+/** Fields as a member reads them on the card, delegates by name, in the form the call reads back to the same fields. */
+const shown = (fields: Partial<AgentInput>, agents: Agent[]) => ({
+  ...fields,
+  ...(Array.isArray(fields.delegates) && { delegates: fields.delegates.map((id) => agents.find((a) => a.agentId === id)?.name ?? id) }),
+});
 
 const kindsOf = (input: Record<string, unknown>) => (Array.isArray(input.tools) ? input.tools.map(String) : []);
 
@@ -101,6 +115,10 @@ export const AGENT_TOOLS: Tool[] = [
       return null;
     }),
     ask: (input) => `Create @${nameOf(input.name)} (${kindsOf(input).join(", ") || "no tools"})?`,
+    pinned: async (input, env) => {
+      const [creator, agents] = await Promise.all([creatorNow(env), agentsRepo().list(env.room.roomId)]);
+      return shown(newAgent(input, agents, creator), agents);
+    },
     run: (input, env) => answer(async () => {
       const { roomId, agentId, agentName: name } = env.room;
       const [creator, agents] = await Promise.all([creatorNow(env), agentsRepo().list(roomId)]);
@@ -138,6 +156,10 @@ export const AGENT_TOOLS: Tool[] = [
       return null;
     }),
     ask: (input) => `Change @${nameOf(input.agent)}?`,
+    pinned: async (input, env) => {
+      const agents = await agentsRepo().list(env.room.roomId);
+      return { agent: nameOf(input.agent), ...shown(changes(input, agents), agents) };
+    },
     run: (input, env) => answer(async () => {
       const { roomId, agentId } = env.room;
       const agents = await agentsRepo().list(roomId);

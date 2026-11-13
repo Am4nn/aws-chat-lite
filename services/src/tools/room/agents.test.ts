@@ -107,6 +107,29 @@ describe("agent_create", () => {
     expect(await create.check!({ name: "helper", tools: [], model: "gpt" }, env)).toBe("Unknown model.");
   });
 
+  it("shows on the card what it will make, inherited delegates included, and makes exactly that", async () => {
+    const pinned = await create.pinned!({ name: "Helper", tools: ["web", "web"], instructions: " Checks links. " }, env);
+    expect(pinned).toEqual({ name: "helper", instructions: "Checks links.", tools: ["web"], model: "room", delegates: ["reviewer"] });
+    await create.run(pinned, env);
+    expect(fake.createByAgent.mock.calls[0][1]).toEqual({ ...pinned, delegates: ["A1"] });
+  });
+
+  it("passes on any agent when its creator may hand work to any", async () => {
+    scoutNow({ delegates: "all" });
+    const pinned = await create.pinned!({ name: "helper", tools: [] }, env);
+    expect(pinned).toMatchObject({ delegates: "all" });
+    expect(await create.check!(pinned, env)).toBeNull();
+    await create.run(pinned, env);
+    expect(fake.createByAgent.mock.calls[0][1]).toMatchObject({ delegates: "all" });
+  });
+
+  it("inherits only the creator's delegates that are still in the room", async () => {
+    scoutNow({ delegates: ["A1", "gone"] });
+    expect(await create.pinned!({ name: "helper", tools: [] }, env)).toMatchObject({ delegates: ["reviewer"] });
+    await create.run({ name: "helper", tools: [] }, env);
+    expect(fake.createByAgent.mock.calls[0][1]).toMatchObject({ delegates: ["A1"] });
+  });
+
   it("asks with the new agent's name and kinds", () => {
     expect(create.ask!({ name: "helper", tools: ["web", "room_read"] }, env)).toBe("Create @helper (web, room_read)?");
     expect(create.ask!({ name: "helper", tools: [] }, env)).toBe("Create @helper (no tools)?");
@@ -144,6 +167,13 @@ describe("agent_edit", () => {
     expect(await edit.run({ agent: "helper", instructions: "x" }, env)).toEqual({
       ok: false, output: "An agent can edit only the agents it created, never itself.",
     });
+  });
+
+  it("shows on the card only the fields that change, as the edit will save them", async () => {
+    const pinned = await edit.pinned!({ agent: "@Helper", tools: ["web"], delegates: ["@Reviewer"] }, env);
+    expect(pinned).toEqual({ agent: "helper", tools: ["web"], delegates: ["reviewer"] });
+    await edit.run(pinned, env);
+    expect(fake.updateByAgent).toHaveBeenCalledWith("R", "H", { tools: ["web"], delegates: ["A1"] }, "S");
   });
 
   it("asks with the agent's name", () => expect(edit.ask!({ agent: "@Helper", instructions: "x" }, env)).toBe("Change @helper?"));

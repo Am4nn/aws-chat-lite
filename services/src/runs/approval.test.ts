@@ -40,6 +40,12 @@ vi.mock("../approvals/decide.js", () => ({ wakeRun: async (callbackId: string) =
 vi.mock("../rooms/repo.js", () => ({
   roomDirectory: async () => ({ chats: [{ chatId: "C1", name: "general", lastSeq: 1, archived: false }], threads: [], agents: [] }),
 }));
+vi.mock("../agents/repo.js", async () => {
+  const { BUILT_IN } = await import("../agents/model.js");
+  const scout = { ...BUILT_IN, agentId: "S", name: "scout", builtIn: false, tools: ["room_agents", "web"], delegates: "all" };
+  return { agentsRepo: () => ({ list: async () => [BUILT_IN, scout], byId: async () => scout }) };
+});
+vi.mock("../agents/kinds.js", () => ({ requireOffered: async () => {} }));
 vi.mock("../budget/repo.js", () => ({ budgetRepo: () => ({ withArchived: async () => ({ archived: fake.archived }) }) }));
 
 const run = { runId: "RUN", roomId: "R", threadId: "T", number: 7 } as RoutedRun;
@@ -103,6 +109,15 @@ describe("gateOf", () => {
     fake.taint = ["github"];
     expect(await gateOf(posting, post, [])).toEqual({
       asks: true, timeoutSec: 600, title: `Post in #general: "${text.slice(0, 80)}"?`, input: { chat: "general", text },
+    });
+  });
+
+  it("shows on an agent's setup card what the call will make, delegates and model spelled out", async () => {
+    const making = { ...run, model: "claude-sonnet-5-5", agent: { agentId: "S", name: "scout", tools: ["room_agents"] } } as RoutedRun;
+    const create = { id: "c7", name: "agent_create", input: { name: "helper", tools: ["web"] } };
+    expect(await gateOf(making, create, [])).toEqual({
+      asks: true, timeoutSec: 600, title: "Create @helper (web)?",
+      input: { name: "helper", instructions: "", tools: ["web"], model: "room", delegates: "all" },
     });
   });
 

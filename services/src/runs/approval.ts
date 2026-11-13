@@ -27,7 +27,8 @@ type Gate = { asks: false } | { asks: true; timeoutSec: number; title: string; i
  * Whether a call waits for a member's approval, as `asksFirst` rules under the room's mode. Only a call the run may
  * make, whose input passes the tool's own check (so a repo outside the connection is refused before anyone is asked),
  * asks; a run that must end anyway asks no one. A GitHub call's repo is pinned here, so the write runs on the repo the
- * card named even if the connection changes during the wait. `taint` is what the model's turn saw, which the thread's
+ * card named even if the connection changes during the wait; a tool with a `pinned` input, such as an agent's setup,
+ * shows and later runs that, so the card names everything the call will do. `taint` is what the model's turn saw, which the thread's
  * own can lag behind. A tool that asks only because of the floor, a GitHub read, has no title of its own.
  */
 export async function gateOf(run: RoutedRun, call: ToolCall, taint: TaintSource[]): Promise<Gate> {
@@ -41,7 +42,8 @@ export async function gateOf(run: RoutedRun, call: ToolCall, taint: TaintSource[
   const { github, approvalTimeoutSec } = room;
   const env = { ...await toolEnv(process.env.TOOL_MODE, github ?? undefined), room: toolRoom(run, { tainted: isPrivate(seen), postCap: room.postCap }) };
   if ("check" in tool && await tool.check?.(call.input, env)) return { asks: false };
-  const input = tool.kind === "github" ? { ...call.input, repo: repoOf(call.input, github ?? undefined) } : call.input;
+  const input = tool.kind === "github" ? { ...call.input, repo: repoOf(call.input, github ?? undefined) }
+    : "pinned" in tool && tool.pinned ? await tool.pinned(call.input, env) : call.input;
   return { asks: true, timeoutSec: approvalTimeoutSec, title: tool.ask?.(input, env) ?? `Run ${call.name}?`, input };
 }
 

@@ -37,5 +37,10 @@ export type Tool = {
   check?(input: Record<string, unknown>, env: ToolEnv): string | null | Promise<string | null>;
   /** The approval title, for a call that waits on one: in Ask every write, and a web call in a thread with private content. */
   ask?(input: Record<string, unknown>, env: ToolEnv): string;
+  /**
+   * The input a member approves, with what the call would fill in on its own spelled out, so the card shows all of
+   * it; an approved call runs with this input. The call's own input when absent.
+   */
+  pinned?(input: Record<string, unknown>, env: ToolEnv): Promise<Record<string, unknown>>;
   run(input: Record<string, unknown>, env: ToolEnv): Promise<ToolResult>;
 };
