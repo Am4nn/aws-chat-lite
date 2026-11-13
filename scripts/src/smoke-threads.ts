@@ -61,6 +61,23 @@ const answerFrames = (untilStopped: boolean) => sampleFrames({
 type Frames = { texts: string[]; seen: number; moving: number; shimmers: number; shimmering: number };
 
 /**
+ * Counts the frames where the thread's next new answer is still fading in, until 1.5 s after it first shows. The fake
+ * model quotes a thread's first message in every answer, so the new one is told apart by count, not by text.
+ */
+const NEXT_ANSWER_FADE = sampleFrames({
+  vars: `const answers = () => [...document.querySelectorAll("main p")].filter((el) => el.textContent.startsWith("Fake answer for"));
+    const before = answers().length; let seen = 0, moving = 0, firstSeen = 0;`,
+  perFrame: `const all = answers();
+    if (all.length > before) {
+      seen++;
+      firstSeen ||= now;
+      if (!placed(all.at(-1).parentElement)) moving++;
+    }`,
+  done: "(firstSeen && now - firstSeen > 1500) || now - start > 30000",
+  result: "{ seen, moving }",
+});
+
+/**
  * Opens the first card's thread and reports the most composers on screen in any frame, sampled from before the click
  * until the thread's page has been up for a second. More than one means a second copy of a view was mounted.
  */
@@ -243,7 +260,14 @@ export async function threadChecks(stamp: number, owner: Person, guest: Person) 
   A.off("request", onRequest);
   check(resumes.length > 0 && Number(resumes[0]) > 0, `after window.__runStream.drop() the next stream request carries Last-Event-ID (${resumes[0] || "none"})`);
   check(!!answer && streamedExactly(live.texts, answer.text), `the resumed answer on screen equals the stored one, word for word (${live.texts.length} samples)`);
-  check(live.moving >= 5, `the answer fades in as it arrives (${live.moving} frames in motion)`);
+  // The fade is watched on a follow-up sent from the open thread: an answer that was already streaming when the page
+  // loaded finished fading before any sampler could start.
+  const fading = A.evaluate(NEXT_ANSWER_FADE) as Promise<{ seen: number; moving: number }>;
+  await A.click("textarea#composer");
+  await A.keyboard.type("one more");
+  await A.keyboard.press("Enter");
+  const fade = await fading;
+  check(fade.moving >= 3, `a new answer fades in as it arrives (${fade.moving} of ${fade.seen} frames in motion)`);
 
   // Budget: only the owner sets it, and at $0 the next run stops before its first model call.
   check((await bff(B, `/bff/api/rooms/${roomId}/budget`, "PUT", { capUsd: 5 })).status === 403, "a member can't set the room budget (403)");
