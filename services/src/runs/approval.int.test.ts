@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { decideApproval } from "../approvals/decide.js";
 import { approvalsRepo } from "../approvals/repo.js";
 import { auditRepo } from "../audit/repo.js";
+import { connectionsRepo } from "../connections/repo.js";
 import { docClient, tableName } from "../lib/db.js";
 import { Conflict, Gone } from "../lib/errors.js";
 import { roomsRepo } from "../rooms/repo.js";
@@ -298,6 +299,21 @@ describe("approvals in the run loop, on Floci", { timeout: 60_000 }, () => {
     const [step] = await eventsOf(run.runId, "step.finished");
     expect(step).toMatchObject({ ok: false, output: expect.stringMatching(/^Denied by bea./) });
     expect(fetched).toEqual([]);
+  });
+
+  it("in Bypass a GitHub write runs at once, and after a room read a web search still waits for a member", async () => {
+    const at = await room();
+    await connectionsRepo().setApprovalMode(at.aman, at.roomId, "bypass");
+    const write = await startRun("go call:github_comment", at);
+    expect((await finished(write.runId)).status).toBe("done");
+    expect(await eventsOf(write.runId, "approval.requested")).toEqual([]);
+    expect(await eventsOf(write.runId, "step.finished")).toMatchObject([{ step: 1, ok: true }]);
+
+    const run = await storedRun(at);
+    const searchCall = { id: "call-1", name: "web_search", input: { query: "acme payroll" } };
+    expect(await gateOf(run, searchCall, [])).toEqual({ asks: false });
+    await threadsRepo().addTaint(at.roomId, run.number, ["room"]);
+    expect(await gateOf(run, searchCall, [])).toMatchObject({ asks: true, title: 'Search the web for "acme payroll"?' });
   });
 
   it("a skip note is logged only by the close that ends the run, so it never lands mid-answer", async () => {

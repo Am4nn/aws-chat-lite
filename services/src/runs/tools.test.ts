@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { BUILT_IN } from "../agents/model.js";
+import type { ToolSpec } from "../models/gateway.js";
 import type { McpConnection, ToolKind } from "../threads/types.js";
 import { findTool } from "../tools/index.js";
-import { agentCard, asksFirst, delegateSpec, FAKE_TOOLS, IMAGE_GATE, mayRun, runFakeLookup, SANDBOX_TOOL, toolDetail, toolsFor } from "./tools.js";
+import { agentCard, asksFirst, delegateSpec, FAKE_TOOLS, IMAGE_GATE, mayRun, runFakeLookup, SANDBOX_GATE, SANDBOX_TOOL, toolDetail, toolsFor } from "./tools.js";
 
 const conn = (status: McpConnection["status"]): McpConnection => ({
   name: "test", url: "http://127.0.0.1:4710/mcp", auth: "oauth", status, toolCount: 1, toolsAt: "2026-11-11T00:00:00Z", addedBy: "aman",
@@ -175,38 +176,76 @@ describe("asksFirst", () => {
   const echo = { name: "echo", description: "Repeats the text.", inputSchema: { type: "object" }, readOnly: true };
   const room = { roomId: "r1", mcp: [{ ...conn("connected"), tools: [echo, conn("connected").tools[0]!] }, { ...conn("connected"), name: "other" }] };
   const tool = (name: string) => findTool(name, room)!;
+  const roomTool = (name: string, kind: "room_post" | "room_agents") => ({ spec: { name } as ToolSpec, kind, write: true });
+  const ask = { mode: "ask", sandboxInternet: false } as const;
+  const auto = { ...ask, mode: "auto" } as const;
+  const bypass = { ...ask, mode: "bypass" } as const;
 
-  it("asks before every write, whatever the thread holds", () => {
-    expect(asksFirst(tool("mcp__test__add_note"), [])).toBe(true);
-    expect(asksFirst(tool("mcp__test__add_note"), ["mcp:test"])).toBe(true);
-    expect(asksFirst(tool("github_comment"), [])).toBe(true);
+  it("asks before every write in Ask, whatever the thread holds, room writes included", () => {
+    expect(asksFirst(tool("mcp__test__add_note"), [], ask)).toBe(true);
+    expect(asksFirst(tool("mcp__test__add_note"), ["mcp:test"], ask)).toBe(true);
+    expect(asksFirst(tool("github_comment"), [], ask)).toBe(true);
+    expect(asksFirst(roomTool("room_post", "room_post"), [], ask)).toBe(true);
   });
 
   it("lets a read-only MCP call go without asking on a clean thread, or one holding only that server's own output", () => {
-    expect(asksFirst(tool("mcp__test__echo"), [])).toBe(false);
-    expect(asksFirst(tool("mcp__test__echo"), ["mcp:test"])).toBe(false);
+    expect(asksFirst(tool("mcp__test__echo"), [], ask)).toBe(false);
+    expect(asksFirst(tool("mcp__test__echo"), ["mcp:test"], ask)).toBe(false);
   });
 
   it.each([["github"], ["attachment"], ["sandbox"], ["mcp:other"]] as const)(
     "asks before a read-only MCP call once the thread holds %s, since its input leaves for the server", (source) => {
-      expect(asksFirst(tool("mcp__test__echo"), [source])).toBe(true);
-      expect(asksFirst(tool("mcp__test__echo"), ["mcp:test", source])).toBe(true);
+      expect(asksFirst(tool("mcp__test__echo"), [source], ask)).toBe(true);
+      expect(asksFirst(tool("mcp__test__echo"), ["mcp:test", source], ask)).toBe(true);
     },
   );
 
   it("asks before a web call on any private thread, MCP output included; a GitHub read never asks", () => {
-    expect(asksFirst(tool("web_fetch"), [])).toBe(false);
-    expect(asksFirst(tool("web_fetch"), ["mcp:test"])).toBe(true);
-    expect(asksFirst(tool("github_read_file"), ["attachment"])).toBe(false);
+    expect(asksFirst(tool("web_fetch"), [], ask)).toBe(false);
+    expect(asksFirst(tool("web_fetch"), ["attachment"], ask)).toBe(true);
+    expect(asksFirst(tool("web_fetch"), ["mcp:test"], ask)).toBe(true);
+    expect(asksFirst(tool("github_read_file"), ["attachment"], ask)).toBe(false);
   });
 
   it("asks before an image in a private thread, since its prompt goes to Gemini, which may not see private content", () => {
-    expect(asksFirst(IMAGE_GATE, [])).toBe(false);
-    expect(asksFirst(IMAGE_GATE, ["attachment"])).toBe(true);
+    expect(asksFirst(IMAGE_GATE, [], ask)).toBe(false);
+    expect(asksFirst(IMAGE_GATE, ["attachment"], ask)).toBe(true);
     expect(IMAGE_GATE.ask({ prompt: "a cat on a mat" })).toBe('Send "a cat on a mat" to Gemini for an image?');
   });
 
-  it("never asks before a memory call: memory stays in the room", () => {
-    expect(asksFirst(tool("memory_save"), ["attachment", "mcp:test"])).toBe(false);
+  it("never asks before saving to memory: memory stays in the room", () => {
+    expect(asksFirst(tool("memory_save"), ["attachment", "mcp:test"], ask)).toBe(false);
+  });
+
+  it("lets posts and agent setup run on their own in Auto, and nothing else", () => {
+    expect(asksFirst(roomTool("room_post", "room_post"), [], auto)).toBe(false);
+    expect(asksFirst(roomTool("agent_create", "room_agents"), [], auto)).toBe(false);
+    expect(asksFirst(tool("github_comment"), [], auto)).toBe(true);
+    expect(asksFirst(tool("web_fetch"), ["attachment"], auto)).toBe(true);
+  });
+
+  it("runs everything in Bypass but the floor", () => {
+    expect(asksFirst(tool("github_comment"), [], bypass)).toBe(false);
+    expect(asksFirst(tool("web_fetch"), ["github"], bypass)).toBe(false);
+    expect(asksFirst({ ...tool("mcp__test__add_note"), destructive: false }, [], bypass)).toBe(false);
+  });
+
+  it("always asks before a destructive call, and before anything that leaves the room once the thread read room chat", () => {
+    for (const rules of [ask, auto, bypass]) {
+      expect(asksFirst(tool("mcp__test__add_note"), [], rules)).toBe(true);
+      expect(asksFirst(tool("memory_forget"), [], rules)).toBe(true);
+      for (const name of ["web_search", "web_fetch", "github_get", "github_comment", "mcp__test__echo"]) {
+        expect(asksFirst(tool(name), ["room"], rules)).toBe(true);
+      }
+      expect(asksFirst(IMAGE_GATE, ["room"], rules)).toBe(true);
+      expect(asksFirst(SANDBOX_GATE, ["room"], { ...rules, sandboxInternet: true })).toBe(true);
+      expect(asksFirst(SANDBOX_GATE, ["room"], { ...rules, sandboxInternet: false })).toBe(false);
+      expect(asksFirst(tool("memory_save"), ["room"], rules)).toBe(false);
+    }
+  });
+
+  it("asks before sandbox code only for the floor: its file work stays in the room", () => {
+    expect(asksFirst(SANDBOX_GATE, ["attachment"], { ...ask, sandboxInternet: true })).toBe(false);
+    expect(SANDBOX_GATE.ask({ language: "python", code: "1" })).toBe("Run python in the sandbox with internet access?");
   });
 });

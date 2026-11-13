@@ -77,7 +77,17 @@ describe("listRemoteTools", () => {
       description: "Repeats the text.",
       inputSchema: { type: "object", properties: { text: { type: "string" } }, required: ["text"] },
       readOnly: true,
+      destructive: true,
     });
+  });
+
+  it("records a tool destructive unless the server marks it destructiveHint: false", async () => {
+    const url = await serveTools([
+      { name: "drop", inputSchema: { type: "object" }, annotations: { readOnlyHint: false } },
+      { name: "add", inputSchema: { type: "object" }, annotations: { readOnlyHint: false, destructiveHint: false } },
+    ]);
+    const { tools } = await listRemoteTools("test", url, undefined, f);
+    expect(tools.map((t) => [t.name, t.destructive])).toEqual([["drop", true], ["add", false]]);
   });
 
   it("keeps the first 40 tools", async () => {
@@ -97,8 +107,8 @@ describe("listRemoteTools", () => {
     const { tools, toolCount } = await listRemoteTools("test", url, undefined, f);
     expect(toolCount).toBe(3);
     expect(tools).toEqual([
-      { name: "long", description: `${"d".repeat(1_000)}\n…(cut)`, inputSchema: { type: "object" }, readOnly: false },
-      { name: "plain", description: "", inputSchema: { type: "object" }, readOnly: false },
+      { name: "long", description: `${"d".repeat(1_000)}\n…(cut)`, inputSchema: { type: "object" }, readOnly: false, destructive: true },
+      { name: "plain", description: "", inputSchema: { type: "object" }, readOnly: false, destructive: true },
     ]);
   });
 

@@ -5,6 +5,7 @@ import type { RoutedRun } from "./steps.js";
 
 const fake = vi.hoisted(() => ({
   events: [] as RunEvent[], pushed: [] as unknown[], taint: [] as string[], archived: false, cancelled: [] as unknown[][], woken: [] as string[],
+  room: {} as Record<string, unknown>,
 }));
 
 vi.mock("../approvals/repo.js", () => ({
@@ -30,7 +31,9 @@ vi.mock("./notify.js", () => ({ notifyRun: async () => {} }));
 vi.mock("../threads/repo.js", () => ({ threadsRepo: () => ({ threadById: async () => ({ taint: fake.taint }) }) }));
 vi.mock("./steps.js", async (actual) => ({
   ...await actual<object>(), limitsReached: async () => null, models: () => ({ servedBy: () => "fake" }),
-  roomConnections: async (roomId: string) => ({ roomId, github: null, mcp: [], approvalTimeoutSec: 600 }),
+  roomConnections: async (roomId: string) => ({
+    roomId, github: null, mcp: [], approvalTimeoutSec: 600, approvalMode: "ask", postCap: 10, sandboxInternet: false, ...fake.room,
+  }),
 }));
 vi.mock("../push/enqueue.js", () => ({ enqueuePush: async (job: unknown) => void fake.pushed.push(job) }));
 vi.mock("../approvals/decide.js", () => ({ wakeRun: async (callbackId: string) => void fake.woken.push(callbackId) }));
@@ -47,6 +50,7 @@ beforeEach(() => {
   fake.archived = false;
   fake.cancelled = [];
   fake.woken = [];
+  fake.room = {};
 });
 
 describe("gateOf", () => {
@@ -64,6 +68,35 @@ describe("gateOf", () => {
     });
     fake.taint = [];
     expect(await gateOf(drawing, image, ["sandbox"])).toMatchObject({ asks: true });
+  });
+
+  it("asks a helper lane's web call in Bypass once the thread read room chat", async () => {
+    const helper = { ...run, model: "claude-sonnet-5-5", agent: { tools: ["web"] }, helper: { lane: 1, step: 2, task: "t", parent: "agent" } } as RoutedRun;
+    const fetchCall = { id: "c3", name: "web_fetch", input: { url: "https://example.com/" } };
+    fake.room = { approvalMode: "bypass" };
+    expect(await gateOf(helper, fetchCall, [])).toEqual({ asks: false });
+    fake.taint = ["room"];
+    expect(await gateOf(helper, fetchCall, [])).toMatchObject({ asks: true, title: "Fetch https://example.com/?" });
+  });
+
+  it("asks before sandbox code while the sandbox reaches the internet in a thread that read room chat", async () => {
+    const coding = { ...run, model: "claude-sonnet-5-5", agent: { tools: ["sandbox"] } } as RoutedRun;
+    const code = { id: "c4", name: "sandbox_run", input: { language: "python", code: "print(1)" } };
+    fake.taint = ["room"];
+    expect(await gateOf(coding, code, [])).toEqual({ asks: false });
+    fake.room = { sandboxInternet: true };
+    expect(await gateOf(coding, code, [])).toEqual({
+      asks: true, timeoutSec: 600, title: "Run python in the sandbox with internet access?", input: code.input,
+    });
+  });
+
+  it("names a GitHub read that has no approval title of its own by its tool", async () => {
+    const reading = { ...run, model: "claude-sonnet-5-5", agent: { tools: ["github"] } } as RoutedRun;
+    fake.room = { github: { installationId: 1, account: "fake-org", repos: ["fake-org/playground"], addedBy: "aman", addedAt: "now" } };
+    fake.taint = ["room"];
+    expect(await gateOf(reading, { id: "c5", name: "github_get", input: { number: 1 } }, [])).toMatchObject({
+      asks: true, title: "Run github_get?", input: { number: 1, repo: "fake-org/playground" },
+    });
   });
 });
 

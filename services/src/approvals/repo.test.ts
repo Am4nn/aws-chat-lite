@@ -52,6 +52,13 @@ describe("decide", () => {
     expect(updates(send)).toHaveLength(0);
   });
 
+  it("refuses a decision from anyone without a member item, an agent's pseudo-user included", async () => {
+    const send = fakeTable((c) => (isMember(c) ? {} : { Item: { ...stored, status: "pending" } }));
+    await expect(approvalsRepo().decide({ userId: "agent", username: "scout" }, "run1", 3, "approve"))
+      .rejects.toThrow("Only members of this room can approve.");
+    expect(updates(send)).toHaveLength(0);
+  });
+
   it("refuses a decision in an archived room", async () => {
     const send = fakeTable((c) => (isMember(c) ? { Item: { role: "admin", archived: true } } : { Item: { ...stored, status: "pending" } }));
     await expect(approvalsRepo().decide(bea, "run1", 3, "approve")).rejects.toEqual(new Gone("This room is archived."));

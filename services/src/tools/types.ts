@@ -18,13 +18,15 @@ export type ToolEnv = {
 
 export type Tool = {
   spec: ToolSpec;
-  kind: "github" | "mcp" | "memory" | "web";
+  kind: "github" | "mcp" | "memory" | "web" | "room_read" | "room_post" | "room_agents";
   write: boolean;
+  /** Deletes something, so it asks first in every approval mode. */
+  destructive?: boolean;
   /** The step row line. */
   detail(input: Record<string, unknown>): string;
   /** An error before any approval is asked, or null. */
   check?(input: Record<string, unknown>, env: ToolEnv): string | null;
-  /** The approval title, for a call that waits on one: every write, and a web call in a thread with private content. */
+  /** The approval title, for a call that waits on one: in Ask every write, and a web call in a thread with private content. */
   ask?(input: Record<string, unknown>, env: ToolEnv): string;
   run(input: Record<string, unknown>, env: ToolEnv): Promise<ToolResult>;
 };

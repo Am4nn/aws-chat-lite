@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BUILT_IN } from "../agents/model.js";
-import type { RunEvent } from "../threads/types.js";
+import type { McpConnection, RunEvent } from "../threads/types.js";
+import type { ToolEnv } from "../tools/types.js";
 import type { RoutedRun } from "./steps.js";
 import { toolStep } from "./tool-step.js";
 
@@ -14,6 +15,9 @@ const runs = {
   getRun: vi.fn(async () => ({ deadAt: "2026-11-12T02:00:00.000Z" })),
 };
 const audit = { record: vi.fn() };
+const fake = vi.hoisted(() => ({
+  mcp: [] as unknown[], addTaint: vi.fn(async () => {}), runSandbox: vi.fn(async () => ({ ok: true, output: "4", ms: 5 })),
+}));
 vi.mock("./repo.js", () => ({ runsRepo: () => runs }));
 vi.mock("./notify.js", () => ({ notifyRun: async () => {} }));
 vi.mock("../audit/repo.js", () => ({ auditRepo: () => audit }));
@@ -22,12 +26,12 @@ vi.mock("../budget/repo.js", () => ({
     withArchived: async () => ({ budget: { spentMicros: 0, capMicros: 3_000_000, month: "2026-11" }, archived: false }), spend: () => ({}),
   }),
 }));
-vi.mock("../connections/repo.js", () => ({ connectionsRepo: () => ({ get: async () => ({ github: null, mcp: [], approvalTimeoutSec: 7200 }) }) }));
-vi.mock("../threads/repo.js", () => ({ threadsRepo: () => ({ addTaint: async () => {}, threadById: async () => ({ taint: [] }) }) }));
+vi.mock("../connections/repo.js", () => ({ connectionsRepo: () => ({ get: async () => ({ github: null, mcp: fake.mcp, approvalTimeoutSec: 7200 }) }) }));
+vi.mock("../threads/repo.js", () => ({ threadsRepo: () => ({ addTaint: fake.addTaint, threadById: async () => ({ taint: [] }) }) }));
 vi.mock("../images/step.js", async (actual) => ({
   ...await actual<object>(), imageDeps: () => ({}), generateImageStep: async () => ({ ok: true, output: "Saved images/1-1-1-cat.png." }),
 }));
-vi.mock("../workspace/session.js", () => ({ runSandbox: async () => ({ ok: true, output: "4", ms: 5 }) }));
+vi.mock("../workspace/session.js", () => ({ runSandbox: fake.runSandbox }));
 
 process.env.MODEL_GATEWAY = "fake";
 
@@ -37,7 +41,23 @@ const run = {
   firstSeq: 1, seenSeq: 1, steps: 0, costMicros: 0, agent: { ...BUILT_IN, tools: ["images", "sandbox"] }, others: [],
 } satisfies RoutedRun;
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  fake.mcp = [];
+});
+
+/** A member's no to `call`, as the settled approval comes back. */
+const deniedBy = (by: string, call: { id: string; name: string; input: Record<string, unknown> }) => ({
+  runId: "run1", roomId: "r1", threadId: "t1", step: 1, call, title: "t", callbackId: "cb",
+  expiresAt: "2026-11-12T00:10:00.000Z", requestedAt: "2026-11-12T00:00:00.000Z", status: "denied" as const, by,
+});
+
+/** The step's events, as the writer is handed them. */
+const logged = () => {
+  const appended: RunEvent[] = [];
+  runs.eventWriter.mockResolvedValue({ append: async (e: object) => (appended.push(e as RunEvent), { ...e, seq: 7, at: "2026-11-12T00:00:00.000Z" }) });
+  return appended;
+};
 
 describe("toolStep", () => {
   it.each([
@@ -51,15 +71,36 @@ describe("toolStep", () => {
   });
 
   it("an image a member didn't approve is neither made nor logged as run", async () => {
-    const settled = {
-      runId: "run1", roomId: "r1", threadId: "t1", step: 1, call: { id: "c1", name: "image_generate", input: { prompt: "the plan" } },
-      title: "t", callbackId: "cb", expiresAt: "2026-11-12T00:10:00.000Z", requestedAt: "2026-11-12T00:00:00.000Z", status: "denied" as const, by: "bea",
-    };
-    const appended: RunEvent[] = [];
-    runs.eventWriter.mockResolvedValue({ append: async (e: object) => (appended.push(e as RunEvent), { ...e, seq: 7, at: "2026-11-12T00:00:00.000Z" }) });
+    const settled = deniedBy("bea", { id: "c1", name: "image_generate", input: { prompt: "the plan" } });
+    const appended = logged();
     await toolStep(run, settled.call, settled);
     expect(audit.record).not.toHaveBeenCalled();
     expect(appended.find((e) => e.type === "step.finished")).toMatchObject({ ok: false, output: expect.stringMatching(/^Denied by bea\./) });
+  });
+
+  it("doesn't run sandbox code a member denied, and leaves the thread's taint alone", async () => {
+    const settled = deniedBy("bea", { id: "c1", name: "sandbox_run", input: { language: "python", code: "print(1)" } });
+    const appended = logged();
+    await toolStep(run, settled.call, settled);
+    expect(fake.runSandbox).not.toHaveBeenCalled();
+    expect(fake.addTaint).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+    expect(appended.find((e) => e.type === "step.finished")).toMatchObject({ ok: false, output: expect.stringMatching(/^Denied by bea\./) });
+    expect(appended.some((e) => e.type === "usage")).toBe(false);
+  });
+
+  it("a write the room's mode lets run goes ahead with no approval", async () => {
+    const conn: McpConnection = {
+      name: "test", url: "http://127.0.0.1:4710/mcp", auth: "oauth", status: "connected", toolCount: 1, toolsAt: "2026-11-11T00:00:00Z",
+      addedBy: "aman", addedAt: "2026-11-11T00:00:00Z", tools: [{ name: "add_note", description: "Saves a note.", inputSchema: { type: "object" }, readOnly: false }],
+    };
+    fake.mcp = [conn];
+    const mcpCall = vi.fn(async () => ({ ok: true, output: "saved" }));
+    const appended = logged();
+    const writer = { ...run, agent: { ...BUILT_IN, tools: ["mcp" as const] } };
+    await toolStep(writer, { id: "c1", name: "mcp__test__add_note", input: { text: "hi" } }, undefined, async () => ({ mcpCall }) as unknown as ToolEnv);
+    expect(mcpCall).toHaveBeenCalledWith({ roomId: "r1", name: "test" }, "add_note", { text: "hi" });
+    expect(appended.find((e) => e.type === "step.finished")).toMatchObject({ ok: true, output: "saved" });
   });
 
   it("logs nothing for a tool the model was never offered", async () => {

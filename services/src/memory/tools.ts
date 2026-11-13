@@ -66,7 +66,9 @@ export function memoryTools(repo: () => MemoryStore = memoryRepo): Tool[] {
       },
       kind: "memory",
       write: false,
+      destructive: true,
       detail: (input) => `[${input.id}]`,
+      ask: (input) => `Forget [${input.id}] from the room memory?`,
       run: (input, env) => answer(async () => {
         const id = String(input.id);
         await repo().forget(env.room.roomId, id);

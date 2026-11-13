@@ -43,11 +43,9 @@ function tools(opts: { full?: boolean } = {}) {
 }
 
 describe("memory tools", () => {
-  it("are memory-kind reads that never wait for approval", () => {
-    for (const t of memoryTools(() => fakeStore().store)) {
-      expect(t).toMatchObject({ kind: "memory", write: false });
-      expect(t.ask).toBeUndefined();
-    }
+  it("are memory-kind tools that aren't writes, and only forgetting asks first", () => {
+    for (const t of memoryTools(() => fakeStore().store)) expect(t).toMatchObject({ kind: "memory", write: false });
+    expect(memoryTools(() => fakeStore().store).filter((t) => t.ask).map((t) => t.spec.name)).toEqual(["memory_forget"]);
   });
 
   it("memory_save from a tainted thread saves a private entry, credited to the agent and thread", async () => {
@@ -77,6 +75,12 @@ describe("memory tools", () => {
     const { forget, calls } = tools();
     expect(await forget.run({ id: "ab12cd34" }, env(false))).toEqual({ ok: true, output: "Forgot [ab12cd34]." });
     expect(calls.forgot).toEqual(["ab12cd34"]);
+  });
+
+  it("memory_forget deletes, so it asks a member first, naming the entry", () => {
+    const { forget } = tools();
+    expect(forget.destructive).toBe(true);
+    expect(forget.ask!({ id: "ab12cd34" }, env(false))).toBe("Forget [ab12cd34] from the room memory?");
   });
 
   it("an unknown id is a failed call the model can read", async () => {
