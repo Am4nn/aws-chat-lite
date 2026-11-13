@@ -32,8 +32,7 @@ const msg = (over: Partial<Message>): Message => ({
 
 const env = {
   room: {
-    roomId: "R", threadId: "t7", threadNumber: 7, runId: "run7", agentId: "agent", agentName: "agent", kinds: ["room_read"],
-    delegates: "all", tainted: false, postCap: 10,
+    roomId: "R", threadId: "t7", threadNumber: 7, runId: "run7", agentId: "agent", agentName: "agent", tainted: false, postCap: 10,
   },
 } as ToolEnv;
 

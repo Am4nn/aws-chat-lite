@@ -58,7 +58,7 @@ describe("roomTools", () => {
 
 describe("toolEnv in fake mode", () => {
   const room: ToolEnv["room"] = {
-    roomId: "r1", threadId: "t1", threadNumber: 1, runId: "run1", agentId: "agent", agentName: "agent", kinds: [], delegates: "all", tainted: false, postCap: 10,
+    roomId: "r1", threadId: "t1", threadNumber: 1, runId: "run1", agentId: "agent", agentName: "agent", tainted: false, postCap: 10,
   };
   it("answers web search with two sources", async () => {
     const env = { ...await toolEnv("fake"), room };

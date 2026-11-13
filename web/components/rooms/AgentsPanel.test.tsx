@@ -22,7 +22,7 @@ const mockedBff = vi.mocked(bff);
 beforeEach(() => {
   mockedBff.mockImplementation(async (path) => {
     if (path.endsWith("/copy")) return { agent: agent("scout-2"), dropped: ["github"], schedules: { copied: 1, skipped: 0 } };
-    if (path.endsWith("/agents")) return { agents: AGENTS, kinds: ["images", "sandbox", "web"], brief: "You work inside chat-lite." };
+    if (path.endsWith("/agents")) return { agents: AGENTS, kinds: ["images", "sandbox", "web", "room_agents", "room_post", "room_read"], brief: "You work inside chat-lite." };
     return {};
   });
 });
@@ -90,8 +90,35 @@ describe("AgentsPanel", () => {
     fireEvent.change(within(form).getByLabelText("Model"), { target: { value: "haiku" } });
     fireEvent.click(within(form).getByRole("button", { name: "Create agent" }));
     await vi.waitFor(() => expect(mockedBff).toHaveBeenCalledWith("/bff/api/rooms/r1/agents", {
-      body: { name: "reviewer", instructions: "", tools: ["web"], model: "haiku" },
+      body: { name: "reviewer", instructions: "", tools: ["web"], model: "haiku", delegates: "all" },
     }));
+  });
+
+  it("starts a new agent with the room tools off, and sends a narrowed delegate list", async () => {
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "New agent" }));
+    const form = screen.getByRole("button", { name: "Create agent" }).closest("form")!;
+    for (const kind of ["room_read", "room_post", "room_agents"]) expect((form.querySelector(`#agent-new-${kind}`) as HTMLInputElement).checked).toBe(false);
+    expect((form.querySelector("#agent-new-web") as HTMLInputElement).checked).toBe(true);
+    expect(within(form).getByLabelText("Read room")).toBeTruthy();
+    expect(within(form).getByLabelText("Post in channels")).toBeTruthy();
+    expect(within(form).getByLabelText("Manage agents")).toBeTruthy();
+    expect(within(form).queryByLabelText("@scout")).toBeNull();
+    fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "reviewer" } });
+    fireEvent.click(within(form).getByLabelText("Any agent"));
+    fireEvent.click(within(form).getByLabelText("@critic"));
+    fireEvent.click(within(form).getByRole("button", { name: "Create agent" }));
+    await vi.waitFor(() => expect(mockedBff).toHaveBeenCalledWith("/bff/api/rooms/r1/agents", {
+      body: { name: "reviewer", instructions: "", tools: ["images", "sandbox", "web"], model: "room", delegates: ["critic"] },
+    }));
+  });
+
+  it("shows who made an agent", async () => {
+    mockedBff.mockImplementation(async () => ({
+      agents: [agent("scout", { madeBy: { agentId: "boss", name: "boss" }, createdByName: "bea" })], kinds: [], brief: "",
+    }));
+    show([room("r1", "member")], "r-made");
+    expect(await screen.findByText("by @boss · approved by bea")).toBeTruthy();
   });
 
   it("shows, folded and read-only, the brief every agent gets before its own instructions", async () => {

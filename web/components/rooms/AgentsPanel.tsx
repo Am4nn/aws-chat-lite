@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Plus } from "lucide-react";
-import { canEditAgent, copyTargets, copyToast, type CopyResult } from "@/lib/client/agents";
+import { canEditAgent, copyTargets, copyToast, madeByLine, type CopyResult } from "@/lib/client/agents";
 import { bff, errorText } from "@/lib/client/bff";
 import { useLiveEvent } from "@/lib/client/LiveProvider";
 import { removeOptimistically } from "@/lib/client/optimistic";
@@ -49,9 +49,9 @@ export function AgentsPanel({ roomId, me, rooms, models, archived }: {
     setBusy(true);
     try {
       // The built-in @agent can't be renamed, so its name isn't sent at all.
-      const { instructions, tools, model } = input;
+      const { instructions, tools, model, delegates } = input;
       const { agent: saved } = agent
-        ? await bff<{ agent: Agent }>(`${base}/${agent.agentId}`, { method: "PATCH", body: agent.builtIn ? { instructions, tools, model } : input })
+        ? await bff<{ agent: Agent }>(`${base}/${agent.agentId}`, { method: "PATCH", body: agent.builtIn ? { instructions, tools, model, delegates } : input })
         : await bff<{ agent: Agent }>(base, { body: input });
       setAgents((list) => (agent ? list.map((a) => (a.agentId === saved.agentId ? saved : a)) : [...list, saved]));
       setEditing(null);
@@ -96,7 +96,7 @@ export function AgentsPanel({ roomId, me, rooms, models, archived }: {
                   {editing === a.agentId
                     ? (
                       <motion.div key="form" {...swap}>
-                        <AgentForm initial={a} kinds={data.kinds} brief={data.brief} models={models} busy={busy} onCancel={() => setEditing(null)} onSubmit={(input) => save(a, input)} />
+                        <AgentForm initial={a} others={data.agents.filter((o) => o.agentId !== a.agentId)} kinds={data.kinds} brief={data.brief} models={models} busy={busy} onCancel={() => setEditing(null)} onSubmit={(input) => save(a, input)} />
                       </motion.div>
                     )
                     : (
@@ -111,7 +111,7 @@ export function AgentsPanel({ roomId, me, rooms, models, archived }: {
                             <span className="flex gap-1" aria-label={`Tools: ${toolNames(a.tools)}`} role="img">
                               {TOOL_KINDS.filter((k) => a.tools.includes(k.kind)).map(({ kind, icon: Icon }) => <Icon key={kind} aria-hidden="true" size={12} />)}
                             </span>
-                            <span className="truncate">{a.builtIn ? "built in" : `by ${a.createdByName}`}</span>
+                            <span className="truncate">{madeByLine(a)}</span>
                           </span>
                         </span>
                         {(canEdit || canCopy) && (
@@ -130,7 +130,7 @@ export function AgentsPanel({ roomId, me, rooms, models, archived }: {
         </ul>
       )}
       {data && editing === "new" && (
-        <AgentForm kinds={data.kinds} brief={data.brief} models={models} busy={busy} onCancel={() => setEditing(null)} onSubmit={(input) => save(undefined, input)} />
+        <AgentForm others={data.agents} kinds={data.kinds} brief={data.brief} models={models} busy={busy} onCancel={() => setEditing(null)} onSubmit={(input) => save(undefined, input)} />
       )}
 
       <Modal open={!!deleting} onClose={() => setDeleting(null)} title={`Delete @${deleting?.name}?`}>

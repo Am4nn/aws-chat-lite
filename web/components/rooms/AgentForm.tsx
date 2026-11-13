@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, type FormEvent, type KeyboardEvent } from "react";
-import { ChevronRight, FolderGit2, Globe, ImageIcon, Server, SquareTerminal, type LucideIcon } from "lucide-react";
-import type { Agent, AgentModel, ModelOption, ToolKind } from "@/lib/types";
+import { BookOpen, Bot, ChevronRight, FolderGit2, Globe, ImageIcon, Megaphone, Server, SquareTerminal, type LucideIcon } from "lucide-react";
+import { ROOM_KINDS } from "@/lib/client/agents";
+import type { Agent, AgentModel, Delegates, ModelOption, ToolKind } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { panelInput } from "@/components/ui/Field";
 import { Hint } from "@/components/ui/Hint";
 
-export type AgentInput = { name: string; instructions: string; tools: ToolKind[]; model: AgentModel };
+export type AgentInput = { name: string; instructions: string; tools: ToolKind[]; model: AgentModel; delegates: Delegates };
 
 export const TOOL_KINDS: { kind: ToolKind; label: string; icon: LucideIcon; missing?: string }[] = [
   { kind: "sandbox", label: "Sandbox", icon: SquareTerminal },
@@ -15,6 +16,9 @@ export const TOOL_KINDS: { kind: ToolKind; label: string; icon: LucideIcon; miss
   { kind: "images", label: "Images", icon: ImageIcon },
   { kind: "github", label: "GitHub", icon: FolderGit2, missing: "Connect GitHub in Connections first." },
   { kind: "mcp", label: "MCP servers", icon: Server, missing: "Add an MCP server in Connections first." },
+  { kind: "room_read", label: "Read room", icon: BookOpen },
+  { kind: "room_post", label: "Post in channels", icon: Megaphone },
+  { kind: "room_agents", label: "Manage agents", icon: Bot },
 ];
 
 const MAX_INSTRUCTIONS = 4000;
@@ -22,20 +26,22 @@ const MAX_INSTRUCTIONS = 4000;
 /**
  * A new agent, or changes to one. Only the tool kinds the room offers can be ticked; a kind the agent already had
  * stays ticked when its connection goes, and comes back to life when it returns. The built-in @agent keeps its name.
+ * A new agent starts without the room tools. `others` are the agents it may be allowed to hand work to.
  * `brief` is what every agent is told before its own instructions, shown so the box isn't mistaken for all of it.
  */
-export function AgentForm({ initial, kinds, brief, models, busy, onCancel, onSubmit }: {
-  initial?: Agent; kinds: ToolKind[]; brief: string; models: ModelOption[]; busy: boolean; onCancel: () => void; onSubmit: (input: AgentInput) => void;
+export function AgentForm({ initial, others, kinds, brief, models, busy, onCancel, onSubmit }: {
+  initial?: Agent; others: Agent[]; kinds: ToolKind[]; brief: string; models: ModelOption[]; busy: boolean; onCancel: () => void; onSubmit: (input: AgentInput) => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [instructions, setInstructions] = useState(initial?.instructions ?? "");
-  const [tools, setTools] = useState<ToolKind[]>(initial?.tools ?? kinds);
+  const [tools, setTools] = useState<ToolKind[]>(initial?.tools ?? kinds.filter((k) => !ROOM_KINDS.includes(k)));
+  const [delegates, setDelegates] = useState<Delegates>(initial?.delegates ?? "all");
   const [model, setModel] = useState<AgentModel>(initial?.model ?? "room");
   const id = initial?.agentId ?? "new";
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    onSubmit({ name: name.trim(), instructions, tools, model });
+    onSubmit({ name: name.trim(), instructions, tools, model, delegates });
   }
 
   function onKeyDown(e: KeyboardEvent) {
@@ -46,6 +52,11 @@ export function AgentForm({ initial, kinds, brief, models, busy, onCancel, onSub
   }
 
   const toggle = (kind: ToolKind) => setTools((t) => (t.includes(kind) ? t.filter((k) => k !== kind) : [...t, kind]));
+
+  const toggleDelegate = (agentId: string) => setDelegates((d) => {
+    const list = d === "all" ? [] : d;
+    return list.includes(agentId) ? list.filter((a) => a !== agentId) : [...list, agentId];
+  });
 
   return (
     <form onSubmit={submit} onKeyDown={onKeyDown} className="flex flex-col gap-3 rounded-xl border border-line-strong bg-surface-2 p-3">
@@ -97,6 +108,29 @@ export function AgentForm({ initial, kinds, brief, models, busy, onCancel, onSub
             </div>
           );
         })}
+      </fieldset>
+      <fieldset className="flex flex-col gap-1">
+        <legend className="mb-1 text-xs font-medium text-text-3">Hands work to</legend>
+        <div className="flex h-8 items-center gap-2 text-[13px]">
+          <input
+            id={`agent-${id}-delegates-all`} type="checkbox" checked={delegates === "all"} className="size-4 accent-lime"
+            onChange={(e) => setDelegates(e.target.checked ? "all" : [])}
+          />
+          <label htmlFor={`agent-${id}-delegates-all`} className="text-text-2">Any agent</label>
+        </div>
+        {delegates !== "all" && (
+          <div className="flex flex-wrap gap-x-4 gap-y-1 pl-6">
+            {others.map((o) => (
+              <div key={o.agentId} className="flex h-8 min-w-0 items-center gap-2 text-[13px]">
+                <input
+                  id={`agent-${id}-delegates-${o.agentId}`} type="checkbox" checked={delegates.includes(o.agentId)}
+                  onChange={() => toggleDelegate(o.agentId)} className="size-4 shrink-0 accent-lime"
+                />
+                <label htmlFor={`agent-${id}-delegates-${o.agentId}`} className="truncate font-mono text-text-2">@{o.name}</label>
+              </div>
+            ))}
+          </div>
+        )}
       </fieldset>
       <div className="flex flex-col gap-1.5">
         <label htmlFor={`agent-model-${id}`} className="text-xs font-medium text-text-3">Model</label>

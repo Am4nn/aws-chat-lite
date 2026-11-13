@@ -81,6 +81,19 @@ describe("agents routes", () => {
     expect(res.body.agent).toMatchObject({ name: "critic", instructions: "Be blunt.", tools: ["web"], model: "haiku", createdBy: "u1" });
   });
 
+  it("POST and PATCH take a delegate list", async () => {
+    const made = await call("member", "POST /rooms/{roomId}/agents", { name: "critic", tools: ["web"], delegates: ["a1"] });
+    expect(made.body.agent).toMatchObject({ delegates: ["a1"] });
+    const patched = await call("admin", "PATCH /rooms/{roomId}/agents/{agentId}", { delegates: "all" }, { agentId: "a1" });
+    expect(patched.body.agent).toMatchObject({ delegates: "all" });
+  });
+
+  it("POST refuses a bad delegate list, before any write", async () => {
+    const bad = await call("member", "POST /rooms/{roomId}/agents", { name: "critic", tools: ["web"], delegates: "some" });
+    expect(bad.status).toBe(400);
+    expect(transactions(bad.send)).toHaveLength(0);
+  });
+
   it("PATCH by a member who didn't make the agent is a 403", async () => {
     const res = await call("member", "PATCH /rooms/{roomId}/agents/{agentId}", { instructions: "Mine now." }, { agentId: "a1" });
     expect(res).toMatchObject({ status: 403, body: { error: "Only its creator or an admin can change @scout." } });

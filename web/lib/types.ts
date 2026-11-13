@@ -163,11 +163,13 @@ export type AuditEntry = {
 
 // Agents, memory and schedules: mirrors services/src/threads/types.ts.
 export type ToolKind = "sandbox" | "web" | "github" | "mcp" | "images" | "room_read" | "room_post" | "room_agents";
+export type Delegates = "all" | string[];
 export type AgentModel = ModelPick | "room";
 export type Agent = {
   agentId: string; name: string; instructions: string; tools: ToolKind[]; model: AgentModel;
   builtIn: boolean; createdBy: string; createdByName: string; createdAt: string; updatedAt: string;
   madeBy?: { agentId: string; name: string };
+  delegates?: Delegates;
 };
 export type MemoryEntry = {
   memoryId: string; text: string; private: boolean;

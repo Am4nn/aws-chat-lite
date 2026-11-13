@@ -53,6 +53,17 @@ export function canChange(agent: Agent, actor: { userId: string; role: Role }): 
   return can("manageAgents", actor.role) || (!agent.builtIn && agent.createdBy === actor.userId);
 }
 
+const AGENT_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+/** At most every agent a room can hold: the built-in and `MAX_AGENTS` more. */
+export function delegateList(raw: unknown): Delegates {
+  if (raw === "all") return "all";
+  if (!Array.isArray(raw) || raw.length > MAX_AGENTS + 1 || !raw.every((id) => typeof id === "string" && AGENT_ID.test(id))) {
+    throw new ValidationError('Delegates are "all" or a list of agent ids.');
+  }
+  return [...new Set<string>(raw)];
+}
+
 export const delegatesTo = (agent: Pick<Agent, "delegates">, agentId: string): boolean =>
   agent.delegates === undefined || agent.delegates === "all" || agent.delegates.includes(agentId);
 

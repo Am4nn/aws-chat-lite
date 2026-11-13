@@ -11,7 +11,7 @@ function setup(answer?: (call: GitHubCall) => Response | undefined) {
   const { calls, fetch } = recordGitHub(answer);
   const env: ToolEnv = {
     fetch, fetchPage: () => Promise.reject(new Error("no pages")), keys: fakeKeys(), github: conn,
-    mcpCall: () => Promise.reject(new Error("not wired")), room: { roomId: "r1", threadId: "t1", threadNumber: 1, runId: "run1", agentId: "agent", agentName: "agent", kinds: [], delegates: "all", tainted: false, postCap: 10 },
+    mcpCall: () => Promise.reject(new Error("not wired")), room: { roomId: "r1", threadId: "t1", threadNumber: 1, runId: "run1", agentId: "agent", agentName: "agent", tainted: false, postCap: 10 },
   };
   return { calls, env, repoCalls: () => calls.filter((c) => c.path.startsWith("/repos/")).map((c) => `${c.method} ${c.path}`) };
 }

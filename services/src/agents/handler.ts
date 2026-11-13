@@ -8,7 +8,7 @@ import { schedulesRepo } from "../schedules/repo.js";
 import { scheduleTrigger } from "../schedules/scheduler.js";
 import { copyAgent } from "./copy.js";
 import { availableKinds, requireOffered } from "./kinds.js";
-import { agentModel, agentName, instructionsText, toolKinds } from "./model.js";
+import { agentModel, agentName, delegateList, instructionsText, toolKinds } from "./model.js";
 import { agentsRepo } from "./repo.js";
 import { AGENT_BRIEF } from "../runs/prompt.js";
 
@@ -38,7 +38,7 @@ export function makeHandler(trigger: Trigger) {
         case "POST /rooms/{roomId}/agents": {
           const input = {
             name: agentName(body.name), instructions: instructionsText(body.instructions), tools: toolKinds(body.tools),
-            model: agentModel(body.model, stage),
+            model: agentModel(body.model, stage), ...(body.delegates !== undefined && { delegates: delegateList(body.delegates) }),
           };
           await requireMember(roomId, user.userId, { writing: true });
           await requireOffered(roomId, input.tools);
@@ -50,6 +50,7 @@ export function makeHandler(trigger: Trigger) {
             ...(body.instructions !== undefined && { instructions: instructionsText(body.instructions) }),
             ...(body.tools !== undefined && { tools: toolKinds(body.tools) }),
             ...(body.model !== undefined && { model: agentModel(body.model, stage) }),
+            ...(body.delegates !== undefined && { delegates: delegateList(body.delegates) }),
           };
           if (patch.tools) {
             await requireMember(roomId, user.userId, { writing: true });

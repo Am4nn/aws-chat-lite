@@ -26,8 +26,7 @@ vi.mock("../../threads/route.js", async (actual) => ({ ...await actual<object>()
 
 const env = {
   room: {
-    roomId: "R", threadId: "T", threadNumber: 7, runId: "run7", agentId: "a-scout", agentName: "scout", kinds: ["room_post"],
-    delegates: "all", tainted: false, postCap: 10,
+    roomId: "R", threadId: "T", threadNumber: 7, runId: "run7", agentId: "a-scout", agentName: "scout", tainted: false, postCap: 10,
   },
 } as ToolEnv;
 

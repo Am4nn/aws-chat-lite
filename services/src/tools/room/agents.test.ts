@@ -27,13 +27,12 @@ vi.mock("../../connections/repo.js", () => ({ connectionsRepo: () => ({ get: asy
 
 const env = {
   room: {
-    roomId: "R", threadId: "T", threadNumber: 7, runId: "run7", agentId: "S", agentName: "scout", kinds: ["room_agents", "web"],
-    delegates: ["A1"], tainted: false, postCap: 10,
+    roomId: "R", threadId: "T", threadNumber: 7, runId: "run7", agentId: "S", agentName: "scout", tainted: false, postCap: 10,
   },
 } as ToolEnv;
 /** The creating agent as it is stored now, which may differ from the copy its run started with. */
 const scoutNow = (over: Partial<Agent> & { deleted?: boolean } = {}) => {
-  fake.scout = agent("S", "scout", { tools: env.room.kinds, delegates: ["A1"], ...over });
+  fake.scout = agent("S", "scout", { tools: ["room_agents", "web"], delegates: ["A1"], ...over });
 };
 const bea = { userId: "u-bea", username: "bea" };
 const tool = (name: string) => AGENT_TOOLS.find((t) => t.spec.name === name)!;
@@ -82,14 +81,13 @@ describe("agent_create", () => {
     expect(await create.check!({ name: "helper", tools: ["room_agents", "web"] }, env)).toBeNull();
   });
 
-  it("bounds the agent by its creator as it is now, not as its run started", async () => {
-    const started = { ...env, room: { ...env.room, kinds: ["github", "room_agents", "web"], delegates: "all" } } as ToolEnv;
+  it("bounds the agent by its creator as it is stored now", async () => {
     fake.github = { installationId: 1 };
-    expect(await create.check!({ name: "helper", tools: ["github"], delegates: ["writer"] }, started))
+    expect(await create.check!({ name: "helper", tools: ["github"], delegates: ["writer"] }, env))
       .toBe("@scout can't give what it doesn't have: github, @writer. Ask a member to add it by hand.");
-    await create.run({ name: "helper", tools: [] }, started);
+    await create.run({ name: "helper", tools: [] }, env);
     expect(fake.createByAgent.mock.calls[0][1]).toMatchObject({ delegates: ["A1"] });
-    expect(await edit.check!({ agent: "helper", tools: ["github"] }, started))
+    expect(await edit.check!({ agent: "helper", tools: ["github"] }, env))
       .toBe("@scout can't give what it doesn't have: github. Ask a member to add it by hand.");
   });
 

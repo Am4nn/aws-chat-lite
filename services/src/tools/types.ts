@@ -1,6 +1,6 @@
 import type { User } from "../lib/auth.js";
 import type { ToolSpec } from "../models/gateway.js";
-import type { Delegates, GitHubConnection, Source, ToolKind } from "../threads/types.js";
+import type { GitHubConnection, Source, ToolKind } from "../threads/types.js";
 
 export type ToolKeys = {
   tavilyKey?: string; githubAppId?: string; githubAppSlug?: string; githubPrivateKey?: string; githubClientId?: string; githubClientSecret?: string;
@@ -19,7 +19,7 @@ export type ToolEnv = {
    */
   room: {
     roomId: string; threadId: string; threadNumber: number; runId: string; agentId: string; agentName: string;
-    kinds: ToolKind[]; delegates: Delegates; tainted: boolean; postCap: number;
+    tainted: boolean; postCap: number;
   };
   /** The member who approved the call; absent when it ran without asking. */
   approver?: User;

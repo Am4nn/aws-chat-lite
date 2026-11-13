@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Agent, Delegates, ToolKind } from "../threads/types.js";
 import {
-  BUILT_IN, agentModel, agentName, agentOrDefault, canAgentEdit, canChange, delegatesTo, grantRefusal, instructionsText, mapKinds,
+  BUILT_IN, agentModel, agentName, agentOrDefault, canAgentEdit, canChange, delegateList, delegatesTo, grantRefusal, instructionsText, mapKinds,
   mentionedAgents, toolKinds,
 } from "./model.js";
 
@@ -126,4 +126,13 @@ describe("agentOrDefault", () => {
   it("hands back a live agent without the flag", () => {
     expect(agentOrDefault({ ...agent("scout"), deleted: false })).toEqual(agent("scout"));
   });
+});
+
+it("takes all or a list of agent ids for delegates", () => {
+  expect(delegateList("all")).toBe("all");
+  expect(delegateList(["a1", "a1", "b2"])).toEqual(["a1", "b2"]);
+  expect(delegateList([])).toEqual([]);
+  expect(() => delegateList("some")).toThrow('Delegates are "all" or a list of agent ids.');
+  expect(() => delegateList(["bad id"])).toThrow('Delegates are "all" or a list of agent ids.');
+  expect(() => delegateList(Array.from({ length: 22 }, (_, i) => `a${i}`))).toThrow('Delegates are "all" or a list of agent ids.');
 });
