@@ -1,6 +1,6 @@
 /**
  * Room files between real browsers: an upload and its replacement, a file an agent's sandbox step saves, a delete,
- * the sandbox internet switch, the Files tab at phone width, and the slide-in of a fresh row.
+ * the Code internet switch, the Files tab at phone width, and the slide-in of a fresh row.
  */
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -110,18 +110,18 @@ export async function fileChecks(stamp: number, owner: Person, guest: Person) {
 
   // The internet switch: a member sees the setting, only an owner or admin moves it.
   const internetText = (page: Page, value: string) =>
-    until(page, (v) => !document.querySelector('[role=switch][aria-label="Sandbox internet"]')
+    until(page, (v) => !document.querySelector('[role=switch][aria-label="Code internet"]')
       && [...document.querySelectorAll('aside[aria-label="Room panel"] span.font-mono')].some((s) => s.textContent === v), value);
   const offForB = await internetText(B, "off");
   const flip = async (on: boolean) => {
-    await A.click('[role=switch][aria-label="Sandbox internet"]');
-    return until(A, (v) => document.querySelector('[role=switch][aria-label="Sandbox internet"]')?.getAttribute("aria-checked") === v, String(on));
+    await A.click('[role=switch][aria-label="Code internet"]');
+    return until(A, (v) => document.querySelector('[role=switch][aria-label="Code internet"]')?.getAttribute("aria-checked") === v, String(on));
   };
   const turnedOn = (await flip(true)) && await internetText(B, "on");
   const turnedOff = (await flip(false)) && await internetText(B, "off");
   const stored = (await bff(A, `/bff/api/rooms/${roomId}`)).body.sandboxInternet;
   check(offForB && turnedOn && turnedOff && stored === false,
-    `B sees the sandbox internet "off" with no switch; A turns it on (B sees "on") and off again (stored ${stored})`);
+    `B sees Code internet "off" with no switch; A turns it on (B sees "on") and off again (stored ${stored})`);
 
   // Phone width: the Files tab in the overlay, and its confirm, fit the screen.
   const P = await B.browserContext().newPage();

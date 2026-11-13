@@ -21,7 +21,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { Switch } from "@/components/ui/Switch";
 import type { RoomFiles } from "./useRoomFiles";
 
-const INTERNET_HINT = "Off: code can't reach the internet. On: pip install and git clone work. Applies to new runs.";
+const INTERNET_HINT = "Off: code can't reach the internet. On: pip install and git clone work. Web search and fetch are separate agent tools. Applies to new runs.";
 const AGE_TICK_MS = 60_000;
 
 type Ask = { kind: "replace"; file: File } | { kind: "delete"; path: string };
@@ -182,10 +182,10 @@ function InternetRow({ roomId, internet, canSwitch }: { roomId: string; internet
 
   return (
     <div className="relative flex h-8 items-center gap-1 text-xs text-text-2">
-      Sandbox internet
+      Code internet
       <Hint text={INTERNET_HINT} below />
       {canSwitch
-        ? <Switch on={on} label="Sandbox internet" onToggle={toggle} className="ml-auto" />
+        ? <Switch on={on} label="Code internet" onToggle={toggle} className="ml-auto" />
         : <span className="ml-auto font-mono text-text-3">{on ? "on" : "off"}</span>}
     </div>
   );
