@@ -17,7 +17,7 @@ import { dur, instant } from "@/lib/motion";
 import type { Me, Member, Message, Reaction, Role } from "@/lib/types";
 import { useToast } from "@/components/overlays/Toast";
 import { ArchivedNotice } from "./ArchivedNotice";
-import { Composer, type ComposerMode } from "./Composer";
+import { Composer, type ComposerHandle, type ComposerMode } from "./Composer";
 import { MessageList } from "./MessageList";
 import { ModelPill } from "./ModelPill";
 import type { Row, RowActions, RowContext } from "./MessageRow";
@@ -53,11 +53,14 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
   const { queue, retry, discard } = useOutbox({ roomId, chatId, chat, toBottom: scrollToBottom });
   const [mode, setMode] = useState<ComposerMode>(null);
   const [pick, setPick] = useModelPick(chatId);
+  const composer = useRef<ComposerHandle>(null);
+  // Read through a ref, so the row actions keep their identity (and the memoised rows stay put) as runs tick.
   const { byId } = useThreads();
+  const threadsNow = useRef(byId);
+  useEffect(() => { threadsNow.current = byId; }, [byId]);
   const agents = useContext(RoomAgentsContext);
   const [dragging, setDragging] = useState(false);
   const visible = useSyncExternalStore(subscribeVisibility, () => document.visibilityState === "visible", () => true);
-
 
   // `?m=<seq>` (a search result) jumps to that message. It is dropped from the address afterwards, so clicking the
   // same result again is a real change that jumps again, and a reload opens at the newest messages.
@@ -86,7 +89,7 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
     if (hasNewer) void showLatest();
     const quoted = mode?.kind === "reply" ? mode.message : undefined;
     queue({
-      text, attachments: uploads.take(), threadId: mode?.kind === "thread" ? mode.threadId : undefined, model: pick,
+      text, attachments: uploads.take(), model: pick,
       replyTo: quoted && { seq: quoted.seq, authorName: quoted.authorName, excerpt: excerpt(quoted.text) },
     });
   }
@@ -115,7 +118,10 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
       }
     },
     reply: (m: Message) => setMode({ kind: "reply", message: m }),
-    replyInThread: (threadId: string) => setMode({ kind: "thread", threadId }),
+    replyInThread(threadId: string) {
+      const thread = threadsNow.current(threadId);
+      if (thread) composer.current?.insertTag(`#${thread.name}`);
+    },
     edit: (m: Message) => setMode({ kind: "edit", message: m }),
     async remove(m: Message) {
       setTimeline((t) => markDeleted(t, m.seq, m.authorId === me.userId ? "self" : "admin"));
@@ -176,15 +182,10 @@ export function ChatView({ roomId, chatId, chatName, roomName, me, role, members
         ? <ArchivedNotice chat={!archived} />
         : (
           <Composer
-            members={members} agents={agents} meId={me.userId} mode={mode} uploads={uploads} onModeChange={setMode}
+            ref={composer} members={members} agents={agents} meId={me.userId} mode={mode} uploads={uploads} onModeChange={setMode}
             onSend={send} onSaveEdit={saveEdit}
-            // A people chat can start a run too, with @agent or by sending into a thread; files make what it sees private.
-            pill={(
-              <ModelPill
-                value={pick} onChange={setPick}
-                taint={[...(mode?.kind === "thread" ? byId(mode.threadId)?.taint ?? [] : []), ...(uploads.uploads.length ? ["attachment" as const] : [])]}
-              />
-            )}
+            // A people chat can start a run too, with @agent or a #thread tag; files make what it sees private.
+            pill={<ModelPill value={pick} onChange={setPick} taint={uploads.uploads.length ? ["attachment"] : []} />}
             onEditLast={() => {
               const m = canEditLast(timeline.messages, me.userId, Date.now());
               if (m) setMode({ kind: "edit", message: m });

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ChevronRight, Reply } from "lucide-react";
 import { agentLabel, RoomAgentsContext } from "@/lib/client/agents";
-import { runLabel, runMeta, stateText } from "@/lib/client/threads";
+import { runLabel, runMeta } from "@/lib/client/threads";
 import { useThreads } from "@/lib/client/ThreadsProvider";
 import { useNow } from "@/lib/client/useNow";
 import { dur, easeOut, instant } from "@/lib/motion";
@@ -51,65 +51,48 @@ export function ThreadRef({ threadRef, roomId, readOnly, onReply }: Props) {
   );
 }
 
+/**
+ * The thread's state, not its answer, which goes stale as the thread goes on; Open shows that. Reply tags the thread
+ * in this chat's composer, the way a message here reaches it.
+ */
 function ThreadCard({ thread: t, href, readOnly, onReply }: { thread: ThreadSummary; href: string; readOnly: boolean; onReply: () => void }) {
-  const reduced = useReducedMotion();
   const running = t.status === "running";
   const now = useNow(running);
-  const kind = running || t.status === "waiting" || t.status === "done" ? t.status : "ended";
   const agent = agentLabel(t.agentId, useContext(RoomAgentsContext));
 
   return (
-    <div className="flex max-w-[480px] flex-col gap-1 rounded-[14px] border border-line-strong bg-surface-1 py-2.5 pl-3.5 pr-2">
-      <div className="flex min-w-0 items-center gap-2.5">
-        <ThreadStatusIcon status={t.status} />
-        <span className="min-w-0 truncate text-[13.5px] font-medium">
-          <span className="font-mono text-[12.5px] font-normal text-text-3">#{t.number}</span> {t.name}{" "}
-          <span className="font-mono text-[12px] font-normal text-text-3">{agent}</span>
-          {t.status !== "idle" && <span className="sr-only">, {stateText(t.status)}</span>}
-        </span>
-        <span className="ml-auto flex shrink-0 items-center">
-          {!readOnly && (
-            <button
-              onClick={onReply}
-              className="flex h-7 items-center gap-1.5 rounded-lg px-2 text-[12.5px] text-text-2 transition-[background-color,color,scale] hover:bg-surface-3 hover:text-text active:scale-[0.96]"
-            >
-              <Reply aria-hidden="true" size={13} />
-              Reply
-            </button>
+    <div className="flex max-w-[480px] items-center gap-2.5 rounded-[14px] border border-line-strong bg-surface-1 py-2 pl-3.5 pr-2">
+      <ThreadStatusIcon status={t.status} />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[13.5px]">
+          <span className="font-mono font-medium">#{t.name}</span>{" "}
+          <span className="font-mono text-[12px] text-text-3">{agent}</span>
+        </p>
+        <p className="flex min-w-0 items-baseline gap-2 text-[12.5px]">
+          <span className={`shrink-0 ${t.status === "waiting" ? "text-amber" : "text-text-2"}`}>{running ? "Running" : runLabel(t) || "Starting…"}</span>
+          {t.status !== "idle" && (
+            <span suppressHydrationWarning className={`truncate font-mono text-[11.5px] tabular-nums ${running ? "text-lime" : "text-text-3"}`}>
+              {runMeta(t, now)}
+            </span>
           )}
-          <Link
-            href={href}
-            className="flex h-7 items-center gap-0.5 rounded-lg pl-2 pr-1.5 text-[12.5px] font-medium text-text transition-[background-color,scale] hover:bg-surface-3 active:scale-[0.96]"
-          >
-            Open
-            <ChevronRight aria-hidden="true" size={13} className="text-text-3" />
-          </Link>
-        </span>
+        </p>
       </div>
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.p
-          key={kind}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={reduced ? instant : { duration: dur.fast }}
-          className="flex min-w-0 items-baseline gap-2 pl-[24px] text-[12.5px]"
+      {!readOnly && (
+        <button
+          onClick={onReply}
+          className="flex h-7 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[12.5px] text-text-2 transition-[background-color,color,scale] hover:bg-surface-3 hover:text-text active:scale-[0.96]"
         >
-          {running && (
-            <>
-              <span className="min-w-0 truncate font-mono shimmer">{runLabel(t)}</span>
-              <span suppressHydrationWarning className="shrink-0 font-mono text-[11.5px] tabular-nums text-lime">{runMeta(t, now)}</span>
-            </>
-          )}
-          {t.status === "waiting" && (
-            <>
-              <span className="shrink-0 font-medium text-amber">needs approval</span>
-              <span className="min-w-0 truncate text-text-2">{t.approval?.title}</span>
-            </>
-          )}
-          {!running && t.status !== "waiting" && <span className="min-w-0 truncate text-text-2">{t.summary || runLabel(t) || "Starting…"}</span>}
-        </motion.p>
-      </AnimatePresence>
+          <Reply aria-hidden="true" size={13} />
+          Reply
+        </button>
+      )}
+      <Link
+        href={href}
+        className="flex h-7 shrink-0 items-center gap-0.5 rounded-lg pl-2 pr-1.5 text-[12.5px] font-medium text-text transition-[background-color,scale] hover:bg-surface-3 active:scale-[0.96]"
+      >
+        Open
+        <ChevronRight aria-hidden="true" size={13} className="text-text-3" />
+      </Link>
     </div>
   );
 }

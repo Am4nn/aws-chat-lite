@@ -115,9 +115,29 @@ export function NewThreadSkeleton() {
   );
 }
 
+/** The title, then rows shaped like an app's: a line of text and its Remove button. */
+export function AppsSkeleton() {
+  return (
+    <Loading label="connected apps">
+      <div className="mx-auto w-full max-w-[640px] px-4 pt-8 sm:px-7">
+        <Bar className="h-7 w-44" />
+        <div className="mt-4 flex flex-col divide-y divide-line">
+          {[0, 1].map((i) => (
+            <div key={i} className="flex items-center gap-3 py-3">
+              <Bar className="h-3.5 flex-1" />
+              <Bar className="h-9 w-[84px] shrink-0 rounded-[10px]" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </Loading>
+  );
+}
+
 export const ROUTE_SKELETONS: Record<SkeletonKind, () => ReactNode> = {
   chat: ChatSkeleton,
   thread: ThreadSkeleton,
   map: MapSkeleton,
   "new-thread": NewThreadSkeleton,
+  apps: AppsSkeleton,
 };

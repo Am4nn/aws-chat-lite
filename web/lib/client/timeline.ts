@@ -5,8 +5,6 @@ export type PendingMessage = {
   text: string;
   createdAt: string;
   replyTo?: Message["replyTo"];
-  /** Sent from a chat into this agent thread. */
-  threadId?: string;
   /** The model the agent should answer with, if this message starts a run. */
   model?: ModelPick;
   attachments: Message["attachments"];

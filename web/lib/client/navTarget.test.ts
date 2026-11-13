@@ -52,16 +52,17 @@ describe("clickTarget", () => {
 });
 
 describe("placeOf", () => {
-  it("reads a chat, a thread, a thread's Map, a new thread and a bare room", () => {
-    expect(placeOf("/r/r1/c/c2?m=40")).toEqual({ roomId: "r1", chatId: "c2", map: false, newThread: false });
-    expect(placeOf("/r/r1/t/4")).toEqual({ roomId: "r1", threadNumber: 4, map: false, newThread: false });
-    expect(placeOf("/r/r1/t/4?view=map&run=x")).toEqual({ roomId: "r1", threadNumber: 4, map: true, newThread: false });
-    expect(placeOf("/r/r1/t/new")).toEqual({ roomId: "r1", map: false, newThread: true });
-    expect(placeOf("/r/r2")).toEqual({ roomId: "r2", map: false, newThread: false });
+  it("reads a chat, a thread, a thread's Map, a new thread, Connected apps and a bare room", () => {
+    expect(placeOf("/r/r1/c/c2?m=40")).toEqual({ roomId: "r1", chatId: "c2", map: false, newThread: false, apps: false });
+    expect(placeOf("/r/r1/t/4")).toEqual({ roomId: "r1", threadNumber: 4, map: false, newThread: false, apps: false });
+    expect(placeOf("/r/r1/t/4?view=map&run=x")).toEqual({ roomId: "r1", threadNumber: 4, map: true, newThread: false, apps: false });
+    expect(placeOf("/r/r1/t/new")).toEqual({ roomId: "r1", map: false, newThread: true, apps: false });
+    expect(placeOf("/r/r1/apps")).toEqual({ roomId: "r1", map: false, newThread: false, apps: true });
+    expect(placeOf("/r/r2")).toEqual({ roomId: "r2", map: false, newThread: false, apps: false });
   });
 
   it("is null outside the rooms", () => {
-    expect(placeOf("/apps")).toBeNull();
+    expect(placeOf("/consent")).toBeNull();
     expect(placeOf("/")).toBeNull();
   });
 });
@@ -73,9 +74,10 @@ describe("skeletonKind", () => {
     expect(skeletonKind("/r/r1/t/4")).toBe("thread");
     expect(skeletonKind("/r/r1/t/4?view=map")).toBe("map");
     expect(skeletonKind("/r/r1/t/new")).toBe("new-thread");
+    expect(skeletonKind("/r/r1/apps")).toBe("apps");
   });
 
   it("has none for pages outside the rooms", () => {
-    expect(skeletonKind("/apps")).toBeNull();
+    expect(skeletonKind("/consent")).toBeNull();
   });
 });

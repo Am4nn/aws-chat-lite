@@ -6,7 +6,7 @@ const config: NextConfig = {
   agentRules: false,
   async headers() {
     // Inside another site's frame, a page laid over the app could trick a signed-in user into clicking Allow on
-    // /consent or Remove on /apps (clickjacking). Every page gets the headers, because a framed /consent sends a
+    // /consent or Remove in Connected apps (clickjacking). Every page gets the headers, because a framed /consent sends a
     // signed-out visitor on to /login, and the app never frames itself. X-Frame-Options covers older browsers that
     // ignore frame-ancestors.
     return [{

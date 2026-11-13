@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  canEdit, deleteMode, excerpt, forReaders, messageText, seqKey, seqNumber, validAttachment, versionKey, type StoredMessage,
+  canEdit, deleteMode, excerpt, forReaders, messageText, seqKey, seqNumber, threadRefOf, validAttachment, versionKey,
+  type StoredMessage,
 } from "./model.js";
 import { ValidationError } from "../lib/errors.js";
 
@@ -85,4 +86,18 @@ describe("forReaders", () => {
     expect(out).not.toHaveProperty("textLower");
   });
   it("keeps the text otherwise", () => expect(forReaders(stored).text).toBe("secret"));
+});
+
+describe("threadRefOf", () => {
+  it("reads a delivery saved before a message could go to several threads as a one-thread list", () => {
+    expect(threadRefOf({ kind: "delivered", threadId: "t1", seq: 4 })).toEqual({ kind: "delivered", threads: [{ threadId: "t1", seq: 4 }] });
+  });
+
+  it("passes today's shapes and a missing ref through", () => {
+    const delivered = { kind: "delivered", threads: [{ threadId: "t1", seq: 4 }, { threadId: "t2", seq: 9 }] } as const;
+    expect(threadRefOf(delivered)).toBe(delivered);
+    const started = { kind: "started", threadId: "t3", seq: 1 } as const;
+    expect(threadRefOf(started)).toBe(started);
+    expect(threadRefOf(undefined)).toBeUndefined();
+  });
 });

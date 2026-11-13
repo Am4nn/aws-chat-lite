@@ -10,7 +10,7 @@ import { requireMember, roomMembers } from "../rooms/membership.js";
 import { notified, parseMentions } from "./mentions.js";
 import {
   CHANGES_PER_MIN, EDIT_WINDOW_SEC, LAST_SEQ, MAX_ATTACHMENTS, PAGE, RATE_PER_MIN, canEdit, deleteMode, excerpt, forReaders, messageText,
-  seqKey, validAttachment, versionKey, type Attachment, type Message, type Reaction, type StoredMessage,
+  seqKey, threadRefOf, validAttachment, versionKey, type Attachment, type Message, type Reaction, type StoredMessage,
 } from "./model.js";
 
 /** Where a message lives: every chat belongs to exactly one room. */
@@ -90,7 +90,7 @@ export function chatRepo() {
   async function storedMessage(at: ChatRef, seq: number): Promise<StoredMessage> {
     const { Item } = await db.send(new GetCommand({ TableName, Key: messageKey(at.chatId, seq), ConsistentRead: true }));
     if (!Item || Item.roomId !== at.roomId) throw new NotFound("Message not found.");
-    return Item as StoredMessage;
+    return { ...Item, threadRef: threadRefOf(Item.threadRef) } as StoredMessage;
   }
 
   /** Your own message counts as read. The condition stops a slower, older send from moving the marker back. */

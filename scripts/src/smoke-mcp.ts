@@ -329,26 +329,33 @@ export async function mcpChecks(stamp: number, owner: Person, guest: Person) {
       `signed out, authorize goes to /login?next=${nextPath} and back to it after sign-in; Cancel returns error=access_denied to the client`);
 
     // The frame headers, on /login too (a framed /consent sends a signed-out visitor there), and a real iframe refused.
-    const headers = await A.evaluate(async () => Promise.all(["/consent", "/apps", "/login"].map(async (path) => {
+    const appsPath = `/r/${roomId}/apps`;
+    const headers = await A.evaluate(async (apps) => Promise.all(["/consent", apps, "/login"].map(async (path) => {
       const res = await fetch(path, { redirect: "manual" });
       return `${res.headers.get("content-security-policy")} | ${res.headers.get("x-frame-options")}`;
-    })));
+    })), appsPath);
     const framer = await A.browserContext().newPage();
     const refusals: string[] = [];
     framer.on("console", (m) => { if (/frame-ancestors/.test(m.text())) refusals.push(m.text()); });
-    await framer.setContent(`<iframe src="${WEB}/apps"></iframe>`, { waitUntil: "load" });
+    await framer.setContent(`<iframe src="${WEB}${appsPath}"></iframe>`, { waitUntil: "load" });
     await framer.close();
     check(headers.every((h) => h === "frame-ancestors 'none' | DENY") && refusals.length > 0,
-      `/consent, /apps and /login send frame-ancestors 'none' and X-Frame-Options DENY, and Chrome refuses to frame /apps (${refusals.length} refusal)`);
+      `/consent, Connected apps and /login send frame-ancestors 'none' and X-Frame-Options DENY, and Chrome refuses to frame Connected apps (${refusals.length} refusal)`);
 
-    // Connected apps: listed, fits a phone, and Remove (row gone at once under reduced motion) shuts the client out.
+    // Connected apps: opened from the sidebar inside the room (the sidebar stays), listed with the command that adds
+    // chat-lite, fits a phone, and Remove (row gone at once under reduced motion) shuts the client out.
     await A.goto(`${WEB}/r/${roomId}`, { waitUntil: "domcontentloaded" });
     const linked = !!(await A.waitForSelector('a[aria-label="Connected apps"]', { timeout: 15_000 }).catch(() => null));
-    await A.goto(`${WEB}/apps`, { waitUntil: "networkidle0" });
-    const listed = await A.evaluate(() => document.querySelector("main")!.innerText.includes("smoke-client"));
+    await A.click('a[aria-label="Connected apps"]');
+    const inShell = await until(A, (path) => location.pathname === path && !!document.querySelector('nav[aria-label="Room"]')
+      && document.querySelector("main h1")?.textContent === "Connected apps", appsPath, 15_000);
+    const listed = await until(A, () => {
+      const text = document.querySelector("main")!.innerText;
+      return text.includes("smoke-client") && text.includes(`claude mcp add --transport http chat-lite ${location.origin}/mcp`);
+    });
     const appsPhone = await A.browserContext().newPage();
     await appsPhone.setViewport(PHONE);
-    await appsPhone.goto(`${WEB}/apps`, { waitUntil: "networkidle0" });
+    await appsPhone.goto(`${WEB}${appsPath}`, { waitUntil: "networkidle0" });
     const appsFit = await noSideScroll(appsPhone);
     await appsPhone.close();
     await A.click('button[aria-label="Remove smoke-client"]');
@@ -365,8 +372,8 @@ export async function mcpChecks(stamp: number, owner: Person, guest: Person) {
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
     });
     await client.close();
-    check(linked && listed && appsFit && asked && rowFade === 0 && gone && raw.status === 401 && after !== "answered",
-      `the sidebar links Connected apps, which lists smoke-client and fits 390×844; Remove asks, the row goes at once under reduced motion, "No apps have access." shows, and the app's token now gets ${raw.status} (SDK: ${after})`);
+    check(linked && inShell && listed && appsFit && asked && rowFade === 0 && gone && raw.status === 401 && after !== "answered",
+      `the sidebar opens Connected apps inside the room with the sidebar kept, which lists smoke-client and the "claude mcp add" command and fits 390×844; Remove asks, the row goes at once under reduced motion, "No apps have access." shows, and the app's token now gets ${raw.status} (SDK: ${after})`);
   } finally {
     redirect.close();
   }

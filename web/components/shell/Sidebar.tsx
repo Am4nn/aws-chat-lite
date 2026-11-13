@@ -98,7 +98,7 @@ export function Sidebar({
         <div className="flex items-center gap-2.5 px-1.5">
           <Avatar name={me.username} />
           <span className="truncate text-[13px]">{me.username}</span>
-          <Link href="/apps" aria-label="Connected apps" className="ml-auto grid size-8 shrink-0 place-items-center rounded-lg text-text-3 transition-[background-color,color,scale] hover:bg-surface-3 hover:text-text active:scale-90">
+          <Link href={`/r/${roomId}/apps`} aria-label="Connected apps" className="ml-auto grid size-8 shrink-0 place-items-center rounded-lg text-text-3 transition-[background-color,color,scale] hover:bg-surface-3 hover:text-text active:scale-90">
             <AppWindow aria-hidden="true" size={15} />
           </Link>
           <button onClick={onSignOut} aria-label="Sign out" className="grid shrink-0 size-8 place-items-center rounded-lg text-text-3 transition-[background-color,color,scale] hover:bg-surface-3 hover:text-text active:scale-90">

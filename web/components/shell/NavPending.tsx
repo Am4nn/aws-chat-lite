@@ -26,7 +26,7 @@ function useNav() {
 export const useNavPending = () => useNav().pending;
 
 /**
- * The room page being shown or, while a tap is in flight, the one it is heading to. A tap out of the rooms (to /apps)
+ * The room page being shown or, while a tap is in flight, the one it is heading to. A tap out of the rooms (to /consent)
  * leaves the room's highlight and header where they are until that page arrives.
  */
 export function useCurrentPlace() {
