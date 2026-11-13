@@ -5,7 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { CircleAlert, CornerUpLeft, Pencil, Reply, SmilePlus, Trash2 } from "lucide-react";
 import { clockTime } from "@/lib/client/format";
 import type { Mentionable } from "@/lib/client/mentions";
-import { canDelete, canEdit, REACTION_NAMES, reactionLabel } from "@/lib/client/messageRules";
+import { canDelete, canEdit, mentionsMe, REACTION_NAMES, reactionLabel } from "@/lib/client/messageRules";
 import { useClickOutside } from "@/lib/client/useClickOutside";
 import { useNow } from "@/lib/client/useNow";
 import { dur, easeOut, instant, spring } from "@/lib/motion";
@@ -35,19 +35,27 @@ export type RowActions = {
   discard: (clientId: string) => void;
 };
 
+/** `joinsAbove`/`joinsBelow`: the next row up or down is in my group and also mentions me, so the highlight runs on. */
 type Props = {
   rowKey: string; message: Message; status: Row["status"]; ctx: RowContext; actions: RowActions;
-  groupStart: boolean; enter: boolean; flash?: number; editing: boolean; active: boolean; onActivate: (key: string) => void;
+  groupStart: boolean; joinsAbove: boolean; joinsBelow: boolean; enter: boolean; flash?: number; editing: boolean; active: boolean;
+  onActivate: (key: string) => void;
 };
+
+/** One radius class per case: Tailwind orders radius classes by value, not by source order, so two would fight. */
+const radius = (above: boolean, below: boolean) =>
+  above && below ? "" : above ? "rounded-b-[10px]" : below ? "rounded-t-[10px]" : "rounded-[10px]";
 
 /**
  * Memoised on plain props (the message object keeps its identity until it changes), so a busy chat re-renders, and
  * re-parses the markdown of, only the rows that changed.
  */
-export const MessageRow = memo(function MessageRow({ rowKey, message: m, status, ctx, actions, groupStart, enter, flash, editing, active, onActivate }: Props) {
+export const MessageRow = memo(function MessageRow({
+  rowKey, message: m, status, ctx, actions, groupStart, joinsAbove, joinsBelow, enter, flash, editing, active, onActivate,
+}: Props) {
   const reduced = useReducedMotion();
   const time = clockTime(m.createdAt, ctx.timeZone);
-  const mentionsMe = m.authorId !== ctx.meId && (m.everyone || m.mentions.includes(ctx.meId));
+  const forMe = mentionsMe(m, ctx.meId);
   const settled = !status;
 
   return (
@@ -59,8 +67,8 @@ export const MessageRow = memo(function MessageRow({ rowKey, message: m, status,
       animate={{ opacity: status === "pending" ? 0.6 : 1, y: 0 }}
       transition={reduced ? instant : { duration: 0.2, ease: easeOut }}
       onPointerUp={(e) => e.pointerType === "touch" && onActivate(rowKey)}
-      className={`group relative rounded-[10px] px-3 transition-colors ${groupStart ? "mt-3 pb-px pt-1" : "py-px"} ${
-        editing ? "bg-surface-2" : mentionsMe ? "bg-amber-wash" : "hover:bg-surface-2"
+      className={`group relative ${radius(joinsAbove, joinsBelow)} px-3 transition-colors ${groupStart ? "mt-3 pb-px pt-1" : "py-px"} ${
+        editing ? "bg-surface-2" : forMe ? "bg-amber-wash" : "hover:bg-surface-2"
       }`}
     >
       {flash !== undefined && (
@@ -84,7 +92,7 @@ export const MessageRow = memo(function MessageRow({ rowKey, message: m, status,
             <div className="flex items-baseline gap-2">
               <span className="text-[13.5px] font-semibold">{m.authorName}</span>
               <time dateTime={m.createdAt} className="font-mono text-[11px] text-text-3">{time}</time>
-              {mentionsMe && <span aria-label="Mentions you" title="Mentions you" className="font-mono text-[11px] font-semibold text-amber">@</span>}
+              {forMe && <span aria-label="Mentions you" title="Mentions you" className="font-mono text-[11px] font-semibold text-amber">@</span>}
             </div>
           )}
           {m.replyTo && !m.deleted && (

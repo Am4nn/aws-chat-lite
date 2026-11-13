@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "../types";
-import { canDelete, canEdit, canEditLast, reactionLabel, startsGroup, withReaction } from "./messageRules";
+import { canDelete, canEdit, canEditLast, mentionsMe, reactionLabel, startsGroup, withReaction } from "./messageRules";
 
 const NOW = Date.parse("2026-11-11T12:00:00Z");
 const ago = (min: number) => new Date(NOW - min * 60_000).toISOString();
@@ -47,6 +47,15 @@ describe("startsGroup", () => {
     expect(startsGroup(msg(1, { createdAt: ago(3) }), msg(2, { createdAt: ago(1) }))).toBe(false);
     expect(startsGroup(msg(1, { createdAt: ago(9) }), msg(2, { createdAt: ago(1) }))).toBe(true);
     expect(startsGroup(msg(1, { authorId: "bob" }), msg(2))).toBe(true);
+  });
+});
+
+describe("mentionsMe", () => {
+  it("is someone else's message naming me or everyone, unless it was deleted", () => {
+    expect(mentionsMe(msg(1, { authorId: "bob", mentions: ["me"] }), "me")).toBe(true);
+    expect(mentionsMe(msg(1, { authorId: "bob", everyone: true }), "me")).toBe(true);
+    expect(mentionsMe(msg(1, { mentions: ["me"] }), "me")).toBe(false);
+    expect(mentionsMe(msg(1, { authorId: "bob", mentions: ["me"], deleted: "admin" }), "me")).toBe(false);
   });
 });
 

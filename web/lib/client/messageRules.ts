@@ -11,6 +11,9 @@ export const canEdit = (m: Message, me: string, now: number) => !m.deleted && m.
 export const canDelete = (m: Message, me: string, role: Role, now: number) =>
   !m.deleted && ((m.authorId === me && withinWindow(m, now)) || isAdmin(role));
 
+/** A deleted message keeps its mentions on the server but no longer says anything to me. */
+export const mentionsMe = (m: Message, me: string) => !m.deleted && m.authorId !== me && (m.everyone || m.mentions.includes(me));
+
 /** Up-arrow edits my newest message; when that one is too old, so is everything before it. */
 export function canEditLast(messages: Message[], me: string, now: number): Message | undefined {
   const last = messages.findLast((m) => m.authorId === me && !m.deleted);

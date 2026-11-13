@@ -3,7 +3,7 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useReducedMotion } from "motion/react";
 import { dayKey, dayLabel } from "@/lib/client/format";
-import { startsGroup } from "@/lib/client/messageRules";
+import { mentionsMe, startsGroup } from "@/lib/client/messageRules";
 import { pickAnchor } from "@/lib/client/scrollAnchor";
 import { useNow } from "@/lib/client/useNow";
 import { Spinner } from "@/components/ui/Spinner";
@@ -103,6 +103,10 @@ export function MessageList(p: Props) {
     if (fromBottom < PREFETCH_PX && p.hasNewer) p.onLoadNewer();
   }
 
+  const newDay = p.rows.map((row, i) => i === 0 || dayKey(p.rows[i - 1].message.createdAt, p.ctx.timeZone) !== dayKey(row.message.createdAt, p.ctx.timeZone));
+  const groupStart = p.rows.map((row, i) => newDay[i] || startsGroup(p.rows[i - 1]?.message, row.message));
+  const forMe = p.rows.map((row) => mentionsMe(row.message, p.ctx.meId));
+
   return (
     <div className="relative min-h-0 flex-1">
       <div ref={scroller} onScroll={onScroll} className="flex h-full flex-col-reverse overflow-y-auto [overflow-anchor:none]">
@@ -121,19 +125,19 @@ export function MessageList(p: Props) {
               </div>
             )}
           {p.rows.map((row, i) => {
-            const prev = p.rows[i - 1]?.message;
             const m = row.message;
-            const newDay = !prev || dayKey(prev.createdAt, p.ctx.timeZone) !== dayKey(m.createdAt, p.ctx.timeZone);
             return (
               <Fragment key={row.key}>
-                {newDay && <DayDivider label={dayLabel(m.createdAt, now, p.ctx.timeZone)} />}
+                {newDay[i] && <DayDivider label={dayLabel(m.createdAt, now, p.ctx.timeZone)} />}
                 <MessageRow
                   rowKey={row.key}
                   message={m}
                   status={row.status}
                   ctx={p.ctx}
                   actions={p.actions}
-                  groupStart={newDay || startsGroup(prev, m)}
+                  groupStart={groupStart[i]}
+                  joinsAbove={forMe[i] && !groupStart[i] && forMe[i - 1]}
+                  joinsBelow={forMe[i] && forMe[i + 1] === true && !groupStart[i + 1]}
                   enter={p.fresh.has(row.key)}
                   flash={flash && !row.status && flash.seq === m.seq ? flash.n : undefined}
                   editing={row.key === p.editingKey}
