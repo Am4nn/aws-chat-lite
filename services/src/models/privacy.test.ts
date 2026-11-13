@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { mcpTaint, mergeTaint, messageTaint, PICK_REFUSED, pickRefusal, RUN_REFUSED, runRefusal } from "./privacy.js";
+import { modelIdOf } from "./picks.js";
+import { isPrivate, mcpTaint, mergeTaint, messageTaint, PICK_REFUSED, pickRefusal, privateOf, RUN_REFUSED, runRefusal } from "./privacy.js";
 
 describe("taint", () => {
   it("marks a message with an attachment", () => expect(messageTaint({ attachments: [{}] })).toEqual(["attachment"]));
@@ -46,5 +47,15 @@ describe("copy", () => {
     expect(RUN_REFUSED).toBe(
       "This thread now has private content (attachments, GitHub data, MCP tool output, sandbox files), so DeepSeek stopped. Send again with another model.",
     );
+  });
+});
+
+describe("room taint", () => {
+  it("doesn't count room chat as private: DeepSeek stays on", () => {
+    expect(isPrivate(["room"])).toBe(false);
+    expect(isPrivate(["room", "github"])).toBe(true);
+    expect(privateOf(["github", "room"])).toEqual(["github"]);
+    expect(pickRefusal("deepseek-flash", ["room"])).toBeNull();
+    expect(runRefusal(modelIdOf("deepseek-flash"), ["room"])).toBeNull();
   });
 });

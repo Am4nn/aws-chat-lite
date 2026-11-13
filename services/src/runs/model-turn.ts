@@ -3,7 +3,7 @@ import { memoryRepo } from "../memory/repo.js";
 import { JOBS, modelInfo } from "../models/catalog.js";
 import type { ModelMessage, ToolCall, ToolSpec } from "../models/gateway.js";
 import { loadImages } from "../models/vision.js";
-import { mergeTaint, messageTaint, runRefusal, type TaintSource } from "../models/privacy.js";
+import { isPrivate, mergeTaint, messageTaint, runRefusal, type TaintSource } from "../models/privacy.js";
 import { threadsRepo } from "../threads/repo.js";
 import type { RunEvent } from "../threads/types.js";
 import { answerOf, askedAgents, buildContext, channelBackground, inLane, threadMessages } from "./context.js";
@@ -103,7 +103,7 @@ export async function modelTurn(run: RoutedRun, turn: number): Promise<Turn> {
   // go only into threads that are already private: a clean thread holding one could pass it on, through a public save,
   // a helper or its own answer, to a model that may not see it.
   const system = systemPrompt({
-    agent: run.agent, others: run.others, memory, privateOk: modelInfo(run.model).privateOk && taint.length > 0,
+    agent: run.agent, others: run.others, memory, privateOk: modelInfo(run.model).privateOk && isPrivate(taint),
     helperOf: run.helper?.parent, asked: askedAgents([...prior, ...steers], events, run.others),
   });
   const opening = run.helper

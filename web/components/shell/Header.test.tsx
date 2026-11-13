@@ -20,6 +20,11 @@ describe("Header", () => {
     expect(screen.queryByRole("img", { name: /Private/ })).toBeNull();
   });
 
+  it("shows no lock for a thread that only read room chat", () => {
+    header(["room"]);
+    expect(screen.queryByRole("img", { name: /Private/ })).toBeNull();
+  });
+
   it("offers the sidebar back on a wide screen only once it has been hidden", () => {
     header([], true, false);
     expect(screen.getByRole("button", { name: "Open sidebar" }).className).toContain("md:hidden");

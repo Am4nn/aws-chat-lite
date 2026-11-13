@@ -10,14 +10,16 @@ const MAX_INSTRUCTIONS = 4000;
 const NAME = /^[a-z][a-z0-9-]{1,31}$/;
 /** Mentions already give these a meaning: the built-in agent, the whole room and the scheduled messages' author. */
 const RESERVED = new Set(["agent", "everyone", "schedule"]);
-const KINDS: ToolKind[] = ["github", "images", "mcp", "sandbox", "web"];
+const BASE_KINDS: ToolKind[] = ["github", "images", "mcp", "sandbox", "web"];
+export const ROOM_KINDS: ToolKind[] = ["room_agents", "room_post", "room_read"];
+const KINDS: ToolKind[] = [...BASE_KINDS, ...ROOM_KINDS].sort();
 
 /**
  * Virtual until an admin edits it, so every room has it without a write at room creation. The first line of its role
  * is what other agents read when they hand it work.
  */
 export const BUILT_IN: Agent = {
-  agentId: "agent", name: "agent", model: "room", tools: KINDS,
+  agentId: "agent", name: "agent", model: "room", tools: BASE_KINDS,
   instructions: "The room's generalist.\n"
     + "Take any question or task: answer directly when you can, and research or run code when it needs checking. "
     + "If another agent in the room is the specialist for part of it, hand that part to them. "

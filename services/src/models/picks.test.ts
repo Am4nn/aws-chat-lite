@@ -17,6 +17,9 @@ describe("parsePick", () => {
 describe("resolvePick", () => {
   it("turns a DeepSeek default into Auto on a private thread", () =>
     expect(resolvePick(undefined, "deepseek-flash", ["attachment"])).toEqual({ pick: "auto", by: "default" }));
+  it("keeps a DeepSeek room default on a thread that only read the room", () => {
+    expect(resolvePick(undefined, "deepseek-flash", ["room"])).toEqual({ pick: "deepseek-flash", by: "default" });
+  });
   it("keeps an Auto default on a private thread", () =>
     expect(resolvePick(undefined, "auto", ["attachment"])).toEqual({ pick: "auto", by: "default" }));
   it("passes a DeepSeek pick through, leaving the refusal to the caller", () =>

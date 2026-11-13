@@ -49,6 +49,7 @@ export type Message = {
   mentions: string[];
   everyone: boolean;
   threadRef?: { kind: "started"; threadId: string } | { kind: "delivered"; threads: { threadId: string }[] };
+  agentPost?: { threadId: string; number: number };
   agent?: { runId: string; status: RunEndStatus; reason?: string; steps: number; costMicros: number; ms: number; model: string; pick: ModelPick; firstSeq: number; images?: GeneratedImage[] };
   /** How many times the message has changed (edit, delete, reaction); absent until the first change. */
   v?: number;
@@ -105,7 +106,7 @@ export type ThreadSummary = {
 export type ModelPick = "auto" | "sonnet" | "haiku" | "opus" | "fable" | "deepseek-flash" | "deepseek-pro" | "fake";
 export type ModelOption = { pick: ModelPick; id?: string; label: string; short: string; price: string; privateOk: boolean };
 /** MCP output is recorded per server, as `mcp:<name>`. */
-export type TaintSource = "attachment" | "github" | "sandbox" | `mcp:${string}`;
+export type TaintSource = "attachment" | "github" | "sandbox" | "room" | `mcp:${string}`;
 
 export type Budget = { spentMicros: number; capMicros: number; capRev: number; month: string; resetsAt: string };
 
@@ -158,11 +159,12 @@ export type AuditEntry = {
 };
 
 // Agents, memory and schedules: mirrors services/src/threads/types.ts.
-export type ToolKind = "sandbox" | "web" | "github" | "mcp" | "images";
+export type ToolKind = "sandbox" | "web" | "github" | "mcp" | "images" | "room_read" | "room_post" | "room_agents";
 export type AgentModel = ModelPick | "room";
 export type Agent = {
   agentId: string; name: string; instructions: string; tools: ToolKind[]; model: AgentModel;
   builtIn: boolean; createdBy: string; createdByName: string; createdAt: string; updatedAt: string;
+  madeBy?: { agentId: string; name: string };
 };
 export type MemoryEntry = {
   memoryId: string; text: string; private: boolean;

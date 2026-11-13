@@ -27,6 +27,8 @@ export type Message = {
    * its thread opens with the schedule's prompt rather than the card.
    */
   threadRef?: { kind: "started"; threadId: string; seq?: number } | { kind: "delivered"; threads: { threadId: string; seq: number }[] };
+  /** Set on a message an agent posted into a chat from a thread. */
+  agentPost?: { threadId: string; number: number };
   /** Set on an agent's answer (`authorId: "agent"`): how the run that wrote it ended. */
   agent?: {
     runId: string; status: RunEndStatus; reason?: string; steps: number; costMicros: number; ms: number;

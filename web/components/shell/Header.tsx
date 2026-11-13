@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { ChevronRight, Hash, Lock, Menu, PanelRight } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
-import { taintHint } from "@/lib/client/models";
+import { isPrivate, taintHint } from "@/lib/client/models";
 import type { Member, TaintSource } from "@/lib/types";
 
 const STACK = 4;
@@ -33,7 +33,7 @@ export function Header({ roomName, chatName, thread, taint = [], members, panelO
         </h1>
       )}
       {thread}
-      {taint.length > 0 && (
+      {isPrivate(taint) && (
         <span role="img" aria-label={taintHint(taint)} title={taintHint(taint)} className="shrink-0 text-text-3">
           <Lock aria-hidden="true" size={14} />
         </span>

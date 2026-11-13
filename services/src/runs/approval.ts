@@ -4,7 +4,7 @@ import { auditRepo } from "../audit/repo.js";
 import { budgetRepo } from "../budget/repo.js";
 import type { ToolCall } from "../models/gateway.js";
 import { enqueuePush } from "../push/enqueue.js";
-import { mergeTaint, type TaintSource } from "../models/privacy.js";
+import { isPrivate, mergeTaint, type TaintSource } from "../models/privacy.js";
 import { findTool, toolEnv } from "../tools/index.js";
 import { repoOf } from "../tools/github/repo.js";
 import { threadsRepo } from "../threads/repo.js";
@@ -37,7 +37,7 @@ export async function gateOf(run: RoutedRun, call: ToolCall, taint: TaintSource[
   const seen = mergeTaint(taint, thread?.taint ?? []);
   if (!asksFirst(tool, seen) || await limitsReached(run)) return { asks: false };
   const { github, approvalTimeoutSec } = room;
-  const env = { ...await toolEnv(process.env.TOOL_MODE, github ?? undefined), room: toolRoom(run, seen.length > 0) };
+  const env = { ...await toolEnv(process.env.TOOL_MODE, github ?? undefined), room: toolRoom(run, isPrivate(seen)) };
   if ("check" in tool && tool.check?.(call.input, env)) return { asks: false };
   const input = tool.kind === "github" ? { ...call.input, repo: repoOf(call.input, github ?? undefined) } : call.input;
   return { asks: true, timeoutSec: approvalTimeoutSec, title: tool.ask!(input, env), input };

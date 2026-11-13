@@ -6,7 +6,7 @@ import { mcpServerOf } from "../mcp/client/names.js";
 import type { TokenUsage } from "../models/catalog.js";
 import { IMAGE_MODEL } from "../models/images.js";
 import type { ToolCall } from "../models/gateway.js";
-import { mcpTaint, mergeTaint, type TaintSource } from "../models/privacy.js";
+import { isPrivate, mcpTaint, mergeTaint, type TaintSource } from "../models/privacy.js";
 import { threadsRepo } from "../threads/repo.js";
 import type { GeneratedImage, RunEvent, Source } from "../threads/types.js";
 import { findTool, toolEnv } from "../tools/index.js";
@@ -63,7 +63,7 @@ async function runRoomTool(run: RoutedRun, tool: Tool, call: ToolCall, { room, s
   const [transport, thread] = await Promise.all([
     envOf(process.env.TOOL_MODE, room.github ?? undefined), threadsRepo().threadById(run.roomId, run.threadId),
   ]);
-  const env = { ...transport, room: toolRoom(run, mergeTaint(taint, thread?.taint ?? []).length > 0) };
+  const env = { ...transport, room: toolRoom(run, isPrivate(mergeTaint(taint, thread?.taint ?? []))) };
   const input = settled?.call.input ?? call.input;
   const refused = tool.check?.(input, env);
   if (refused) return { ok: false, output: refused };
