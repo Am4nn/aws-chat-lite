@@ -227,7 +227,7 @@ export async function agentChecks(stamp: number, owner: Person, guest: Person) {
   const digest = await eventually(threads, (ts) => ts.some((t) => t.name === `morning-digest-${day}`), 15_000);
   const dated = digest.find((t) => t.name === `morning-digest-${day}`);
   const card = !!dated && await until(A, (n) => [...document.querySelectorAll("main a")].filter((a) => a.textContent?.trim() === "Open")
-    .some((a) => a.closest('[class*="rounded-[14px]"]')?.textContent?.includes(`#${n}`)), dated.number, 15_000);
+    .some((a) => a.closest('[class*="rounded-[14px]"]')?.textContent?.includes(`#${n}`)), dated.name, 15_000);
   check(row && toggled && fired && !!dated && card,
     `"Morning digest" reads "Every day at 09:00 · next … 09:00" and switches off and on; schedule:fire opens its card in #general and the thread ${dated?.name ?? `morning-digest-${day} (missing)`}`);
 

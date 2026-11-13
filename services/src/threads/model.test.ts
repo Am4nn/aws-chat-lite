@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ARCHIVE_AFTER_SEC, provisionalName, claimableName, isArchived, isNumberedName, summary, leadingTag, slugName, summaryLine, threadName, threadSk, uniqueCandidates } from "./model.js";
+import { ARCHIVE_AFTER_SEC, provisionalName, claimableName, isArchived, isNumberedName, summary, slugName, summaryLine, threadName, threadSk, uniqueCandidates } from "./model.js";
 
 describe("threadName", () => {
   it("trims and lowercases", () => expect(threadName(" PR-Check ")).toBe("pr-check"));
@@ -57,14 +57,6 @@ describe("isArchived", () => {
     expect(isArchived({ status: "running", lastActivityAt: idle(30 * 86400) }, now)).toBe(false);
     expect(isArchived({ status: "waiting", lastActivityAt: idle(30 * 86400) }, now)).toBe(false);
   });
-});
-
-describe("leadingTag", () => {
-  it("reads a number", () => expect(leadingTag("#12 also")).toEqual({ number: 12 }));
-  it("reads a name and ignores later tags", () => expect(leadingTag("#pr-check also look at #43")).toEqual({ name: "pr-check" }));
-  it("ignores a tag that is not first", () => expect(leadingTag("look at #43")).toBeNull());
-  it("treats digits followed by letters as a name", () => expect(leadingTag("#12abc")).toEqual({ name: "12abc" }));
-  it("accepts a tag at the very end", () => expect(leadingTag("#12")).toEqual({ number: 12 }));
 });
 
 describe("summaryLine", () => {

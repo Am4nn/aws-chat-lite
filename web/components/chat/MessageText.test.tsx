@@ -34,6 +34,14 @@ describe("MessageText #tags", () => {
     const out = tagged("see #4");
     expect(out).toMatch(/<a [^>]*href="\/r\/r1\/t\/4"[^>]*>#pr-check<\/a>/);
   });
+  it("shows a thread tag as a sky pill, apart from a chat's plain sky link and a lime @mention", () => {
+    const threadClass = /<a [^>]*class="([^"]*)"[^>]*>#pr-check</.exec(tagged("see #4"))![1]!.split(" ");
+    expect(threadClass).toEqual(expect.arrayContaining(["rounded-full", "text-sky", "bg-sky/10", "px-1.5"]));
+    expect(threadClass.some((c) => c.startsWith("font-mono") || c === "border")).toBe(false);
+    const chatClass = /<a [^>]*class="([^"]*)"[^>]*>#general</.exec(tagged("over in #general"))![1]!.split(" ");
+    expect(chatClass).toContain("text-sky");
+    expect(chatClass).not.toContain("rounded-full");
+  });
   it("leaves a number no thread has as text", () => expect(tagged("see #99")).not.toContain("<a"));
   it("links a chat by name", () => expect(tagged("over in #general")).toMatch(/href="\/r\/r1\/c\/c1"[^>]*>#general</));
   it("leaves unknown names and code alone", () => {

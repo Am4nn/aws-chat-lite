@@ -27,13 +27,14 @@ describe("handleAction", () => {
     expect(route).toHaveBeenCalled();
   });
 
-  it("a delete tells the room about the message and its copy in the thread", async () => {
+  it("a delete tells the room about the message and its copy in each thread", async () => {
     const message = { roomId: "r1", chatId: "c", seq: 1 };
-    const copy = { roomId: "r1", chatId: "t1", seq: 2 };
-    repo.remove.mockResolvedValue({ message, copy });
+    const copies = [{ roomId: "r1", chatId: "t1", seq: 2 }, { roomId: "r1", chatId: "t2", seq: 4 }];
+    repo.remove.mockResolvedValue({ message, copies });
     await handleAction("c1", user, { action: "delete", requestId: "q3", roomId: "r1", chatId: "c", seq: 1 });
     expect(vi.mocked(broadcastToRoom).mock.calls).toEqual([
-      ["r1", { type: "message.updated", message }], ["r1", { type: "message.updated", message: copy }],
+      ["r1", { type: "message.updated", message }], ["r1", { type: "message.updated", message: copies[0] }],
+      ["r1", { type: "message.updated", message: copies[1] }],
     ]);
   });
 

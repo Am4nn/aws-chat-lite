@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode, type Ref } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useParams } from "next/navigation";
 import { ArrowUp, Paperclip, Square } from "lucide-react";
@@ -16,8 +16,9 @@ import { transcriptText } from "@/lib/client/voice/transcript";
 import { useDictation } from "./useDictation";
 import type { useUploads } from "./useUploads";
 
-/** `thread`: the next message goes from this chat into an agent thread. */
-export type ComposerMode = { kind: "reply" | "edit"; message: Message } | { kind: "thread"; threadId: string } | null;
+export type ComposerMode = { kind: "reply" | "edit"; message: Message } | null;
+/** `insertTag`: puts a `#tag` in at the caret, the way a chat message is aimed at a thread. */
+export type ComposerHandle = { insertTag: (tag: string) => void };
 
 const MAX_TEXT = 4000;
 const COUNTER_FROM = 3600;
@@ -35,20 +36,20 @@ function withWords(text: string, caret: number, words: string) {
 
 /**
  * `agents`: the room's agents, offered first in the @ list where naming one starts a thread with it (a people chat).
- * `mode`: reply, edit or send-into-a-thread, where the view offers them (`onModeChange`); ArrowUp in an empty box edits
+ * `mode`: reply or edit, where the view offers them (`onModeChange`); ArrowUp in an empty box edits
  * my last message when `onEditLast` finds one. `uploads`: absent where files can't be sent, which hides the paperclip.
  * `steering`: an agent is running here, so a message steers it, and Stop (`onStop`) sits beside Send. `pill`: the model
  * choice, left of Send.
  */
 type Props = {
-  members: Mentionable[]; agents?: { name: string }[]; meId: string; mode?: ComposerMode;
+  ref?: Ref<ComposerHandle>; members: Mentionable[]; agents?: { name: string }[]; meId: string; mode?: ComposerMode;
   uploads?: ReturnType<typeof useUploads>; placeholder?: string; steering?: boolean; stopping?: boolean; pill?: ReactNode;
   onModeChange?: (mode: ComposerMode) => void; onSend: (text: string) => void; onSaveEdit?: (m: Message, text: string) => void;
   onEditLast?: () => boolean; onTyping: () => void; onStop?: () => void;
 };
 
 export function Composer({
-  members, agents = [], meId, mode = null, uploads, placeholder = "Message", steering = false, stopping = false, pill,
+  ref, members, agents = [], meId, mode = null, uploads, placeholder = "Message", steering = false, stopping = false, pill,
   onModeChange, onSend, onSaveEdit, onEditLast, onTyping, onStop,
 }: Props) {
   const reduced = useReducedMotion();
@@ -128,6 +129,25 @@ export function Composer({
     change(spoken.value, spoken.caret);
     area.current?.focus();
   }
+
+  // A tag aims the message at a thread, so it ends a reply or an edit; an edit's tag goes into the draft it hands back.
+  function insertTag(tag: string) {
+    const base = editing ? draft : text;
+    const at = editing ? base.length : Math.min(caret, base.length);
+    const before = base.slice(0, at);
+    const head = `${before && !/\s$/.test(before) ? `${before} ` : before}${tag} `;
+    const value = head + base.slice(at).trimStart();
+    nextCaret.current = head.length;
+    if (editing) {
+      setDraft(value);
+      setCaret(head.length);
+    } else {
+      change(value, head.length);
+    }
+    onModeChange?.(null);
+    area.current?.focus();
+  }
+  useImperativeHandle(ref, () => ({ insertTag }));
 
   function submit() {
     if (!canSubmit) return;

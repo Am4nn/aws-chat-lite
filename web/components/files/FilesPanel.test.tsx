@@ -48,6 +48,14 @@ describe("FilesPanel", () => {
     expect(out).not.toContain('role="switch"');
   });
 
+  it("names the setting for code only, and says web search and fetch don't depend on it", () => {
+    const out = html({ canSwitch: true });
+    expect(out).toContain(">Code internet<");
+    expect(out).toContain('aria-label="Code internet"');
+    expect(out).toContain("Off: code can&#x27;t reach the internet. On: pip install and git clone work. Web search and fetch are separate agent tools. Applies to new runs.");
+    expect(out).not.toContain("Sandbox internet");
+  });
+
   it("gives an admin the internet switch", () => {
     expect(html({ canSwitch: true, internet: true })).toMatch(/role="switch"[^>]*aria-checked="true"|aria-checked="true"[^>]*role="switch"/);
   });

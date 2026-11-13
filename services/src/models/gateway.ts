@@ -7,7 +7,8 @@ export type InlineImageType = "image/png" | "image/jpeg" | "image/gif" | "image/
 /** An image on a user message; `data` (base64) is filled in just before a call, and only for a model that may see it. */
 export type ImagePart = { name: string; mediaType: InlineImageType; key: string; size: number; data?: string };
 export type ModelMessage =
-  | { role: "user"; author: string; text: string; images?: ImagePart[] }
+  /** `author` is unset on text the app itself adds, such as a chat's background. */
+  | { role: "user"; author?: string; text: string; images?: ImagePart[] }
   | { role: "assistant"; text: string; toolCalls?: ToolCall[]; native?: NativeTurn }
   | { role: "tool"; toolCallId: string; output: string; isError?: boolean };
 export type ToolSpec = { name: string; description: string; inputSchema: object };

@@ -57,7 +57,8 @@ export function fakeModel({ sleep = wait } = {}): ModelProvider {
 }
 
 async function* run(req: ModelRequest, sleep: (ms: number) => Promise<void>): AsyncGenerator<ProviderChunk> {
-  const first = req.messages.find((m) => m.role === "user");
+  // Directives are a member's, so text the app adds before the thread (a chat's background) never sets them.
+  const first = req.messages.find((m): m is Extract<ModelMessage, { role: "user" }> => m.role === "user" && !!m.author);
   const prompt = first?.text ?? "";
   const inputChars = req.system.length + req.messages.reduce((sum, m) => sum + charsOf(m), 0);
   const images = req.messages.flatMap((m) => (m.role === "user" ? m.images ?? [] : [])).filter((p) => p.data !== undefined).length;

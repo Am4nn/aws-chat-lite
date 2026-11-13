@@ -10,7 +10,7 @@ import { requireMember, roomMembers } from "../rooms/membership.js";
 import { notified, parseMentions } from "./mentions.js";
 import {
   CHANGES_PER_MIN, EDIT_WINDOW_SEC, LAST_SEQ, MAX_ATTACHMENTS, PAGE, RATE_PER_MIN, canEdit, deleteMode, excerpt, forReaders, messageText,
-  seqKey, validAttachment, versionKey, type Attachment, type Message, type Reaction, type StoredMessage,
+  seqKey, threadRefOf, validAttachment, versionKey, type Attachment, type Message, type Reaction, type StoredMessage,
 } from "./model.js";
 
 /** Where a message lives: every chat belongs to exactly one room. */
@@ -90,7 +90,7 @@ export function chatRepo() {
   async function storedMessage(at: ChatRef, seq: number): Promise<StoredMessage> {
     const { Item } = await db.send(new GetCommand({ TableName, Key: messageKey(at.chatId, seq), ConsistentRead: true }));
     if (!Item || Item.roomId !== at.roomId) throw new NotFound("Message not found.");
-    return Item as StoredMessage;
+    return { ...Item, threadRef: threadRefOf(Item.threadRef) } as StoredMessage;
   }
 
   /** Your own message counts as read. The condition stops a slower, older send from moving the marker back. */
@@ -252,11 +252,11 @@ export function chatRepo() {
     },
 
     /**
-     * Marks the message deleted; the stored text stays, and readers get it blanked. Its copy in the thread it went to
-     * is marked in the same transaction, so a removal never leaves the text readable there. Both are read back after
+     * Marks the message deleted; the stored text stays, and readers get it blanked. Its copy in each thread it went to
+     * is marked in the same transaction, so a removal never leaves the text readable there. All are read back after
      * the write, not built from the read above: a reaction landing in between also moved `v`.
      */
-    async remove(user: User, input: ChatRef & { seq: number }): Promise<{ message: Message; copy?: Message }> {
+    async remove(user: User, input: ChatRef & { seq: number }): Promise<{ message: Message; copies: Message[] }> {
       const at = { roomId: input.roomId, chatId: input.chatId };
       const role = await requireMember(at.roomId, user.userId, { writing: true });
       const msg = await storedMessage(at, input.seq);
@@ -264,7 +264,8 @@ export function chatRepo() {
       const deleted = deleteMode(msg, user.userId, role, Date.now());
       if (!deleted) throw new Forbidden("You can delete only your own messages, for 15 minutes.");
       const ref = msg.threadRef;
-      const copyAt = ref?.seq === undefined ? undefined : { at: { roomId: at.roomId, chatId: ref.threadId }, seq: ref.seq };
+      const copies = (ref?.kind === "delivered" ? ref.threads : ref?.seq === undefined ? [] : [{ threadId: ref.threadId, seq: ref.seq }])
+        .map(({ threadId, seq }) => ({ at: { roomId: at.roomId, chatId: threadId }, seq }));
       const values = { ":d": deleted, ":one": 1 };
       try {
         await db.send(new TransactWriteCommand({
@@ -275,13 +276,13 @@ export function chatRepo() {
                 ConditionExpression: "attribute_not_exists(deleted)", ExpressionAttributeValues: values,
               },
             },
-            // The copy may already be deleted on its own; that keeps its own mark.
-            ...(copyAt ? [{
+            // A copy may already be deleted on its own; that keeps its own mark.
+            ...copies.map((copy) => ({
               Update: {
-                TableName, Key: messageKey(copyAt.at.chatId, copyAt.seq), UpdateExpression: "SET deleted = if_not_exists(deleted, :d) ADD v :one",
+                TableName, Key: messageKey(copy.at.chatId, copy.seq), UpdateExpression: "SET deleted = if_not_exists(deleted, :d) ADD v :one",
                 ConditionExpression: "attribute_exists(sk)", ExpressionAttributeValues: values,
               },
-            }] : []),
+            })),
           ],
         }));
       } catch (e) {
@@ -290,8 +291,8 @@ export function chatRepo() {
         throw e;
       }
       const reread = async (where: ChatRef, seq: number) => toMessage({ ...await storedMessage(where, seq) });
-      const [message, copy] = await Promise.all([reread(at, input.seq), copyAt && reread(copyAt.at, copyAt.seq)]);
-      return { message, ...(copy && { copy }) };
+      const [message, copied] = await Promise.all([reread(at, input.seq), Promise.all(copies.map((c) => reread(c.at, c.seq)))]);
+      return { message, copies: copied };
     },
 
     /** Set ADD/DELETE make a double tap harmless: adding someone twice or removing someone absent changes nothing. */

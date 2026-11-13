@@ -121,6 +121,15 @@ export async function liveChecks(stamp: number, owner: Person, guest: Person, th
   await A.keyboard.press("Enter");
   check(await arrived, `B sees A's "${hello}" live (${Date.now() - sentAt} ms, limit 2000)`);
 
+  // Two mentions in one group read as one highlight: rounded only at its top and bottom, so no seam between them.
+  await say(A, roomId, general, `@${guest.name} and again`);
+  check(await until(B, (texts) => {
+    const rows = [...document.querySelectorAll("main [data-seq]")];
+    const [top, bottom] = texts.map((t) => rows.find((r) => (r as HTMLElement).innerText.includes(t)));
+    return !!top && bottom === top.nextElementSibling && [top, bottom].every((r) => r.classList.contains("bg-amber-wash"))
+      && top.classList.contains("rounded-t-[10px]") && bottom!.classList.contains("rounded-b-[10px]");
+  }, [hello, "and again"]), "A's two mentions of B in a row show B one continuous highlight");
+
   await B.click("textarea#composer");
   await B.keyboard.type("thinking");
   check(await shows(A, `${guest.name} is typing…`), "while B types, A sees \"… is typing…\"");

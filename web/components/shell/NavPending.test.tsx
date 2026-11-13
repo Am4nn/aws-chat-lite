@@ -21,7 +21,7 @@ function Probe() {
       {/* Like Next's Link: its own handler takes the click over. */}
       <a href="/r/r1/c/c2" onClick={(e) => e.preventDefault()}>random</a>
       <a href="#plain">plain</a>
-      <a href="/apps" onClick={(e) => e.preventDefault()}>apps</a>
+      <a href="/consent" onClick={(e) => e.preventDefault()}>consent</a>
       <button onClick={() => navigate("/r/r1/t/4")}>open thread</button>
     </>
   );
@@ -61,8 +61,8 @@ describe("NavPendingProvider", () => {
 
   it("keeps the room's place while a tap leaves the rooms, since that page has no place to show early", () => {
     render(view());
-    fireEvent.click(screen.getByText("apps"));
-    expect(pending()).toBe("/apps");
+    fireEvent.click(screen.getByText("consent"));
+    expect(pending()).toBe("/consent");
     expect(screen.getByTestId("chat").textContent).toBe("c1");
   });
 

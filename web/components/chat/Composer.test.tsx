@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
+import { createRef } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Message } from "@/lib/types";
-import { Composer } from "./Composer";
+import { Composer, type ComposerHandle, type ComposerMode } from "./Composer";
 
 const dictation = vi.hoisted(() => ({
   state: "idle" as string, elapsedMs: 0, live: { final: "", partial: "" }, error: undefined as string | undefined,
@@ -12,7 +13,6 @@ vi.mock("./useDictation", () => ({
   useDictation: ({ onText }: { onText: (text: string) => void }) => { dictation.onText = onText; return dictation; },
 }));
 vi.mock("next/navigation", () => ({ useParams: () => ({ roomId: "r1" }) }));
-vi.mock("@/lib/client/ThreadsProvider", () => ({ useThreads: () => ({ byId: () => undefined }) }));
 
 afterEach(() => {
   cleanup();
@@ -85,5 +85,39 @@ describe("Composer dictation", () => {
     expect(screen.getByRole("alert").textContent).toBe("Allow the microphone to dictate.");
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(dictation.cancel).toHaveBeenCalled();
+  });
+});
+
+describe("Composer tag insert", () => {
+  function tagged(mode: ComposerMode = null) {
+    const handle = createRef<ComposerHandle>();
+    const onModeChange = vi.fn();
+    render(<Composer ref={handle} members={[]} meId="u1" mode={mode} onModeChange={onModeChange} onSend={() => {}} onSaveEdit={() => {}} onTyping={() => {}} />);
+    const box = screen.getByRole("combobox") as HTMLTextAreaElement;
+    return { box, onModeChange, insert: (tag: string) => act(() => handle.current!.insertTag(tag)) };
+  }
+
+  it("puts the tag and a space in an empty box, focused with the caret after it", () => {
+    const { box, insert } = tagged();
+    insert("#pr-review");
+    expect(box.value).toBe("#pr-review ");
+    expect(document.activeElement).toBe(box);
+    expect(box.selectionStart).toBe(11);
+  });
+
+  it("goes in at the caret, spaced from the text around it", () => {
+    const { box, insert } = tagged();
+    fireEvent.change(box, { target: { value: "please check", selectionStart: 0 } });
+    insert("#pr-review");
+    expect(box.value).toBe("#pr-review please check");
+    fireEvent.change(box, { target: { value: "hi", selectionStart: 2 } });
+    insert("#docs");
+    expect(box.value).toBe("hi #docs ");
+  });
+
+  it("ends a quote reply, since the message now goes to the thread", () => {
+    const { onModeChange, insert } = tagged({ kind: "reply", message: { authorName: "bea", text: "hi" } as Message });
+    insert("#pr-review");
+    expect(onModeChange).toHaveBeenCalledWith(null);
   });
 });

@@ -27,7 +27,7 @@ export function useOutbox({ roomId, chatId, chat, toBottom }: { roomId: string; 
   const deliver = useCallback(async (p: PendingMessage) => {
     try {
       const message = await live.request("send", {
-        roomId, chatId, clientId: p.clientId, text: p.text, replyToSeq: p.replyTo?.seq, threadId: p.threadId, model: p.model,
+        roomId, chatId, clientId: p.clientId, text: p.text, replyToSeq: p.replyTo?.seq, model: p.model,
         attachments: p.attachments.map(({ key, name, size, type }) => ({ key, name, size, type })),
       }) as Message;
       apply([message]);
@@ -50,7 +50,7 @@ export function useOutbox({ roomId, chatId, chat, toBottom }: { roomId: string; 
     const failed = latest.current.pending.find((p) => p.clientId === clientId);
     if (!failed) return;
     setTimeline((t) => dropPending(t, clientId));
-    queue({ text: failed.text, attachments: failed.attachments, replyTo: failed.replyTo, threadId: failed.threadId, model: failed.model });
+    queue({ text: failed.text, attachments: failed.attachments, replyTo: failed.replyTo, model: failed.model });
   }, [latest, setTimeline, queue]);
 
   const discard = useCallback((clientId: string) => {

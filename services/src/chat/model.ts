@@ -22,11 +22,11 @@ export type Message = {
   mentions: string[];
   everyone: boolean;
   /**
-   * Set on a people-chat message that started a thread (its card) or was delivered into one (its chip). `seq` is the
-   * message's copy in that thread, which a deletion also removes; a schedule's card has none, since its thread opens
-   * with the schedule's prompt rather than the card.
+   * Set on a people-chat message that started a thread (its card) or was delivered into up to three (a chip each).
+   * Each `seq` is the message's copy in that thread, which a deletion also removes; a schedule's card has none, since
+   * its thread opens with the schedule's prompt rather than the card.
    */
-  threadRef?: { threadId: string; kind: "started" | "delivered"; seq?: number };
+  threadRef?: { kind: "started"; threadId: string; seq?: number } | { kind: "delivered"; threads: { threadId: string; seq: number }[] };
   /** Set on an agent's answer (`authorId: "agent"`): how the run that wrote it ended. */
   agent?: {
     runId: string; status: RunEndStatus; reason?: string; steps: number; costMicros: number; ms: number;
@@ -114,8 +114,18 @@ export function excerpt(text: string): string {
 }
 
 /** A deleted message keeps its text and files in the table; readers get neither. */
-export function forReaders({ textLower: _textLower, ...message }: StoredMessage): Message {
+export function forReaders({ textLower: _textLower, ...stored }: StoredMessage): Message {
+  const message = { ...stored, threadRef: threadRefOf(stored.threadRef) };
   return message.deleted ? { ...message, text: "", attachments: [] } : message;
+}
+
+/**
+ * Before a message could go to several threads, a delivery was stored as one thread's `{ kind, threadId, seq }`.
+ * Those items stay in the table, so they are read as a one-thread list.
+ */
+export function threadRefOf(raw: unknown): Message["threadRef"] {
+  const ref = raw as Message["threadRef"] | { kind: "delivered"; threadId: string; seq: number } | undefined;
+  return ref?.kind === "delivered" && "threadId" in ref ? { kind: "delivered", threads: [{ threadId: ref.threadId, seq: ref.seq }] } : ref;
 }
 
 export function validAttachment(a: unknown, roomId: string, userId: string): Attachment {

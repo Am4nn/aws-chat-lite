@@ -80,16 +80,25 @@ describe("message versions", () => {
     expect(react.input.UpdateExpression).toContain("v :one");
   });
 
-  it("deleting a message also deletes its copy in the thread it went to, in the same transaction", async () => {
-    const send = fakeTable(stored({ threadRef: { threadId: "t1", kind: "delivered", seq: 5 } }));
-    const { copy } = await chatRepo().remove(me, { ...at, seq: 1 });
-    const [original, inThread] = (writes(send)[0] as TransactWriteCommand).input.TransactItems!;
+  it("deleting a message also deletes its copy in each thread it went to, in the same transaction", async () => {
+    const send = fakeTable(stored({ threadRef: { kind: "delivered", threads: [{ threadId: "t1", seq: 5 }, { threadId: "t2", seq: 7 }] } }));
+    const { copies } = await chatRepo().remove(me, { ...at, seq: 1 });
+    const [original, inThread, inOther] = (writes(send)[0] as TransactWriteCommand).input.TransactItems!;
     expect(original!.Update).toMatchObject({ Key: { pk: "CHAT#c1", sk: "MSG#0000000001" }, ConditionExpression: "attribute_not_exists(deleted)" });
     expect(inThread!.Update).toMatchObject({
       Key: { pk: "CHAT#t1", sk: "MSG#0000000005" }, UpdateExpression: "SET deleted = if_not_exists(deleted, :d) ADD v :one",
       ConditionExpression: "attribute_exists(sk)", ExpressionAttributeValues: { ":d": "self", ":one": 1 },
     });
-    expect(copy).toBeDefined();
+    expect(inOther!.Update).toMatchObject({ Key: { pk: "CHAT#t2", sk: "MSG#0000000007" } });
+    expect(copies).toHaveLength(2);
+  });
+
+  it("deleting a thread's card deletes the thread's first message, and a schedule's card, which has none, nothing more", async () => {
+    const send = fakeTable(stored({ threadRef: { kind: "started", threadId: "t1", seq: 1 } }));
+    expect((await chatRepo().remove(me, { ...at, seq: 1 })).copies).toHaveLength(1);
+    fakeTable(stored({ threadRef: { kind: "started", threadId: "t1" } }));
+    expect((await chatRepo().remove(me, { ...at, seq: 1 })).copies).toEqual([]);
+    expect((writes(send)[0] as TransactWriteCommand).input.TransactItems![1]!.Update).toMatchObject({ Key: { pk: "CHAT#t1", sk: "MSG#0000000001" } });
   });
 });
 
